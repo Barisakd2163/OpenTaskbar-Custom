@@ -12,6 +12,8 @@ public sealed class NativeWindowTracker : IDisposable
     private const uint EventObjectShow = 0x8002;
     private const uint EventObjectHide = 0x8003;
     private const uint EventObjectNameChange = 0x800C;
+    private const uint EventSystemAlert = 0x0002;
+    private const uint EventSystemForeground = 0x0003;
     private const uint WineventOutOfContext = 0x0000;
     private const int ObjectWindow = 0;
     private const int ChildIdSelf = 0;
@@ -22,8 +24,10 @@ public sealed class NativeWindowTracker : IDisposable
     private readonly DispatcherTimer _refreshTimer;
     private readonly WinEventDelegate _eventCallback;
     private readonly EnumWindowsDelegate _enumCallback;
+    private readonly HashSet<nint> _notificationWindows = [];
     private nint _windowHook;
     private nint _nameChangeHook;
+    private nint _systemEventHook;
     private nint _excludedWindow;
     private int _refreshQueued;
     private bool _disposed;
@@ -44,6 +48,8 @@ public sealed class NativeWindowTracker : IDisposable
 
     public IReadOnlyList<TrackedWindow> Snapshot { get; private set; } = [];
 
+    public bool NotificationsAvailable => _systemEventHook != 0;
+
     public void Start(nint excludedWindow)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -62,17 +68,45 @@ public sealed class NativeWindowTracker : IDisposable
             throw new InvalidOperationException("Pencere başlığı değişiklikleri dinlenemedi.");
         }
 
+        _systemEventHook = SetWinEventHook(EventSystemAlert, EventSystemForeground, 0, _eventCallback, 0, 0, WineventOutOfContext);
         RefreshWindows();
     }
 
     private void OnWinEvent(nint hook, uint eventType, nint windowHandle, int objectId, int childId, uint eventThread, uint eventTime)
     {
-        if (_disposed || objectId != ObjectWindow || childId != ChildIdSelf
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (eventType == EventSystemAlert && windowHandle != 0)
+        {
+            _notificationWindows.Add(windowHandle);
+            QueueRefresh();
+            return;
+        }
+
+        if (eventType == EventSystemForeground && windowHandle != 0)
+        {
+            if (_notificationWindows.Remove(windowHandle))
+            {
+                QueueRefresh();
+            }
+
+            return;
+        }
+
+        if (objectId != ObjectWindow || childId != ChildIdSelf
             || eventType is not (EventObjectCreate or EventObjectDestroy or EventObjectShow or EventObjectHide or EventObjectNameChange))
         {
             return;
         }
 
+        QueueRefresh();
+    }
+
+    private void QueueRefresh()
+    {
         if (Interlocked.Exchange(ref _refreshQueued, 1) != 0)
         {
             return;
@@ -109,6 +143,8 @@ public sealed class NativeWindowTracker : IDisposable
             state.Free();
         }
 
+        _notificationWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
+
         if (Snapshot.SequenceEqual(windows))
         {
             return;
@@ -141,12 +177,16 @@ public sealed class NativeWindowTracker : IDisposable
             {
                 if (collection.Previous.TryGetValue(windowHandle, out var previous))
                 {
-                    collection.Windows.Add(previous with { Title = value });
+                    collection.Windows.Add(previous with
+                    {
+                        Title = value,
+                        HasNotification = _notificationWindows.Contains(windowHandle)
+                    });
                 }
                 else
                 {
                     collection.Windows.Add(new TrackedWindow(windowHandle, value,
-                        ApplicationIconProvider.GetForWindow(windowHandle)));
+                        ApplicationIconProvider.GetForWindow(windowHandle), _notificationWindows.Contains(windowHandle)));
                 }
             }
         }
@@ -154,14 +194,34 @@ public sealed class NativeWindowTracker : IDisposable
         return true;
     }
 
-    public static void Activate(nint windowHandle)
+    public static bool Activate(nint windowHandle)
     {
+        if (!IsWindow(windowHandle))
+        {
+            return false;
+        }
+
         if (IsIconic(windowHandle))
         {
             ShowWindow(windowHandle, ShowRestore);
         }
 
-        SetForegroundWindow(windowHandle);
+        var targetThread = GetWindowThreadProcessId(windowHandle, out _);
+        var currentThread = GetCurrentThreadId();
+        var attached = targetThread != 0 && targetThread != currentThread
+            && AttachThreadInput(currentThread, targetThread, true);
+        try
+        {
+            BringWindowToTop(windowHandle);
+            return SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(currentThread, targetThread, false);
+            }
+        }
     }
 
     public void Dispose()
@@ -184,6 +244,12 @@ public sealed class NativeWindowTracker : IDisposable
         {
             UnhookWinEvent(_nameChangeHook);
             _nameChangeHook = 0;
+        }
+
+        if (_systemEventHook != 0)
+        {
+            UnhookWinEvent(_systemEventHook);
+            _systemEventHook = 0;
         }
     }
 
@@ -209,6 +275,10 @@ public sealed class NativeWindowTracker : IDisposable
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsIconic(nint windowHandle);
 
     [DllImport("user32.dll")]
@@ -223,6 +293,20 @@ public sealed class NativeWindowTracker : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BringWindowToTop(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AttachThreadInput(uint threadIdAttach, uint threadIdAttachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

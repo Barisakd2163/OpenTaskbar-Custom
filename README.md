@@ -5,6 +5,8 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It starts as a transpa
 ## Current features
 
 - Lists visible top-level windows with application icons and activates them when selected.
+- Shrinks the dock to its icon group and places it at the selected left, center, or right position.
+- Shows a notification dot for windows that raise a Windows system alert and clears it when that window becomes foreground.
 - Shows pinned applications as icons and launches them on click.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Stores pinned paths in `%LOCALAPPDATA%\OpenTaskbar\pinned-apps.json`.
@@ -36,6 +38,7 @@ dotnet run --project OpenTaskbar.csproj
 
 - Taskbar replacement depends on Windows Explorer's AppBar and auto-hide APIs. A recovery record at `%LOCALAPPDATA%\OpenTaskbar\taskbar-state.txt` preserves the original Windows taskbar state after an unexpected exit.
 - The dock is positioned at the bottom edge of the monitor containing its window; its icon group can align left, center, or right.
+- Applications do not expose a universal unread count or notification badge API, so notification dots appear only when Windows raises a system alert for a window.
 - Owned dialogs and untitled windows are omitted. An application icon may be unavailable when Windows denies process access and the window does not provide one.
 - Pins refer to executable paths; moving or removing an executable requires removing and adding the pin again.
 - Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
@@ -36,16 +37,18 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private readonly Window _window;
     private readonly nint _handle;
+    private readonly Func<DockPosition> _getDockPosition;
     private bool _registered;
     private bool _active;
     private bool _stateChangeStarted;
     private uint _previousTaskbarState;
     private bool _disposed;
 
-    public TaskbarReplacementSession(Window window, nint handle)
+    public TaskbarReplacementSession(Window window, nint handle, Func<DockPosition> getDockPosition)
     {
         _window = window;
         _handle = handle;
+        _getDockPosition = getDockPosition;
     }
 
     public bool IsActive => _active;
@@ -243,21 +246,29 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         var dpi = GetDpiForWindow(_handle);
         var height = Math.Max(1, (int)Math.Round(_window.Height * dpi / 96d));
+        var monitorLeft = monitorInfo.rcMonitor.Left;
+        var monitorRight = monitorInfo.rcMonitor.Right;
+        var width = Math.Clamp((int)Math.Ceiling(_window.Width * dpi / 96d), 1, monitorRight - monitorLeft);
+        var left = _getDockPosition() switch
+        {
+            DockPosition.Left => monitorLeft,
+            DockPosition.Center => monitorLeft + (monitorRight - monitorLeft - width) / 2,
+            DockPosition.Right => monitorRight - width,
+            _ => monitorLeft
+        };
         var data = CreateData();
         data.uEdge = AbeBottom;
         data.rc = new Rect(
-            monitorInfo.rcMonitor.Left,
+            left,
             monitorInfo.rcMonitor.Bottom - height,
-            monitorInfo.rcMonitor.Right,
+            left + width,
             monitorInfo.rcMonitor.Bottom);
 
         SHAppBarMessage(AbmQueryPos, ref data);
         data.rc.Top = data.rc.Bottom - height;
+        data.rc.Right = data.rc.Left + width;
         SHAppBarMessage(AbmSetPos, ref data);
-        var left = monitorInfo.rcMonitor.Left;
-        var top = monitorInfo.rcMonitor.Bottom - height;
-        var width = monitorInfo.rcMonitor.Right - left;
-        if (!SetWindowPos(_handle, HwndTopmost, left, top,
+        if (!SetWindowPos(_handle, HwndTopmost, data.rc.Left, data.rc.Top,
                 width, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {

@@ -68,6 +68,10 @@ public partial class MainWindow : Window
         try
         {
             _windowTracker.Start(source.Handle);
+            if (!_windowTracker.NotificationsAvailable)
+            {
+                ShowStatus("Windows uygulama bildirimlerini dinleyemedi; bildirim rozeti kullanılamıyor.");
+            }
         }
         catch (InvalidOperationException ex)
         {
@@ -87,10 +91,15 @@ public partial class MainWindow : Window
         }
 
         var workArea = SystemParameters.WorkArea;
-        Width = SystemParameters.PrimaryScreenWidth;
-        DockSurface.Width = Width;
+        ResizeDockToContent();
         ApplyDockAlignment();
-        Left = workArea.Left;
+        Left = _dockPosition switch
+        {
+            DockPosition.Left => workArea.Left,
+            DockPosition.Center => workArea.Left + (workArea.Width - Width) / 2,
+            DockPosition.Right => workArea.Right - Width,
+            _ => workArea.Left
+        };
         Top = Math.Max(workArea.Top, workArea.Bottom - Height);
     }
 
@@ -103,11 +112,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        Width = SystemParameters.PrimaryScreenWidth;
-        DockSurface.Width = Width;
+        ResizeDockToContent();
         ApplyDockAlignment();
         Height = 64;
-        var session = new TaskbarReplacementSession(this, source.Handle);
+        var session = new TaskbarReplacementSession(this, source.Handle, () => _dockPosition);
         session.OperationFailed += ShowStatus;
         try
         {
@@ -154,6 +162,9 @@ public partial class MainWindow : Window
         {
             _runningWindows.Add(window);
         }
+
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
     }
 
     private void PinnedApp_Click(object sender, RoutedEventArgs e)
@@ -219,21 +230,26 @@ public partial class MainWindow : Window
 
     private void RunningWindow_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: nint handle })
+        if (sender is Button { Tag: nint handle } && !NativeWindowTracker.Activate(handle))
         {
-            NativeWindowTracker.Activate(handle);
+            ShowStatus("Pencere etkinleştirilemedi. Uygulama kapanmış veya Windows odağı engellemiş olabilir.");
+            return;
         }
+
+        ClearStatus();
     }
 
     private void ShowStatus(string message)
     {
         StatusText.Text = message;
+        ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
 
     private void ClearStatus()
     {
         StatusText.Text = string.Empty;
+        ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
 
@@ -296,7 +312,15 @@ public partial class MainWindow : Window
         }
 
         _dockPosition = position;
-        ApplyDockAlignment();
+        if (_replacementSession?.IsActive == true)
+        {
+            ApplyDockAlignment();
+        }
+        else
+        {
+            PositionDock();
+        }
+
         ClearStatus();
     }
 
@@ -312,6 +336,16 @@ public partial class MainWindow : Window
 
         DockContents.HorizontalAlignment = alignment;
         DockScrollViewer.HorizontalContentAlignment = alignment;
+        _replacementSession?.RefreshPosition();
+    }
+
+    private void ResizeDockToContent()
+    {
+        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, Height));
+        var padding = DockSurface.Padding;
+        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right);
+        Width = Math.Clamp(desiredWidth, 16, SystemParameters.PrimaryScreenWidth);
+        DockSurface.Width = Width;
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)
