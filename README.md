@@ -24,6 +24,12 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - Windows x64 architecture
 - .NET 10 Desktop Runtime (or .NET 10 SDK when building from source)
 
+## Run the Release
+
+1. Download the latest `OpenTaskbar.exe` asset from the [GitHub Releases](https://github.com/alztrk/opentaskbar/releases) page.
+2. Save it in a folder you control and run it. Installation is not required.
+3. OpenTaskbar replaces the Windows taskbar with a floating dock.
+
 ## Run from Source
 
 With the .NET 10 SDK installed:
@@ -32,14 +38,13 @@ With the .NET 10 SDK installed:
 dotnet run --project OpenTaskbar.csproj
 ```
 
-To build a Release binary:
+To create a self-contained portable executable:
 
 ```powershell
-dotnet build OpenTaskbar.csproj -c Release
+powershell -ExecutionPolicy Bypass -File ".\scripts\publish-portable.ps1"
 ```
 
-The output executable is located at:
-`bin\Release\net10.0-windows\OpenTaskbar.exe`
+The output is written to `dist\OpenTaskbar.exe`.
 
 ## Configuration and Storage
 
