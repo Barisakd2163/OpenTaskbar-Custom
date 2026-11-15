@@ -18,6 +18,10 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Uses Windows accessibility events to match eligible open windows with application icons and update notification badges. It omits owned and tool windows, Windows system-app helper windows, and Explorer shell windows that are not File Explorer windows, and briefly coalesces bursts of change events.
 - Runs without administrator rights or network access. Taskbar replacement changes only the current user's Windows taskbar state.
 
+## Interface system
+
+Shared interface resources are defined in `Design/Theme.xaml`. See [the interface rules](Design/README.md) for dimensions, states, materials, and validation limits. The dock uses translucent tinted glass; desktop backdrop blur is not currently implemented.
+
 ## Performance approach
 
 The app does no periodic polling while idle. It does not load system telemetry, weather, media, finance, or clipboard modules. The only refresh timer is a one-shot 180 ms debounce after Windows reports a window change. No third-party packages are required.

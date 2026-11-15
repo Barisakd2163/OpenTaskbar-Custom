@@ -24,8 +24,8 @@ public partial class MainWindow : Window
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
-    private const int DwmwaSystemBackdropType = 38;
-    private const int DwmsbtTransientWindow = 3;
+    private const int WmMouseActivate = 0x0021;
+    private const int MaNoActivate = 3;
 
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
@@ -77,7 +77,6 @@ public partial class MainWindow : Window
 
         _source = source;
         _source.AddHook(WindowProc);
-        ApplySystemBackdrop(source.Handle);
         if (!ExcludeFromTaskSwitcher(source.Handle))
         {
             ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
@@ -135,7 +134,6 @@ public partial class MainWindow : Window
 
         ResizeDockToContent();
         ApplyDockAlignment();
-        Height = 48;
         var session = new TaskbarReplacementSession(this, source.Handle, () => _dockPosition);
         session.OperationFailed += ShowStatus;
         try
@@ -146,7 +144,6 @@ public partial class MainWindow : Window
         catch (InvalidOperationException ex)
         {
             session.Dispose();
-            Height = 48;
             PositionDock();
             ShowStatus(ex.Message);
         }
@@ -154,6 +151,13 @@ public partial class MainWindow : Window
 
     private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        // Keep the application's foreground state intact until the dock command runs.
+        if (message == WmMouseActivate)
+        {
+            handled = true;
+            return new IntPtr(MaNoActivate);
+        }
+
         if (_replacementSession?.HandleMessage(unchecked((uint)message), wParam, lParam) == true)
         {
             handled = true;
@@ -167,10 +171,8 @@ public partial class MainWindow : Window
         var result = WindowsTaskbarPinImporter.Import();
         foreach (var app in result.Apps)
         {
-            _pinnedApps.Add(app with
-            {
-                Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath)
-            });
+            app.Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath);
+            _pinnedApps.Add(app);
         }
 
         if (result.Error is not null)
@@ -181,6 +183,11 @@ public partial class MainWindow : Window
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
+        foreach (var path in _lastSelectedWindows.Keys.Where(path => !windows.Any(window =>
+                     string.Equals(window.ExecutablePath, path, StringComparison.OrdinalIgnoreCase))).ToList())
+        {
+            _lastSelectedWindows.Remove(path);
+        }
         UpdateNotificationBadges(_pinnedApps, windows);
         UpdateWindowIndicators(windows);
         if (UpdateRunningApps(windows))
@@ -210,7 +217,7 @@ public partial class MainWindow : Window
                 && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
             if (app.HasNotification != hasNotification)
             {
-                apps[index] = app with { HasNotification = hasNotification };
+                app.HasNotification = hasNotification;
             }
         }
     }
@@ -242,20 +249,16 @@ public partial class MainWindow : Window
                 var hasNotification = group.Any(window => window.HasNotification);
                 if (currentApps.TryGetValue(executablePath, out var existingApp))
                 {
-                    return existingApp with
-                    {
-                        HasNotification = hasNotification,
-                        IsRunning = true,
-                        IsForeground = group.Any(window => window.Handle == _foregroundWindow),
-                        WindowCount = group.Count()
-                    };
+                    existingApp.HasNotification = hasNotification;
+                    existingApp.IsForeground = group.Any(window => window.Handle == _foregroundWindow);
+                    existingApp.WindowCount = group.Count();
+                    return existingApp;
                 }
 
                 return new DockApp(GetApplicationName(executablePath), executablePath)
                 {
                     Icon = ApplicationIconProvider.GetForFile(executablePath),
                     HasNotification = hasNotification,
-                    IsRunning = true,
                     IsForeground = group.Any(window => window.Handle == _foregroundWindow),
                     WindowCount = group.Count()
                 };
@@ -372,15 +375,19 @@ public partial class MainWindow : Window
         };
         fade.Completed += (_, _) =>
         {
+            if (ReferenceEquals(owner, RunningApps) && !_exitingRunningPaths.Contains(app.ExecutablePath))
+            {
+                return;
+            }
             RemoveDockApp(apps, app);
             afterRemoval();
         };
         button.BeginAnimation(UIElement.OpacityProperty, fade);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.86, TimeSpan.FromMilliseconds(135))
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(135))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.86, TimeSpan.FromMilliseconds(135))
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(135))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
@@ -430,13 +437,13 @@ public partial class MainWindow : Window
         var scale = new ScaleTransform();
         button.RenderTransform = scale;
         button.Opacity = 0;
-        scale.ScaleX = 0.86;
-        scale.ScaleY = 0.86;
+        scale.ScaleX = 0.95;
+        scale.ScaleY = 0.95;
         var duration = TimeSpan.FromMilliseconds(165);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         button.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = easing });
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.86, 1, duration) { EasingFunction = easing });
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.86, 1, duration) { EasingFunction = easing });
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, 1, duration) { EasingFunction = easing });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, 1, duration) { EasingFunction = easing });
     }
 
     private void DockApp_Click(object sender, RoutedEventArgs e)
@@ -513,6 +520,7 @@ public partial class MainWindow : Window
         }
 
         var window = FindWindowForExecutable(executablePath);
+        ToolTipService.SetIsEnabled((Button)sender, window is null);
         if (window is null)
         {
             _thumbnailPreview.Hide();
@@ -597,6 +605,7 @@ public partial class MainWindow : Window
             return foreground;
         }
 
+        matchingWindows.Sort((left, right) => left.Handle.ToInt64().CompareTo(right.Handle.ToInt64()));
         var previousIndex = _lastSelectedWindows.TryGetValue(executablePath, out var previousHandle)
             ? matchingWindows.FindIndex(window => window.Handle == previousHandle)
             : -1;
@@ -614,7 +623,8 @@ public partial class MainWindow : Window
             var count = matching.Count;
             if (app.IsRunning != (count > 0) || app.IsForeground != isForeground || app.WindowCount != count)
             {
-                _pinnedApps[index] = app with { IsRunning = count > 0, IsForeground = isForeground, WindowCount = count };
+                app.IsForeground = isForeground;
+                app.WindowCount = count;
             }
         }
     }
@@ -658,6 +668,9 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
 
         var settingsMenu = FindMenuItem(contextMenu, "DockSettings");
         var positionMenu = settingsMenu?.Items.OfType<MenuItem>()
@@ -1072,18 +1085,13 @@ public partial class MainWindow : Window
     {
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var padding = DockSurface.Padding;
-        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right);
+        var margin = DockSurface.Margin;
+        var border = DockSurface.BorderThickness;
+        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right
+            + margin.Left + margin.Right + border.Left + border.Right);
         var maximumWidth = Math.Max(16, SystemParameters.PrimaryScreenWidth);
         var dockWidth = Math.Clamp(desiredWidth, 16, maximumWidth);
         Width = dockWidth;
-        DockSurface.Width = dockWidth;
-    }
-
-    private static void ApplySystemBackdrop(nint windowHandle)
-    {
-        var backdropType = DwmsbtTransientWindow;
-        _ = DwmSetWindowAttribute(windowHandle, DwmwaSystemBackdropType,
-            ref backdropType, Marshal.SizeOf<int>());
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)
@@ -1153,9 +1161,6 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(nint windowHandle, int attribute, ref int value, int valueSize);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint value);

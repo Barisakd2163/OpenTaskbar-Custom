@@ -24,6 +24,7 @@ public sealed class WindowThumbnailPreview : IDisposable
     private readonly Button _closeButton;
     private readonly Image _windowIcon;
     private readonly TextBlock _windowTitle;
+    private readonly double _headerHeight;
     private nint _destinationHandle;
     private nint _thumbnail;
     private nint _sourceHandle;
@@ -33,10 +34,17 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     public WindowThumbnailPreview(Style closeButtonStyle)
     {
+        var resources = Application.Current.Resources;
+        var popupBrush = (Brush)resources["SurfacePopup"];
+        var textBrush = (Brush)resources["TextPrimary"];
+        var strokeBrush = (Brush)resources["StrokeSubtle"];
+        _headerHeight = (double)resources["PreviewHeaderHeight"];
         _placeholder = new TextBlock
         {
             Text = "Önizleme kullanılamıyor",
-            Foreground = new SolidColorBrush(Color.FromRgb(190, 196, 204)),
+            Foreground = (Brush)resources["TextSecondary"],
+            FontFamily = (FontFamily)resources["InterfaceFont"],
+            Margin = new Thickness(0, _headerHeight, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -47,24 +55,25 @@ public sealed class WindowThumbnailPreview : IDisposable
             Content = new System.Windows.Shapes.Path
             {
                 Data = Geometry.Parse("M2,2 L10,10 M10,2 L2,10"),
-                Stroke = new SolidColorBrush(Color.FromRgb(241, 241, 241)),
+                Stroke = textBrush,
                 StrokeThickness = 1.5,
                 Width = 12,
                 Height = 12
             },
             HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(8),
-            ToolTip = "Uygulamayı kapat"
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = "Pencereyi kapat"
         };
-        AutomationProperties.SetName(_closeButton, "Uygulamayı kapat");
+        AutomationProperties.SetName(_closeButton, "Pencereyi kapat");
         _closeButton.Click += CloseButton_Click;
 
         _windowIcon = new Image { Width = 20, Height = 20, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 8, 0) };
         _windowTitle = new TextBlock
         {
-            Foreground = Brushes.White,
-            FontSize = 12,
+            Foreground = textBrush,
+            FontFamily = (FontFamily)resources["InterfaceFont"],
+            FontSize = (double)resources["TextSizeCaption"],
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -78,10 +87,20 @@ public sealed class WindowThumbnailPreview : IDisposable
         DockPanel.SetDock(_windowIcon, Dock.Left);
         var headerSurface = new Border
         {
-            Height = 40,
+            Height = _headerHeight,
             VerticalAlignment = VerticalAlignment.Top,
-            Background = new SolidColorBrush(Color.FromArgb(224, 18, 21, 25)),
+            Background = popupBrush,
+            BorderBrush = strokeBrush,
+            BorderThickness = new Thickness(1, 1, 1, 0),
             Child = previewHeader
+        };
+        headerSurface.MouseLeftButtonDown += (_, e) =>
+        {
+            if (!_closeButton.IsMouseOver)
+            {
+                e.Handled = true;
+                PreviewClicked?.Invoke(this, EventArgs.Empty);
+            }
         };
 
         var surfaceContent = new Grid
@@ -93,31 +112,33 @@ public sealed class WindowThumbnailPreview : IDisposable
         {
             Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25)),
             BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(74, 81, 90)),
+            BorderBrush = strokeBrush,
             Child = surfaceContent
         };
         _window = new Window
         {
-            Width = 360,
-            Height = 220,
+            Width = (double)resources["PreviewWidth"],
+            Height = (double)resources["PreviewHeight"],
             WindowStyle = WindowStyle.None,
             ResizeMode = ResizeMode.NoResize,
             ShowInTaskbar = false,
             ShowActivated = false,
             Topmost = true,
-            Background = new SolidColorBrush(Color.FromRgb(18, 21, 25)),
+            Background = popupBrush,
+            UseLayoutRounding = true,
             Cursor = System.Windows.Input.Cursors.Hand,
             Content = surface
         };
         _window.Closed += Window_Closed;
+        _window.SourceInitialized += PreviewWindow_SourceInitialized;
         _window.MouseEnter += Window_MouseEnter;
         _window.MouseLeave += Window_MouseLeave;
         _window.PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
 
         _closeButtonWindow = new Window
         {
-            Width = 360,
-            Height = 40,
+            Width = _window.Width,
+            Height = _headerHeight,
             WindowStyle = WindowStyle.None,
             ResizeMode = ResizeMode.NoResize,
             AllowsTransparency = true,
@@ -130,6 +151,7 @@ public sealed class WindowThumbnailPreview : IDisposable
             Content = headerSurface
         };
         _closeButtonWindow.Closed += CloseButtonWindow_Closed;
+        _closeButtonWindow.SourceInitialized += PreviewWindow_SourceInitialized;
         _closeButtonWindow.MouseEnter += Window_MouseEnter;
         _closeButtonWindow.MouseLeave += Window_MouseLeave;
     }
@@ -202,6 +224,9 @@ public sealed class WindowThumbnailPreview : IDisposable
             return false;
         }
 
+        // DWM draws above WPF content, so reserve a separate band for the owned header window.
+        var headerPixels = (int)Math.Ceiling(_headerHeight * GetDpiForWindow(_destinationHandle) / 96d);
+        clientRect.Top += headerPixels;
         var destination = FitThumbnail(sourceSize, clientRect);
         var properties = new DwmThumbnailProperties
         {
@@ -273,12 +298,17 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         var width = (int)Math.Ceiling(_window.Width * dpi / 96d);
         var height = (int)Math.Ceiling(_window.Height * dpi / 96d);
-        var monitor = MonitorFromWindow(_destinationHandle, MonitorDefaultToNearest);
+        var anchorWindow = Window.GetWindow(anchor);
+        var anchorHandle = anchorWindow is null ? _destinationHandle : new WindowInteropHelper(anchorWindow).Handle;
+        var monitor = MonitorFromWindow(anchorHandle, MonitorDefaultToNearest);
         var monitorInfo = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(monitor, ref monitorInfo))
         {
             return false;
         }
+
+        width = Math.Min(width, monitorInfo.Monitor.Right - monitorInfo.Monitor.Left);
+        height = Math.Min(height, monitorInfo.Monitor.Bottom - monitorInfo.Monitor.Top);
 
         var left = (int)Math.Round(anchorTop.X) - width / 2;
         left = Math.Clamp(left, monitorInfo.Monitor.Left, monitorInfo.Monitor.Right - width);
@@ -310,7 +340,7 @@ public sealed class WindowThumbnailPreview : IDisposable
         }
 
         var scale = dpi / 96d;
-        var width = (int)Math.Ceiling(_closeButtonWindow.Width * scale);
+        var width = previewRect.Right - previewRect.Left;
         var height = (int)Math.Ceiling(_closeButtonWindow.Height * scale);
         return SetWindowPos(closeHandle, HwndTopmost,
             previewRect.Left, previewRect.Top, width, height,
@@ -362,6 +392,27 @@ public sealed class WindowThumbnailPreview : IDisposable
     private void Window_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         PointerEntered?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void PreviewWindow_SourceInitialized(object? sender, EventArgs e)
+    {
+        if (sender is Window window && PresentationSource.FromVisual(window) is HwndSource source)
+        {
+            source.AddHook(PreviewWindowProc);
+        }
+    }
+
+    private static nint PreviewWindowProc(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        const int wmMouseActivate = 0x0021;
+        const int maNoActivate = 3;
+        if (message == wmMouseActivate)
+        {
+            handled = true;
+            return maNoActivate;
+        }
+
+        return 0;
     }
 
     private void Window_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
