@@ -41,14 +41,15 @@ public sealed class NativeWindowTracker : IDisposable
     private nint _systemEventHook;
     private nint _excludedWindow;
     private int _refreshQueued;
+    private int _urgentRefresh;
     private bool _disposed;
 
     public NativeWindowTracker(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
-        _refreshTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        _refreshTimer = new DispatcherTimer(DispatcherPriority.Input, dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(180)
+            Interval = TimeSpan.FromMilliseconds(60)
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
         _eventCallback = OnWinEvent;
@@ -113,11 +114,8 @@ public sealed class NativeWindowTracker : IDisposable
 
         if (eventType == EventSystemForeground && windowHandle != 0)
         {
-            if (_notificationWindows.Remove(windowHandle))
-            {
-                QueueRefresh();
-            }
-
+            _notificationWindows.Remove(windowHandle);
+            QueueRefresh(urgent: true);
             ForegroundWindowChanged?.Invoke(windowHandle);
             return;
         }
@@ -128,11 +126,13 @@ public sealed class NativeWindowTracker : IDisposable
             return;
         }
 
-        QueueRefresh();
+        QueueRefresh(urgent: eventType is EventObjectShow or EventObjectDestroy
+            || (eventType == EventObjectNameChange && !Snapshot.Any(window => window.Handle == windowHandle)));
     }
 
-    private void QueueRefresh()
+    private void QueueRefresh(bool urgent = false)
     {
+        if (urgent) Interlocked.Exchange(ref _urgentRefresh, 1);
         if (Interlocked.Exchange(ref _refreshQueued, 1) != 0)
         {
             return;
@@ -143,17 +143,29 @@ public sealed class NativeWindowTracker : IDisposable
             Interlocked.Exchange(ref _refreshQueued, 0);
             if (!_disposed)
             {
-                _refreshTimer.Stop();
-                _refreshTimer.Start();
+                if (Interlocked.Exchange(ref _urgentRefresh, 0) != 0)
+                {
+                    FlushRefresh();
+                }
+                else if (!_refreshTimer.IsEnabled)
+                {
+                    // Bound the wait from the first event; later events must not postpone discovery.
+                    _refreshTimer.Start();
+                }
             }
-        }, DispatcherPriority.Background);
+        }, DispatcherPriority.Input);
     }
 
     private void RefreshTimer_Tick(object? sender, EventArgs e)
     {
+        FlushRefresh();
+    }
+
+    private void FlushRefresh()
+    {
         _refreshTimer.Stop();
-        ForegroundWindowChanged?.Invoke(GetForegroundWindow());
         RefreshWindows();
+        ForegroundWindowChanged?.Invoke(GetForegroundWindow());
     }
 
     private void RefreshWindows()

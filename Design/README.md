@@ -18,6 +18,8 @@
 ## Interaction rules
 
 - Update notification and foreground state on existing application objects. Do not recreate buttons or replay entry animations for state changes.
+- Discover shown/foreground windows on the next dispatcher turn. Coalesce other events without resetting their 60 ms timer. Publish the fresh window snapshot before refreshing foreground-derived state. Foreground-only changes update indicators without rebuilding the application list.
+- New icons start fully opaque; retain only their brief scale entrance. Cancelling an exit must always restore opacity and hit testing, even if the button currently has an activation transform instead of its scale transform.
 - Use short opacity and scale transitions only for application arrival/removal. Respect the Windows client-area animation preference.
 - Preview entrance fades and scales the live DWM thumbnail from 95% over 160 ms with cubic ease-out; the owned header fades over the same interval. Stop the entrance timer on completion, failure, replacement, hide, and disposal. Reduced motion shows the preview immediately.
 - The first cell is Windows Start. It sends the documented `WM_SYSCOMMAND / SC_TASKLIST` command to activate the native Start menu; it does not emulate a keyboard chord.

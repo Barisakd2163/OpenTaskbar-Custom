@@ -334,18 +334,18 @@ public partial class MainWindow : Window
         var app = _runningApps.FirstOrDefault(candidate =>
             string.Equals(candidate.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
         var button = app is null ? null : FindVisualChild<Button>(RunningApps.ItemContainerGenerator.ContainerFromItem(app));
-        if (button?.RenderTransform is not ScaleTransform scale)
-        {
-            return;
-        }
+        if (button is null) return;
 
         button.BeginAnimation(UIElement.OpacityProperty, null);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         button.Opacity = 1;
-        scale.ScaleX = 1;
-        scale.ScaleY = 1;
         button.IsHitTestVisible = true;
+        if (button.RenderTransform is ScaleTransform scale)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = 1;
+            scale.ScaleY = 1;
+        }
     }
 
     private void AnimateRunningAppRemoval(DockApp app)
@@ -445,12 +445,12 @@ public partial class MainWindow : Window
 
         var scale = new ScaleTransform();
         button.RenderTransform = scale;
-        button.Opacity = 0;
+        // Keep the new application visible on its first rendered frame.
+        button.Opacity = 1;
         scale.ScaleX = 0.95;
         scale.ScaleY = 0.95;
         var duration = TimeSpan.FromMilliseconds(165);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
-        button.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = easing });
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, 1, duration) { EasingFunction = easing });
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, 1, duration) { EasingFunction = easing });
     }
@@ -771,7 +771,11 @@ public partial class MainWindow : Window
         }
         _foregroundWindow = windowHandle;
         UpdateWindowIndicators(_windowTracker?.Snapshot ?? []);
-        UpdateRunningApps(_windowTracker?.Snapshot ?? []);
+        foreach (var app in _runningApps)
+        {
+            app.IsForeground = _windowTracker?.Snapshot.Any(window => window.Handle == windowHandle
+                && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)) == true;
+        }
         if (_replacementSession?.IsActive == true)
         {
             _replacementSession.RefreshPosition();

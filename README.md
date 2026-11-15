@@ -7,7 +7,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Includes a Windows Start button, subtle pointer magnification for application icons, and a short live-preview entrance animation. Motion follows the Windows client-area animation setting.
 - Shows Windows-pinned applications and open applications without duplicating an application that is already pinned.
 - Hides the replacement strip, previews, and menus while a foreground application occupies its monitor in full screen, and restores the strip after focus returns to a regular window.
-- Animates app icons in and out with short opacity and scale transitions when windows open or close. Motion follows the Windows client-area animation setting.
+- Shows new app icons fully visible on their first rendered frame with a short scale transition; closing icons fade and scale out. Motion follows the Windows client-area animation setting.
 - Uses each application's executable icon and avoids shortcut-arrow overlays or generic Windows window icons.
 - Shows a DWM live thumbnail above an open application while its icon is hovered; clicking the preview activates its window, while the top-right close control sends that window a normal close request.
 - Clicking an application's dock icon activates it, or minimizes its foreground window when the same application is already active.
@@ -28,7 +28,7 @@ Shared interface resources are defined in `Design/Theme.xaml`. See [the interfac
 
 ## Performance approach
 
-The app does no periodic polling while idle. It does not load system telemetry, weather, media, finance, or clipboard modules. The only refresh timer is a one-shot 180 ms debounce after Windows reports a window change. No third-party packages are required.
+The app does no periodic polling while idle. It does not load system telemetry, weather, media, finance, or clipboard modules. Window show, destroy, foreground, and previously untracked window-title events request a refresh on the next input-priority dispatcher turn. Other changes share a one-shot 60 ms timer that is not restarted by later events, so a stream of events cannot continually postpone the refresh. Actual display latency still depends on Windows scheduling and icon extraction. No third-party packages are required.
 
 No memory or CPU benchmark has been recorded yet. Resource targets should be measured on supported Windows versions before being published as claims.
 
