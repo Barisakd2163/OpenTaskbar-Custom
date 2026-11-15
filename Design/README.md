@@ -25,7 +25,9 @@
 - The first cell is Windows Start. It sends the documented `WM_SYSCOMMAND / SC_TASKLIST` command to activate the native Start menu; it does not emulate a keyboard chord.
 - Render the Start logo as four blue square panes instead of using a private-use font glyph.
 - Application and dock context menus are separate resources. Application menus contain only application actions; dock alignment is available only from the surface menu. Use system icon-font glyphs in a stable leading column and a translucent charcoal menu material.
-- Where exposed by the application, read real Win32 menu-bar and system-menu commands into separate submenus. Bound menu reads to five levels and 100 entries, and owner initialization to 80 ms. Validate the original menu/command before dispatch; omit unsupported, owner-drawn, or inaccessible entries. This does not expose private application UI or custom Jump List tasks.
+- Where exposed by the application, read real Win32 menu-bar and system-menu commands into separate submenus. Bound menu reads to five levels and 100 entries, and owner initialization to 80 ms. Validate the original menu/command before dispatch; omit unsupported, owner-drawn, or inaccessible entries. Private application UI is not extracted.
+- Populate “Uygulamanın görevleri” from the selected window's explicit AppUserModelID or the Shell application resolver; resolve a stopped pinned app through its shortcut. Read native Jump List categories/tasks and automatic destinations on a lazy STA worker. Keep loading, empty, unmatched identity, unsupported platform, timeout, and read failure states distinct. Limit reads to 32 native categories, 40 entries per group, and 100 commands overall.
+- Keep original Jump List Shell objects alive only for the current menu session. A selected command is queued before closing the menu, then invoked through the original Shell default command. Packaged task links use their AppsFolder target and published activation context. Dispose stale/cancelled sessions on the worker; never reconstruct guessed browser arguments or log task titles, destinations, or launch arguments. Resource icons are optional and frozen before crossing threads.
 - Hide the strip and close previews/menus when the foreground application covers its monitor. React to AppBar full-screen notifications, foreground changes, and debounced foreground geometry changes. A maximized work-area window and a full-screen window on another monitor do not suppress this strip.
 - Menus use WPF outside-click dismissal, receive foreground focus when opened, and close when a different process receives foreground activation. Track only one open root menu.
 - Application clicks receive a 420 ms damped vertical launch bounce animation (-14 DIP peak) on the icon's translate transform. Restoring a minimized window uses Windows' native restore path. Custom animation of another process's already-visible window is not implemented: `AnimateWindow` requires ownership by the calling thread.
@@ -39,8 +41,13 @@
 
 Release compilation checks XAML and C# consistency. Startup checks show process liveness only. A local cropped desktop capture verified normal strip placement with a bottom gap; Computer Use was not used. Full-screen transitions, menu command execution, pointer/keyboard input, multiple-monitor DPI, dense application overflow, and high-contrast mode still require rendered Windows verification.
 
+A read-only Jump List diagnostic on local Windows 11 retrieved two groups with ten entries for LibreWolf and two groups with nine entries for ChatGPT. It did not invoke any command or log destination titles. This verifies native reading on that build, not interactive command execution or compatibility with every Windows version.
+
 ## Platform references
 
 - [Apple Desktop & Dock settings](https://support.apple.com/en-gb/guide/mac-help/mchlp1119/mac): pointer magnification behavior. OpenTaskbar uses a restrained interpretation that fits its taskbar strip.
 - [Microsoft WM_SYSCOMMAND](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-syscommand): native Start command.
 - [Microsoft DWM thumbnail properties](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ns-dwmapi-dwm_thumbnail_properties): thumbnail destination and opacity used by the entrance animation.
+- [Open-Shell Jump List implementation](https://github.com/Open-Shell/Open-Shell-Menu/blob/master/Src/StartMenu/StartMenuDLL/JumpLists.cpp): reference for undocumented destination-list COM interface layouts and packaged task activation.
+- [System Informer application resolver definitions](https://github.com/winsiderss/systeminformer/blob/master/phlib/include/appresolverp.h): reference for the native application identity resolver ABI.
+- [Microsoft IContextMenu::InvokeCommand](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-icontextmenu-invokecommand): invoking Shell commands and Unicode command parameters.

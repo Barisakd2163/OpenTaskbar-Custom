@@ -13,7 +13,8 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Clicking an application's dock icon activates it, or minimizes its foreground window when the same application is already active.
 - Sizes the visible dock to its icon and status content, without a scroll bar or whole-interface scaling, and places it at the selected left, center, or right position within the measured taskbar strip. The remaining strip also accepts the dock's right-click settings menu.
 - Shows a notification dot on an application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
-- Uses separate translucent context menus for applications and the dock surface. Application menus include icons and only application commands; the dock menu contains alignment settings. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed, and supported browsers also offer new and private windows.
+- Uses separate translucent context menus for applications and the dock surface. Application menus include icons and only application commands; the dock menu contains alignment settings. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed.
+- Reads the application's real Windows Jump List when its context menu opens. The “Uygulamanın görevleri” submenu includes published tasks, custom categories, pinned destinations, and available recent/frequent destinations. Shell items retain their original commands and resource icons; browser commands are no longer guessed from executable names.
 - Includes real application menu-bar and system-menu commands when an application exposes standard Win32 menus. Applications that draw private menus do not expose those commands through this integration.
 - Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
@@ -55,7 +56,8 @@ dotnet run --project OpenTaskbar.csproj
 - Pins come from Windows shortcut files; moving or removing an executable requires updating its Windows taskbar shortcut.
 - Open windows are shown even when they are not pinned. Packaged Windows taskbar pins stored only as application IDs are not imported unless that application is running.
 - Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.
-- Custom Jump List tasks and categories are not imported: the documented Windows destination-list reader exposes only Recent/Frequent destinations, not private application commands or custom tasks.
+- Jump List tasks and custom categories require undocumented x64 Windows Shell interfaces. The local Windows 11 build supports the implemented interface versions; other builds can show an explicit unsupported/unavailable state. Windows updates may change these interfaces. Applications that publish no Jump List show an empty state, and private in-app menus are not extracted.
+- Jump Lists are read on demand on a dedicated STA thread, with a three-second UI timeout and bounded category/item counts. Cancellation cannot interrupt an already-running native COM call, but late results are discarded and native objects are released on that thread. Task execution and packaged-app activation require interactive Windows verification.
 
 ## License
 

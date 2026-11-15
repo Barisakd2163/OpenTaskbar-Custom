@@ -39,9 +39,15 @@ public static class ApplicationIconProvider
         }
     }
 
-    private static BitmapSource? GetExecutableIcon(string path)
+    public static BitmapSource? GetForResource(string path, int index)
     {
-        var count = ExtractIconEx(path, 0, out var largeIcon, out var smallIcon, 1);
+        var expanded = Environment.ExpandEnvironmentVariables(path);
+        return File.Exists(expanded) ? GetExecutableIcon(expanded, index) : null;
+    }
+
+    private static BitmapSource? GetExecutableIcon(string path, int index = 0)
+    {
+        var count = ExtractIconEx(path, index, out var largeIcon, out var smallIcon, 1);
         if (count == 0 || (largeIcon == 0 && smallIcon == 0))
         {
             return null;

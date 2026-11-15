@@ -1078,12 +1078,15 @@ public partial class MainWindow : Window
                 foreach (var entry in group.Entries)
                 {
                     if (entry.IsSeparator) { category.Items.Add(new Separator()); continue; }
-                    var item = new MenuItem { Header = entry.Title.Replace("_", "__") };
+                    // Keep the session alive until Click queues invocation; WPF normally closes first.
+                    var item = new MenuItem { Header = entry.Title.Replace("_", "__"), StaysOpenOnClick = true };
                     if (entry.Icon is not null) item.Icon = new Image { Source = entry.Icon, Width = 16, Height = 16 };
                     item.Click += async (_, args) =>
                     {
                         args.Handled = true;
-                        if (!await _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0))
+                        var invocation = _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
+                        menu.IsOpen = false;
+                        if (!await invocation && IsLoaded)
                             ShowStatus("Uygulama görevi çalıştırılamadı. Menüyü yeniden açıp deneyin.");
                     };
                     category.Items.Add(item);
