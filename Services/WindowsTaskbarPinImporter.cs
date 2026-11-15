@@ -100,7 +100,8 @@ public static class WindowsTaskbarPinImporter
 
                         apps.Add(new DockApp(Path.GetFileNameWithoutExtension(shortcutPath), executablePath)
                         {
-                            LaunchArguments = string.IsNullOrWhiteSpace(arguments) ? null : arguments
+                            LaunchArguments = string.IsNullOrWhiteSpace(arguments) ? null : arguments,
+                            ShortcutPath = Path.GetFullPath(shortcutPath)
                         });
                     }
                     finally
@@ -149,6 +150,37 @@ public static class WindowsTaskbarPinImporter
             ? null
             : $"Windows görev çubuğundaki {skippedCount} kısayol desteklenmedi veya okunamadı; diğerleri içe aktarıldı.";
         return (apps, error);
+    }
+
+    public static string? RemovePin(string shortcutPath)
+    {
+        var pinDirectory = Path.GetFullPath(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Microsoft",
+            "Internet Explorer",
+            "Quick Launch",
+            "User Pinned",
+            "TaskBar"));
+        var fullPath = Path.GetFullPath(shortcutPath);
+        if (!string.Equals(Path.GetDirectoryName(fullPath), pinDirectory, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetExtension(fullPath), ".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Kısayol Windows görev çubuğu sabitleme klasöründe değil.";
+        }
+
+        try
+        {
+            File.Delete(fullPath);
+            return null;
+        }
+        catch (IOException)
+        {
+            return "Uygulama Windows görev çubuğu sabitlerinden kaldırılamadı.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "Görev çubuğu sabitini kaldırmak için erişim izni yok.";
+        }
     }
 
     private static string? ResolveExecutablePath(string targetPath, string iconLocation)

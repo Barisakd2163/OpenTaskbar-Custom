@@ -95,6 +95,7 @@
             </MenuItem>
             <MenuItem Header="Uygulamayı kapat" Tag="CloseDockApp" Click="CloseDockApp_Click" />
             <MenuItem Header="Süreci sonlandır…" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
+            <MenuItem Header="Sabitlemeyi kaldır" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
             <Separator Tag="SettingsDivider" />
             <MenuItem Header="Ayarlar" Tag="DockSettings">
                 <MenuItem Header="Konum">
@@ -135,6 +136,10 @@
             <Setter Property="Margin" Value="2,0" />
             <Setter Property="Padding" Value="4" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value><ScaleTransform /></Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -161,10 +166,38 @@
             </Setter>
         </Style>
 
+        <Style x:Key="PreviewCloseButton" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="#FFF1F1F1" />
+            <Setter Property="Background" Value="#C0181B20" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="14">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#E542474F" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#FF5A606A" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DataTemplate x:Key="DockAppIconTemplate">
             <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
                     Click="DockApp_Click" AutomationProperties.Name="{Binding Name}"
                     ToolTip="{Binding Name}" ContextMenu="{StaticResource DockContextMenu}"
+                    Loaded="DockAppButton_Loaded"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave">
                 <Grid Width="32" Height="32">
                     <Image Source="{Binding Icon}" Stretch="Uniform" />

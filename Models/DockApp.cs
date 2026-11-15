@@ -8,6 +8,9 @@ public sealed record DockApp(string Name, string ExecutablePath)
     public string? LaunchArguments { get; init; }
 
     [JsonIgnore]
+    public string? ShortcutPath { get; init; }
+
+    [JsonIgnore]
     public BitmapSource? Icon { get; init; }
 
     [JsonIgnore]

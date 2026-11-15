@@ -6,6 +6,8 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -25,6 +27,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
+    private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly DockSettingsStore _dockSettingsStore = new();
     private readonly DispatcherTimer _previewCloseTimer;
     private readonly WindowThumbnailPreview _thumbnailPreview;
@@ -38,7 +41,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         PinnedApps.ItemsSource = _pinnedApps;
         RunningApps.ItemsSource = _runningApps;
-        _thumbnailPreview = new WindowThumbnailPreview();
+        _thumbnailPreview = new WindowThumbnailPreview((Style)FindResource("PreviewCloseButton"));
         _previewCloseTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(500)
@@ -47,6 +50,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
+        _thumbnailPreview.CloseRequested += ThumbnailPreview_CloseRequested;
         LoadPinnedApps();
         var settingsResult = _dockSettingsStore.Load();
         _dockPosition = settingsResult.Settings.Position;
@@ -209,6 +213,17 @@ public partial class MainWindow : Window
     {
         var pinnedPaths = _pinnedApps.Select(app => app.ExecutablePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var desiredPaths = windows
+            .Where(window => window.ExecutablePath is not null
+                && File.Exists(window.ExecutablePath)
+                && !pinnedPaths.Contains(window.ExecutablePath))
+            .Select(window => window.ExecutablePath!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var executablePath in desiredPaths)
+        {
+            CancelRunningAppExit(executablePath);
+        }
+
         var currentApps = _runningApps.ToDictionary(app => app.ExecutablePath, StringComparer.OrdinalIgnoreCase);
         var desiredApps = windows
             .Where(window => window.ExecutablePath is not null
@@ -274,12 +289,138 @@ public partial class MainWindow : Window
             }
         }
 
-        while (_runningApps.Count > desiredApps.Count)
+        for (var index = _runningApps.Count - 1; index >= desiredApps.Count; index--)
         {
-            _runningApps.RemoveAt(_runningApps.Count - 1);
+            AnimateRunningAppRemoval(_runningApps[index]);
         }
 
         return layoutChanged;
+    }
+
+    private void CancelRunningAppExit(string executablePath)
+    {
+        if (!_exitingRunningPaths.Remove(executablePath))
+        {
+            return;
+        }
+
+        var app = _runningApps.FirstOrDefault(candidate =>
+            string.Equals(candidate.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+        var button = app is null ? null : FindVisualChild<Button>(RunningApps.ItemContainerGenerator.ContainerFromItem(app));
+        if (button?.RenderTransform is not ScaleTransform scale)
+        {
+            return;
+        }
+
+        button.BeginAnimation(UIElement.OpacityProperty, null);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        button.Opacity = 1;
+        scale.ScaleX = 1;
+        scale.ScaleY = 1;
+        button.IsHitTestVisible = true;
+    }
+
+    private void AnimateRunningAppRemoval(DockApp app)
+    {
+        if (!_exitingRunningPaths.Add(app.ExecutablePath))
+        {
+            return;
+        }
+
+        AnimateDockAppRemoval(RunningApps, _runningApps, app, () =>
+        {
+            _exitingRunningPaths.Remove(app.ExecutablePath);
+            ResizeDockToContent();
+            _replacementSession?.RefreshPosition();
+        });
+    }
+
+    private void AnimateDockAppRemoval(
+        ItemsControl owner,
+        ObservableCollection<DockApp> apps,
+        DockApp app,
+        Action afterRemoval)
+    {
+        var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
+        if (!SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform scale)
+        {
+            RemoveDockApp(apps, app);
+            afterRemoval();
+            return;
+        }
+
+        button.IsHitTestVisible = false;
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(135))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        fade.Completed += (_, _) =>
+        {
+            RemoveDockApp(apps, app);
+            afterRemoval();
+        };
+        button.BeginAnimation(UIElement.OpacityProperty, fade);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.86, TimeSpan.FromMilliseconds(135))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.86, TimeSpan.FromMilliseconds(135))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+    }
+
+    private static void RemoveDockApp(ObservableCollection<DockApp> apps, DockApp app)
+    {
+        var index = apps.IndexOf(app);
+        if (index >= 0)
+        {
+            apps.RemoveAt(index);
+        }
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
+    {
+        if (parent is null)
+        {
+            return null;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
+    private void DockAppButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (!SystemParameters.ClientAreaAnimation
+            || sender is not Button { RenderTransform: ScaleTransform scale } button)
+        {
+            return;
+        }
+
+        button.Opacity = 0;
+        scale.ScaleX = 0.86;
+        scale.ScaleY = 0.86;
+        var duration = TimeSpan.FromMilliseconds(165);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        button.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = easing });
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.86, 1, duration) { EasingFunction = easing });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.86, 1, duration) { EasingFunction = easing });
     }
 
     private void DockApp_Click(object sender, RoutedEventArgs e)
@@ -401,6 +542,12 @@ public partial class MainWindow : Window
         ClearStatus();
     }
 
+    private void ThumbnailPreview_CloseRequested(object? sender, EventArgs e)
+    {
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+    }
+
     private TrackedWindow? FindWindowForExecutable(string executablePath)
     {
         return _windowTracker?.Snapshot.FirstOrDefault(window =>
@@ -456,13 +603,15 @@ public partial class MainWindow : Window
         }
 
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
-        var isPinnedTarget = pinnedApp is not null;
+        var hasAppTarget = pinnedApp is not null;
+        var isPinnedTarget = pinnedApp?.ShortcutPath is not null;
         var browserArguments = pinnedApp is null ? null : GetBrowserActions(pinnedApp.ExecutablePath);
-        SetMenuItemVisibility(contextMenu, "ActivateDockApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "ActivateDockApp", hasAppTarget);
         SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
-        SetMenuItemVisibility(contextMenu, "CloseDockApp", isPinnedTarget);
-        SetMenuItemVisibility(contextMenu, "TerminateDockApp", isPinnedTarget);
-        SetSeparatorVisibility(contextMenu, "SettingsDivider", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "CloseDockApp", hasAppTarget);
+        SetMenuItemVisibility(contextMenu, "TerminateDockApp", hasAppTarget);
+        SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
+        SetSeparatorVisibility(contextMenu, "SettingsDivider", hasAppTarget);
 
         if (pinnedApp is null)
         {
@@ -473,6 +622,10 @@ public partial class MainWindow : Window
         if (FindMenuItem(contextMenu, "ActivateDockApp") is { } activateMenuItem)
         {
             activateMenuItem.CommandParameter = pinnedApp;
+        }
+        if (FindMenuItem(contextMenu, "UnpinDockApp") is { } unpinMenuItem)
+        {
+            unpinMenuItem.CommandParameter = pinnedApp;
         }
         if (browserArguments is not null)
         {
@@ -489,6 +642,33 @@ public partial class MainWindow : Window
         {
             OpenDockApp(app);
         }
+    }
+
+    private void UnpinDockApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { CommandParameter: DockApp { ShortcutPath: not null } app })
+        {
+            return;
+        }
+
+        var error = WindowsTaskbarPinImporter.RemovePin(app.ShortcutPath);
+        if (error is not null)
+        {
+            ShowStatus(error);
+            return;
+        }
+
+        ClearStatus();
+        AnimateDockAppRemoval(PinnedApps, _pinnedApps, app, () =>
+        {
+            if (_windowTracker is not null)
+            {
+                UpdateRunningApps(_windowTracker.Snapshot);
+            }
+
+            ResizeDockToContent();
+            _replacementSession?.RefreshPosition();
+        });
     }
 
     private void BrowserAction_Click(object sender, RoutedEventArgs e)
@@ -887,6 +1067,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.PointerEntered -= ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft -= ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;
+        _thumbnailPreview.CloseRequested -= ThumbnailPreview_CloseRequested;
         _thumbnailPreview.Dispose();
     }
 

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -17,13 +18,14 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     private readonly Window _window;
     private readonly TextBlock _placeholder;
+    private readonly Button _closeButton;
     private nint _destinationHandle;
     private nint _thumbnail;
     private nint _sourceHandle;
     private bool _disposed;
     private bool _windowClosed;
 
-    public WindowThumbnailPreview()
+    public WindowThumbnailPreview(Style closeButtonStyle)
     {
         _placeholder = new TextBlock
         {
@@ -33,12 +35,34 @@ public sealed class WindowThumbnailPreview : IDisposable
             VerticalAlignment = VerticalAlignment.Center
         };
 
+        _closeButton = new Button
+        {
+            Style = closeButtonStyle,
+            Content = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M2,2 L10,10 M10,2 L2,10"),
+                Stroke = new SolidColorBrush(Color.FromRgb(241, 241, 241)),
+                StrokeThickness = 1.5,
+                Width = 12,
+                Height = 12
+            },
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(8),
+            ToolTip = "Önizlemeyi kapat"
+        };
+        AutomationProperties.SetName(_closeButton, "Önizlemeyi kapat");
+        _closeButton.Click += CloseButton_Click;
+
+        var surfaceContent = new Grid();
+        surfaceContent.Children.Add(_placeholder);
+        surfaceContent.Children.Add(_closeButton);
         var surface = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(18, 21, 25)),
+            Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25)),
             BorderThickness = new Thickness(1),
             BorderBrush = new SolidColorBrush(Color.FromRgb(74, 81, 90)),
-            Child = _placeholder
+            Child = surfaceContent
         };
         _window = new Window
         {
@@ -49,13 +73,15 @@ public sealed class WindowThumbnailPreview : IDisposable
             ShowInTaskbar = false,
             ShowActivated = false,
             Topmost = true,
-            Background = surface.Background,
+            Background = new SolidColorBrush(Color.FromRgb(18, 21, 25)),
+            Cursor = System.Windows.Input.Cursors.Hand,
             Content = surface
         };
         _window.Closed += Window_Closed;
         _window.MouseEnter += Window_MouseEnter;
         _window.MouseLeave += Window_MouseLeave;
         _window.PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
+        _window.Closed += (_, _) => _closeButton.Click -= CloseButton_Click;
     }
 
     public event EventHandler? PointerEntered;
@@ -63,6 +89,8 @@ public sealed class WindowThumbnailPreview : IDisposable
     public event EventHandler? PointerLeft;
 
     public event EventHandler? PreviewClicked;
+
+    public event EventHandler? CloseRequested;
 
     public bool IsVisible => _window.IsVisible;
 
@@ -236,8 +264,19 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     private void Window_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        if (e.OriginalSource is DependencyObject source && _closeButton.IsAncestorOf(source))
+        {
+            return;
+        }
+
         e.Handled = true;
         PreviewClicked?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [StructLayout(LayoutKind.Sequential)]
