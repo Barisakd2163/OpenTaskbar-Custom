@@ -19,6 +19,7 @@ public sealed class NativeWindowTracker : IDisposable
     private const int ChildIdSelf = 0;
     private const int WindowOwner = 4;
     private const int ShowRestore = 9;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
 
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _refreshTimer;
@@ -45,6 +46,8 @@ public sealed class NativeWindowTracker : IDisposable
     }
 
     public event EventHandler<IReadOnlyList<TrackedWindow>>? WindowsChanged;
+
+    public event Action<nint>? ForegroundWindowChanged;
 
     public IReadOnlyList<TrackedWindow> Snapshot { get; private set; } = [];
 
@@ -93,6 +96,7 @@ public sealed class NativeWindowTracker : IDisposable
                 QueueRefresh();
             }
 
+            ForegroundWindowChanged?.Invoke(windowHandle);
             return;
         }
 
@@ -186,7 +190,7 @@ public sealed class NativeWindowTracker : IDisposable
                 else
                 {
                     collection.Windows.Add(new TrackedWindow(windowHandle, value,
-                        ApplicationIconProvider.GetForWindow(windowHandle), _notificationWindows.Contains(windowHandle)));
+                        GetExecutablePath(windowHandle), _notificationWindows.Contains(windowHandle)));
                 }
             }
         }
@@ -304,9 +308,46 @@ public sealed class NativeWindowTracker : IDisposable
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
+    private static string? GetExecutablePath(nint windowHandle)
+    {
+        var processId = GetWindowThreadProcessId(windowHandle, out _);
+        if (processId == 0)
+        {
+            return null;
+        }
+
+        var processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (processHandle == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var path = new StringBuilder(32768);
+            var length = (uint)path.Capacity;
+            return QueryFullProcessImageName(processHandle, 0, path, ref length) ? path.ToString() : null;
+        }
+        finally
+        {
+            CloseHandle(processHandle);
+        }
+    }
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AttachThreadInput(uint threadIdAttach, uint threadIdAttachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(nint processHandle, uint flags, StringBuilder executablePath, ref uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(nint handle);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

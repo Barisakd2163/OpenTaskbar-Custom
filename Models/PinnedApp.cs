@@ -11,4 +11,7 @@ public sealed record PinnedApp(string Name, string ExecutablePath)
 
     [JsonIgnore]
     public BitmapSource? Icon { get; init; }
+
+    [JsonIgnore]
+    public bool HasNotification { get; init; }
 }

@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -23,9 +24,10 @@ public partial class MainWindow : Window
     private const uint SwpFrameChanged = 0x0020;
 
     private readonly ObservableCollection<PinnedApp> _pinnedApps = [];
-    private readonly ObservableCollection<TrackedWindow> _runningWindows = [];
     private readonly PinnedAppStore _pinnedAppStore = new();
     private readonly DockSettingsStore _dockSettingsStore = new();
+    private readonly DispatcherTimer _previewCloseTimer;
+    private readonly WindowThumbnailPreview _thumbnailPreview;
     private DockPosition _dockPosition = DockPosition.Left;
     private NativeWindowTracker? _windowTracker;
     private TaskbarReplacementSession? _replacementSession;
@@ -35,7 +37,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         PinnedApps.ItemsSource = _pinnedApps;
-        RunningWindows.ItemsSource = _runningWindows;
+        _thumbnailPreview = new WindowThumbnailPreview();
+        _previewCloseTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(220)
+        };
+        _previewCloseTimer.Tick += PreviewCloseTimer_Tick;
         LoadPinnedApps();
         var settingsResult = _dockSettingsStore.Load();
         _dockPosition = settingsResult.Settings.Position;
@@ -65,6 +72,7 @@ public partial class MainWindow : Window
 
         _windowTracker = new NativeWindowTracker(Dispatcher);
         _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
+        _windowTracker.ForegroundWindowChanged += WindowTracker_ForegroundWindowChanged;
         try
         {
             _windowTracker.Start(source.Handle);
@@ -157,20 +165,46 @@ public partial class MainWindow : Window
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
-        _runningWindows.Clear();
-        foreach (var window in windows)
+        for (var index = 0; index < _pinnedApps.Count; index++)
         {
-            _runningWindows.Add(window);
+            var app = _pinnedApps[index];
+            var hasNotification = windows.Any(window => window.HasNotification
+                && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+            if (app.HasNotification != hasNotification)
+            {
+                _pinnedApps[index] = app with { HasNotification = hasNotification };
+            }
         }
 
-        ResizeDockToContent();
-        _replacementSession?.RefreshPosition();
+        if (_thumbnailPreview.IsVisible)
+        {
+            var currentWindow = windows.FirstOrDefault(window => window.Handle == _thumbnailPreview.SourceHandle);
+            if (currentWindow is null)
+            {
+                _thumbnailPreview.Hide();
+            }
+        }
     }
 
     private void PinnedApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button || button.Tag is not string executablePath)
+        if (sender is not Button { Tag: string executablePath })
         {
+            return;
+        }
+
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+        var existingWindow = FindWindowForExecutable(executablePath);
+        if (existingWindow is not null)
+        {
+            if (!NativeWindowTracker.Activate(existingWindow.Handle))
+            {
+                ShowStatus("Uygulama penceresi etkinleştirilemedi. Windows odağı engellemiş olabilir.");
+                return;
+            }
+
+            ClearStatus();
             return;
         }
 
@@ -203,6 +237,50 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PinnedApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        _previewCloseTimer.Stop();
+        if (sender is not Button { Tag: string executablePath })
+        {
+            return;
+        }
+
+        var window = FindWindowForExecutable(executablePath);
+        if (window is null)
+        {
+            _thumbnailPreview.Hide();
+            return;
+        }
+
+        _thumbnailPreview.ShowFor(window.Handle, (FrameworkElement)sender);
+    }
+
+    private void PinnedApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        _previewCloseTimer.Stop();
+        _previewCloseTimer.Start();
+    }
+
+    private void PreviewCloseTimer_Tick(object? sender, EventArgs e)
+    {
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+    }
+
+    private TrackedWindow? FindWindowForExecutable(string executablePath)
+    {
+        return _windowTracker?.Snapshot.FirstOrDefault(window =>
+            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
+    {
+        if (_replacementSession?.IsActive == true)
+        {
+            _replacementSession.RefreshPosition();
+        }
+    }
+
     private void RemovePinnedApp_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { Tag: string executablePath })
@@ -225,17 +303,6 @@ public partial class MainWindow : Window
         }
 
         _pinnedApps.Remove(app);
-        ClearStatus();
-    }
-
-    private void RunningWindow_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: nint handle } && !NativeWindowTracker.Activate(handle))
-        {
-            ShowStatus("Pencere etkinleştirilemedi. Uygulama kapanmış veya Windows odağı engellemiş olabilir.");
-            return;
-        }
-
         ClearStatus();
     }
 
@@ -399,9 +466,14 @@ public partial class MainWindow : Window
         if (_windowTracker is not null)
         {
             _windowTracker.WindowsChanged -= WindowTracker_WindowsChanged;
+            _windowTracker.ForegroundWindowChanged -= WindowTracker_ForegroundWindowChanged;
             _windowTracker.Dispose();
             _windowTracker = null;
         }
+
+        _previewCloseTimer.Stop();
+        _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
+        _thumbnailPreview.Dispose();
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

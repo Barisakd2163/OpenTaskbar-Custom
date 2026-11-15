@@ -81,21 +81,8 @@
                         <DataTemplate>
                             <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
                                     Click="PinnedApp_Click" AutomationProperties.Name="{Binding Name}"
-                                    ToolTip="{Binding Name}" ContextMenu="{StaticResource DockContextMenu}">
-                                <Image Source="{Binding Icon}" Width="32" Height="32" Stretch="Uniform" />
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <ItemsControl x:Name="RunningWindows">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Style="{StaticResource DockButton}" Tag="{Binding Handle}"
-                                    Click="RunningWindow_Click" AutomationProperties.Name="{Binding Title}"
-                                    ToolTip="{Binding Title}" ContextMenu="{StaticResource DockContextMenu}">
+                                    ToolTip="{Binding Name}" ContextMenu="{StaticResource DockContextMenu}"
+                                    MouseEnter="PinnedApp_MouseEnter" MouseLeave="PinnedApp_MouseLeave">
                                 <Grid Width="32" Height="32">
                                     <Image Source="{Binding Icon}" Stretch="Uniform" />
                                     <Ellipse Width="9" Height="9" Fill="#FFE5484D"

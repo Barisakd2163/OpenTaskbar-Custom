@@ -156,15 +156,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                     PositionDockWindow();
                     return true;
                 case AbnFullScreenApp:
-                    if (lParam != 0)
-                    {
-                        ShowWindow(_handle, SwHide);
-                    }
-                    else
-                    {
-                        ShowWindow(_handle, SwShowNoActivate);
-                        PositionDockWindow();
-                    }
+                    PositionDockWindow();
                     return true;
                 case AbnStateChange:
                     EnforceNativeTaskbarHidden();
