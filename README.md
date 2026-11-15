@@ -8,7 +8,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It starts as a bottom-
 - Shows pinned applications as icons and launches them on click.
 - Stores pinned paths in `%LOCALAPPDATA%\OpenTaskbar\pinned-apps.json`.
 - Removes a pin from its context menu.
-- Registers the dock as a bottom-edge Windows AppBar and enables taskbar auto-hide on launch. It stores the prior taskbar state so normal exit and recovery can restore it.
+- Registers the dock as a bottom-edge Windows AppBar on launch and hides the Explorer taskbar while the dock is active, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
 - Uses Windows accessibility events to update the open-window list. It enumerates windows once at startup and briefly coalesces bursts of change events.
 - Runs without administrator rights or network access. Taskbar replacement changes only the current user's Windows taskbar state.
 

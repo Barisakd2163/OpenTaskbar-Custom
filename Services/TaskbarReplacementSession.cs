@@ -50,6 +50,8 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public bool IsActive => _active;
 
+    public event Action<string>? OperationFailed;
+
     private static bool HasPendingRecovery(out string? error)
     {
         error = null;
@@ -113,10 +115,15 @@ public sealed class TaskbarReplacementSession : IDisposable
         try
         {
             _stateChangeStarted = true;
-            var replacementState = AbsAutoHide | (_previousTaskbarState & AbsAlwaysOnTop);
+            var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
             if (!SetTaskbarState(replacementState, _handle))
             {
-                throw new InvalidOperationException("Windows görev çubuğu otomatik gizlemeye alınamadı.");
+                throw new InvalidOperationException("Windows görev çubuğunun kenar tetiklemesi kapatılamadı.");
+            }
+
+            if (!HideNativeTaskbar())
+            {
+                throw new InvalidOperationException("Windows görev çubuğu gizlenemedi.");
             }
 
             var data = CreateData();
@@ -149,6 +156,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             switch (unchecked((uint)wParam.ToInt64()))
             {
                 case AbnPosChanged:
+                    EnforceNativeTaskbarHidden();
                     PositionAppBar();
                     return true;
                 case AbnFullScreenApp:
@@ -163,6 +171,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                     }
                     return true;
                 case AbnStateChange:
+                    EnforceNativeTaskbarHidden();
                     return true;
             }
         }
@@ -200,7 +209,9 @@ public sealed class TaskbarReplacementSession : IDisposable
             _registered = false;
         }
 
-        if (!SetTaskbarState(_previousTaskbarState, _handle))
+        var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
+        var taskbarShown = ShowNativeTaskbar();
+        if (!stateRestored || !taskbarShown)
         {
             _active = true;
             return "Windows görev çubuğu ayarı geri yüklenemedi. Kapatmadan önce Windows ayarlarından otomatik gizlemeyi düzeltin.";
@@ -243,8 +254,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         SHAppBarMessage(AbmQueryPos, ref data);
         data.rc.Top = data.rc.Bottom - height;
         SHAppBarMessage(AbmSetPos, ref data);
-        if (!SetWindowPos(_handle, HwndTopmost, data.rc.Left, data.rc.Top,
-                data.rc.Right - data.rc.Left, data.rc.Bottom - data.rc.Top,
+        var left = monitorInfo.rcMonitor.Left;
+        var top = monitorInfo.rcMonitor.Bottom - height;
+        var width = monitorInfo.rcMonitor.Right - left;
+        if (!SetWindowPos(_handle, HwndTopmost, left, top,
+                width, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
@@ -255,6 +269,49 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         var data = new AppBarData { cbSize = (uint)Marshal.SizeOf<AppBarData>() };
         return unchecked((uint)SHAppBarMessage(AbmGetState, ref data));
+    }
+
+    private static bool HideNativeTaskbar()
+    {
+        var taskbarHandle = FindWindow("Shell_TrayWnd", null);
+        if (taskbarHandle == 0)
+        {
+            return false;
+        }
+
+        if (IsWindowVisible(taskbarHandle))
+        {
+            ShowWindow(taskbarHandle, SwHide);
+        }
+
+        return !IsWindowVisible(taskbarHandle);
+    }
+
+    private static bool ShowNativeTaskbar()
+    {
+        var taskbarHandle = FindWindow("Shell_TrayWnd", null);
+        if (taskbarHandle == 0)
+        {
+            return false;
+        }
+
+        ShowWindow(taskbarHandle, SwShowNoActivate);
+        return IsWindowVisible(taskbarHandle);
+    }
+
+    private void EnforceNativeTaskbarHidden()
+    {
+        var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
+        if (!SetTaskbarState(replacementState, _handle))
+        {
+            OperationFailed?.Invoke("Windows görev çubuğunun otomatik açılması yeniden etkinleşti.");
+            return;
+        }
+
+        if (!HideNativeTaskbar())
+        {
+            OperationFailed?.Invoke("Windows görev çubuğu yeniden gizlenemedi.");
+        }
     }
 
     private static bool SetTaskbarState(uint state, nint windowHandle)
@@ -377,6 +434,13 @@ public sealed class TaskbarReplacementSession : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "FindWindowW")]
+    private static extern nint FindWindow(string? className, string? windowName);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint windowHandle);
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint windowHandle);

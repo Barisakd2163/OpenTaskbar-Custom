@@ -82,6 +82,7 @@ public partial class MainWindow : Window
         DockSurface.Width = Width;
         Height = 64;
         var session = new TaskbarReplacementSession(this, source.Handle);
+        session.OperationFailed += ShowStatus;
         try
         {
             session.Start();
