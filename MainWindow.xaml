@@ -39,17 +39,17 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="22" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{TemplateBinding Icon}" FontFamily="Segoe MDL2 Assets"
-                                               FontSize="14" Foreground="{StaticResource TextSecondary}"
-                                               VerticalAlignment="Center" />
+                                    <ContentPresenter Content="{TemplateBinding Icon}" TextElement.FontFamily="Segoe MDL2 Assets"
+                                                      TextElement.FontSize="14" TextElement.Foreground="{StaticResource TextSecondary}"
+                                                      VerticalAlignment="Center" HorizontalAlignment="Left" />
                                     <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
                                                       VerticalAlignment="Center" />
                                     <TextBlock x:Name="Checkmark" Grid.Column="2" Text="&#xE73E;"
-                                               FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"
-                                               HorizontalAlignment="Right" Visibility="Collapsed" />
+                                                FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"
+                                                HorizontalAlignment="Right" Visibility="Collapsed" />
                                     <TextBlock x:Name="SubmenuArrow" Grid.Column="2" Text="&#xE76C;"
-                                               FontFamily="Segoe MDL2 Assets" FontSize="10" VerticalAlignment="Center"
-                                               HorizontalAlignment="Right" Visibility="Collapsed" />
+                                                FontFamily="Segoe MDL2 Assets" FontSize="10" VerticalAlignment="Center"
+                                                HorizontalAlignment="Right" Visibility="Collapsed" />
                                 </Grid>
                             </Border>
                             <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
@@ -111,10 +111,7 @@
         </Style>
         <ContextMenu x:Key="AppContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
             <MenuItem Header="Uygulamayı aç" Icon="&#xE8A7;" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
-            <MenuItem Header="Tarayıcı işlemleri" Icon="&#xE774;" Tag="BrowserActions" Visibility="Collapsed">
-                <MenuItem Header="Yeni pencere" Icon="&#xE78B;" Tag="NewWindow" Click="BrowserAction_Click" />
-                <MenuItem Header="Gizli pencere" Icon="&#xE72E;" Tag="PrivateWindow" Click="BrowserAction_Click" />
-            </MenuItem>
+            <MenuItem Header="Uygulamanın görevleri" Icon="&#xE8FD;" Tag="JumpListCommands" />
             <MenuItem Header="Uygulama komutları" Icon="&#xE8A7;" Tag="NativeAppCommands" Visibility="Collapsed" />
             <MenuItem Header="Pencere komutları" Icon="&#xE737;" Tag="NativeWindowCommands" Visibility="Collapsed" />
             <MenuItem Header="Görev çubuğuna sabitle" Icon="&#xE718;" Tag="PinDockApp" Visibility="Collapsed" Click="PinDockApp_Click" />
@@ -142,7 +139,7 @@
             <Setter Property="Margin" Value="0" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.95" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -152,12 +149,12 @@
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="5" />
+                                    <RowDefinition Height="6" />
                                 </Grid.RowDefinitions>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <Border x:Name="ActiveIndicator" Grid.Row="1" Height="3" Width="5" CornerRadius="2"
-                                        Background="{StaticResource IndicatorBrush}" VerticalAlignment="Top"
-                                        HorizontalAlignment="Center" Visibility="Collapsed" />
+                                <Ellipse x:Name="ActiveIndicator" Grid.Row="1" Height="4" Width="4"
+                                         Fill="{StaticResource IndicatorBrush}" VerticalAlignment="Center"
+                                         HorizontalAlignment="Center" Visibility="Collapsed" />
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -175,12 +172,14 @@
                             </Trigger>
                             <DataTrigger Binding="{Binding IsRunning}" Value="True">
                                 <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="0.42" />
+                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="0.55" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsForeground}" Value="True">
                                 <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1" />
-                                <Setter TargetName="ActiveIndicator" Property="Width" Value="16" />
+                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1.0" />
+                                <Setter TargetName="ActiveIndicator" Property="Width" Value="5" />
+                                <Setter TargetName="ActiveIndicator" Property="Height" Value="5" />
+                                <Setter TargetName="ActiveIndicator" Property="Fill" Value="{StaticResource IndicatorForegroundBrush}" />
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -227,9 +226,15 @@
                     AllowDrop="True"
                     Drop="DockApp_Drop"
                     DragOver="DockApp_DragOver"
-                    MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave"
-                    RenderTransformOrigin="0.5,0.5">
-                <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}">
+                    MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave">
+                <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
+                      RenderTransformOrigin="0.5,0.95">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="1" ScaleY="1" />
+                            <TranslateTransform Y="0" />
+                        </TransformGroup>
+                    </Grid.RenderTransform>
                     <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{StaticResource NotificationBrush}"
                              Stroke="{StaticResource SurfacePopup}" StrokeThickness="1"
@@ -243,22 +248,35 @@
     <Grid x:Name="DockHost" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
     <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="{StaticResource DockPadding}"
             Margin="{StaticResource DockInset}" VerticalAlignment="Center"
-            Background="{StaticResource DockMaterial}" BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="1"
+            Background="{StaticResource DockMaterial}" BorderBrush="{StaticResource DockBorderMaterial}" BorderThickness="1"
             CornerRadius="{StaticResource DockRadius}" ContextMenu="{StaticResource DockContextMenu}"
             MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
+        <Border.Effect>
+            <DropShadowEffect Color="#000000" BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.40" RenderingBias="Performance" />
+        </Border.Effect>
         <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                     VerticalAlignment="Center">
             <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
                     AutomationProperties.Name="Başlat" ToolTip="Başlat" ToolTipService.InitialShowDelay="650">
-                <Path Width="20" Height="20" Stretch="Uniform" Fill="{StaticResource WindowsLogoBrush}"
-                      Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
+                <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
+                      RenderTransformOrigin="0.5,0.95">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="1" ScaleY="1" />
+                            <TranslateTransform Y="0" />
+                        </TransformGroup>
+                    </Grid.RenderTransform>
+                    <Path Width="20" Height="20" Stretch="Uniform" Fill="{StaticResource WindowsLogoBrush}"
+                          Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
+                </Grid>
             </Button>
-            <Border Width="1" Height="22" Background="{StaticResource StrokeSubtle}" Margin="4,0,5,0" />
+            <Border Width="1" Height="20" Background="{StaticResource StrokeSubtle}" Margin="4,0,5,0" />
             <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
+            <Border x:Name="RunningAppsDivider" Width="1" Height="20" Background="{StaticResource StrokeSubtle}" Margin="5,0,5,0" Visibility="Collapsed" />
             <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>

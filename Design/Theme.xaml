@@ -14,15 +14,20 @@
     <SolidColorBrush x:Key="SurfacePopup" Color="#FF181C22" />
     <SolidColorBrush x:Key="StrokeSubtle" Color="#24FFFFFF" />
     <SolidColorBrush x:Key="StrokeFocus" Color="#FFD0E8FA" />
-    <SolidColorBrush x:Key="SurfaceHover" Color="#26FFFFFF" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#3AFFFFFF" />
+    <SolidColorBrush x:Key="SurfaceHover" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#34FFFFFF" />
     <SolidColorBrush x:Key="SurfaceSelected" Color="#12FFFFFF" />
     <SolidColorBrush x:Key="SurfaceDanger" Color="#FFC43846" />
     <SolidColorBrush x:Key="NotificationBrush" Color="#FFFF6673" />
-    <SolidColorBrush x:Key="IndicatorBrush" Color="#FFE4F3FF" />
+    <SolidColorBrush x:Key="IndicatorBrush" Color="#A8E4F3FF" />
+    <SolidColorBrush x:Key="IndicatorForegroundBrush" Color="#FFFFFFFF" />
     <LinearGradientBrush x:Key="DockMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#C8252B33" Offset="0" />
-        <GradientStop Color="#D2181D24" Offset="1" />
+        <GradientStop Color="#CC1E2530" Offset="0" />
+        <GradientStop Color="#E210141C" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="DockBorderMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#4DFFFFFF" Offset="0" />
+        <GradientStop Color="#16FFFFFF" Offset="1" />
     </LinearGradientBrush>
     <FontFamily x:Key="InterfaceFont">Segoe UI</FontFamily>
     <sys:Double x:Key="TextSizeBody">13</sys:Double>
@@ -34,14 +39,14 @@
     <sys:Double x:Key="PreviewWidth">344</sys:Double>
     <sys:Double x:Key="PreviewHeight">236</sys:Double>
     <sys:Double x:Key="PreviewHeaderHeight">40</sys:Double>
-    <sys:Double x:Key="DockHoverScale">1.22</sys:Double>
+    <sys:Double x:Key="DockHoverScale">1.36</sys:Double>
     <sys:Double x:Key="HoverDurationMs">120</sys:Double>
     <sys:Double x:Key="PreviewDurationMs">160</sys:Double>
-    <Thickness x:Key="DockInset">12,4</Thickness>
-    <Thickness x:Key="DockPadding">18,1</Thickness>
+    <Thickness x:Key="DockInset">12,2,12,8</Thickness>
+    <Thickness x:Key="DockPadding">16,2</Thickness>
     <Thickness x:Key="ControlStroke">1</Thickness>
-    <CornerRadius x:Key="DockRadius">12</CornerRadius>
-    <CornerRadius x:Key="ControlRadius">8</CornerRadius>
+    <CornerRadius x:Key="DockRadius">18</CornerRadius>
+    <CornerRadius x:Key="ControlRadius">10</CornerRadius>
     <CornerRadius x:Key="PopupRadius">10</CornerRadius>
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{StaticResource SurfacePopup}" />

@@ -7,12 +7,12 @@
 - Preserve the native colors of application icons. Use neutral charcoal surfaces and restrained white highlights around them.
 - Use Segoe UI for Windows menu familiarity, small-size readability, and Turkish glyph coverage. Body text is 13 DIPs; secondary labels are 12 DIPs.
 - Size the transparent input window to the monitor's entire reserved bottom taskbar strip. Read its height from the monitor work area; when Explorer exposes no reserved strip, use the previously measured horizontal native taskbar height (48 DIPs before a native measurement is available).
-- Derive equal top/bottom gaps from 8% of strip height, bounded to 2–6 DIPs. At 48 DIPs, the surface is 40 DIPs high with 4 DIP gaps. Keep 18 DIP internal horizontal padding and 12 DIP external edge clearance for surface context-menu access.
-- Derive cell height and icon size from the available surface height, capped at 28 DIPs for icons. Reserve a separate 5 DIP row for status markers. Keep preferred cell widths at 44 DIPs; reduce cell widths only when the application count requires it.
-- A muted dot means running; a bright 16 DIP line means foreground. A red badge in the upper right means a Windows system alert.
+- The dock floats above the monitor's bottom edge as a pill/shelf container with an 18 DIP corner radius and a 6–10 DIP bottom clearance. An ambient drop shadow and a 1 DIP specular top-edge highlight (`#4DFFFFFF`) provide depth over wallpapers.
+- Derive cell height and icon size from the available surface height, capped at 28 DIPs for icons. Reserve a separate 6 DIP row for status markers. Keep preferred cell widths at 44 DIPs; reduce cell widths only when the application count requires it.
+- A muted 4 DIP circular dot means running; an illuminated bright dot means foreground. A red badge in the upper right means a Windows system alert.
 - Hover and press change the surface without changing layout. Disable the default focus adorner and use a dark slate fill for keyboard focus; application buttons never add a white outline.
-- Pointer magnification scales only the hovered icon layer to 1.22 over 120 ms. Neighbors stay at their normal size. Keep hit targets, status markers, dock width, and window position unchanged. Disable magnification when Windows client-area animation is disabled.
-- The material is translucent tinted glass with a subtle vertical light change. It does not implement desktop backdrop blur. The previous unverified DWM Acrylic request has been removed.
+- Pointer magnification applies a continuous parabolic/cosine fisheye wave across hovered and neighboring icons (up to 1.36x peak) anchored at their base (`0.5, 0.95`), keeping status dots stationary. Disable magnification when Windows client-area animation is disabled.
+- The material is translucent tinted smoked glass with a specular top-edge reflection. It does not implement desktop backdrop blur. The previous unverified DWM Acrylic request has been removed.
 - Size the visible surface to content including border and insets. Empty status text consumes no width. Do not use a Viewbox or scale the entire UI after layout changes. The full reserved strip accepts the dock context menu, including outside the visible surface.
 
 ## Interaction rules
@@ -28,16 +28,16 @@
 - Where exposed by the application, read real Win32 menu-bar and system-menu commands into separate submenus. Bound menu reads to five levels and 100 entries, and owner initialization to 80 ms. Validate the original menu/command before dispatch; omit unsupported, owner-drawn, or inaccessible entries. This does not expose private application UI or custom Jump List tasks.
 - Hide the strip and close previews/menus when the foreground application covers its monitor. React to AppBar full-screen notifications, foreground changes, and debounced foreground geometry changes. A maximized work-area window and a full-screen window on another monitor do not suppress this strip.
 - Menus use WPF outside-click dismissal, receive foreground focus when opened, and close when a different process receives foreground activation. Track only one open root menu.
-- Application clicks get a 150 ms, 2 DIP lift feedback. Restoring a minimized window uses Windows' native restore path. Custom animation of another process's already-visible window is not implemented: `AnimateWindow` requires ownership by the calling thread.
+- Application clicks receive a 420 ms damped vertical launch bounce animation (-14 DIP peak) on the icon's translate transform. Restoring a minimized window uses Windows' native restore path. Custom animation of another process's already-visible window is not implemented: `AnimateWindow` requires ownership by the calling thread.
 - Mouse clicks on dock/preview surfaces do not steal foreground activation before the command runs. Explicit application commands activate their selected target.
 - Snapshot the foreground application on preview mouse-down, before button focus and thumbnail dismissal. Use that snapshot to select and minimize the active window. Ignore OpenTaskbar-owned foreground events when remembering the last external window. Minimize with `ShowWindowAsync`; success means Windows accepted the request, not that the transition has already completed. Clear pointer snapshots on keyboard input.
-- Show window title and application icon in a 40 DIP preview header. Reserve thumbnail space below it. Its close button sends a normal close request only to the previewed window.
+- Show window title and application icon in preview cards. Reserve thumbnail space below them. Multiple open windows of the same application are shown side-by-side in interactive preview cards. Its close button sends a normal close request only to the previewed window.
 - Hide the thumbnail before opening an application context menu. Disable the redundant name tooltip while a window preview is available.
 - Exit from the dock surface menu closes the main window. Disable hidden-state enforcement before restoring Explorer so reentrant Shell notifications cannot hide it again. Preserve the session and recovery record on restoration failure; ordinary window close remains cancellable. Reuse the restoration operation for application exit, session ending, and managed process exit. Force-kill termination cannot run in-process cleanup.
 
 ## Verification limits
 
-Release compilation checks XAML and C# consistency. Startup checks show process liveness only. A local cropped desktop capture verified normal 48 DIP strip placement with a bottom gap; Computer Use was not used. Full-screen transitions, menu command execution, pointer/keyboard input, multiple-monitor DPI, dense application overflow, and high-contrast mode still require rendered Windows verification.
+Release compilation checks XAML and C# consistency. Startup checks show process liveness only. A local cropped desktop capture verified normal strip placement with a bottom gap; Computer Use was not used. Full-screen transitions, menu command execution, pointer/keyboard input, multiple-monitor DPI, dense application overflow, and high-contrast mode still require rendered Windows verification.
 
 ## Platform references
 

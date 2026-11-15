@@ -31,6 +31,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly DockSettingsStore _dockSettingsStore = new();
+    private readonly ApplicationJumpListService _jumpLists = new();
+    private CancellationTokenSource? _jumpListLoad;
+    private long? _jumpListSession;
     private readonly DispatcherTimer _previewCloseTimer;
     private readonly WindowThumbnailPreview _thumbnailPreview;
     private readonly Dictionary<string, nint> _lastSelectedWindows = new(StringComparer.OrdinalIgnoreCase);
@@ -39,7 +42,6 @@ public partial class MainWindow : Window
     private TaskbarReplacementSession? _replacementSession;
     private HwndSource? _source;
     private nint _foregroundWindow;
-    private Button? _magnifiedButton;
     private readonly List<FrameworkElement> _magnifiedIcons = [];
     private ContextMenu? _openContextMenu;
     private bool _contextTargetWasForeground;
@@ -354,6 +356,7 @@ public partial class MainWindow : Window
             AnimateRunningAppRemoval(_runningApps[index]);
         }
 
+        RunningAppsDivider.Visibility = desiredApps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         return layoutChanged;
     }
 
@@ -603,86 +606,162 @@ public partial class MainWindow : Window
         }
     }
 
+    private static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
+    {
+        if (icon.RenderTransform is TransformGroup group)
+        {
+            var s = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+            var t = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            if (s is not null && t is not null)
+            {
+                return (s, t);
+            }
+        }
+
+        var newScale = new ScaleTransform();
+        var newTranslate = new TranslateTransform();
+        var newGroup = new TransformGroup();
+        newGroup.Children.Add(newScale);
+        newGroup.Children.Add(newTranslate);
+        icon.RenderTransform = newGroup;
+        icon.RenderTransformOrigin = new Point(0.5, 0.95);
+        return (newScale, newTranslate);
+    }
+
+    private FrameworkElement? GetButtonIcon(Button button)
+    {
+        if (button == StartButton)
+        {
+            return StartButton.Content as FrameworkElement;
+        }
+
+        return FindVisualChild<Grid>(button);
+    }
+
+    private IEnumerable<Button> GetAllDockButtons()
+    {
+        yield return StartButton;
+
+        for (var i = 0; i < _pinnedApps.Count; i++)
+        {
+            if (PinnedApps.ItemContainerGenerator.ContainerFromIndex(i) is DependencyObject container
+                && FindVisualChild<Button>(container) is { } button)
+            {
+                yield return button;
+            }
+        }
+
+        for (var i = 0; i < _runningApps.Count; i++)
+        {
+            if (RunningApps.ItemContainerGenerator.ContainerFromIndex(i) is DependencyObject container
+                && FindVisualChild<Button>(container) is { } button)
+            {
+                yield return button;
+            }
+        }
+    }
+
     private void AnimateActivationFeedback(Button button)
     {
-        if (!SystemParameters.ClientAreaAnimation || !button.IsMouseOver) return;
-        var translate = new TranslateTransform();
-        button.RenderTransform = translate;
-        var feedback = new DoubleAnimationUsingKeyFrames
-            {
-                Duration = TimeSpan.FromMilliseconds(150),
-                KeyFrames =
-                {
-                    new EasingDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60)),
-                        new CubicEase { EasingMode = EasingMode.EaseOut }),
-                    new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150)),
-                        new CubicEase { EasingMode = EasingMode.EaseOut })
-                }
-            };
-        feedback.Completed += (_, _) =>
+        if (!SystemParameters.ClientAreaAnimation) return;
+        var icon = GetButtonIcon(button);
+        if (icon is null) return;
+
+        var (_, translate) = GetIconTransforms(icon);
+
+        var bounce = new DoubleAnimationUsingKeyFrames
         {
-            if (ReferenceEquals(button.RenderTransform, translate))
-                button.RenderTransform = new ScaleTransform();
+            Duration = TimeSpan.FromMilliseconds(420),
+            KeyFrames =
+            {
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                new EasingDoubleKeyFrame(-14, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
+                    new CubicEase { EasingMode = EasingMode.EaseOut }),
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240)),
+                    new CubicEase { EasingMode = EasingMode.EaseIn }),
+                new EasingDoubleKeyFrame(-7, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
+                    new CubicEase { EasingMode = EasingMode.EaseOut }),
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)),
+                    new CubicEase { EasingMode = EasingMode.EaseIn })
+            }
         };
-        translate.BeginAnimation(TranslateTransform.YProperty, feedback);
+        translate.BeginAnimation(TranslateTransform.YProperty, bounce);
     }
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        var element = e.OriginalSource as DependencyObject;
-        while (element is not null && element is not Button && element != DockSurface)
+        if (!SystemParameters.ClientAreaAnimation)
         {
-            element = element is Visual ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element);
+            return;
         }
 
-        var hovered = element as Button;
-        if (ReferenceEquals(hovered, _magnifiedButton)) return;
-        ResetMagnification();
-        _magnifiedButton = hovered;
-        if (hovered is null) return;
-        FrameworkElement? icon = hovered == StartButton ? StartButton.Content as FrameworkElement
-            : FindVisualChild<Image>(hovered)?.Parent as FrameworkElement;
-        if (icon is null) return;
-        AnimateMagnification(icon, (double)FindResource("DockHoverScale"));
-        _magnifiedIcons.Add(icon);
+        var mousePos = e.GetPosition(DockContents);
+        var mouseX = mousePos.X;
+        const double influenceRadius = 96.0;
+        var maxScale = (double)FindResource("DockHoverScale");
+
+        var currentMagnified = new HashSet<FrameworkElement>();
+
+        foreach (var button in GetAllDockButtons())
+        {
+            var icon = GetButtonIcon(button);
+            if (icon is null) continue;
+
+            var (scale, _) = GetIconTransforms(icon);
+            var buttonPos = button.TranslatePoint(new Point(button.ActualWidth / 2, 0), DockContents);
+            var distance = Math.Abs(mouseX - buttonPos.X);
+
+            double targetScale = 1.0;
+            if (distance < influenceRadius)
+            {
+                var factor = Math.Cos(distance / influenceRadius * (Math.PI / 2));
+                targetScale = 1.0 + (maxScale - 1.0) * factor * factor;
+            }
+
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = targetScale;
+            scale.ScaleY = targetScale;
+
+            if (targetScale > 1.005)
+            {
+                currentMagnified.Add(icon);
+            }
+        }
+
+        foreach (var icon in _magnifiedIcons)
+        {
+            if (!currentMagnified.Contains(icon))
+            {
+                var (scale, _) = GetIconTransforms(icon);
+                scale.ScaleX = 1.0;
+                scale.ScaleY = 1.0;
+            }
+        }
+
+        _magnifiedIcons.Clear();
+        foreach (var icon in currentMagnified)
+        {
+            _magnifiedIcons.Add(icon);
+        }
     }
 
     private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => ResetMagnification();
 
     private void ResetMagnification()
     {
-        foreach (var icon in _magnifiedIcons) AnimateMagnification(icon, 1);
+        if (_magnifiedIcons.Count == 0) return;
+        var duration = TimeSpan.FromMilliseconds(120);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        foreach (var icon in _magnifiedIcons)
+        {
+            var (scale, _) = GetIconTransforms(icon);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.0, duration) { EasingFunction = easing });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.0, duration) { EasingFunction = easing });
+        }
+
         _magnifiedIcons.Clear();
-        _magnifiedButton = null;
-    }
-
-    private void AnimateMagnification(FrameworkElement icon, double target)
-    {
-        if (icon.RenderTransform is not ScaleTransform scale || scale.IsFrozen)
-        {
-            scale = new ScaleTransform();
-            icon.RenderTransform = scale;
-            icon.RenderTransformOrigin = new Point(0.5, 0.5);
-        }
-
-        if (!SystemParameters.ClientAreaAnimation)
-        {
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            scale.ScaleX = 1;
-            scale.ScaleY = 1;
-            return;
-        }
-
-        var duration = TimeSpan.FromMilliseconds((double)FindResource("HoverDurationMs"));
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(target, duration)
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        });
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(target, duration)
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        });
     }
 
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false, nint? foregroundAtPress = null)
@@ -908,7 +987,7 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
-    private void DockContextMenu_Opened(object sender, RoutedEventArgs e)
+    private async void DockContextMenu_Opened(object sender, RoutedEventArgs e)
     {
         if (sender is not ContextMenu contextMenu)
         {
@@ -937,9 +1016,7 @@ public partial class MainWindow : Window
         var hasAppTarget = pinnedApp is not null;
         var isPinnedTarget = pinnedApp?.ShortcutPath is not null;
         var isRunning = pinnedApp?.IsRunning == true;
-        var browserArguments = pinnedApp is null ? null : GetBrowserActions(pinnedApp.ExecutablePath);
         SetMenuItemVisibility(contextMenu, "ActivateDockApp", hasAppTarget);
-        SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
         SetMenuItemVisibility(contextMenu, "CloseDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "TerminateDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "PinDockApp", hasAppTarget && !isPinnedTarget);
@@ -971,14 +1048,77 @@ public partial class MainWindow : Window
         {
             unpinMenuItem.CommandParameter = pinnedApp;
         }
-        if (browserArguments is not null)
+        FocusContextMenu(contextMenu);
+        await LoadJumpListAsync(contextMenu, targetWindow?.Handle ?? 0, pinnedApp.ShortcutPath);
+    }
+
+    private async Task LoadJumpListAsync(ContextMenu menu, nint window, string? shortcut)
+    {
+        var parent = FindMenuItem(menu, "JumpListCommands");
+        if (parent is null) return;
+        _jumpListLoad?.Cancel();
+        _jumpListLoad?.Dispose();
+        var load = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        _jumpListLoad = load;
+        parent.Items.Clear();
+        parent.Items.Add(new MenuItem { Header = "Görevler yükleniyor…", IsEnabled = false });
+        try
         {
-            foreach (var item in FindMenuItem(contextMenu, "BrowserActions")?.Items.OfType<MenuItem>() ?? [])
+            var result = await _jumpLists.ReadAsync(window, shortcut, load.Token);
+            if (!menu.IsOpen || !ReferenceEquals(_jumpListLoad, load))
             {
-                item.CommandParameter = browserArguments;
+                await _jumpLists.ReleaseAsync(result.SessionId);
+                return;
+            }
+            _jumpListSession = result.SessionId;
+            parent.Items.Clear();
+            foreach (var group in result.Groups)
+            {
+                var category = new MenuItem { Header = group.Title.Replace("_", "__"), Icon = "\uE8FD" };
+                foreach (var entry in group.Entries)
+                {
+                    if (entry.IsSeparator) { category.Items.Add(new Separator()); continue; }
+                    var item = new MenuItem { Header = entry.Title.Replace("_", "__") };
+                    if (entry.Icon is not null) item.Icon = new Image { Source = entry.Icon, Width = 16, Height = 16 };
+                    item.Click += async (_, args) =>
+                    {
+                        args.Handled = true;
+                        if (!await _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0))
+                            ShowStatus("Uygulama görevi çalıştırılamadı. Menüyü yeniden açıp deneyin.");
+                    };
+                    category.Items.Add(item);
+                }
+                parent.Items.Add(category);
+            }
+            if (result.Status != JumpListStatus.Ready)
+            {
+                var message = result.Status switch
+                {
+                    JumpListStatus.Empty => "Bu uygulama görev listesi sunmuyor",
+                    JumpListStatus.IdentityUnavailable => "Uygulamanın görev listesi eşleştirilemedi",
+                    JumpListStatus.Unsupported => "Görev listesi bu Windows sürümünde desteklenmiyor",
+                    _ => "Görev listesi okunamadı; menüyü yeniden açın"
+                };
+                parent.Items.Add(new MenuItem { Header = message, IsEnabled = false });
             }
         }
-        FocusContextMenu(contextMenu);
+        catch (OperationCanceledException)
+        {
+            if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
+            {
+                parent.Items.Clear();
+                parent.Items.Add(new MenuItem { Header = "Görev listesi zamanında yanıt vermedi", IsEnabled = false });
+            }
+        }
+        catch (COMException ex)
+        {
+            Trace.TraceWarning("Shell worker failed: 0x{0:X8}", ex.HResult);
+            if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
+            {
+                parent.Items.Clear();
+                parent.Items.Add(new MenuItem { Header = "Windows görev hizmeti başlatılamadı", IsEnabled = false });
+            }
+        }
     }
 
     private void PopulateNativeMenu(ContextMenu menu, string tag, nint window, bool system)
@@ -1017,9 +1157,16 @@ public partial class MainWindow : Window
         menu.Focus();
     }
 
-    private void DockContextMenu_Closed(object sender, RoutedEventArgs e)
+    private async void DockContextMenu_Closed(object sender, RoutedEventArgs e)
     {
-        if (ReferenceEquals(sender, _openContextMenu)) _openContextMenu = null;
+        if (!ReferenceEquals(sender, _openContextMenu)) return;
+        _openContextMenu = null;
+        _jumpListLoad?.Cancel();
+        if (_jumpListSession is { } session)
+        {
+            _jumpListSession = null;
+            await _jumpLists.ReleaseAsync(session);
+        }
     }
 
     private void DockAppContextMenu_Click(object sender, RoutedEventArgs e)
@@ -1098,53 +1245,6 @@ public partial class MainWindow : Window
             ResizeDockToContent();
             _replacementSession?.RefreshPosition();
         });
-    }
-
-    private void BrowserAction_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuItem { CommandParameter: BrowserActions actions, Tag: string action })
-        {
-            return;
-        }
-
-        var arguments = action switch
-        {
-            "NewWindow" => actions.NewWindowArguments,
-            "PrivateWindow" => actions.PrivateWindowArguments,
-            _ => null
-        };
-        if (arguments is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var startInfo = new ProcessStartInfo(actions.ExecutablePath) { UseShellExecute = false };
-            foreach (var argument in arguments)
-            {
-                startInfo.ArgumentList.Add(argument);
-            }
-
-            Process.Start(startInfo);
-            ClearStatus();
-        }
-        catch (Win32Exception)
-        {
-            ShowStatus("Tarayıcı penceresi Windows tarafından başlatılamadı.");
-        }
-        catch (InvalidOperationException)
-        {
-            ShowStatus("Tarayıcı penceresi başlatılamadı.");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            ShowStatus("Tarayıcıyı başlatmak için erişim izni yok.");
-        }
-        catch (IOException)
-        {
-            ShowStatus("Tarayıcı dosyasına erişilemedi.");
-        }
     }
 
     private void CloseDockApp_Click(object sender, RoutedEventArgs e)
@@ -1349,24 +1449,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static BrowserActions? GetBrowserActions(string executablePath)
-    {
-        var browserName = Path.GetFileName(executablePath).ToLowerInvariant();
-        var newWindowArgument = browserName == "firefox.exe" ? "-new-window" : "--new-window";
-        var privateArgument = browserName switch
-        {
-            "msedge.exe" => "--inprivate",
-            "firefox.exe" => "-private-window",
-            "opera.exe" => "--private",
-            _ when browserName is "chrome.exe" or "brave.exe" or "vivaldi.exe" => "--incognito",
-            _ => null
-        };
-
-        return privateArgument is null
-            ? null
-            : new BrowserActions(executablePath, [newWindowArgument], [privateArgument]);
-    }
-
     private static (List<Process> Processes, int InaccessibleCount) FindProcessesForExecutable(string executablePath)
     {
         var matchingProcesses = new List<Process>();
@@ -1407,11 +1489,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private sealed record BrowserActions(
-        string ExecutablePath,
-        IReadOnlyList<string> NewWindowArguments,
-        IReadOnlyList<string> PrivateWindowArguments);
-
     private void ApplyDockAlignment()
     {
         var alignment = _dockPosition switch
@@ -1429,10 +1506,11 @@ public partial class MainWindow : Window
     private void ApplyTaskbarLayout(Size area)
     {
         _dockArea = area;
-        var gap = Math.Clamp(Math.Round(area.Height * 0.08), 2, 6);
-        DockSurface.Margin = new Thickness(12, gap, 12, gap);
-        Application.Current.Resources["DockCellHeight"] = Math.Max(20, area.Height - gap * 2 - 4);
-        Application.Current.Resources["DockIconSize"] = Math.Clamp((area.Height - gap * 2 - 4) * 0.67, 16, 28);
+        var topGap = Math.Clamp(Math.Round(area.Height * 0.05), 2, 4);
+        var bottomGap = Math.Clamp(Math.Round(area.Height * 0.16), 6, 10);
+        DockSurface.Margin = new Thickness(12, topGap, 12, bottomGap);
+        Application.Current.Resources["DockCellHeight"] = Math.Max(20, area.Height - topGap - bottomGap - 4);
+        Application.Current.Resources["DockIconSize"] = Math.Clamp((area.Height - topGap - bottomGap - 4) * 0.68, 16, 28);
         ResizeDockToContent();
     }
 
@@ -1525,10 +1603,11 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _jumpListLoad?.Cancel();
+        _jumpListLoad?.Dispose();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
         _openContextMenu = null;
         _magnifiedIcons.Clear();
-        _magnifiedButton = null;
         _source?.RemoveHook(WindowProc);
         _source = null;
 
@@ -1547,6 +1626,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;
         _thumbnailPreview.CloseRequested -= ThumbnailPreview_CloseRequested;
         _thumbnailPreview.Dispose();
+        _jumpLists.Dispose();
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
