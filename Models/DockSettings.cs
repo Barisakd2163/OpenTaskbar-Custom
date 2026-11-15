@@ -7,4 +7,6 @@ public enum DockPosition
     Right
 }
 
-public sealed record DockSettings(DockPosition Position = DockPosition.Left);
+public sealed record DockSettings(
+    DockPosition Position = DockPosition.Left,
+    IReadOnlyList<string>? PinOrder = null);

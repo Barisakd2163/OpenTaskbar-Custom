@@ -117,6 +117,7 @@
             </MenuItem>
             <MenuItem Header="Uygulama komutları" Icon="&#xE8A7;" Tag="NativeAppCommands" Visibility="Collapsed" />
             <MenuItem Header="Pencere komutları" Icon="&#xE737;" Tag="NativeWindowCommands" Visibility="Collapsed" />
+            <MenuItem Header="Görev çubuğuna sabitle" Icon="&#xE718;" Tag="PinDockApp" Visibility="Collapsed" Click="PinDockApp_Click" />
             <MenuItem Header="Sabitlemeyi kaldır" Icon="&#xE77A;" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
             <Separator Tag="RunningCommandsDivider" />
             <MenuItem Header="Uygulamayı kapat" Icon="&#xE711;" Tag="CloseDockApp" Click="CloseDockApp_Click" />
@@ -220,7 +221,12 @@
                     ToolTip="{Binding Name}" ToolTipService.InitialShowDelay="650" ContextMenu="{StaticResource AppContextMenu}"
                     Loaded="DockAppButton_Loaded"
                     PreviewMouseLeftButtonDown="DockApp_PreviewMouseLeftButtonDown"
+                    PreviewMouseLeftButtonUp="DockApp_PreviewMouseLeftButtonUp"
+                    PreviewMouseMove="DockApp_PreviewMouseMove"
                     PreviewKeyDown="DockApp_PreviewKeyDown"
+                    AllowDrop="True"
+                    Drop="DockApp_Drop"
+                    DragOver="DockApp_DragOver"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave"
                     RenderTransformOrigin="0.5,0.5">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}">

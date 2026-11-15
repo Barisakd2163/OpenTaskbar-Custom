@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
@@ -21,19 +22,17 @@ public sealed class WindowThumbnailPreview : IDisposable
     private const uint SwpNoOwnerZOrder = 0x0200;
     private static readonly nint HwndTopmost = new(-1);
 
+    private readonly Style _closeButtonStyle;
     private readonly Window _window;
     private readonly Window _closeButtonWindow;
+    private readonly StackPanel _surfaceContainer;
+    private readonly StackPanel _overlayContainer;
     private readonly TextBlock _placeholder;
-    private readonly Button _closeButton;
-    private readonly Image _windowIcon;
-    private readonly TextBlock _windowTitle;
-    private readonly double _headerHeight;
     private readonly DispatcherTimer _entranceTimer;
     private readonly double _entranceDurationMs;
-    private DwmThumbnailProperties _entranceTarget;
+    private readonly List<(nint Source, nint Thumbnail, NativeRect TargetRect)> _activeThumbnails = [];
     private long _entranceStarted;
     private nint _destinationHandle;
-    private nint _thumbnail;
     private nint _sourceHandle;
     private bool _disposed;
     private bool _windowClosed;
@@ -41,93 +40,45 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     public WindowThumbnailPreview(Style closeButtonStyle)
     {
+        _closeButtonStyle = closeButtonStyle;
         var resources = Application.Current.Resources;
         var popupBrush = (Brush)resources["SurfacePopup"];
-        var textBrush = (Brush)resources["TextPrimary"];
         var strokeBrush = (Brush)resources["StrokeSubtle"];
-        _headerHeight = (double)resources["PreviewHeaderHeight"];
         _entranceDurationMs = (double)resources["PreviewDurationMs"];
         _entranceTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromMilliseconds(16)
         };
         _entranceTimer.Tick += EntranceTimer_Tick;
+
         _placeholder = new TextBlock
         {
             Text = "Önizleme kullanılamıyor",
             Foreground = (Brush)resources["TextSecondary"],
             FontFamily = (FontFamily)resources["InterfaceFont"],
-            Margin = new Thickness(0, _headerHeight, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        _closeButton = new Button
+        _surfaceContainer = new StackPanel
         {
-            Style = closeButtonStyle,
-            Content = new System.Windows.Shapes.Path
-            {
-                Data = Geometry.Parse("M2,2 L10,10 M10,2 L2,10"),
-                Stroke = textBrush,
-                StrokeThickness = 1.5,
-                Width = 12,
-                Height = 12
-            },
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-            ToolTip = "Pencereyi kapat"
-        };
-        AutomationProperties.SetName(_closeButton, "Pencereyi kapat");
-        _closeButton.Click += CloseButton_Click;
-
-        _windowIcon = new Image { Width = 20, Height = 20, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 8, 0) };
-        _windowTitle = new TextBlock
-        {
-            Foreground = textBrush,
-            FontFamily = (FontFamily)resources["InterfaceFont"],
-            FontSize = (double)resources["TextSizeCaption"],
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        var previewHeader = new DockPanel
-        {
-            LastChildFill = true,
-            Margin = new Thickness(8, 4, 6, 4),
-            Children = { _closeButton, _windowIcon, _windowTitle }
-        };
-        DockPanel.SetDock(_closeButton, Dock.Right);
-        DockPanel.SetDock(_windowIcon, Dock.Left);
-        var headerSurface = new Border
-        {
-            Height = _headerHeight,
-            VerticalAlignment = VerticalAlignment.Top,
-            Background = popupBrush,
-            BorderBrush = strokeBrush,
-            BorderThickness = new Thickness(1, 1, 1, 0),
-            Child = previewHeader
-        };
-        headerSurface.MouseLeftButtonDown += (_, e) =>
-        {
-            if (!_closeButton.IsMouseOver)
-            {
-                e.Handled = true;
-                PreviewClicked?.Invoke(this, EventArgs.Empty);
-            }
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(6)
         };
 
-        var surfaceContent = new Grid
-        {
-            Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25))
-        };
-        surfaceContent.Children.Add(_placeholder);
+        var surfaceGrid = new Grid();
+        surfaceGrid.Children.Add(_surfaceContainer);
+        surfaceGrid.Children.Add(_placeholder);
+
         var surface = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25)),
+            Background = popupBrush,
             BorderThickness = new Thickness(1),
             BorderBrush = strokeBrush,
-            Child = surfaceContent
+            CornerRadius = new CornerRadius(10),
+            Child = surfaceGrid
         };
+
         _window = new Window
         {
             Width = (double)resources["PreviewWidth"],
@@ -146,12 +97,17 @@ public sealed class WindowThumbnailPreview : IDisposable
         _window.SourceInitialized += PreviewWindow_SourceInitialized;
         _window.MouseEnter += Window_MouseEnter;
         _window.MouseLeave += Window_MouseLeave;
-        _window.PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
+
+        _overlayContainer = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(6)
+        };
 
         _closeButtonWindow = new Window
         {
             Width = _window.Width,
-            Height = _headerHeight,
+            Height = _window.Height,
             WindowStyle = WindowStyle.None,
             ResizeMode = ResizeMode.NoResize,
             AllowsTransparency = true,
@@ -161,7 +117,7 @@ public sealed class WindowThumbnailPreview : IDisposable
             Background = Brushes.Transparent,
             Cursor = System.Windows.Input.Cursors.Hand,
             WindowStartupLocation = WindowStartupLocation.Manual,
-            Content = headerSurface
+            Content = _overlayContainer
         };
         _closeButtonWindow.Closed += CloseButtonWindow_Closed;
         _closeButtonWindow.SourceInitialized += PreviewWindow_SourceInitialized;
@@ -181,28 +137,56 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     public nint SourceHandle => _sourceHandle;
 
+    public IReadOnlyList<nint> ActiveHandles => _activeThumbnails.Select(t => t.Source).ToList();
+
     public bool ShowFor(nint sourceHandle, FrameworkElement anchor, string windowTitle, BitmapSource? icon)
     {
+        return ShowForWindows([new TrackedWindow(sourceHandle, windowTitle, null)], anchor, icon);
+    }
+
+    public bool ShowForWindows(IReadOnlyList<TrackedWindow> windows, FrameworkElement anchor, BitmapSource? defaultIcon)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (sourceHandle == 0 || !IsWindow(sourceHandle))
+        var validWindows = windows.Where(w => w.Handle != 0 && IsWindow(w.Handle)).Take(6).ToList();
+        if (validWindows.Count == 0)
         {
             Hide();
             return false;
         }
 
+        var isSingle = validWindows.Count == 1;
+        var resources = Application.Current.Resources;
+        var popupBrush = (Brush)resources["SurfacePopup"];
+        var textBrush = (Brush)resources["TextPrimary"];
+        var strokeBrush = (Brush)resources["StrokeSubtle"];
+        var focusStroke = (Brush)resources["StrokeFocus"];
+
+        double cardWidth = isSingle ? (double)resources["PreviewWidth"] : 250;
+        double cardHeight = isSingle ? (double)resources["PreviewHeight"] : 180;
+        double headerHeight = isSingle ? (double)resources["PreviewHeaderHeight"] : 36;
+        double cardGap = 8;
+        double margin = 6;
+
+        var totalWidth = validWindows.Count * cardWidth + (validWindows.Count - 1) * cardGap + margin * 2;
+        var totalHeight = cardHeight + margin * 2;
+
+        _window.Width = totalWidth;
+        _window.Height = totalHeight;
+        _closeButtonWindow.Width = totalWidth;
+        _closeButtonWindow.Height = totalHeight;
+
         var animateEntrance = SystemParameters.ClientAreaAnimation
-            && (!_window.IsVisible || _sourceHandle != sourceHandle);
+            && (!_window.IsVisible || !_activeThumbnails.Select(t => t.Source).SequenceEqual(validWindows.Select(w => w.Handle)));
+
         _entranceTimer.Stop();
         _closeButtonWindow.BeginAnimation(UIElement.OpacityProperty, null);
         _closeButtonWindow.Opacity = 1;
-        if (_sourceHandle != sourceHandle)
-        {
-            ReleaseThumbnail();
-            _sourceHandle = sourceHandle;
-        }
 
-        _windowTitle.Text = windowTitle;
-        _windowIcon.Source = icon;
+        ReleaseThumbnails();
+        _sourceHandle = validWindows[0].Handle;
+
+        _surfaceContainer.Children.Clear();
+        _overlayContainer.Children.Clear();
 
         if (!_window.IsVisible)
         {
@@ -211,62 +195,195 @@ public sealed class WindowThumbnailPreview : IDisposable
         }
 
         _destinationHandle = new WindowInteropHelper(_window).Handle;
-        if (_destinationHandle == 0 || !PositionWindow(anchor))
+        if (_destinationHandle == 0 || !PositionWindow(anchor, totalWidth, totalHeight))
         {
             _placeholder.Visibility = Visibility.Visible;
             return false;
         }
 
-        if (!PositionCloseButtonWindow())
+        if (!PositionOverlayWindow())
         {
             _placeholder.Visibility = Visibility.Visible;
             return false;
         }
 
-        if (_thumbnail == 0)
+        var dpi = GetDpiForWindow(_destinationHandle);
+        if (dpi == 0) dpi = 96;
+        var scale = dpi / 96d;
+
+        for (var i = 0; i < validWindows.Count; i++)
         {
-            if (DwmRegisterThumbnail(_destinationHandle, _sourceHandle, out _thumbnail) != 0)
+            var tracked = validWindows[i];
+            var handle = tracked.Handle;
+
+            // Surface card frame
+            var surfaceCard = new Border
             {
-                _thumbnail = 0;
-                _placeholder.Visibility = Visibility.Visible;
-                return false;
+                Width = cardWidth,
+                Height = cardHeight,
+                Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25)),
+                BorderBrush = strokeBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Margin = new Thickness(0, 0, i < validWindows.Count - 1 ? cardGap : 0, 0)
+            };
+            _surfaceContainer.Children.Add(surfaceCard);
+
+            // Overlay card
+            var closeBtn = new Button
+            {
+                Style = _closeButtonStyle,
+                Content = new System.Windows.Shapes.Path
+                {
+                    Data = Geometry.Parse("M2,2 L10,10 M10,2 L2,10"),
+                    Stroke = textBrush,
+                    StrokeThickness = 1.5,
+                    Width = 10,
+                    Height = 10
+                },
+                Width = 24,
+                Height = 24,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0),
+                ToolTip = "Pencereyi kapat"
+            };
+            AutomationProperties.SetName(closeBtn, "Pencereyi kapat");
+            closeBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                _sourceHandle = handle;
+                CloseRequested?.Invoke(this, EventArgs.Empty);
+            };
+
+            var iconImg = new Image
+            {
+                Width = 18,
+                Height = 18,
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(0, 0, 6, 0),
+                Source = defaultIcon
+            };
+
+            var titleBlock = new TextBlock
+            {
+                Text = tracked.Title,
+                Foreground = textBrush,
+                FontFamily = (FontFamily)resources["InterfaceFont"],
+                FontSize = (double)resources["TextSizeCaption"],
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var headerPanel = new DockPanel
+            {
+                LastChildFill = true,
+                Margin = new Thickness(8, 4, 6, 4),
+                Children = { closeBtn, iconImg, titleBlock }
+            };
+            DockPanel.SetDock(closeBtn, Dock.Right);
+            DockPanel.SetDock(iconImg, Dock.Left);
+
+            var headerSurface = new Border
+            {
+                Height = headerHeight,
+                Background = popupBrush,
+                BorderBrush = strokeBrush,
+                BorderThickness = new Thickness(1, 1, 1, 0),
+                CornerRadius = new CornerRadius(8, 8, 0, 0),
+                Child = headerPanel
+            };
+
+            var bodySurface = new Border
+            {
+                Height = cardHeight - headerHeight,
+                Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
+                BorderBrush = strokeBrush,
+                BorderThickness = new Thickness(1, 0, 1, 1),
+                CornerRadius = new CornerRadius(0, 0, 8, 8)
+            };
+
+            var cardContent = new StackPanel();
+            cardContent.Children.Add(headerSurface);
+            cardContent.Children.Add(bodySurface);
+
+            var overlayCard = new Border
+            {
+                Width = cardWidth,
+                Height = cardHeight,
+                Background = Brushes.Transparent,
+                Margin = new Thickness(0, 0, i < validWindows.Count - 1 ? cardGap : 0, 0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Child = cardContent
+            };
+
+            overlayCard.MouseEnter += (_, _) =>
+            {
+                headerSurface.BorderBrush = focusStroke;
+                bodySurface.BorderBrush = focusStroke;
+            };
+            overlayCard.MouseLeave += (_, _) =>
+            {
+                headerSurface.BorderBrush = strokeBrush;
+                bodySurface.BorderBrush = strokeBrush;
+            };
+            overlayCard.MouseLeftButtonDown += (_, e) =>
+            {
+                if (!closeBtn.IsMouseOver)
+                {
+                    e.Handled = true;
+                    _sourceHandle = handle;
+                    PreviewClicked?.Invoke(this, EventArgs.Empty);
+                }
+            };
+
+            _overlayContainer.Children.Add(overlayCard);
+
+            if (DwmRegisterThumbnail(_destinationHandle, handle, out var thumbnail) == 0 && thumbnail != 0)
+            {
+                if (DwmQueryThumbnailSourceSize(thumbnail, out var sourceSize) == 0
+                    && sourceSize.Width > 0 && sourceSize.Height > 0)
+                {
+                    var cardLeft = margin + i * (cardWidth + cardGap);
+                    var cardTop = margin + headerHeight;
+                    var cLeft = (int)Math.Round((cardLeft + 2) * scale);
+                    var cTop = (int)Math.Round((cardTop + 2) * scale);
+                    var cRight = (int)Math.Round((cardLeft + cardWidth - 2) * scale);
+                    var cBottom = (int)Math.Round((margin + cardHeight - 2) * scale);
+
+                    var clientRect = new NativeRect(cLeft, cTop, cRight, cBottom);
+                    var destination = FitThumbnail(sourceSize, clientRect);
+                    var properties = new DwmThumbnailProperties
+                    {
+                        Flags = DwmThumbnailRectDestination | DwmThumbnailOpacity | DwmThumbnailVisible,
+                        Destination = destination,
+                        Opacity = byte.MaxValue,
+                        Visible = true,
+                        SourceClientAreaOnly = false
+                    };
+
+                    if (animateEntrance)
+                    {
+                        var initialProps = properties;
+                        initialProps.Opacity = 0;
+                        DwmUpdateThumbnailProperties(thumbnail, ref initialProps);
+                    }
+                    else
+                    {
+                        DwmUpdateThumbnailProperties(thumbnail, ref properties);
+                    }
+
+                    _activeThumbnails.Add((handle, thumbnail, destination));
+                }
+                else
+                {
+                    _ = DwmUnregisterThumbnail(thumbnail);
+                }
             }
         }
 
-        if (DwmQueryThumbnailSourceSize(_thumbnail, out var sourceSize) != 0
-            || sourceSize.Width <= 0 || sourceSize.Height <= 0
-            || !GetClientRect(_destinationHandle, out var clientRect))
-        {
-            ReleaseThumbnail();
-            _placeholder.Visibility = Visibility.Visible;
-            return false;
-        }
+        _placeholder.Visibility = _activeThumbnails.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        // DWM draws above WPF content, so reserve a separate band for the owned header window.
-        var headerPixels = (int)Math.Ceiling(_headerHeight * GetDpiForWindow(_destinationHandle) / 96d);
-        clientRect.Top += headerPixels;
-        var destination = FitThumbnail(sourceSize, clientRect);
-        var properties = new DwmThumbnailProperties
-        {
-            Flags = DwmThumbnailRectDestination | DwmThumbnailOpacity | DwmThumbnailVisible,
-            Destination = destination,
-            Opacity = byte.MaxValue,
-            Visible = true,
-            SourceClientAreaOnly = false
-        };
-        _entranceTarget = properties;
-        if (animateEntrance)
-        {
-            properties = EntranceFrame(0);
-        }
-        if (DwmUpdateThumbnailProperties(_thumbnail, ref properties) != 0)
-        {
-            ReleaseThumbnail();
-            _placeholder.Visibility = Visibility.Visible;
-            return false;
-        }
-
-        _placeholder.Visibility = Visibility.Collapsed;
         if (animateEntrance)
         {
             _entranceStarted = Stopwatch.GetTimestamp();
@@ -277,37 +394,35 @@ public sealed class WindowThumbnailPreview : IDisposable
                 });
             _entranceTimer.Start();
         }
-        return true;
-    }
 
-    private DwmThumbnailProperties EntranceFrame(double progress)
-    {
-        var frame = _entranceTarget;
-        var target = frame.Destination;
-        var insetX = (int)Math.Round((target.Right - target.Left) * 0.025 * (1 - progress));
-        var insetY = (int)Math.Round((target.Bottom - target.Top) * 0.025 * (1 - progress));
-        frame.Destination = new NativeRect(target.Left + insetX, target.Top + insetY,
-            target.Right - insetX, target.Bottom - insetY);
-        frame.Opacity = (byte)Math.Round(byte.MaxValue * progress);
-        return frame;
+        return true;
     }
 
     private void EntranceTimer_Tick(object? sender, EventArgs e)
     {
-        if (_thumbnail == 0 || !_window.IsVisible)
+        if (_activeThumbnails.Count == 0 || !_window.IsVisible)
         {
             _entranceTimer.Stop();
             return;
         }
 
         var progress = Math.Clamp(Stopwatch.GetElapsedTime(_entranceStarted).TotalMilliseconds / _entranceDurationMs, 0, 1);
-        var frame = EntranceFrame(1 - Math.Pow(1 - progress, 3));
-        if (DwmUpdateThumbnailProperties(_thumbnail, ref frame) != 0)
+        var eased = 1 - Math.Pow(1 - progress, 3);
+        var opacity = (byte)Math.Round(byte.MaxValue * eased);
+
+        foreach (var (_, thumb, target) in _activeThumbnails)
         {
-            _entranceTimer.Stop();
-            ReleaseThumbnail();
-            _placeholder.Visibility = Visibility.Visible;
-            return;
+            var insetX = (int)Math.Round((target.Right - target.Left) * 0.025 * (1 - eased));
+            var insetY = (int)Math.Round((target.Bottom - target.Top) * 0.025 * (1 - eased));
+            var frame = new DwmThumbnailProperties
+            {
+                Flags = DwmThumbnailRectDestination | DwmThumbnailOpacity | DwmThumbnailVisible,
+                Destination = new NativeRect(target.Left + insetX, target.Top + insetY,
+                    target.Right - insetX, target.Bottom - insetY),
+                Opacity = opacity,
+                Visible = true
+            };
+            DwmUpdateThumbnailProperties(thumb, ref frame);
         }
 
         if (progress >= 1) _entranceTimer.Stop();
@@ -317,8 +432,10 @@ public sealed class WindowThumbnailPreview : IDisposable
     {
         _entranceTimer.Stop();
         _closeButtonWindow.BeginAnimation(UIElement.OpacityProperty, null);
-        ReleaseThumbnail();
+        ReleaseThumbnails();
         _sourceHandle = 0;
+        _surfaceContainer.Children.Clear();
+        _overlayContainer.Children.Clear();
         if (_closeButtonWindow.IsVisible)
         {
             _closeButtonWindow.Hide();
@@ -344,7 +461,6 @@ public sealed class WindowThumbnailPreview : IDisposable
         _closeButtonWindow.Closed -= CloseButtonWindow_Closed;
         _closeButtonWindow.MouseEnter -= Window_MouseEnter;
         _closeButtonWindow.MouseLeave -= Window_MouseLeave;
-        _closeButton.Click -= CloseButton_Click;
         if (!_closeWindowClosed)
         {
             _closeButtonWindow.Close();
@@ -356,7 +472,7 @@ public sealed class WindowThumbnailPreview : IDisposable
         }
     }
 
-    private bool PositionWindow(FrameworkElement anchor)
+    private bool PositionWindow(FrameworkElement anchor, double totalWidth, double totalHeight)
     {
         var anchorTop = anchor.PointToScreen(new Point(anchor.ActualWidth / 2, 0));
         var dpi = GetDpiForWindow(_destinationHandle);
@@ -365,8 +481,8 @@ public sealed class WindowThumbnailPreview : IDisposable
             return false;
         }
 
-        var width = (int)Math.Ceiling(_window.Width * dpi / 96d);
-        var height = (int)Math.Ceiling(_window.Height * dpi / 96d);
+        var width = (int)Math.Ceiling(totalWidth * dpi / 96d);
+        var height = (int)Math.Ceiling(totalHeight * dpi / 96d);
         var anchorWindow = Window.GetWindow(anchor);
         var anchorHandle = anchorWindow is null ? _destinationHandle : new WindowInteropHelper(anchorWindow).Handle;
         var monitor = MonitorFromWindow(anchorHandle, MonitorDefaultToNearest);
@@ -392,26 +508,24 @@ public sealed class WindowThumbnailPreview : IDisposable
         return SetWindowPos(_destinationHandle, HwndTopmost, left, top, width, height, SwpNoActivate);
     }
 
-    private bool PositionCloseButtonWindow()
+    private bool PositionOverlayWindow()
     {
-        var closeWindowInterop = new WindowInteropHelper(_closeButtonWindow);
+        var overlayInterop = new WindowInteropHelper(_closeButtonWindow);
         if (!_closeButtonWindow.IsVisible)
         {
-            closeWindowInterop.Owner = _destinationHandle;
+            overlayInterop.Owner = _destinationHandle;
             _closeButtonWindow.Show();
         }
 
-        var closeHandle = closeWindowInterop.Handle;
-        var dpi = closeHandle == 0 ? 0 : GetDpiForWindow(closeHandle);
-        if (dpi == 0 || !GetWindowRect(_destinationHandle, out var previewRect))
+        var overlayHandle = overlayInterop.Handle;
+        if (overlayHandle == 0 || !GetWindowRect(_destinationHandle, out var previewRect))
         {
             return false;
         }
 
-        var scale = dpi / 96d;
         var width = previewRect.Right - previewRect.Left;
-        var height = (int)Math.Ceiling(_closeButtonWindow.Height * scale);
-        return SetWindowPos(closeHandle, HwndTopmost,
+        var height = previewRect.Bottom - previewRect.Top;
+        return SetWindowPos(overlayHandle, HwndTopmost,
             previewRect.Left, previewRect.Top, width, height,
             SwpNoActivate | SwpNoOwnerZOrder);
     }
@@ -429,22 +543,23 @@ public sealed class WindowThumbnailPreview : IDisposable
         return new NativeRect(left, top, left + width, top + height);
     }
 
-    private void ReleaseThumbnail()
+    private void ReleaseThumbnails()
     {
         _entranceTimer.Stop();
-        if (_thumbnail == 0)
+        foreach (var (_, thumbnail, _) in _activeThumbnails)
         {
-            return;
+            if (thumbnail != 0)
+            {
+                _ = DwmUnregisterThumbnail(thumbnail);
+            }
         }
-
-        _ = DwmUnregisterThumbnail(_thumbnail);
-        _thumbnail = 0;
+        _activeThumbnails.Clear();
     }
 
     private void Window_Closed(object? sender, EventArgs e)
     {
         _windowClosed = true;
-        ReleaseThumbnail();
+        ReleaseThumbnails();
         _destinationHandle = 0;
         _sourceHandle = 0;
         if (!_closeWindowClosed)
@@ -456,7 +571,6 @@ public sealed class WindowThumbnailPreview : IDisposable
     private void CloseButtonWindow_Closed(object? sender, EventArgs e)
     {
         _closeWindowClosed = true;
-        _closeButton.Click -= CloseButton_Click;
     }
 
     private void Window_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
@@ -488,18 +602,6 @@ public sealed class WindowThumbnailPreview : IDisposable
     private void Window_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         PointerLeft?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void Window_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        PreviewClicked?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void CloseButton_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -563,10 +665,6 @@ public sealed class WindowThumbnailPreview : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetClientRect(nint windowHandle, out NativeRect rect);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -162,6 +162,39 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
     }
 
+    public void HandleTaskbarCreated()
+    {
+        if (!_active)
+        {
+            return;
+        }
+
+        _registered = false;
+        var nativeTaskbar = FindWindow("Shell_TrayWnd", null);
+        if (nativeTaskbar != 0 && GetWindowRect(nativeTaskbar, out var taskbarRect))
+        {
+            var nativeDpi = GetDpiForWindow(nativeTaskbar);
+            if (nativeDpi > 0 && taskbarRect.Bottom > taskbarRect.Top
+                && taskbarRect.Right - taskbarRect.Left > taskbarRect.Bottom - taskbarRect.Top)
+            {
+                _nativeTaskbarHeight = (taskbarRect.Bottom - taskbarRect.Top) * 96d / nativeDpi;
+            }
+        }
+
+        var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
+        SetTaskbarState(replacementState, _handle);
+        HideNativeTaskbar();
+
+        var data = CreateData();
+        data.uCallbackMessage = CallbackMessage;
+        if (SHAppBarMessage(AbmNew, ref data) != 0)
+        {
+            _registered = true;
+        }
+
+        PositionDockWindow();
+    }
+
     public bool HandleMessage(uint message, nint wParam, nint lParam)
     {
         if (!_active || Volatile.Read(ref _stopInProgress) != 0)

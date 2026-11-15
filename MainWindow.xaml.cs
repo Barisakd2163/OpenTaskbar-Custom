@@ -45,6 +45,9 @@ public partial class MainWindow : Window
     private bool _contextTargetWasForeground;
     private Size _dockArea;
     private nint? _foregroundAtAppPress;
+    private uint _taskbarCreatedMessage;
+    private Point _dragStartPoint;
+    private DockApp? _draggedApp;
 
     public MainWindow()
     {
@@ -61,9 +64,9 @@ public partial class MainWindow : Window
         _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
         _thumbnailPreview.CloseRequested += ThumbnailPreview_CloseRequested;
-        LoadPinnedApps();
         var settingsResult = _dockSettingsStore.Load();
         _dockPosition = settingsResult.Settings.Position;
+        LoadPinnedApps(settingsResult.Settings.PinOrder);
         if (settingsResult.Error is not null)
         {
             ShowStatus(settingsResult.Error);
@@ -83,6 +86,7 @@ public partial class MainWindow : Window
 
         _source = source;
         _source.AddHook(WindowProc);
+        _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
         if (!ExcludeFromTaskSwitcher(source.Handle))
         {
             ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
@@ -160,6 +164,13 @@ public partial class MainWindow : Window
 
     private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (_taskbarCreatedMessage != 0 && unchecked((uint)message) == _taskbarCreatedMessage)
+        {
+            _replacementSession?.HandleTaskbarCreated();
+            handled = true;
+            return IntPtr.Zero;
+        }
+
         // Keep the application's foreground state intact until the dock command runs.
         if (message == WmMouseActivate)
         {
@@ -175,12 +186,34 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private void LoadPinnedApps()
+    private void LoadPinnedApps(IReadOnlyList<string>? preferredOrder = null)
     {
         var result = WindowsTaskbarPinImporter.Import();
-        foreach (var app in result.Apps)
+        var apps = result.Apps.ToList();
+        foreach (var app in apps)
         {
             app.Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath);
+        }
+
+        if (preferredOrder is { Count: > 0 })
+        {
+            var orderMap = preferredOrder
+                .Select((path, index) => (path, index))
+                .ToDictionary(pair => pair.path, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+
+            apps.Sort((a, b) =>
+            {
+                var hasA = orderMap.TryGetValue(a.ExecutablePath, out var indexA);
+                var hasB = orderMap.TryGetValue(b.ExecutablePath, out var indexB);
+                if (hasA && hasB) return indexA.CompareTo(indexB);
+                if (hasA) return -1;
+                if (hasB) return 1;
+                return 0;
+            });
+        }
+
+        foreach (var app in apps)
+        {
             _pinnedApps.Add(app);
         }
 
@@ -207,8 +240,8 @@ public partial class MainWindow : Window
 
         if (_thumbnailPreview.IsVisible)
         {
-            var currentWindow = windows.FirstOrDefault(window => window.Handle == _thumbnailPreview.SourceHandle);
-            if (currentWindow is null)
+            var activeHandles = _thumbnailPreview.ActiveHandles;
+            if (activeHandles.Count > 0 && !activeHandles.Any(h => windows.Any(w => w.Handle == h)))
             {
                 _thumbnailPreview.Hide();
             }
@@ -460,6 +493,82 @@ public partial class MainWindow : Window
         // Snapshot before Button focus handling and preview dismissal can change foreground activation.
         var foreground = NativeWindowTracker.GetForegroundApplicationWindow();
         _foregroundAtAppPress = foreground != 0 ? foreground : _foregroundWindow;
+
+        if (sender is Button { DataContext: DockApp app } && _pinnedApps.Contains(app))
+        {
+            _dragStartPoint = e.GetPosition(this);
+            _draggedApp = app;
+        }
+        else
+        {
+            _draggedApp = null;
+        }
+    }
+
+    private void DockApp_PreviewMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _draggedApp = null;
+    }
+
+    private void DockApp_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _draggedApp is null || sender is not Button button)
+        {
+            return;
+        }
+
+        var currentPoint = e.GetPosition(this);
+        var diff = _dragStartPoint - currentPoint;
+        if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+        {
+            var app = _draggedApp;
+            _draggedApp = null;
+            _foregroundAtAppPress = null;
+            _previewCloseTimer.Stop();
+            _thumbnailPreview.Hide();
+            ResetMagnification();
+            DragDrop.DoDragDrop(button, app, DragDropEffects.Move);
+        }
+    }
+
+    private void DockApp_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(typeof(DockApp))
+            && sender is Button targetButton
+            && targetButton.DataContext is DockApp targetApp
+            && _pinnedApps.Contains(targetApp))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+        }
+    }
+
+    private void DockApp_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(DockApp)) is DockApp sourceApp
+            && sender is Button targetButton
+            && targetButton.DataContext is DockApp targetApp
+            && _pinnedApps.Contains(sourceApp)
+            && _pinnedApps.Contains(targetApp)
+            && !ReferenceEquals(sourceApp, targetApp))
+        {
+            var oldIndex = _pinnedApps.IndexOf(sourceApp);
+            var newIndex = _pinnedApps.IndexOf(targetApp);
+            if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+            {
+                _pinnedApps.Move(oldIndex, newIndex);
+                SavePinOrder();
+                _replacementSession?.RefreshPosition();
+            }
+        }
+
+        e.Handled = true;
     }
 
     private void DockApp_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -641,16 +750,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        var window = FindWindowForExecutable(executablePath);
-        ToolTipService.SetIsEnabled((Button)sender, window is null);
-        if (window is null)
+        var matchingWindows = _windowTracker?.Snapshot
+            .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+            .ToList() ?? [];
+
+        ToolTipService.SetIsEnabled((Button)sender, matchingWindows.Count == 0);
+        if (matchingWindows.Count == 0)
         {
             _thumbnailPreview.Hide();
             return;
         }
 
         var appIcon = ((Button)sender).DataContext is DockApp app ? app.Icon : null;
-        _thumbnailPreview.ShowFor(window.Handle, (FrameworkElement)sender, window.Title, appIcon);
+        _thumbnailPreview.ShowForWindows(matchingWindows, (FrameworkElement)sender, appIcon);
     }
 
     private void DockApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
@@ -830,6 +942,7 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
         SetMenuItemVisibility(contextMenu, "CloseDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "TerminateDockApp", isRunning);
+        SetMenuItemVisibility(contextMenu, "PinDockApp", hasAppTarget && !isPinnedTarget);
         SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
         SetSeparatorVisibility(contextMenu, "RunningCommandsDivider", isRunning);
 
@@ -849,6 +962,10 @@ public partial class MainWindow : Window
             activateMenuItem.Header = isRunning
                 ? (pinnedApp.IsForeground ? "Pencereyi küçült" : "Pencereyi öne getir")
                 : "Uygulamayı aç";
+        }
+        if (FindMenuItem(contextMenu, "PinDockApp") is { } pinMenuItem)
+        {
+            pinMenuItem.CommandParameter = pinnedApp;
         }
         if (FindMenuItem(contextMenu, "UnpinDockApp") is { } unpinMenuItem)
         {
@@ -915,6 +1032,46 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PinDockApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { CommandParameter: DockApp app })
+        {
+            return;
+        }
+
+        var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
+        if (error is not null || shortcutPath is null)
+        {
+            ShowStatus(error ?? "Uygulama sabitlenemedi.");
+            return;
+        }
+
+        ClearStatus();
+
+        var pinnedApp = new DockApp(app.Name, app.ExecutablePath)
+        {
+            Icon = app.Icon,
+            LaunchArguments = app.LaunchArguments,
+            ShortcutPath = shortcutPath,
+            HasNotification = app.HasNotification,
+            IsForeground = app.IsForeground,
+            WindowCount = app.WindowCount
+        };
+
+        _runningApps.Remove(app);
+        _pinnedApps.Add(pinnedApp);
+
+        SavePinOrder();
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
+    }
+
+    private void SavePinOrder()
+    {
+        var order = _pinnedApps.Select(app => app.ExecutablePath).ToList();
+        _dockSettingsStore.Save(new DockSettings(_dockPosition, order));
+    }
+
     private void UnpinDockApp_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { CommandParameter: DockApp { ShortcutPath: not null } app })
@@ -932,6 +1089,7 @@ public partial class MainWindow : Window
         ClearStatus();
         AnimateDockAppRemoval(PinnedApps, _pinnedApps, app, () =>
         {
+            SavePinOrder();
             if (_windowTracker is not null)
             {
                 UpdateRunningApps(_windowTracker.Snapshot);
@@ -1123,7 +1281,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var error = _dockSettingsStore.Save(new DockSettings(position));
+        var currentOrder = _pinnedApps.Select(app => app.ExecutablePath).ToList();
+        var error = _dockSettingsStore.Save(new DockSettings(position, currentOrder));
         if (error is not null)
         {
             ShowStatus(error);
@@ -1410,4 +1569,7 @@ public partial class MainWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(nint windowHandle, nint insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegisterWindowMessageW")]
+    private static extern uint RegisterWindowMessage(string message);
 }

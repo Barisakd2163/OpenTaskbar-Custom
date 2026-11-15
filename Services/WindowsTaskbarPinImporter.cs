@@ -152,6 +152,106 @@ public static class WindowsTaskbarPinImporter
         return (apps, error);
     }
 
+    public static (string? ShortcutPath, string? Error) AddPin(string appName, string executablePath, string? launchArguments = null)
+    {
+        var pinDirectory = Path.GetFullPath(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Microsoft",
+            "Internet Explorer",
+            "Quick Launch",
+            "User Pinned",
+            "TaskBar"));
+
+        try
+        {
+            Directory.CreateDirectory(pinDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (null, "Windows görev çubuğu sabitleme klasörü oluşturulamadı.");
+        }
+
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var safeName = new string(appName.Where(ch => !invalidChars.Contains(ch)).ToArray()).Trim();
+        if (string.IsNullOrWhiteSpace(safeName))
+        {
+            safeName = Path.GetFileNameWithoutExtension(executablePath);
+        }
+
+        var shortcutPath = Path.Combine(pinDirectory, safeName + ".lnk");
+
+        Type? shellType;
+        object? shell;
+        try
+        {
+            shellType = Type.GetTypeFromProgID("WScript.Shell");
+            shell = shellType is null ? null : Activator.CreateInstance(shellType);
+        }
+        catch (COMException)
+        {
+            return (null, "Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.");
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is COMException)
+        {
+            return (null, "Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.");
+        }
+
+        if (shellType is null || shell is null)
+        {
+            return (null, "Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.");
+        }
+
+        try
+        {
+            var shortcut = shellType.InvokeMember(
+                "CreateShortcut",
+                BindingFlags.InvokeMethod,
+                binder: null,
+                target: shell,
+                args: [shortcutPath]);
+
+            if (shortcut is null)
+            {
+                return (null, "Kısayol nesnesi oluşturulamadı.");
+            }
+
+            try
+            {
+                var shortcutType = shortcut.GetType();
+                shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, [executablePath]);
+                var workingDir = Path.GetDirectoryName(executablePath);
+                if (!string.IsNullOrEmpty(workingDir))
+                {
+                    shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, [workingDir]);
+                }
+                if (!string.IsNullOrWhiteSpace(launchArguments))
+                {
+                    shortcutType.InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut, [launchArguments]);
+                }
+                shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+                return (shortcutPath, null);
+            }
+            finally
+            {
+                if (Marshal.IsComObject(shortcut))
+                {
+                    _ = Marshal.FinalReleaseComObject(shortcut);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is COMException or TargetInvocationException or IOException or UnauthorizedAccessException)
+        {
+            return (null, "Uygulama Windows görev çubuğuna sabitlenemedi.");
+        }
+        finally
+        {
+            if (Marshal.IsComObject(shell))
+            {
+                _ = Marshal.FinalReleaseComObject(shell);
+            }
+        }
+    }
+
     public static string? RemovePin(string shortcutPath)
     {
         var pinDirectory = Path.GetFullPath(Path.Combine(
