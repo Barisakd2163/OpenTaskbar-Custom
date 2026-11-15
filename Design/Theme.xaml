@@ -56,4 +56,36 @@
         <Setter Property="BorderBrush" Value="{StaticResource StrokeSubtle}" />
         <Setter Property="Padding" Value="10,6" />
     </Style>
+
+    <!-- Lucide Vector Icon Geometries (24x24 outline coordinate space) -->
+    <StreamGeometry x:Key="IconOpen">M15 3h6v6 M10 14L21 3 M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6</StreamGeometry>
+    <StreamGeometry x:Key="IconAppCommands">M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z</StreamGeometry>
+    <StreamGeometry x:Key="IconWindowCommands">M2 4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z M2 8h20 M6 5h0.01 M10 5h0.01</StreamGeometry>
+    <StreamGeometry x:Key="IconPin">M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 0.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-0.76a2 2 0 0 0-1.11-1.79l-1.78-0.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z</StreamGeometry>
+    <StreamGeometry x:Key="IconUnpin">M12 17v5 M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89 M2 2l20 20 M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78 0.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11</StreamGeometry>
+    <StreamGeometry x:Key="IconClose">M18 6L6 18 M6 6l12 12</StreamGeometry>
+    <StreamGeometry x:Key="IconTerminate">M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86L7.86 2z M12 8v4 M12 16h0.01</StreamGeometry>
+    <StreamGeometry x:Key="IconSettings">M21 4h-7 M10 4H3 M14 2v4 M21 12h-9 M8 12H3 M12 10v4 M21 20h-5 M12 20H3 M16 18v4</StreamGeometry>
+    <StreamGeometry x:Key="IconAlignLeft">M21 6H3 M15 12H3 M17 18H3</StreamGeometry>
+    <StreamGeometry x:Key="IconAlignCenter">M21 6H3 M17 12H7 M19 18H5</StreamGeometry>
+    <StreamGeometry x:Key="IconAlignRight">M21 6H3 M21 12H9 M21 18H7</StreamGeometry>
+    <StreamGeometry x:Key="IconExit">M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9</StreamGeometry>
+    <StreamGeometry x:Key="IconCheck">M20 6L9 17l-5-5</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronRight">M9 18l6-6-6-6</StreamGeometry>
+
+    <!-- Vector Icon DataTemplate for MenuItems -->
+    <DataTemplate DataType="{x:Type Geometry}">
+        <Path Data="{Binding}"
+              Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource AncestorType=ContentPresenter}}"
+              StrokeThickness="1.6"
+              StrokeStartLineCap="Round"
+              StrokeEndLineCap="Round"
+              StrokeLineJoin="Round"
+              Width="14"
+              Height="14"
+              Stretch="Uniform"
+              SnapsToDevicePixels="True"
+              VerticalAlignment="Center"
+              HorizontalAlignment="Center" />
+    </DataTemplate>
 </ResourceDictionary>

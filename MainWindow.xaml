@@ -39,17 +39,26 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="22" />
                                     </Grid.ColumnDefinitions>
-                                    <ContentPresenter Content="{TemplateBinding Icon}" TextElement.FontFamily="Segoe MDL2 Assets"
-                                                      TextElement.FontSize="14" TextElement.Foreground="{StaticResource TextSecondary}"
-                                                      VerticalAlignment="Center" HorizontalAlignment="Left" />
+                                    <ContentPresenter x:Name="IconHost" Content="{TemplateBinding Icon}"
+                                                      TextElement.Foreground="{StaticResource TextSecondary}"
+                                                      Width="16" Height="16"
+                                                      VerticalAlignment="Center" HorizontalAlignment="Center" />
                                     <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
                                                       VerticalAlignment="Center" />
-                                    <TextBlock x:Name="Checkmark" Grid.Column="2" Text="&#xE73E;"
-                                                FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"
-                                                HorizontalAlignment="Right" Visibility="Collapsed" />
-                                    <TextBlock x:Name="SubmenuArrow" Grid.Column="2" Text="&#xE76C;"
-                                                FontFamily="Segoe MDL2 Assets" FontSize="10" VerticalAlignment="Center"
-                                                HorizontalAlignment="Right" Visibility="Collapsed" />
+                                    <Path x:Name="Checkmark" Grid.Column="2"
+                                          Data="{StaticResource IconCheck}"
+                                          Stroke="{StaticResource TextPrimary}"
+                                          StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Width="12" Height="12" Stretch="Uniform" SnapsToDevicePixels="True"
+                                          VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="Collapsed" />
+                                    <Path x:Name="SubmenuArrow" Grid.Column="2"
+                                          Data="{StaticResource IconChevronRight}"
+                                          Stroke="{StaticResource TextSecondary}"
+                                          StrokeThickness="1.6"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Width="10" Height="10" Stretch="Uniform" SnapsToDevicePixels="True"
+                                          VerticalAlignment="Center" HorizontalAlignment="Right" Visibility="Collapsed" />
                                 </Grid>
                             </Border>
                             <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
@@ -67,6 +76,8 @@
                             </Trigger>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="ItemSurface" Property="Background" Value="{StaticResource SurfaceHover}" />
+                                <Setter TargetName="IconHost" Property="TextElement.Foreground" Value="{StaticResource TextPrimary}" />
+                                <Setter TargetName="SubmenuArrow" Property="Stroke" Value="{StaticResource TextPrimary}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Checkmark" Property="Visibility" Value="Visible" />
@@ -132,23 +143,23 @@
         </Style>
         <ContextMenu x:Key="AppContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
             <Separator Tag="JumpListCommands" Visibility="Collapsed" />
-            <MenuItem Header="Uygulamayı aç" Icon="&#xE8A7;" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
-            <MenuItem Header="Uygulama komutları" Icon="&#xE8A7;" Tag="NativeAppCommands" Visibility="Collapsed" />
-            <MenuItem Header="Pencere komutları" Icon="&#xE737;" Tag="NativeWindowCommands" Visibility="Collapsed" />
-            <MenuItem Header="Görev çubuğuna sabitle" Icon="&#xE718;" Tag="PinDockApp" Visibility="Collapsed" Click="PinDockApp_Click" />
-            <MenuItem Header="Sabitlemeyi kaldır" Icon="&#xE77A;" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
+            <MenuItem Header="Uygulamayı aç" Icon="{StaticResource IconOpen}" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
+            <MenuItem Header="Uygulama komutları" Icon="{StaticResource IconAppCommands}" Tag="NativeAppCommands" Visibility="Collapsed" />
+            <MenuItem Header="Pencere komutları" Icon="{StaticResource IconWindowCommands}" Tag="NativeWindowCommands" Visibility="Collapsed" />
+            <MenuItem Header="Görev çubuğuna sabitle" Icon="{StaticResource IconPin}" Tag="PinDockApp" Visibility="Collapsed" Click="PinDockApp_Click" />
+            <MenuItem Header="Sabitlemeyi kaldır" Icon="{StaticResource IconUnpin}" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
             <Separator Tag="RunningCommandsDivider" />
-            <MenuItem Header="Uygulamayı kapat" Icon="&#xE711;" Tag="CloseDockApp" Click="CloseDockApp_Click" />
-            <MenuItem Header="Süreci sonlandır…" Icon="&#xE7BA;" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
+            <MenuItem Header="Uygulamayı kapat" Icon="{StaticResource IconClose}" Tag="CloseDockApp" Click="CloseDockApp_Click" />
+            <MenuItem Header="Süreci sonlandır…" Icon="{StaticResource IconTerminate}" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
         </ContextMenu>
         <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
-            <MenuItem Header="Görev çubuğu konumu" Icon="&#xE713;" Tag="DockSettings">
-                <MenuItem Header="Sol" Icon="&#xE8E4;" Tag="Left" IsCheckable="True" Click="DockPosition_Click" />
-                <MenuItem Header="Orta" Icon="&#xE8E3;" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
-                <MenuItem Header="Sağ" Icon="&#xE8E2;" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
+            <MenuItem Header="Görev çubuğu konumu" Icon="{StaticResource IconSettings}" Tag="DockSettings">
+                <MenuItem Header="Sol" Icon="{StaticResource IconAlignLeft}" Tag="Left" IsCheckable="True" Click="DockPosition_Click" />
+                <MenuItem Header="Orta" Icon="{StaticResource IconAlignCenter}" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
+                <MenuItem Header="Sağ" Icon="{StaticResource IconAlignRight}" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
             </MenuItem>
             <Separator />
-            <MenuItem Header="OpenTaskbar’dan çık" Icon="&#xE711;" Click="ExitOpenTaskbar_Click" />
+            <MenuItem Header="OpenTaskbar’dan çık" Icon="{StaticResource IconExit}" Click="ExitOpenTaskbar_Click" />
         </ContextMenu>
 
         <Style x:Key="DockButton" TargetType="Button">
