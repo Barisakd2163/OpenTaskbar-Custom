@@ -98,14 +98,15 @@ public sealed class NativeWindowTracker : IDisposable
     private void RefreshWindows()
     {
         var windows = new List<TrackedWindow>();
-        var collectorHandle = GCHandle.Alloc(windows);
+        var previousWindows = Snapshot.ToDictionary(window => window.Handle);
+        var state = GCHandle.Alloc(new WindowCollectionState(windows, previousWindows));
         try
         {
-            EnumWindows(_enumCallback, GCHandle.ToIntPtr(collectorHandle));
+            EnumWindows(_enumCallback, GCHandle.ToIntPtr(state));
         }
         finally
         {
-            collectorHandle.Free();
+            state.Free();
         }
 
         if (Snapshot.SequenceEqual(windows))
@@ -136,9 +137,17 @@ public sealed class NativeWindowTracker : IDisposable
         var value = title.ToString().Trim();
         if (value.Length > 0)
         {
-            if (GCHandle.FromIntPtr(state).Target is List<TrackedWindow> windows)
+            if (GCHandle.FromIntPtr(state).Target is WindowCollectionState collection)
             {
-                windows.Add(new TrackedWindow(windowHandle, value));
+                if (collection.Previous.TryGetValue(windowHandle, out var previous))
+                {
+                    collection.Windows.Add(previous with { Title = value });
+                }
+                else
+                {
+                    collection.Windows.Add(new TrackedWindow(windowHandle, value,
+                        ApplicationIconProvider.GetForWindow(windowHandle)));
+                }
             }
         }
 
@@ -180,6 +189,8 @@ public sealed class NativeWindowTracker : IDisposable
 
     private delegate void WinEventDelegate(nint hook, uint eventType, nint windowHandle, int objectId, int childId, uint eventThread, uint eventTime);
     private delegate bool EnumWindowsDelegate(nint windowHandle, nint state);
+
+    private sealed record WindowCollectionState(List<TrackedWindow> Windows, IReadOnlyDictionary<nint, TrackedWindow> Previous);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint eventHookModule, WinEventDelegate callback, uint processId, uint threadId, uint flags);

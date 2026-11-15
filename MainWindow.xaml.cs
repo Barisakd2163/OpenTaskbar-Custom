@@ -5,7 +5,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
-using Microsoft.Win32;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -17,6 +16,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<TrackedWindow> _runningWindows = [];
     private readonly PinnedAppStore _pinnedAppStore = new();
     private NativeWindowTracker? _windowTracker;
+    private TaskbarReplacementSession? _replacementSession;
+    private HwndSource? _source;
 
     public MainWindow()
     {
@@ -36,6 +37,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        _source = source;
+        _source.AddHook(WindowProc);
         _windowTracker = new NativeWindowTracker(Dispatcher);
         _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
         try
@@ -48,14 +51,59 @@ public partial class MainWindow : Window
             _windowTracker.Dispose();
             _windowTracker = null;
         }
+
+        StartReplacementMode();
     }
 
     private void PositionDock()
     {
+        if (_replacementSession?.IsActive == true)
+        {
+            return;
+        }
+
         var workArea = SystemParameters.WorkArea;
-        Width = Math.Min(900, Math.Max(360, workArea.Width - 24));
-        Left = workArea.Left + (workArea.Width - Width) / 2;
-        Top = Math.Max(workArea.Top, workArea.Bottom - Height - 12);
+        Width = SystemParameters.PrimaryScreenWidth;
+        DockSurface.Width = Width;
+        Left = workArea.Left;
+        Top = Math.Max(workArea.Top, workArea.Bottom - Height);
+    }
+
+    private void StartReplacementMode()
+    {
+        var source = _source;
+        if (source is null)
+        {
+            ShowStatus("Dock penceresi hazır olmadan görev çubuğu modu açılamaz.");
+            return;
+        }
+
+        Width = SystemParameters.PrimaryScreenWidth;
+        DockSurface.Width = Width;
+        Height = 64;
+        var session = new TaskbarReplacementSession(this, source.Handle);
+        try
+        {
+            session.Start();
+            _replacementSession = session;
+        }
+        catch (InvalidOperationException ex)
+        {
+            session.Dispose();
+            Height = 64;
+            PositionDock();
+            ShowStatus(ex.Message);
+        }
+    }
+
+    private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (_replacementSession?.HandleMessage(unchecked((uint)message), wParam, lParam) == true)
+        {
+            handled = true;
+        }
+
+        return IntPtr.Zero;
     }
 
     private void LoadPinnedApps()
@@ -63,7 +111,7 @@ public partial class MainWindow : Window
         var result = _pinnedAppStore.Load();
         foreach (var app in result.Apps)
         {
-            _pinnedApps.Add(app);
+            _pinnedApps.Add(app with { Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath) });
         }
 
         if (result.Error is not null)
@@ -79,41 +127,6 @@ public partial class MainWindow : Window
         {
             _runningWindows.Add(window);
         }
-
-        EmptyState.Visibility = _runningWindows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void PinButton_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Dock'a uygulama sabitle",
-            Filter = "Windows uygulamaları (*.exe)|*.exe",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        if (_pinnedApps.Any(app => string.Equals(app.ExecutablePath, dialog.FileName, StringComparison.OrdinalIgnoreCase)))
-        {
-            ShowStatus("Bu uygulama dock'ta zaten sabitli.");
-            return;
-        }
-
-        var app = new PinnedApp(Path.GetFileNameWithoutExtension(dialog.FileName), dialog.FileName);
-        var error = _pinnedAppStore.Save(_pinnedApps.Append(app));
-        if (error is not null)
-        {
-            ShowStatus(error);
-            return;
-        }
-
-        _pinnedApps.Add(app);
-        ClearStatus();
     }
 
     private void PinnedApp_Click(object sender, RoutedEventArgs e)
@@ -187,22 +200,26 @@ public partial class MainWindow : Window
 
     private void ShowStatus(string message)
     {
-        Height = 132;
-        PositionDock();
         StatusText.Text = message;
-        StatusText.Visibility = Visibility.Visible;
+        _replacementSession?.RefreshPosition();
     }
 
     private void ClearStatus()
     {
         StatusText.Text = string.Empty;
-        StatusText.Visibility = Visibility.Collapsed;
-        Height = 112;
-        PositionDock();
+        _replacementSession?.RefreshPosition();
     }
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _source?.RemoveHook(WindowProc);
+        _source = null;
+        if (_replacementSession is not null)
+        {
+            _replacementSession.Dispose();
+            _replacementSession = null;
+        }
+
         if (_windowTracker is not null)
         {
             _windowTracker.WindowsChanged -= WindowTracker_WindowsChanged;
