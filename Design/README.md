@@ -31,6 +31,7 @@
 - Snapshot the foreground application on preview mouse-down, before button focus and thumbnail dismissal. Use that snapshot to select and minimize the active window. Ignore OpenTaskbar-owned foreground events when remembering the last external window. Minimize with `ShowWindowAsync`; success means Windows accepted the request, not that the transition has already completed. Clear pointer snapshots on keyboard input.
 - Show window title and application icon in a 40 DIP preview header. Reserve thumbnail space below it. Its close button sends a normal close request only to the previewed window.
 - Hide the thumbnail before opening an application context menu. Disable the redundant name tooltip while a window preview is available.
+- Exit from the dock surface menu closes the main window. Disable hidden-state enforcement before restoring Explorer so reentrant Shell notifications cannot hide it again. Preserve the session and recovery record on restoration failure; ordinary window close remains cancellable. Reuse the restoration operation for application exit, session ending, and managed process exit. Force-kill termination cannot run in-process cleanup.
 
 ## Verification limits
 

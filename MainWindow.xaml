@@ -128,6 +128,8 @@
                 <MenuItem Header="Orta" Icon="&#xE8E3;" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
                 <MenuItem Header="Sağ" Icon="&#xE8E2;" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
             </MenuItem>
+            <Separator />
+            <MenuItem Header="OpenTaskbar’dan çık" Icon="&#xE711;" Click="ExitOpenTaskbar_Click" />
         </ContextMenu>
 
         <Style x:Key="DockButton" TargetType="Button">

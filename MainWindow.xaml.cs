@@ -144,14 +144,15 @@ public partial class MainWindow : Window
         session.OperationFailed += ShowStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
+        _replacementSession = session;
         try
         {
             session.Start();
-            _replacementSession = session;
         }
         catch (InvalidOperationException ex)
         {
             session.Dispose();
+            if (!session.IsActive) _replacementSession = null;
             PositionDock();
             ShowStatus(ex.Message);
         }
@@ -1327,23 +1328,36 @@ public partial class MainWindow : Window
             SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
     }
 
+    private void ExitOpenTaskbar_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    internal string? RestoreWindowsTaskbar()
+    {
+        var session = _replacementSession;
+        if (session is null) return null;
+        var error = session.Stop();
+        if (session.IsActive) return error;
+        session.OperationFailed -= ShowStatus;
+        session.LayoutChanged -= ApplyTaskbarLayout;
+        session.FullScreenChanged -= OnFullScreenChanged;
+        session.Dispose();
+        _replacementSession = null;
+        return error;
+    }
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (_replacementSession is null)
-        {
-            return;
-        }
-
-        var error = _replacementSession.Stop();
-        if (_replacementSession.IsActive)
+        var error = RestoreWindowsTaskbar();
+        if (_replacementSession?.IsActive == true)
         {
             e.Cancel = true;
             ShowStatus(error ?? "Windows görev çubuğu geri yüklenemedi. Uygulama açık bırakıldı.");
             return;
         }
 
-        _replacementSession.Dispose();
-        _replacementSession = null;
+        if (error is not null) Trace.TraceWarning(error);
     }
 
     private void Window_Closed(object? sender, EventArgs e)

@@ -18,6 +18,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Hides the Explorer taskbar while the dock overlays its reserved bottom area, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
+- Choose “OpenTaskbar’dan çık” from the dock surface menu to exit and show the native Windows taskbar with its previous auto-hide state. Restoration disables replacement callbacks before changing Shell state and also runs on application exit, Windows session ending, and managed process exit. Forceful process termination cannot execute these callbacks; the recovery record remains for the next startup.
 - Uses Windows accessibility events to match eligible open windows with application icons and update notification badges. It omits owned and tool windows, Windows system-app helper windows, and Explorer shell windows that are not File Explorer windows, and briefly coalesces bursts of change events.
 - Runs without administrator rights or network access. Taskbar replacement changes only the current user's Windows taskbar state.
 

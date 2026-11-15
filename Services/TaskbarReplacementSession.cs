@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -38,14 +39,16 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _fullScreenSuppressed;
     private double _nativeTaskbarHeight = 48;
     private Size _lastLayout;
+    private int _stopInProgress;
 
     public TaskbarReplacementSession(Window window, nint handle)
     {
         _window = window;
         _handle = handle;
+        AppDomain.CurrentDomain.ProcessExit += Process_Exit;
     }
 
-    public bool IsActive => _active;
+    public bool IsActive => _active || _stateChangeStarted;
 
     public event Action<string>? OperationFailed;
     public event Action<Size>? LayoutChanged;
@@ -53,7 +56,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public void UpdateForeground(nint windowHandle)
     {
-        if (!_active) return;
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         GetWindowThreadProcessId(windowHandle, out var processId);
         if (processId == Environment.ProcessId) return;
         SetFullScreenSuppression(IsFullScreen(windowHandle));
@@ -161,7 +164,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public bool HandleMessage(uint message, nint wParam, nint lParam)
     {
-        if (!_active)
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0)
         {
             return false;
         }
@@ -201,29 +204,36 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public string? Stop()
     {
-        if (!_active && !_registered && !_stateChangeStarted)
+        if (Interlocked.CompareExchange(ref _stopInProgress, 1, 0) != 0)
         {
-            return null;
+            return "Windows görev çubuğu geri yükleme işlemi devam ediyor.";
         }
 
-        if (_registered)
+        try
         {
-            var data = CreateData();
-            SHAppBarMessage(AbmRemove, ref data);
-            _registered = false;
-        }
+            if (!_active && !_registered && !_stateChangeStarted) return null;
 
-        var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
-        var taskbarShown = ShowNativeTaskbar();
-        if (!stateRestored || !taskbarShown)
+            // Stop enforcing hidden state before Shell calls can reenter our AppBar callback.
+            _active = false;
+            if (_registered)
+            {
+                var data = CreateData();
+                SHAppBarMessage(AbmRemove, ref data);
+                _registered = false;
+            }
+
+            var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
+            var taskbarShown = ShowNativeTaskbar();
+            if (!stateRestored || !taskbarShown)
+                return "Windows görev çubuğu geri yüklenemedi. Kapatmayı yeniden deneyin veya Windows görev çubuğu ayarlarını denetleyin.";
+
+            _stateChangeStarted = false;
+            return DeleteJournal();
+        }
+        finally
         {
-            _active = true;
-            return "Windows görev çubuğu ayarı geri yüklenemedi. Kapatmadan önce Windows ayarlarından otomatik gizlemeyi düzeltin.";
+            Volatile.Write(ref _stopInProgress, 0);
         }
-
-        _active = false;
-        _stateChangeStarted = false;
-        return DeleteJournal();
     }
 
     public void RefreshPosition()
@@ -233,7 +243,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private void PositionDockWindow()
     {
-        if (!_active && !_registered)
+        if ((!_active && !_registered) || Volatile.Read(ref _stopInProgress) != 0)
         {
             return;
         }
@@ -333,6 +343,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private void EnforceNativeTaskbarHidden()
     {
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
         if (!SetTaskbarState(replacementState, _handle))
         {
@@ -424,8 +435,17 @@ public sealed class TaskbarReplacementSession : IDisposable
             return;
         }
 
+        var error = Stop();
+        if (error is not null) Trace.TraceError(error);
+        if (IsActive) return;
         _disposed = true;
-        Stop();
+        AppDomain.CurrentDomain.ProcessExit -= Process_Exit;
+    }
+
+    private void Process_Exit(object? sender, EventArgs e)
+    {
+        var error = Stop();
+        if (error is not null) Trace.TraceError(error);
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -1,5 +1,4 @@
-using System.Configuration;
-using System.Data;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 
@@ -29,9 +28,22 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
+        if (error is not null)
+        {
+            Trace.TraceError(error);
+            e.ApplicationExitCode = 1;
+        }
         _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         _instanceMutex = null;
         base.OnExit(e);
+    }
+
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
+        if (error is not null) Trace.TraceError(error);
+        base.OnSessionEnding(e);
     }
 }
