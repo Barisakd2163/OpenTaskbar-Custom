@@ -1,7 +1,10 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Shell;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -18,6 +21,7 @@ public partial class SettingsWindow : Window
     private bool _closingApplication;
     private bool _initializing = true;
     private bool _sourceReady;
+    private HwndSource? _source;
 
     public SettingsWindow(ApplicationPreferences preferences)
     {
@@ -28,6 +32,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) =>
         {
             _preferences.Changed -= Preferences_Changed;
+            if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             ThemeManager.SetSurfaceOpacity(_preferences.Current.SurfaceOpacity);
         };
         DarkTheme.IsChecked = _applied.Theme == AppTheme.Dark;
@@ -72,8 +77,31 @@ public partial class SettingsWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        _source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        _source?.AddHook(WindowProc);
         _sourceReady = true;
         UpdateBackdrop();
+    }
+
+    private nint WindowProc(nint window, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        if (message != 0x0024 || lParam == 0) return 0; // WM_GETMINMAXINFO
+        var monitor = MonitorFromWindow(window, 2);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == 0 || !GetMonitorInfo(monitor, ref info))
+        {
+            Trace.TraceWarning("Settings monitor work area unavailable: {0}", Marshal.GetLastWin32Error());
+            return 0;
+        }
+        var sizing = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+        sizing.MaxPosition = new NativePoint(info.Work.Left - info.Monitor.Left, info.Work.Top - info.Monitor.Top);
+        sizing.MaxSize = new NativePoint(info.Work.Right - info.Work.Left, info.Work.Bottom - info.Work.Top);
+        var dpi = GetDpiForWindow(window);
+        var scale = dpi > 0 ? dpi / 96d : 1;
+        sizing.MinTrackSize = new NativePoint((int)Math.Ceiling(MinWidth * scale), (int)Math.Ceiling(MinHeight * scale));
+        Marshal.StructureToPtr(sizing, lParam, false);
+        handled = true;
+        return 0;
     }
 
     private void Preferences_Changed(object? sender, EventArgs e)
@@ -195,5 +223,14 @@ public partial class SettingsWindow : Window
         e.Handled = true;
         Close();
     }
+
+    [StructLayout(LayoutKind.Sequential)] private struct NativePoint(int x, int y) { public int X = x; public int Y = y; }
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
+    [StructLayout(LayoutKind.Sequential)] private struct MinMaxInfo { public NativePoint Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize; }
+    [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint window, uint flags);
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint window);
 
 }
