@@ -10,24 +10,24 @@
     <Thickness x:Key="MenuDividerInset">12,7</Thickness>
     <sys:Double x:Key="TextSizeBody">13</sys:Double>
     <sys:Double x:Key="TextSizeCaption">12</sys:Double>
-    <sys:Double x:Key="DockHeadroom">28</sys:Double>
-    <sys:Double x:Key="DockWindowHeight">100</sys:Double>
-    <sys:Double x:Key="DockCellSize">64</sys:Double>
-    <sys:Double x:Key="DockCellHeight">58</sys:Double>
-    <sys:Double x:Key="DockIconSize">48</sys:Double>
+    <sys:Double x:Key="DockHeadroom">24</sys:Double>
+    <sys:Double x:Key="DockWindowHeight">90</sys:Double>
+    <sys:Double x:Key="DockCellSize">52</sys:Double>
+    <sys:Double x:Key="DockCellHeight">52</sys:Double>
+    <sys:Double x:Key="DockIconSize">42</sys:Double>
     <sys:Double x:Key="PreviewWidth">344</sys:Double>
     <sys:Double x:Key="PreviewHeight">236</sys:Double>
     <sys:Double x:Key="PreviewHeaderHeight">40</sys:Double>
-    <sys:Double x:Key="PreviewGap">22</sys:Double>
-    <sys:Double x:Key="DockHoverScale">1.32</sys:Double>
+    <sys:Double x:Key="PreviewGap">18</sys:Double>
+    <sys:Double x:Key="DockHoverScale">1.28</sys:Double>
     <sys:Double x:Key="HoverDurationMs">120</sys:Double>
     <sys:Double x:Key="PreviewDurationMs">160</sys:Double>
-    <Thickness x:Key="DockInset">12,2,12,8</Thickness>
-    <Thickness x:Key="DockPadding">16,2</Thickness>
+    <Thickness x:Key="DockInset">12,0,12,6</Thickness>
+    <Thickness x:Key="DockPadding">10,4</Thickness>
     <Thickness x:Key="ControlStroke">1</Thickness>
-    <CornerRadius x:Key="DockRadius">22</CornerRadius>
-    <CornerRadius x:Key="ControlRadius">14</CornerRadius>
-    <CornerRadius x:Key="PopupRadius">12</CornerRadius>
+    <CornerRadius x:Key="DockRadius">18</CornerRadius>
+    <CornerRadius x:Key="ControlRadius">12</CornerRadius>
+    <CornerRadius x:Key="PopupRadius">10</CornerRadius>
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{DynamicResource SurfacePopup}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />

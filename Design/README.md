@@ -10,18 +10,18 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 | Token | Value | Description |
 | :--- | :--- | :--- |
-| `DockWindowHeight` | `100 DIP` | Total height of the transparent window container |
-| `DockHeadroom` | `28 DIP` | Transparent top headroom allowing unclipped icon magnification |
-| `_nativeTaskbarHeight` | `72 DIP` | Base height of the floating dock container shelf |
-| `DockCellSize` | `64 DIP` | Width of an individual dock application item cell |
-| `DockCellHeight` | `58 DIP` | Height of an individual dock application item cell |
-| `DockIconSize` | `48 DIP` | macOS-style large icon display size (clamped 28–52 DIP on overflow) |
-| `DockHoverScale` | `1.32x` | Peak magnification scale for the hovered dock item |
-| `DockRadius` | `22 DIP` | Pill container corner radius (`CornerRadius="22"`) |
-| `ControlRadius` | `14 DIP` | Standard control and button corner radius |
-| `PopupRadius` | `12 DIP` | Context menu and window preview corner radius |
-| `PreviewGap` | `22 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
-| `StatusDotSize` | `4.5 DIP / 5.5 DIP` | Running and active application indicator dot diameter |
+| `DockWindowHeight` | `90 DIP` | Total height of the transparent window container |
+| `DockHeadroom` | `24 DIP` | Transparent top headroom allowing unclipped icon magnification |
+| `_nativeTaskbarHeight` | `66 DIP` | Base height of the floating dock container shelf |
+| `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
+| `DockCellHeight` | `52 DIP` | Height of an individual dock application item cell |
+| `DockIconSize` | `42 DIP` | Prominent icon display size with balanced cell margins |
+| `DockHoverScale` | `1.28x` | Peak magnification scale for the hovered dock item |
+| `DockRadius` | `18 DIP` | Pill container corner radius (`CornerRadius="18"`) |
+| `ControlRadius` | `12 DIP` | Standard control and button corner radius |
+| `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |
+| `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
+| `StatusDotSize` | `4 DIP / 5 DIP` | Running and active application indicator dot diameter |
 
 ### Typography
 
@@ -55,14 +55,14 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 ### Continuous Fisheye Magnification
 - Pointer movement across the dock calculates a continuous parabolic/cosine wave scaling factor:
   $$S(d) = 1.0 + (S_{peak} - 1.0) \times \cos\left(\frac{\pi \cdot d}{2 \cdot R}\right)^2$$
-- Magnification smoothly affects the hovered icon and immediate neighbors within a 112 DIP influence radius ($R$).
-- Items scale anchored at `(0.5, 0.95)`, expanding upward into the 28 DIP transparent headroom without horizontal layout displacement or icon clipping.
+- Magnification smoothly affects the hovered icon and immediate neighbors within a 90 DIP influence radius ($R$).
+- Items scale anchored at `(0.5, 0.95)`, expanding upward into the 24 DIP transparent headroom without horizontal layout displacement or icon clipping.
 - Status dots remain stationary at the dock base.
 
 ### Multi-Window Live Thumbnails
 - Interactive live DWM thumbnails are created using `DwmRegisterThumbnail`.
 - Thumbnails fade and scale in from 95% over 160 ms with cubic ease-out.
-- The preview strip floats 22 DIPs (`PreviewGap`) above the dock to prevent overlapping magnified icons.
+- The preview strip floats 18 DIPs (`PreviewGap`) above the dock to prevent overlapping magnified icons.
 - Each preview card features the application icon, window title, close button, and live window preview.
 
 ### Smart Auto-Hide (IntelliHide)
@@ -72,7 +72,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease transition.
 
 ### Launch Bounce
-- Clicking an application icon triggers a 420 ms damped vertical launch bounce animation (-14 DIP peak) on its translate transform to provide tactile feedback while the application opens.
+- Clicking an application icon triggers a 420 ms damped vertical launch bounce animation (-12 DIP peak) on its translate transform to provide tactile feedback while the application opens.
 
 ---
 

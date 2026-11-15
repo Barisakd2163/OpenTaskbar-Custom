@@ -687,11 +687,11 @@ public partial class MainWindow : Window
             KeyFrames =
             {
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(-14, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
+                new EasingDoubleKeyFrame(-12, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240)),
                     new CubicEase { EasingMode = EasingMode.EaseIn }),
-                new EasingDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
+                new EasingDoubleKeyFrame(-5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)),
                     new CubicEase { EasingMode = EasingMode.EaseIn })
@@ -709,7 +709,7 @@ public partial class MainWindow : Window
 
         var mousePos = e.GetPosition(DockContents);
         var mouseX = mousePos.X;
-        const double influenceRadius = 112.0;
+        const double influenceRadius = 90.0;
         var maxScale = (double)FindResource("DockHoverScale");
 
         var currentMagnified = new HashSet<FrameworkElement>();
@@ -1522,12 +1522,13 @@ public partial class MainWindow : Window
     private void ApplyTaskbarLayout(Size area)
     {
         _dockArea = area;
-        var effectiveHeight = Math.Max(72, area.Height);
-        var topGap = Math.Clamp(Math.Round(effectiveHeight * 0.04), 2, 4);
-        var bottomGap = Math.Clamp(Math.Round(effectiveHeight * 0.12), 6, 12);
+        var effectiveHeight = Math.Max(66, area.Height);
+        var bottomGap = 6.0;
+        var topGap = Math.Max(0.0, effectiveHeight - 60 - bottomGap);
         DockSurface.Margin = new Thickness(12, topGap, 12, bottomGap);
-        Application.Current.Resources["DockCellHeight"] = Math.Max(32, effectiveHeight - topGap - bottomGap - 4);
-        Application.Current.Resources["DockIconSize"] = Math.Clamp((effectiveHeight - topGap - bottomGap - 4) * 0.82, 28, 52);
+        var availableCellHeight = Math.Min(52, effectiveHeight - bottomGap - topGap - 8);
+        Application.Current.Resources["DockCellHeight"] = Math.Max(32, availableCellHeight);
+        Application.Current.Resources["DockIconSize"] = Math.Clamp(availableCellHeight * 0.80, 24, 44);
         ResizeDockToContent();
     }
 
@@ -1548,8 +1549,8 @@ public partial class MainWindow : Window
         var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
             + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
         var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
-        Application.Current.Resources["DockCellSize"] = Math.Min(64,
-            Math.Max(28, (availableWidth - frameWidth - statusWidth) / count));
+        Application.Current.Resources["DockCellSize"] = Math.Min(52,
+            Math.Max(24, (availableWidth - frameWidth - statusWidth) / count));
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var padding = DockSurface.Padding;
         var margin = DockSurface.Margin;

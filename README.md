@@ -6,8 +6,8 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 ## Features
 
-- **macOS-Style Floating Dock:** Smooth rounded pill container (`CornerRadius="22"`) with large high-resolution application icons (48 DIP base, extracted at up to 128x128), translucent smoked glass material, specular top highlight, and ambient shadow.
-- **Continuous Fisheye Magnification:** Smooth parabolic wave scaling across hovered and adjacent icons (up to 1.32x) expanding into transparent headroom without layout jitter.
+- **macOS-Style Floating Dock:** Smooth rounded pill container (`CornerRadius="18"`) with prominent high-resolution application icons (42 DIP base, extracted at up to 128x128), translucent smoked glass material, specular top highlight, and ambient shadow.
+- **Continuous Fisheye Magnification:** Smooth parabolic wave scaling across hovered and adjacent icons (up to 1.28x) expanding into transparent headroom without layout jitter.
 - **Multi-Window Live Thumbnail Previews:** Interactive live DWM window preview cards for open applications with one-click window activation and individual window close controls.
 - **Smart Auto-Hide (IntelliHide):** Automatically slides down off-screen when an active or maximized window overlaps the dock, and stays visible on the desktop. Smoothly reveals when the mouse touches the bottom screen edge.
 - **Drag-and-Drop Reordering:** Reorder dock icons interactively with persistent order saved automatically.

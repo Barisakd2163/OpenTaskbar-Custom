@@ -49,12 +49,12 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Surface" Background="{TemplateBinding Background}"
-                                BorderBrush="Transparent" BorderThickness="1"
+                                BorderBrush="Transparent" BorderThickness="0"
                                 CornerRadius="{StaticResource ControlRadius}" Padding="{TemplateBinding Padding}">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="7" />
+                                    <RowDefinition Height="6" />
                                 </Grid.RowDefinitions>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 <Ellipse x:Name="ActiveIndicator" Grid.Row="1" Height="4" Width="4"
@@ -64,7 +64,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                                <Setter TargetName="Surface" Property="Background" Value="Transparent" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
@@ -141,8 +141,8 @@
                         </TransformGroup>
                     </Grid.RenderTransform>
                     <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
-                    <Ellipse Width="11" Height="11" Fill="{DynamicResource NotificationBrush}"
-                             Stroke="{DynamicResource SurfacePopup}" StrokeThickness="1.5"
+                    <Ellipse Width="9" Height="9" Fill="{DynamicResource NotificationBrush}"
+                             Stroke="{DynamicResource SurfacePopup}" StrokeThickness="1"
                              HorizontalAlignment="Right" VerticalAlignment="Top"
                              Visibility="{Binding HasNotification, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
@@ -157,7 +157,7 @@
         </Grid.RowDefinitions>
         <Border Grid.Row="1" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" />
         <Border x:Name="DockSurface" Grid.Row="1" HorizontalAlignment="Stretch" Padding="{StaticResource DockPadding}"
-                Margin="{StaticResource DockInset}" VerticalAlignment="Center"
+                Margin="{StaticResource DockInset}" VerticalAlignment="Bottom"
                 Background="{DynamicResource DockMaterial}" BorderBrush="{DynamicResource DockBorderMaterial}" BorderThickness="1"
                 CornerRadius="{StaticResource DockRadius}" ContextMenu="{StaticResource DockContextMenu}"
                 MouseEnter="DockSurface_MouseEnter" MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
@@ -165,7 +165,7 @@
                 <TranslateTransform x:Name="DockSurfaceTranslate" Y="0" />
             </Border.RenderTransform>
             <Border.Effect>
-                <DropShadowEffect Color="#000000" BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.40" RenderingBias="Performance" />
+                <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="3" Direction="270" Opacity="0.38" RenderingBias="Performance" />
             </Border.Effect>
         <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                     VerticalAlignment="Center">
@@ -179,17 +179,17 @@
                             <TranslateTransform Y="0" />
                         </TransformGroup>
                     </Grid.RenderTransform>
-                    <Path Width="28" Height="28" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
+                    <Path Width="24" Height="24" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
                           Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
                 </Grid>
             </Button>
-            <Border Width="1" Height="26" Background="{DynamicResource StrokeSubtle}" Margin="4,0,5,0" />
+            <Border Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="3,0,4,0" />
             <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
-            <Border x:Name="RunningAppsDivider" Width="1" Height="26" Background="{DynamicResource StrokeSubtle}" Margin="5,0,5,0" Visibility="Collapsed" />
+            <Border x:Name="RunningAppsDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="4,0,4,0" Visibility="Collapsed" />
             <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
