@@ -1,60 +1,81 @@
-# OpenTaskbar interface system
+# OpenTaskbar Design System
 
-`Theme.xaml` owns shared type, dimensions, and base controls. `Palettes/Dark.xaml` and `Palettes/Light.xaml` supply semantic colors; theme-dependent surfaces use dynamic resources. `ContextMenus.xaml` owns both context-menu styles and `SettingsControls.xaml` owns settings controls. There are no additional UI packages.
+OpenTaskbar uses a lightweight, vector-driven design system implemented in pure WPF XAML without third-party UI dependencies.
 
-## Visual rules
+---
 
-- Preserve the native colors of application icons. Use neutral charcoal surfaces and restrained white highlights around them.
-- Use Segoe UI for Windows menu familiarity, small-size readability, and Turkish glyph coverage. Body text is 13 DIPs; secondary labels are 12 DIPs.
-- Size the transparent input window to the monitor's reserved bottom taskbar strip plus a 20 DIP transparent top headroom (`DockHeadroom`). The headroom area remains non-hit-testable when idle (`Background={x:Null}`), allowing magnified icons and launch bounces to render smoothly without clipping by the window bounds. Read taskbar height from the monitor work area; when Explorer exposes no reserved strip, use the previously measured horizontal native taskbar height (58 DIPs preferred base height).
-- The dock floats above the monitor's bottom edge as a pill/shelf container with a 20 DIP corner radius and a 6–10 DIP bottom clearance. An ambient drop shadow and a 1 DIP specular top-edge highlight (`#4DFFFFFF`) provide depth over wallpapers.
-- Derive cell height and icon size from the available surface height, targeting 32 DIPs for icons (capped at 34 DIPs). Reserve a separate 6 DIP row for status markers. Keep preferred cell widths at 52 DIPs and cell heights at 44 DIPs; reduce cell widths only when the application count requires it.
-- A muted 4 DIP circular dot means running; an illuminated bright dot means foreground. A red badge in the upper right means a Windows system alert.
-- Hover and press change the surface without changing layout. Disable the default focus adorner and use a dark slate fill for keyboard focus; application buttons never add a white outline.
-- Pointer magnification applies a continuous parabolic/cosine fisheye wave across hovered and neighboring icons (up to 1.28x peak) anchored at their base (`0.5, 0.95`), keeping status dots stationary. Disable magnification when Windows client-area animation is disabled.
-- The material is translucent tinted smoked glass with a specular top-edge reflection. It does not implement desktop backdrop blur. The previous unverified DWM Acrylic request has been removed.
-- Size the visible surface to content including border and insets. Empty status text consumes no width. Do not use a Viewbox or scale the entire UI after layout changes. The full reserved strip accepts the dock context menu, including outside the visible surface.
+## Design Tokens
 
-## Interaction rules
+### Layout & Dimensions
 
-- Update notification and foreground state on existing application objects. Do not recreate buttons or replay entry animations for state changes.
-- Discover shown/foreground windows on the next dispatcher turn. Coalesce other events without resetting their 60 ms timer. Publish the fresh window snapshot before refreshing foreground-derived state. Foreground-only changes update indicators without rebuilding the application list.
-- New icons start fully opaque; retain only their brief scale entrance. Cancelling an exit must always restore opacity and hit testing, even if the button currently has an activation transform instead of its scale transform.
-- Use short opacity and scale transitions only for application arrival/removal. Respect the Windows client-area animation preference.
-- Preview entrance fades and scales the live DWM thumbnail from 95% over 160 ms with cubic ease-out; the owned header fades over the same interval. Stop the entrance timer on completion, failure, replacement, hide, and disposal. Reduced motion shows the preview immediately.
-- The first cell is Windows Start. It sends the documented `WM_SYSCOMMAND / SC_TASKLIST` command to activate the native Start menu; it does not emulate a keyboard chord.
-- Render the Start logo as four blue square panes instead of using a private-use font glyph.
-- Application and dock context menus are separate resources. Application menus contain only application actions; the surface menu opens settings or exits. Use vector outline icons (Lucide icon set, 24x24 coordinate space, 1.6 DIP stroke width with rounded caps) in a stable leading column and theme-aware translucent menu material. Menu rows have 34 DIP minimum height. Define the WPF `MenuItem.SeparatorStyleKey` in addition to the implicit separator style so generated items use the intended 1 DIP low-contrast divider with 12 DIP horizontal and 7 DIP vertical insets. Keep long titles ellipsized and destructive actions distinct.
-- Settings use a standard resizable window, a left tab list, and a scrolling content area above a persistent Apply action. General contains startup, animations, previews, and alert indicators; Appearance contains theme, interface language, and alignment. Use native radio-button and checkbox semantics with visible keyboard focus. Widgets is a disabled tab, not a placeholder configuration page. Turkish/English text shares one catalog; application-supplied titles keep their original language. Windows animation preferences also constrain the app's animation switch.
-- Save preferences through one shared settings instance so pin reordering cannot reset appearance or behavior. Read startup registration separately from JSON and write it only after an explicit Apply; report failures and restore the previous startup preference if JSON saving fails. Unapplied changes require confirmation before closing settings; application shutdown closes the settings window without blocking taskbar restoration.
-- Application context menus focus on core application actions, pinning, and native Jump Lists. Win32 application menu-bar and system-menu dropdowns are omitted to preserve minimal height, fast response, and clean touch/mouse targets. Private application UI is not extracted.
-- Populate Jump List sections directly in the application context menu, before the standard application actions. Use non-interactive category headings and separators instead of nested Jump List submenus. Replace previous entries on each load; keep loading, empty, unmatched identity, unsupported platform, timeout, and read failure states in the same root menu. Resolve the selected window's explicit AppUserModelID or use the Shell application resolver; resolve a stopped pinned app through its shortcut. Read native categories/tasks and automatic destinations on a lazy STA worker. Limit reads to 32 native categories, 40 entries per group, and 100 commands overall.
-- Keep original Jump List Shell objects alive only for the current menu session. A selected command is queued before closing the menu, then invoked through the original Shell default command. Packaged task links use their AppsFolder target and published activation context. Dispose stale/cancelled sessions on the worker; never reconstruct guessed browser arguments or log task titles, destinations, or launch arguments. Resource icons are optional and frozen before crossing threads.
-- Hide the strip and close previews/menus when the foreground application covers its monitor. React to AppBar full-screen notifications, foreground changes, and debounced foreground geometry changes. A maximized work-area window and a full-screen window on another monitor do not suppress this strip.
-- Menus use WPF outside-click dismissal, receive foreground focus when opened, and close when a different process receives foreground activation. Track only one open root menu.
-- Application clicks receive a 420 ms damped vertical launch bounce animation (-12 DIP peak) on the icon's translate transform. Restoring a minimized window uses Windows' native restore path. Custom animation of another process's already-visible window is not implemented: `AnimateWindow` requires ownership by the calling thread.
-- Mouse clicks on dock/preview surfaces do not steal foreground activation before the command runs. Explicit application commands activate their selected target.
-- Snapshot the foreground application on preview mouse-down, before button focus and thumbnail dismissal. Use that snapshot to select and minimize the active window. Ignore OpenTaskbar-owned foreground events when remembering the last external window. Minimize with `ShowWindowAsync`; success means Windows accepted the request, not that the transition has already completed. Clear pointer snapshots on keyboard input.
-- Show window title and application icon in preview cards. Reserve thumbnail space below them. Multiple open windows of the same application are shown side-by-side in interactive preview cards. Its close button sends a normal close request only to the previewed window. Position preview cards 16 DIPs (`PreviewGap`) above the button anchor so magnified icons do not overlap preview cards.
-- Hide the thumbnail before opening an application context menu. Disable the redundant name tooltip while a window preview is available.
-- Exit from the dock surface menu closes the main window. Disable hidden-state enforcement before restoring Explorer so reentrant Shell notifications cannot hide it again. Preserve the session and recovery record on restoration failure; ordinary window close remains cancellable. Reuse the restoration operation for application exit, session ending, and managed process exit. Force-kill termination cannot run in-process cleanup.
-- Auto-hide supports three modes: `Disabled` (dock remains permanently visible), `Smart` (IntelliHide: dock stays visible on desktop and non-overlapping windows, and slides down below the monitor edge when an active or maximized window overlaps the dock area), and `Always` (dock is hidden by default and reveals on mouse trigger). Slide transitions use a 220 ms `CubicEase` vertical translate transform. Touching the 3 DIP bottom edge trigger reveals the dock immediately; mouse departure debounces for 400 ms. Auto-hide is locked while a context menu, thumbnail preview, icon drag, or modal settings dialog is active.
+| Token | Value | Description |
+| :--- | :--- | :--- |
+| `DockWindowHeight` | `78 DIP` | Total height of the transparent window container |
+| `DockHeadroom` | `20 DIP` | Transparent top headroom allowing unclipped icon magnification |
+| `_nativeTaskbarHeight` | `58 DIP` | Base height of the floating dock container shelf |
+| `DockCellSize` | `52 DIP` | Width of an individual dock application item cell |
+| `DockCellHeight` | `44 DIP` | Height of an individual dock application item cell |
+| `DockIconSize` | `32 DIP` | Standard icon display size (capped at 34 DIP on magnification) |
+| `DockHoverScale` | `1.28x` | Peak magnification scale for the hovered dock item |
+| `DockRadius` | `20 DIP` | Pill container corner radius (`CornerRadius="20"`) |
+| `ControlRadius` | `12 DIP` | Standard control and button corner radius |
+| `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |
+| `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
+| `StatusDotSize` | `4 DIP` | Running and active application indicator dot diameter |
 
-## Verification limits
+### Typography
 
-Release compilation checks XAML and C# consistency. Startup checks show process liveness only. A local cropped desktop capture verified normal strip placement with a bottom gap; Computer Use was not used. Full-screen transitions, menu command execution, pointer/keyboard input, multiple-monitor DPI, dense application overflow, and high-contrast mode still require rendered Windows verification.
+- **Font Family:** `Segoe UI` across all UI surfaces for native Windows consistency, legibility, and full Unicode/Turkish diacritic support.
+- **Sizes:**
+  - Body and menu items: `13 DIP`
+  - Secondary labels, badges, and Jump List category headers: `12 DIP`
+  - Titles and section headings: `15 DIP`
 
-A read-only Jump List diagnostic on local Windows 11 retrieved two groups with ten entries for LibreWolf and two groups with nine entries for ChatGPT. It did not invoke any command or log destination titles. This verifies native reading on that build, not interactive command execution or compatibility with every Windows version.
+---
 
-Offscreen WPF renders were inspected for settings and context-menu styles in dark/light themes, Turkish/English, and 780/620 DIP widths. Temporary-file checks covered legacy settings, preference round trips, preserved pin order, and invalid enum values. These checks did not write startup registration or verify actual sign-in launch, interactive keyboard/pointer behavior, or multi-monitor DPI transitions.
+## Visual Materials
 
-## Platform references
+- **Translucent Smoked Glass:** Deep translucent charcoal acrylic-style background (`#D916191F` in Dark theme, `#D9F3F4F6` in Light theme).
+- **Specular Top Highlight:** 1 DIP top border highlight (`#4DFFFFFF`) simulating light reflection on glass edges.
+- **Ambient Shadow:** Soft multi-layer drop shadow (`BlurRadius="24"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.45"`) separating the dock from desktop wallpapers.
+- **Status Indicators:**
+  - Running application: Muted 4 DIP circular dot (`#94A3B8`).
+  - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
+  - Alert / notification: Upper-right red badge (`#EF4444`).
+- **Icons:** Vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps) for all context menus, tray items, and dock controls.
 
-- [Apple Desktop & Dock settings](https://support.apple.com/en-gb/guide/mac-help/mchlp1119/mac): pointer magnification behavior. OpenTaskbar uses a restrained interpretation that fits its taskbar strip.
-- [Microsoft WM_SYSCOMMAND](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-syscommand): native Start command.
-- [Microsoft DWM thumbnail properties](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ns-dwmapi-dwm_thumbnail_properties): thumbnail destination and opacity used by the entrance animation.
-- [Open-Shell Jump List implementation](https://github.com/Open-Shell/Open-Shell-Menu/blob/master/Src/StartMenu/StartMenuDLL/JumpLists.cpp): reference for undocumented destination-list COM interface layouts and packaged task activation.
-- [System Informer application resolver definitions](https://github.com/winsiderss/systeminformer/blob/master/phlib/include/appresolverp.h): reference for the native application identity resolver ABI.
-- [Microsoft IContextMenu::InvokeCommand](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-icontextmenu-invokecommand): invoking Shell commands and Unicode command parameters.
-- [Microsoft Run and RunOnce registry keys](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys): per-user startup registration and Windows scheduling limits.
-- [Microsoft desktop window themes](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/apply-windows-themes): optional native dark title-bar support on Windows 11.
+---
+
+## Interaction & Motion
+
+### Continuous Fisheye Magnification
+- Pointer movement across the dock calculates a continuous parabolic/cosine wave scaling factor:
+  $$S(d) = 1.0 + (S_{peak} - 1.0) \times \cos\left(\frac{\pi \cdot d}{2 \cdot R}\right)^2$$
+- Magnification smoothly affects the hovered icon and immediate neighbors within an 84 DIP influence radius ($R$).
+- Items scale anchored at `(0.5, 0.95)`, expanding upward into the 20 DIP transparent headroom without horizontal layout displacement or icon clipping.
+- Status dots remain stationary at the dock base.
+
+### Multi-Window Live Thumbnails
+- Interactive live DWM thumbnails are created using `DwmRegisterThumbnail`.
+- Thumbnails fade and scale in from 95% over 160 ms with cubic ease-out.
+- The preview strip floats 18 DIPs (`PreviewGap`) above the dock to prevent overlapping magnified icons.
+- Each preview card features the application icon, window title, close button, and live window preview.
+
+### Smart Auto-Hide (IntelliHide)
+- **Disabled:** Dock remains persistently visible.
+- **Smart:** Dock stays visible on the desktop and behind non-overlapping windows. When an active or maximized window overlaps the bottom dock region, the dock smoothly translates down off-screen.
+- **Always:** Dock remains hidden below the screen edge by default.
+- **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease transition.
+
+### Launch Bounce
+- Clicking an application icon triggers a 420 ms damped vertical launch bounce animation (-12 DIP peak) on its translate transform to provide tactile feedback while the application opens.
+
+---
+
+## Project Structure
+
+- `Theme.xaml`: Core design system definitions, standard sizing tokens, brushes, and base control templates.
+- `Palettes/Dark.xaml`: Dark theme color palette and material brushes.
+- `Palettes/Light.xaml`: Light theme color palette and material brushes.
+- `ContextMenus.xaml`: Vector outline icon styles, Jump List headers, and menu item templates.
+- `SettingsControls.xaml`: Segmented controls, toggles, radio buttons, and preferences layout.
