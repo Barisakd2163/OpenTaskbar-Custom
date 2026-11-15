@@ -407,12 +407,13 @@ public partial class MainWindow : Window
 
     private void DockAppButton_Loaded(object sender, RoutedEventArgs e)
     {
-        if (!SystemParameters.ClientAreaAnimation
-            || sender is not Button { RenderTransform: ScaleTransform scale } button)
+        if (!SystemParameters.ClientAreaAnimation || sender is not Button button)
         {
             return;
         }
 
+        var scale = new ScaleTransform();
+        button.RenderTransform = scale;
         button.Opacity = 0;
         scale.ScaleX = 0.86;
         scale.ScaleY = 0.86;
