@@ -81,6 +81,7 @@ public sealed class DockSettingsStore
     private static bool IsValid(DockSettings settings) => Enum.IsDefined(settings.Position)
         && Enum.IsDefined(settings.Theme) && Enum.IsDefined(settings.Language)
         && Enum.IsDefined(settings.AutoHide)
+        && double.IsFinite(settings.SurfaceOpacity) && settings.SurfaceOpacity is >= 0.6 and <= 1
         && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count;
 

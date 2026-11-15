@@ -19,4 +19,5 @@ public sealed record DockSettings(
     bool AnimationsEnabled = true,
     bool PreviewsEnabled = true,
     bool NotificationBadgesEnabled = true,
-    AutoHideMode AutoHide = AutoHideMode.Disabled);
+    AutoHideMode AutoHide = AutoHideMode.Disabled,
+    double SurfaceOpacity = 0.9);

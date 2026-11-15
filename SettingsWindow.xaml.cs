@@ -1,9 +1,8 @@
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Interop;
+using System.Windows.Shell;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -17,6 +16,8 @@ public partial class SettingsWindow : Window
     private bool _startupAvailable;
     private DockSettings _applied;
     private bool _closingApplication;
+    private bool _initializing = true;
+    private bool _sourceReady;
 
     public SettingsWindow(ApplicationPreferences preferences)
     {
@@ -24,7 +25,11 @@ public partial class SettingsWindow : Window
         _applied = preferences.Current;
         InitializeComponent();
         _preferences.Changed += Preferences_Changed;
-        Closed += (_, _) => _preferences.Changed -= Preferences_Changed;
+        Closed += (_, _) =>
+        {
+            _preferences.Changed -= Preferences_Changed;
+            ThemeManager.SetSurfaceOpacity(_preferences.Current.SurfaceOpacity);
+        };
         DarkTheme.IsChecked = _applied.Theme == AppTheme.Dark;
         LightTheme.IsChecked = _applied.Theme == AppTheme.Light;
         TurkishLanguage.IsChecked = _applied.Language == AppLanguage.Turkish;
@@ -38,36 +43,60 @@ public partial class SettingsWindow : Window
         AutoHideDisabled.IsChecked = _applied.AutoHide == AutoHideMode.Disabled;
         AutoHideSmart.IsChecked = _applied.AutoHide == AutoHideMode.Smart;
         AutoHideAlways.IsChecked = _applied.AutoHide == AutoHideMode.Always;
+        OpacitySlider.Value = _applied.SurfaceOpacity * 100;
+        UpdateOpacityLabel();
         var startup = _startup.Read();
         _startupEnabled = startup.Enabled;
         _startupAvailable = startup.Error is null;
         StartupToggle.IsEnabled = _startupAvailable;
+        if (startup.Error is not null)
+        {
+            StartupToggle.ToolTip = startup.Error;
+            System.Windows.Controls.ToolTipService.SetShowOnDisabled(StartupToggle, true);
+        }
         StartupToggle.IsChecked = _startupEnabled;
         var errors = new[] { preferences.LoadError, startup.Error }.OfType<string>();
         var message = string.Join(" ", errors.Select(UiText.LocalizeError));
         if (message.Length > 0) ShowResult(message, error: true);
-        MaxHeight = SystemParameters.WorkArea.Height;
-        MaxWidth = SystemParameters.WorkArea.Width;
-        MinHeight = Math.Min(MinHeight, MaxHeight);
-        MinWidth = Math.Min(MinWidth, MaxWidth);
+        var workArea = SystemParameters.WorkArea;
+        MinHeight = Math.Min(MinHeight, workArea.Height);
+        MinWidth = Math.Min(MinWidth, workArea.Width);
+        Height = Math.Min(Height, workArea.Height);
+        Width = Math.Min(Width, workArea.Width);
+        AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(PreferenceEdited));
+        AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler(PreferenceEdited));
+        _initializing = false;
+        UpdateApplyState();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        UpdateTitleBar();
+        _sourceReady = true;
+        UpdateBackdrop();
     }
 
-    private void Preferences_Changed(object? sender, EventArgs e) => UpdateTitleBar();
-
-    private void UpdateTitleBar()
+    private void Preferences_Changed(object? sender, EventArgs e)
     {
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return;
-        var handle = new WindowInteropHelper(this).Handle;
-        if (handle == 0) return;
-        var dark = _preferences.Current.Theme == AppTheme.Dark ? 1 : 0;
-        var result = DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
-        if (result < 0) Trace.TraceWarning("Settings title bar theme unavailable: 0x{0:X8}", result);
+        UpdateOpacityLabel();
+        UpdateBackdrop();
+    }
+
+    private void UpdateBackdrop()
+    {
+        if (!_sourceReady) return;
+        var glass = SettingsBackdrop.TryEnable(this, _preferences.Current.Theme);
+        SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, glass ? "SettingsGlassMaterial" : "SettingsBackground");
+        if (glass)
+        {
+            WindowChrome.GetWindowChrome(this).GlassFrameThickness = new Thickness(-1);
+            SettingsFrame.ClearValue(System.Windows.Controls.Border.CornerRadiusProperty);
+        }
+        else
+        {
+            WindowChrome.GetWindowChrome(this).GlassFrameThickness = new Thickness(0);
+            SettingsFrame.CornerRadius = new CornerRadius(0);
+        }
     }
 
     private DockSettings ReadSelection() => _preferences.Current with
@@ -78,7 +107,8 @@ public partial class SettingsWindow : Window
         AnimationsEnabled = AnimationsToggle.IsChecked == true,
         PreviewsEnabled = PreviewsToggle.IsChecked == true,
         NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
-        AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled
+        AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
+        SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100
     };
 
     private void Apply_Click(object sender, RoutedEventArgs e)
@@ -100,24 +130,58 @@ public partial class SettingsWindow : Window
         _applied = settings;
         _startupEnabled = StartupToggle.IsChecked == true;
         ShowResult(UiText.Get("SettingsSaved"), error: false);
+        UpdateApplyState();
     }
 
     private void ShowResult(string message, bool error)
     {
         SaveStatus.Text = UiText.LocalizeError(message);
+        SaveStatus.Visibility = Visibility.Visible;
         SaveStatus.SetResourceReference(ForegroundProperty, error ? "DangerText" : "TextSecondary");
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (_closingApplication || Application.Current.Dispatcher.HasShutdownStarted) return;
-        var selected = ReadSelection();
-        // Pin order may change behind this window and is not part of its edit buffer.
-        if (selected == (_applied with { PinOrder = selected.PinOrder })
-            && (!_startupAvailable || StartupToggle.IsChecked == _startupEnabled)) return;
+        if (!HasEdits()) return;
         e.Cancel = MessageBox.Show(this, UiText.Get("DiscardChanges"), UiText.Get("DiscardTitle"),
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes;
     }
+
+    private bool HasEdits()
+    {
+        var selected = ReadSelection();
+        // Pin order may change behind this window and is not part of its edit buffer.
+        return selected != (_applied with { PinOrder = selected.PinOrder })
+            || (_startupAvailable && StartupToggle.IsChecked != _startupEnabled);
+    }
+
+    private void PreferenceEdited(object sender, RoutedEventArgs e)
+    {
+        if (_initializing) return;
+        SaveStatus.Visibility = Visibility.Collapsed;
+        UpdateApplyState();
+    }
+
+    private void UpdateApplyState() => ApplyButton.IsEnabled = HasEdits() || _preferences.LoadError is not null;
+
+    private void UpdateOpacityLabel() => OpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(OpacitySlider.Value));
+
+    private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_initializing) return;
+        UpdateOpacityLabel();
+        ThemeManager.SetSurfaceOpacity(Math.Round(e.NewValue) / 100);
+        PreferenceEdited(sender, e);
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+    private void Maximize_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+        else SystemCommands.MaximizeWindow(this);
+    }
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     internal void CloseForShutdown()
     {
@@ -132,6 +196,4 @@ public partial class SettingsWindow : Window
         Close();
     }
 
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(nint window, uint attribute, ref int value, uint size);
 }

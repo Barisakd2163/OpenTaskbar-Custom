@@ -36,4 +36,6 @@
     <SolidColorBrush x:Key="AccentText" Color="#FF102332" />
     <SolidColorBrush x:Key="DangerText" Color="#FFFF9DA7" />
     <SolidColorBrush x:Key="MenuDivider" Color="#20FFFFFF" />
+    <SolidColorBrush x:Key="SettingsSidebarOverlay" Color="#2410141A" />
+    <SolidColorBrush x:Key="CaptionCloseForeground" Color="#FFFFFFFF" />
 </ResourceDictionary>
