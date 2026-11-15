@@ -993,17 +993,18 @@ public partial class MainWindow : Window
         };
 
         DockContents.HorizontalAlignment = alignment;
-        DockScrollViewer.HorizontalContentAlignment = alignment;
         _replacementSession?.RefreshPosition();
     }
 
     private void ResizeDockToContent()
     {
-        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, Height));
+        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var padding = DockSurface.Padding;
         var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right);
-        Width = Math.Clamp(desiredWidth, 16, SystemParameters.PrimaryScreenWidth);
-        DockSurface.Width = Width;
+        var maximumWidth = Math.Max(16, SystemParameters.PrimaryScreenWidth);
+        var dockWidth = Math.Clamp(desiredWidth, 16, maximumWidth);
+        Width = dockWidth;
+        DockSurface.Width = dockWidth;
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)

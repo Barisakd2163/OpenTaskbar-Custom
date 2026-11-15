@@ -211,25 +211,21 @@
     </Window.Resources>
 
     <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,0"
-            Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
-        <ScrollViewer x:Name="DockScrollViewer" HorizontalScrollBarVisibility="Hidden"
-                      VerticalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left"
-                      VerticalContentAlignment="Center">
-            <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
-                        VerticalAlignment="Center">
-                <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-                <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-                <TextBlock x:Name="StatusText" Foreground="#FFF0B78A" FontSize="11"
-                           VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap" />
-            </StackPanel>
-        </ScrollViewer>
+            Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" ClipToBounds="True">
+        <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
+                    VerticalAlignment="Center">
+            <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+            <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+            <TextBlock x:Name="StatusText" Foreground="#FFF0B78A" FontSize="11"
+                       VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap" />
+        </StackPanel>
     </Border>
 </Window>
