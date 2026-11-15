@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Windows;
+using OpenTaskbar.Services;
 
 namespace OpenTaskbar;
 
@@ -10,13 +11,16 @@ namespace OpenTaskbar;
 public partial class App : Application
 {
     private Mutex? _instanceMutex;
+    public ApplicationPreferences Preferences { get; } = new(new DockSettingsStore());
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        UiText.Current.SetLanguage(Preferences.Current.Language);
+        ThemeManager.Apply(Preferences.Current.Theme);
         _instanceMutex = new Mutex(initiallyOwned: true, name: "Local\\OpenTaskbar.Singleton", out var createdNew);
         if (!createdNew)
         {
-            MessageBox.Show("OpenTaskbar zaten çalışıyor.", "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(UiText.Get("AlreadyRunning"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
             _instanceMutex.Dispose();
             _instanceMutex = null;
             Shutdown();

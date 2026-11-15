@@ -148,7 +148,7 @@ public static class WindowsTaskbarPinImporter
 
         var error = skippedCount == 0
             ? null
-            : $"Windows görev çubuğundaki {skippedCount} kısayol desteklenmedi veya okunamadı; diğerleri içe aktarıldı.";
+            : UiText.Format("SkippedPins", skippedCount);
         return (apps, error);
     }
 

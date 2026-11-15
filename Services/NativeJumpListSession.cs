@@ -41,7 +41,7 @@ internal sealed class NativeJumpListSession : IDisposable
         using var automatic = ShellComObject.Create(AutomaticClass, AutomaticInterface);
         Marshal.ThrowExceptionForHR(automatic.Method<InitializeAutomatic>(3)(automatic.Handle, appId, 0, 0));
         var groups = new List<JumpListGroup>();
-        AddAutomatic(groups, automatic, 0, "Sabitlenenler", cancellation);
+        AddAutomatic(groups, automatic, 0, UiText.Get("PinnedDestinations"), cancellation);
         var categoryResult = custom.Method<GetCount>(6)(custom.Handle, out var count);
         if (MissingList(categoryResult)) count = 0;
         else Marshal.ThrowExceptionForHR(categoryResult);
@@ -59,7 +59,7 @@ internal sealed class NativeJumpListSession : IDisposable
                     if (kind is 1 or 2)
                     {
                         hasKnownCategory = true;
-                        AddAutomatic(groups, automatic, 3 - kind, kind == 1 ? "Sık kullanılanlar" : "Son kullanılanlar", cancellation);
+                        AddAutomatic(groups, automatic, 3 - kind, kind == 1 ? UiText.Get("Frequent") : UiText.Get("Recent"), cancellation);
                     }
                 }
                 else if (category.Type is 0 or 2)
@@ -67,7 +67,7 @@ internal sealed class NativeJumpListSession : IDisposable
                     var iid = ObjectArrayInterface;
                     Marshal.ThrowExceptionForHR(custom.Method<EnumerateCategory>(9)(custom.Handle, index, ref iid, out var pointer));
                     using var array = new ShellComObject(pointer);
-                    var title = category.Type == 2 ? "Görevler" : ResolveText(Marshal.PtrToStringUni(category.NameOrKind));
+                    var title = category.Type == 2 ? UiText.Get("Tasks") : ResolveText(Marshal.PtrToStringUni(category.NameOrKind));
                     AddGroup(groups, title, array, cancellation);
                 }
             }
@@ -76,7 +76,7 @@ internal sealed class NativeJumpListSession : IDisposable
                 if (category.Type == 0 && category.NameOrKind != 0) Marshal.FreeCoTaskMem(category.NameOrKind);
             }
         }
-        if (!hasKnownCategory) AddAutomatic(groups, automatic, 1, "Son kullanılanlar", cancellation);
+        if (!hasKnownCategory) AddAutomatic(groups, automatic, 1, UiText.Get("Recent"), cancellation);
         return new(sessionId, groups.Count > 0 ? JumpListStatus.Ready : JumpListStatus.Empty, groups);
     }
 

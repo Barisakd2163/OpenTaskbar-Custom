@@ -1,6 +1,6 @@
 # OpenTaskbar interface system
 
-`Theme.xaml` owns the shared material, color, type, and size resources. The dock, menus, tooltips, and preview use these resources; there are no additional UI packages.
+`Theme.xaml` owns shared type, dimensions, and base controls. `Palettes/Dark.xaml` and `Palettes/Light.xaml` supply semantic colors; theme-dependent surfaces use dynamic resources. `ContextMenus.xaml` owns both context-menu styles and `SettingsControls.xaml` owns settings controls. There are no additional UI packages.
 
 ## Visual rules
 
@@ -24,7 +24,9 @@
 - Preview entrance fades and scales the live DWM thumbnail from 95% over 160 ms with cubic ease-out; the owned header fades over the same interval. Stop the entrance timer on completion, failure, replacement, hide, and disposal. Reduced motion shows the preview immediately.
 - The first cell is Windows Start. It sends the documented `WM_SYSCOMMAND / SC_TASKLIST` command to activate the native Start menu; it does not emulate a keyboard chord.
 - Render the Start logo as four blue square panes instead of using a private-use font glyph.
-- Application and dock context menus are separate resources. Application menus contain only application actions; dock alignment is available only from the surface menu. Use vector outline icons (Lucide icon set, 24x24 coordinate space, 1.6 DIP stroke width with rounded caps) in a stable leading column and a translucent charcoal menu material.
+- Application and dock context menus are separate resources. Application menus contain only application actions; the surface menu opens settings or exits. Use vector outline icons (Lucide icon set, 24x24 coordinate space, 1.6 DIP stroke width with rounded caps) in a stable leading column and theme-aware translucent menu material. Menu rows have 34 DIP minimum height. Define the WPF `MenuItem.SeparatorStyleKey` in addition to the implicit separator style so generated items use the intended 1 DIP low-contrast divider with 12 DIP horizontal and 7 DIP vertical insets. Keep long titles ellipsized and destructive actions distinct.
+- Settings use a standard resizable window, a left tab list, and a scrolling content area above a persistent Apply action. General contains startup, animations, previews, and alert indicators; Appearance contains theme, interface language, and alignment. Use native radio-button and checkbox semantics with visible keyboard focus. Widgets is a disabled tab, not a placeholder configuration page. Turkish/English text shares one catalog; application-supplied titles keep their original language. Windows animation preferences also constrain the app's animation switch.
+- Save preferences through one shared settings instance so pin reordering cannot reset appearance or behavior. Read startup registration separately from JSON and write it only after an explicit Apply; report failures and restore the previous startup preference if JSON saving fails. Unapplied changes require confirmation before closing settings; application shutdown closes the settings window without blocking taskbar restoration.
 - Application context menus focus on core application actions, pinning, and native Jump Lists. Win32 application menu-bar and system-menu dropdowns are omitted to preserve minimal height, fast response, and clean touch/mouse targets. Private application UI is not extracted.
 - Populate Jump List sections directly in the application context menu, before the standard application actions. Use non-interactive category headings and separators instead of nested Jump List submenus. Replace previous entries on each load; keep loading, empty, unmatched identity, unsupported platform, timeout, and read failure states in the same root menu. Resolve the selected window's explicit AppUserModelID or use the Shell application resolver; resolve a stopped pinned app through its shortcut. Read native categories/tasks and automatic destinations on a lazy STA worker. Limit reads to 32 native categories, 40 entries per group, and 100 commands overall.
 - Keep original Jump List Shell objects alive only for the current menu session. A selected command is queued before closing the menu, then invoked through the original Shell default command. Packaged task links use their AppsFolder target and published activation context. Dispose stale/cancelled sessions on the worker; never reconstruct guessed browser arguments or log task titles, destinations, or launch arguments. Resource icons are optional and frozen before crossing threads.
@@ -43,6 +45,8 @@ Release compilation checks XAML and C# consistency. Startup checks show process 
 
 A read-only Jump List diagnostic on local Windows 11 retrieved two groups with ten entries for LibreWolf and two groups with nine entries for ChatGPT. It did not invoke any command or log destination titles. This verifies native reading on that build, not interactive command execution or compatibility with every Windows version.
 
+Offscreen WPF renders were inspected for settings and context-menu styles in dark/light themes, Turkish/English, and 780/620 DIP widths. Temporary-file checks covered legacy settings, preference round trips, preserved pin order, and invalid enum values. These checks did not write startup registration or verify actual sign-in launch, interactive keyboard/pointer behavior, or multi-monitor DPI transitions.
+
 ## Platform references
 
 - [Apple Desktop & Dock settings](https://support.apple.com/en-gb/guide/mac-help/mchlp1119/mac): pointer magnification behavior. OpenTaskbar uses a restrained interpretation that fits its taskbar strip.
@@ -51,3 +55,5 @@ A read-only Jump List diagnostic on local Windows 11 retrieved two groups with t
 - [Open-Shell Jump List implementation](https://github.com/Open-Shell/Open-Shell-Menu/blob/master/Src/StartMenu/StartMenuDLL/JumpLists.cpp): reference for undocumented destination-list COM interface layouts and packaged task activation.
 - [System Informer application resolver definitions](https://github.com/winsiderss/systeminformer/blob/master/phlib/include/appresolverp.h): reference for the native application identity resolver ABI.
 - [Microsoft IContextMenu::InvokeCommand](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-icontextmenu-invokecommand): invoking Shell commands and Unicode command parameters.
+- [Microsoft Run and RunOnce registry keys](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys): per-user startup registration and Windows scheduling limits.
+- [Microsoft desktop window themes](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/apply-windows-themes): optional native dark title-bar support on Windows 11.

@@ -37,6 +37,34 @@
         <Setter Property="Padding" Value="10,6" />
     </Style>
 
+    <Style TargetType="ScrollBar">
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="Vertical"
+                           Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                           Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
+                        <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" /></Track.DecreaseRepeatButton>
+                        <Track.Thumb>
+                            <Thumb Margin="4,2" MinHeight="24">
+                                <Thumb.Style>
+                                    <Style TargetType="Thumb">
+                                        <Setter Property="Background" Value="{DynamicResource MenuDivider}" />
+                                        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Thumb"><Border Background="{TemplateBinding Background}" CornerRadius="2" /></ControlTemplate></Setter.Value></Setter>
+                                        <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource TextSecondary}" /></Trigger></Style.Triggers>
+                                    </Style>
+                                </Thumb.Style>
+                            </Thumb>
+                        </Track.Thumb>
+                        <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" /></Track.IncreaseRepeatButton>
+                    </Track>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Lucide Vector Icon Geometries (24x24 outline coordinate space) -->
     <StreamGeometry x:Key="IconOpen">M15 3h6v6 M10 14L21 3 M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6</StreamGeometry>
     <StreamGeometry x:Key="IconPin">M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 0.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-0.76a2 2 0 0 0-1.11-1.79l-1.78-0.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z</StreamGeometry>

@@ -9,10 +9,15 @@ public sealed class DockSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
-    private readonly string _path = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenTaskbar",
-        "settings.json");
+    private readonly string _path;
+
+    public DockSettingsStore(string? path = null)
+    {
+        _path = path ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenTaskbar",
+            "settings.json");
+    }
 
     public (DockSettings Settings, string? Error) Load()
     {
@@ -24,7 +29,7 @@ public sealed class DockSettingsStore
         try
         {
             var settings = JsonSerializer.Deserialize<DockSettings>(File.ReadAllText(_path), JsonOptions);
-            if (settings is null || !Enum.IsDefined(settings.Position))
+            if (settings is null || !IsValid(settings))
             {
                 return (new DockSettings(), "Dock ayarları geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.");
             }
@@ -47,6 +52,8 @@ public sealed class DockSettingsStore
 
     public string? Save(DockSettings settings)
     {
+        if (!IsValid(settings))
+            return "Ayar değerleri geçersiz.";
         try
         {
             var directory = Path.GetDirectoryName(_path);
@@ -70,6 +77,11 @@ public sealed class DockSettingsStore
             return "Dock ayarlarına yazma izni yok.";
         }
     }
+
+    private static bool IsValid(DockSettings settings) => Enum.IsDefined(settings.Position)
+        && Enum.IsDefined(settings.Theme) && Enum.IsDefined(settings.Language)
+        && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
+        && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count;
 
     private static JsonSerializerOptions CreateJsonOptions()
     {

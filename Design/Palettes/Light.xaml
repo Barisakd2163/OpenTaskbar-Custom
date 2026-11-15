@@ -1,0 +1,39 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Neutral materials preserve application icon colors and wallpaper visibility. -->
+    <SolidColorBrush x:Key="TextPrimary" Color="#FF202329" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#FF5E6570" />
+    <SolidColorBrush x:Key="WindowsLogoBrush" Color="#FF54B6F5" />
+    <SolidColorBrush x:Key="SurfaceKeyboardFocus" Color="#FFCFDFEC" />
+    <SolidColorBrush x:Key="MenuStroke" Color="#26000000" />
+    <LinearGradientBrush x:Key="MenuMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#F9FCFCFD" Offset="0" />
+        <GradientStop Color="#FAF2F3F5" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="SurfacePopup" Color="#FFF8F9FB" />
+    <SolidColorBrush x:Key="StrokeSubtle" Color="#20000000" />
+    <SolidColorBrush x:Key="StrokeFocus" Color="#FF457DA8" />
+    <SolidColorBrush x:Key="SurfaceHover" Color="#12000000" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#20000000" />
+    <SolidColorBrush x:Key="SurfaceSelected" Color="#0C000000" />
+    <SolidColorBrush x:Key="SurfaceDanger" Color="#FFC43846" />
+    <SolidColorBrush x:Key="NotificationBrush" Color="#FFD22D42" />
+    <SolidColorBrush x:Key="IndicatorBrush" Color="#AA303A47" />
+    <SolidColorBrush x:Key="IndicatorForegroundBrush" Color="#FF192A39" />
+    <LinearGradientBrush x:Key="DockMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#E2F6F7FA" Offset="0" />
+        <GradientStop Color="#ECF3F4F7" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="DockBorderMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#B0FFFFFF" Offset="0" />
+        <GradientStop Color="#22000000" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="SettingsBackground" Color="#FFF7F8FA" />
+    <SolidColorBrush x:Key="SettingsSidebar" Color="#FFEEF0F3" />
+    <SolidColorBrush x:Key="SettingsControl" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SettingsControlHover" Color="#FFE8EBEF" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF245D87" />
+    <SolidColorBrush x:Key="AccentText" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="DangerText" Color="#FFAF2338" />
+    <SolidColorBrush x:Key="MenuDivider" Color="#20000000" />
+</ResourceDictionary>

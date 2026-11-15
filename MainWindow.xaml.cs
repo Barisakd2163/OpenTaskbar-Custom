@@ -408,7 +408,7 @@ public partial class MainWindow : Window
         Action afterRemoval)
     {
         var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
-        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation) || button?.RenderTransform is not ScaleTransform scale)
+        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform scale)
         {
             RemoveDockApp(apps, app);
             afterRemoval();
@@ -476,7 +476,7 @@ public partial class MainWindow : Window
 
     private void DockAppButton_Loaded(object sender, RoutedEventArgs e)
     {
-        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation) || sender is not Button button)
+        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation || sender is not Button button)
         {
             return;
         }
@@ -665,7 +665,7 @@ public partial class MainWindow : Window
 
     private void AnimateActivationFeedback(Button button)
     {
-        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)) return;
+        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation) return;
         var icon = GetButtonIcon(button);
         if (icon is null) return;
 
@@ -692,7 +692,7 @@ public partial class MainWindow : Window
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation))
+        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             return;
         }
@@ -753,7 +753,8 @@ public partial class MainWindow : Window
     private void ResetMagnification()
     {
         if (_magnifiedIcons.Count == 0) return;
-        var duration = TimeSpan.FromMilliseconds(120);
+        var duration = _preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation
+            ? TimeSpan.FromMilliseconds(120) : TimeSpan.Zero;
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
         foreach (var icon in _magnifiedIcons)
@@ -828,6 +829,7 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         if (!_preferences.Current.PreviewsEnabled)
         {
+            if (sender is Button button) ToolTipService.SetIsEnabled(button, true);
             _thumbnailPreview.Hide();
             return;
         }
@@ -982,7 +984,7 @@ public partial class MainWindow : Window
 
     private void ShowStatus(string message)
     {
-        StatusText.Text = message;
+        StatusText.Text = UiText.LocalizeError(message);
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
@@ -1032,8 +1034,8 @@ public partial class MainWindow : Window
         {
             activateMenuItem.CommandParameter = pinnedApp;
             activateMenuItem.Header = isRunning
-                ? (pinnedApp.IsForeground ? "Pencereyi küçült" : "Pencereyi öne getir")
-                : "Uygulamayı aç";
+                ? (pinnedApp.IsForeground ? UiText.Get("MinimizeWindow") : UiText.Get("ActivateWindow"))
+                : UiText.Get("OpenApplication");
         }
         if (FindMenuItem(contextMenu, "PinDockApp") is { } pinMenuItem)
         {
@@ -1055,7 +1057,7 @@ public partial class MainWindow : Window
         _jumpListLoad?.Dispose();
         var load = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         _jumpListLoad = load;
-        ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = "Görevler yükleniyor…", IsEnabled = false }]);
+        ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = UiText.Get("TasksLoading"), IsEnabled = false }]);
         try
         {
             var result = await _jumpLists.ReadAsync(window, shortcut, load.Token);
@@ -1093,10 +1095,10 @@ public partial class MainWindow : Window
             {
                 var message = result.Status switch
                 {
-                    JumpListStatus.Empty => "Bu uygulama görev listesi sunmuyor",
-                    JumpListStatus.IdentityUnavailable => "Uygulamanın görev listesi eşleştirilemedi",
-                    JumpListStatus.Unsupported => "Görev listesi bu Windows sürümünde desteklenmiyor",
-                    _ => "Görev listesi okunamadı; menüyü yeniden açın"
+                    JumpListStatus.Empty => UiText.Get("TasksEmpty"),
+                    JumpListStatus.IdentityUnavailable => UiText.Get("TasksIdentityUnavailable"),
+                    JumpListStatus.Unsupported => UiText.Get("TasksUnsupported"),
+                    _ => UiText.Get("TasksReadError")
                 };
                 items.Add(new MenuItem { Header = message, IsEnabled = false });
             }
@@ -1106,7 +1108,7 @@ public partial class MainWindow : Window
         {
             if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
             {
-                ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = "Görev listesi zamanında yanıt vermedi", IsEnabled = false }]);
+                ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = UiText.Get("TasksTimeout"), IsEnabled = false }]);
             }
         }
         catch (COMException ex)
@@ -1114,7 +1116,7 @@ public partial class MainWindow : Window
             Trace.TraceWarning("Shell worker failed: 0x{0:X8}", ex.HResult);
             if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
             {
-                ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = "Windows görev hizmeti başlatılamadı", IsEnabled = false }]);
+                ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = UiText.Get("TasksServiceError"), IsEnabled = false }]);
             }
         }
     }
@@ -1303,8 +1305,8 @@ public partial class MainWindow : Window
             string.Equals(app.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))?.Name
             ?? Path.GetFileNameWithoutExtension(executablePath);
         var confirmation = MessageBox.Show(
-            $"{appName} uygulamasına ait {processes.Count} süreç zorla sonlandırılacak. Kaydedilmemiş çalışmalar kaybolabilir. Devam edilsin?",
-            "OpenTaskbar · Süreci sonlandır",
+            UiText.Format("TerminatePrompt", appName, processes.Count),
+            UiText.Get("TerminateTitle"),
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);

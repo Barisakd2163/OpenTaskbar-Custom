@@ -13,11 +13,12 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Clicking an application's dock icon activates it, or minimizes its foreground window when the same application is already active.
 - Sizes the visible dock to its icon and status content, without a scroll bar or whole-interface scaling, and places it at the selected left, center, or right position within the measured taskbar strip. The remaining strip also accepts the dock's right-click settings menu.
 - Shows a notification dot on an application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
-- Uses separate translucent context menus for applications and the dock surface. Application menus include icons and only application commands; the dock menu contains alignment settings. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed.
+- Uses separate translucent context menus for applications and the dock surface. Application menus include icons and only application commands; the dock menu opens a dedicated settings window. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed. Menu sections use inset, low-contrast separators and shared theme-aware styles.
 - Reads the application's real Windows Jump List when its context menu opens. Published tasks, custom categories, pinned destinations, and available recent/frequent destinations appear directly in the application context menu under non-interactive section headings, without additional Jump List submenus. Shell items retain their original commands and resource icons; browser commands are no longer guessed from executable names.
-- Includes real application menu-bar and system-menu commands when an application exposes standard Win32 menus. Applications that draw private menus do not expose those commands through this integration.
 - Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
-- Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
+- Opens a single settings window from the dock surface menu. General settings control startup at Windows sign-in, animations, hover previews, and notification indicators. Appearance settings offer dark/light themes, Turkish/English interface text, and left/center/right alignment without dropdown menus. The Widgets tab is visible but disabled.
+- Applies theme, language, and behavior changes after choosing Apply changes. Preferences are saved in `%LOCALAPPDATA%\OpenTaskbar\settings.json`; existing alignment and pin order are preserved. Closing with unapplied changes asks before discarding them.
+- The startup switch reads and updates only the current user's `Software\Microsoft\Windows\CurrentVersion\Run\OpenTaskbar` registration. It is changed only on Apply, requires a valid executable path, and reports read/write failures. If preference saving fails after a startup change, the previous startup preference is restored or a recovery error is shown. Windows startup policy and Task Manager can override this registration.
 - Hides the Explorer taskbar while the dock overlays its reserved bottom area, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
 - Choose “OpenTaskbar’dan çık” from the dock surface menu to exit and show the native Windows taskbar with its previous auto-hide state. Restoration disables replacement callbacks before changing Shell state and also runs on application exit, Windows session ending, and managed process exit. Forceful process termination cannot execute these callbacks; the recovery record remains for the next startup.
 - Uses Windows accessibility events to match eligible open windows with application icons and update notification badges. It omits owned and tool windows, Windows system-app helper windows, and Explorer shell windows that are not File Explorer windows, and briefly coalesces bursts of change events.
@@ -25,7 +26,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 
 ## Interface system
 
-Shared interface resources are defined in `Design/Theme.xaml`. See [the interface rules](Design/README.md) for dimensions, states, materials, and validation limits. The dock uses translucent tinted glass; desktop backdrop blur is not currently implemented.
+Shared dimensions and base controls are defined in `Design/Theme.xaml`; `Design/ContextMenus.xaml`, `Design/SettingsControls.xaml`, and `Design/Palettes/` own menu, settings, and dark/light appearance resources. See [the interface rules](Design/README.md) for dimensions, states, materials, and validation limits. The dock uses translucent tinted glass; desktop backdrop blur is not currently implemented.
 
 ## Performance approach
 
@@ -55,7 +56,8 @@ dotnet run --project OpenTaskbar.csproj
 - Owned dialogs, tool windows, Windows system-app helpers, Explorer shell windows, and untitled windows are omitted from the dock and hover previews. User-opened File Explorer windows remain eligible; a pinned executable with no embedded icon is shown without a generic replacement icon.
 - Pins come from Windows shortcut files; moving or removing an executable requires updating its Windows taskbar shortcut.
 - Open windows are shown even when they are not pinned. Packaged Windows taskbar pins stored only as application IDs are not imported unless that application is running.
-- Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.
+- Widgets are not implemented. Their settings tab is disabled.
+- Interface localization does not translate application-provided Jump List titles, file names, or messages supplied externally by Windows/applications. The native window frame follows supported Windows theme behavior.
 - Jump List tasks and custom categories require undocumented x64 Windows Shell interfaces. The local Windows 11 build supports the implemented interface versions; other builds can show an explicit unsupported/unavailable state. Windows updates may change these interfaces. Applications that publish no Jump List show an empty state, and private in-app menus are not extracted.
 - Jump Lists are read on demand on a dedicated STA thread, with a three-second UI timeout and bounded category/item counts. Cancellation cannot interrupt an already-running native COM call, but late results are discarded and native objects are released on that thread. Task execution and packaged-app activation require interactive Windows verification.
 
