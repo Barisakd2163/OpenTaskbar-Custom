@@ -95,11 +95,6 @@
             </MenuItem>
             <MenuItem Header="Uygulamayı kapat" Tag="ClosePinnedApp" Click="ClosePinnedApp_Click" />
             <MenuItem Header="Süreci sonlandır…" Tag="TerminatePinnedApp" Click="TerminatePinnedApp_Click" />
-            <Separator Tag="PinnedAppDivider" Visibility="Collapsed" />
-            <MenuItem Header="Sabitlemeyi kaldır" Tag="RemovePinnedApp" Visibility="Collapsed"
-                      Click="RemovePinnedApp_Click" />
-            <Separator Tag="PinAppsDivider" Visibility="Collapsed" />
-            <MenuItem Header="Açık uygulamayı sabitle" Tag="PinRunningApps" Visibility="Collapsed" />
             <Separator Tag="SettingsDivider" />
             <MenuItem Header="Ayarlar" Tag="DockSettings">
                 <MenuItem Header="Konum">
@@ -174,11 +169,6 @@
                       VerticalContentAlignment="Center">
             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                         VerticalAlignment="Center">
-                <Button x:Name="AddPinnedAppButton" Style="{StaticResource DockButton}"
-                        Content="+" FontSize="25" Foreground="#FFF1F1F1"
-                        ToolTip="Açık uygulamayı sabitle" AutomationProperties.Name="Açık uygulamayı sabitle"
-                        ContextMenu="{StaticResource DockContextMenu}" Click="AddPinnedAppButton_Click"
-                        Visibility="Collapsed" />
                 <ItemsControl x:Name="PinnedApps">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>

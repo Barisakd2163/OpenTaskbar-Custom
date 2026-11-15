@@ -10,11 +10,8 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Shrinks the dock to its icon group and places it at the selected left, center, or right position.
 - Shows a notification dot on a pinned application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
 - Uses a compact black context menu. Pinned applications can be opened, closed gracefully, or force-terminated after confirmation; supported browsers also offer new and private windows.
-- Pins a currently open application from the context menu. When the pin list is empty, a visible add button opens the same menu.
-- On first launch, imports classic application shortcuts from the current user's Windows taskbar pin folder and persists the result as OpenTaskbar's own pin list.
+- Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
-- Stores pinned paths in `%LOCALAPPDATA%\OpenTaskbar\pinned-apps.json`.
-- Removes a pin from its context menu.
 - Hides the Explorer taskbar while the dock overlays its reserved bottom area, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
 - Uses Windows accessibility events to match pinned applications with open windows and update notification badges. It enumerates windows once at startup and briefly coalesces bursts of change events.
 - Runs without administrator rights or network access. Taskbar replacement changes only the current user's Windows taskbar state.
@@ -45,8 +42,8 @@ dotnet run --project OpenTaskbar.csproj
 - Applications do not expose a universal unread count or notification badge API, so notification dots appear only when Windows raises a system alert for a window.
 - Browser tab favicon badges are private to the browser's page UI and are not exposed as a system notification signal. Supporting them requires an integration such as a browser extension; OpenTaskbar does not infer unread state from screenshots or page content.
 - Owned dialogs and untitled windows are omitted from activation and hover previews. A pinned executable with no embedded icon is shown without a generic replacement icon.
-- Pins refer to executable paths; moving or removing an executable requires removing and adding the pin again.
-- The first-run Windows pin import reads classic `.lnk` shortcuts from the current user's taskbar pin folder. Packaged applications that Windows stores only as application IDs are not imported.
+- Pins come from Windows shortcut files; moving or removing an executable requires updating its Windows taskbar shortcut.
+- Windows taskbar pins stored only as packaged application IDs are not imported; the current reader consumes classic `.lnk` shortcuts from the user's taskbar pin folder.
 - Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.
 
 ## License
