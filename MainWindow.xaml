@@ -88,13 +88,13 @@
                     </Setter>
                 </Style>
             </ContextMenu.Resources>
-            <MenuItem Header="Uygulamayı aç" Tag="ActivatePinnedApp" Click="PinnedAppContextMenu_Click" />
+            <MenuItem Header="Uygulamayı aç" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
             <MenuItem Header="Tarayıcı işlemleri" Tag="BrowserActions" Visibility="Collapsed">
                 <MenuItem Header="Yeni pencere" Tag="NewWindow" Click="BrowserAction_Click" />
                 <MenuItem Header="Gizli pencere" Tag="PrivateWindow" Click="BrowserAction_Click" />
             </MenuItem>
-            <MenuItem Header="Uygulamayı kapat" Tag="ClosePinnedApp" Click="ClosePinnedApp_Click" />
-            <MenuItem Header="Süreci sonlandır…" Tag="TerminatePinnedApp" Click="TerminatePinnedApp_Click" />
+            <MenuItem Header="Uygulamayı kapat" Tag="CloseDockApp" Click="CloseDockApp_Click" />
+            <MenuItem Header="Süreci sonlandır…" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
             <Separator Tag="SettingsDivider" />
             <MenuItem Header="Ayarlar" Tag="DockSettings">
                 <MenuItem Header="Konum">
@@ -160,6 +160,21 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <DataTemplate x:Key="DockAppIconTemplate">
+            <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
+                    Click="DockApp_Click" AutomationProperties.Name="{Binding Name}"
+                    ToolTip="{Binding Name}" ContextMenu="{StaticResource DockContextMenu}"
+                    MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave">
+                <Grid Width="32" Height="32">
+                    <Image Source="{Binding Icon}" Stretch="Uniform" />
+                    <Ellipse Width="9" Height="9" Fill="#FFE5484D"
+                             Stroke="#FFF8F8F8" StrokeThickness="1"
+                             HorizontalAlignment="Right" VerticalAlignment="Top"
+                             Visibility="{Binding HasNotification, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </Grid>
+            </Button>
+        </DataTemplate>
     </Window.Resources>
 
     <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,0"
@@ -169,26 +184,15 @@
                       VerticalContentAlignment="Center">
             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                         VerticalAlignment="Center">
-                <ItemsControl x:Name="PinnedApps">
+                <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
-                                    Click="PinnedApp_Click" AutomationProperties.Name="{Binding Name}"
-                                    ToolTip="{Binding Name}" ContextMenu="{StaticResource DockContextMenu}"
-                                    MouseEnter="PinnedApp_MouseEnter" MouseLeave="PinnedApp_MouseLeave">
-                                <Grid Width="32" Height="32">
-                                    <Image Source="{Binding Icon}" Stretch="Uniform" />
-                                    <Ellipse Width="9" Height="9" Fill="#FFE5484D"
-                                             Stroke="#FFF8F8F8" StrokeThickness="1"
-                                             HorizontalAlignment="Right" VerticalAlignment="Top"
-                                             Visibility="{Binding HasNotification, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                </Grid>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
                 </ItemsControl>
                 <TextBlock x:Name="StatusText" Foreground="#FFF0B78A" FontSize="11"
                            VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap" />

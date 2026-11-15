@@ -7,7 +7,7 @@ namespace OpenTaskbar.Services;
 
 public static class WindowsTaskbarPinImporter
 {
-    public static (IReadOnlyList<PinnedApp> Apps, string? Error) Import()
+    public static (IReadOnlyList<DockApp> Apps, string? Error) Import()
     {
         var taskbarPinsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -64,7 +64,7 @@ public static class WindowsTaskbarPinImporter
             return ([], "Windows kısayol hizmeti başlatılamadı; görev çubuğu uygulamaları içe aktarılamadı.");
         }
 
-        var apps = new List<PinnedApp>();
+        var apps = new List<DockApp>();
         var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var skippedCount = 0;
         try
@@ -98,10 +98,9 @@ public static class WindowsTaskbarPinImporter
                             continue;
                         }
 
-                        apps.Add(new PinnedApp(Path.GetFileNameWithoutExtension(shortcutPath), executablePath)
+                        apps.Add(new DockApp(Path.GetFileNameWithoutExtension(shortcutPath), executablePath)
                         {
-                            LaunchArguments = string.IsNullOrWhiteSpace(arguments) ? null : arguments,
-                            IconPath = shortcutPath
+                            LaunchArguments = string.IsNullOrWhiteSpace(arguments) ? null : arguments
                         });
                     }
                     finally

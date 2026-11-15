@@ -23,7 +23,8 @@ public partial class MainWindow : Window
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
 
-    private readonly ObservableCollection<PinnedApp> _pinnedApps = [];
+    private readonly ObservableCollection<DockApp> _pinnedApps = [];
+    private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly DockSettingsStore _dockSettingsStore = new();
     private readonly DispatcherTimer _previewCloseTimer;
     private readonly WindowThumbnailPreview _thumbnailPreview;
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         PinnedApps.ItemsSource = _pinnedApps;
+        RunningApps.ItemsSource = _runningApps;
         _thumbnailPreview = new WindowThumbnailPreview();
         _previewCloseTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
@@ -155,7 +157,7 @@ public partial class MainWindow : Window
         {
             _pinnedApps.Add(app with
             {
-                Icon = ApplicationIconProvider.GetForFile(app.IconPath ?? app.ExecutablePath)
+                Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath)
             });
         }
 
@@ -167,15 +169,11 @@ public partial class MainWindow : Window
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
-        for (var index = 0; index < _pinnedApps.Count; index++)
+        UpdateNotificationBadges(_pinnedApps, windows);
+        if (UpdateRunningApps(windows))
         {
-            var app = _pinnedApps[index];
-            var hasNotification = windows.Any(window => window.HasNotification
-                && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
-            if (app.HasNotification != hasNotification)
-            {
-                _pinnedApps[index] = app with { HasNotification = hasNotification };
-            }
+            ResizeDockToContent();
+            _replacementSession?.RefreshPosition();
         }
 
         if (_thumbnailPreview.IsVisible)
@@ -188,19 +186,112 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PinnedApp_Click(object sender, RoutedEventArgs e)
+    private static void UpdateNotificationBadges(
+        ObservableCollection<DockApp> apps,
+        IReadOnlyList<TrackedWindow> windows)
     {
-        if (sender is not Button { DataContext: PinnedApp app })
+        for (var index = 0; index < apps.Count; index++)
+        {
+            var app = apps[index];
+            var hasNotification = windows.Any(window => window.HasNotification
+                && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+            if (app.HasNotification != hasNotification)
+            {
+                apps[index] = app with { HasNotification = hasNotification };
+            }
+        }
+    }
+
+    private bool UpdateRunningApps(IReadOnlyList<TrackedWindow> windows)
+    {
+        var pinnedPaths = _pinnedApps.Select(app => app.ExecutablePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentApps = _runningApps.ToDictionary(app => app.ExecutablePath, StringComparer.OrdinalIgnoreCase);
+        var desiredApps = windows
+            .Where(window => window.ExecutablePath is not null
+                && File.Exists(window.ExecutablePath)
+                && !pinnedPaths.Contains(window.ExecutablePath))
+            .GroupBy(window => window.ExecutablePath!, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var executablePath = group.Key;
+                var hasNotification = group.Any(window => window.HasNotification);
+                if (currentApps.TryGetValue(executablePath, out var existingApp))
+                {
+                    return existingApp with { HasNotification = hasNotification };
+                }
+
+                return new DockApp(GetApplicationName(executablePath), executablePath)
+                {
+                    Icon = ApplicationIconProvider.GetForFile(executablePath),
+                    HasNotification = hasNotification
+                };
+            })
+            .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(app => app.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var layoutChanged = !_runningApps.Select(app => app.ExecutablePath)
+            .SequenceEqual(desiredApps.Select(app => app.ExecutablePath), StringComparer.OrdinalIgnoreCase);
+
+        for (var desiredIndex = 0; desiredIndex < desiredApps.Count; desiredIndex++)
+        {
+            var desiredApp = desiredApps[desiredIndex];
+            if (desiredIndex < _runningApps.Count
+                && string.Equals(_runningApps[desiredIndex].ExecutablePath, desiredApp.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_runningApps[desiredIndex] != desiredApp)
+                {
+                    _runningApps[desiredIndex] = desiredApp;
+                }
+
+                continue;
+            }
+
+            var existingIndex = -1;
+            for (var index = desiredIndex + 1; index < _runningApps.Count; index++)
+            {
+                if (string.Equals(_runningApps[index].ExecutablePath, desiredApp.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    existingIndex = index;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                _runningApps.Move(existingIndex, desiredIndex);
+                if (_runningApps[desiredIndex] != desiredApp)
+                {
+                    _runningApps[desiredIndex] = desiredApp;
+                }
+            }
+            else
+            {
+                _runningApps.Insert(desiredIndex, desiredApp);
+            }
+        }
+
+        while (_runningApps.Count > desiredApps.Count)
+        {
+            _runningApps.RemoveAt(_runningApps.Count - 1);
+        }
+
+        return layoutChanged;
+    }
+
+    private void DockApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: DockApp app })
         {
             return;
         }
 
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
-        OpenPinnedApp(app);
+        OpenDockApp(app);
     }
 
-    private void OpenPinnedApp(PinnedApp app)
+    private void OpenDockApp(DockApp app)
     {
         var executablePath = app.ExecutablePath;
         var existingWindow = FindWindowForExecutable(executablePath);
@@ -249,7 +340,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PinnedApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    private void DockApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _previewCloseTimer.Stop();
         if (sender is not Button { Tag: string executablePath })
@@ -267,7 +358,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.ShowFor(window.Handle, (FrameworkElement)sender);
     }
 
-    private void PinnedApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    private void DockApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _previewCloseTimer.Stop();
         _previewCloseTimer.Start();
@@ -283,6 +374,14 @@ public partial class MainWindow : Window
     {
         return _windowTracker?.Snapshot.FirstOrDefault(window =>
             string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetApplicationName(string executablePath)
+    {
+        var description = FileVersionInfo.GetVersionInfo(executablePath).FileDescription;
+        return string.IsNullOrWhiteSpace(description)
+            ? Path.GetFileNameWithoutExtension(executablePath)
+            : description.Trim();
     }
 
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
@@ -325,13 +424,13 @@ public partial class MainWindow : Window
             }
         }
 
-        var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as PinnedApp;
+        var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
         var isPinnedTarget = pinnedApp is not null;
         var browserArguments = pinnedApp is null ? null : GetBrowserActions(pinnedApp.ExecutablePath);
-        SetMenuItemVisibility(contextMenu, "ActivatePinnedApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "ActivateDockApp", isPinnedTarget);
         SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
-        SetMenuItemVisibility(contextMenu, "ClosePinnedApp", isPinnedTarget);
-        SetMenuItemVisibility(contextMenu, "TerminatePinnedApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "CloseDockApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "TerminateDockApp", isPinnedTarget);
         SetSeparatorVisibility(contextMenu, "SettingsDivider", isPinnedTarget);
 
         if (pinnedApp is null)
@@ -340,7 +439,7 @@ public partial class MainWindow : Window
         }
 
         SetMenuCommandParameter(contextMenu, pinnedApp.ExecutablePath);
-        if (FindMenuItem(contextMenu, "ActivatePinnedApp") is { } activateMenuItem)
+        if (FindMenuItem(contextMenu, "ActivateDockApp") is { } activateMenuItem)
         {
             activateMenuItem.CommandParameter = pinnedApp;
         }
@@ -353,11 +452,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PinnedAppContextMenu_Click(object sender, RoutedEventArgs e)
+    private void DockAppContextMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem { CommandParameter: PinnedApp app })
+        if (sender is MenuItem { CommandParameter: DockApp app })
         {
-            OpenPinnedApp(app);
+            OpenDockApp(app);
         }
     }
 
@@ -408,7 +507,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ClosePinnedApp_Click(object sender, RoutedEventArgs e)
+    private void CloseDockApp_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { CommandParameter: string executablePath })
         {
@@ -459,7 +558,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void TerminatePinnedApp_Click(object sender, RoutedEventArgs e)
+    private void TerminateDockApp_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { CommandParameter: string executablePath })
         {
