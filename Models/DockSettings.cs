@@ -9,6 +9,7 @@ public enum DockPosition
 
 public enum AppTheme { Dark, Light }
 public enum AppLanguage { Turkish, English }
+public enum AutoHideMode { Disabled, Smart, Always }
 
 public sealed record DockSettings(
     DockPosition Position = DockPosition.Left,
@@ -17,4 +18,5 @@ public sealed record DockSettings(
     AppLanguage Language = AppLanguage.Turkish,
     bool AnimationsEnabled = true,
     bool PreviewsEnabled = true,
-    bool NotificationBadgesEnabled = true);
+    bool NotificationBadgesEnabled = true,
+    AutoHideMode AutoHide = AutoHideMode.Disabled);

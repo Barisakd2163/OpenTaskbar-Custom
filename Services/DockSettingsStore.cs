@@ -80,6 +80,7 @@ public sealed class DockSettingsStore
 
     private static bool IsValid(DockSettings settings) => Enum.IsDefined(settings.Position)
         && Enum.IsDefined(settings.Theme) && Enum.IsDefined(settings.Language)
+        && Enum.IsDefined(settings.AutoHide)
         && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count;
 

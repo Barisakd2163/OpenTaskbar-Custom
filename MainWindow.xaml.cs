@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private uint _taskbarCreatedMessage;
     private Point _dragStartPoint;
     private DockApp? _draggedApp;
+    private DockAutoHideController? _autoHideController;
 
     public MainWindow()
     {
@@ -114,6 +115,14 @@ public partial class MainWindow : Window
             _windowTracker = null;
         }
 
+        _autoHideController = new DockAutoHideController(
+            this,
+            source.Handle,
+            DockSurfaceTranslate,
+            DockSurface,
+            () => (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
+        _autoHideController.SetMode(_preferences.Current.AutoHide);
+
         StartReplacementMode();
     }
 
@@ -156,6 +165,7 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
+            session.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         }
         catch (InvalidOperationException ex)
         {
@@ -748,7 +758,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => ResetMagnification();
+    private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseEnterDock();
+
+    private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        ResetMagnification();
+        _autoHideController?.OnMouseLeaveDock();
+    }
+
+    private void DockEdgeTrigger_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseEnterEdge();
+    private void DockEdgeTrigger_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseLeaveEdge();
 
     private void ResetMagnification()
     {
@@ -863,6 +882,7 @@ public partial class MainWindow : Window
     {
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        _autoHideController?.EvaluateState();
     }
 
     private void ThumbnailPreview_PointerEntered(object? sender, EventArgs e)
@@ -962,6 +982,7 @@ public partial class MainWindow : Window
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
     {
         _replacementSession?.UpdateForeground(windowHandle);
+        _autoHideController?.CheckForegroundWindow(windowHandle);
         GetWindowThreadProcessId(windowHandle, out var processId);
         // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
         if (processId == Environment.ProcessId) return;
@@ -1024,6 +1045,12 @@ public partial class MainWindow : Window
 
         if (pinnedApp is null)
         {
+            if (FindMenuItem(contextMenu, "AutoHideDisabled") is { } disabledItem)
+                disabledItem.IsChecked = _preferences.Current.AutoHide == AutoHideMode.Disabled;
+            if (FindMenuItem(contextMenu, "AutoHideSmart") is { } smartItem)
+                smartItem.IsChecked = _preferences.Current.AutoHide == AutoHideMode.Smart;
+            if (FindMenuItem(contextMenu, "AutoHideAlways") is { } alwaysItem)
+                alwaysItem.IsChecked = _preferences.Current.AutoHide == AutoHideMode.Always;
             FocusContextMenu(contextMenu);
             return;
         }
@@ -1147,12 +1174,25 @@ public partial class MainWindow : Window
     {
         if (!ReferenceEquals(sender, _openContextMenu)) return;
         _openContextMenu = null;
+        _autoHideController?.EvaluateState();
         _jumpListLoad?.Cancel();
         if (_jumpListSession is { } session)
         {
             _jumpListSession = null;
             await _jumpLists.ReleaseAsync(session);
         }
+    }
+
+    private void AutoHide_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item || item.Tag is not string tag) return;
+        var mode = tag switch
+        {
+            "AutoHideSmart" => AutoHideMode.Smart,
+            "AutoHideAlways" => AutoHideMode.Always,
+            _ => AutoHideMode.Disabled
+        };
+        _preferences.Save(_preferences.Current with { AutoHide = mode });
     }
 
     private void DockAppContextMenu_Click(object sender, RoutedEventArgs e)
@@ -1375,6 +1415,8 @@ public partial class MainWindow : Window
     {
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        _autoHideController?.SetMode(_preferences.Current.AutoHide);
+        _replacementSession?.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
         ResetMagnification();
@@ -1620,6 +1662,8 @@ public partial class MainWindow : Window
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;
         _thumbnailPreview.CloseRequested -= ThumbnailPreview_CloseRequested;
         _thumbnailPreview.Dispose();
+        _autoHideController?.Dispose();
+        _autoHideController = null;
         _jumpLists.Dispose();
     }
 

@@ -30,6 +30,11 @@
             <MenuItem Header="{local:Loc Terminate}" Icon="{StaticResource IconTerminate}" Style="{StaticResource DestructiveMenuItem}" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
         </ContextMenu>
         <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+            <MenuItem Header="{local:Loc AutoHide}" Tag="AutoHide">
+                <MenuItem Header="{local:Loc AutoHideDisabled}" Tag="AutoHideDisabled" IsCheckable="True" Click="AutoHide_Click" />
+                <MenuItem Header="{local:Loc AutoHideSmart}" Tag="AutoHideSmart" IsCheckable="True" Click="AutoHide_Click" />
+                <MenuItem Header="{local:Loc AutoHideAlways}" Tag="AutoHideAlways" IsCheckable="True" Click="AutoHide_Click" />
+            </MenuItem>
             <MenuItem Header="{local:Loc Settings}" Icon="{StaticResource IconSettings}" Click="OpenSettings_Click" />
             <Separator />
             <MenuItem Header="{local:Loc Exit}" Icon="{StaticResource IconExit}" Click="ExitOpenTaskbar_Click" />
@@ -152,7 +157,7 @@
 
     <Grid x:Name="DockHost">
         <Grid.RowDefinitions>
-            <RowDefinition Height="{DynamicResource DockHeadroom}" />
+            <RowDefinition Height="{Binding Source={StaticResource DockHeadroom}}" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Border Grid.Row="1" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" />
@@ -160,10 +165,13 @@
                 Margin="{StaticResource DockInset}" VerticalAlignment="Center"
                 Background="{DynamicResource DockMaterial}" BorderBrush="{DynamicResource DockBorderMaterial}" BorderThickness="1"
                 CornerRadius="{StaticResource DockRadius}" ContextMenu="{StaticResource DockContextMenu}"
-                MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
-        <Border.Effect>
-            <DropShadowEffect Color="#000000" BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.40" RenderingBias="Performance" />
-        </Border.Effect>
+                MouseEnter="DockSurface_MouseEnter" MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="DockSurfaceTranslate" Y="0" />
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.40" RenderingBias="Performance" />
+            </Border.Effect>
         <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                     VerticalAlignment="Center">
             <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
@@ -206,5 +214,7 @@
             </TextBlock>
         </StackPanel>
     </Border>
+    <Border x:Name="DockEdgeTrigger" Grid.Row="1" VerticalAlignment="Bottom" Height="3" Background="#01000000"
+            MouseEnter="DockEdgeTrigger_MouseEnter" MouseLeave="DockEdgeTrigger_MouseLeave" />
     </Grid>
 </Window>

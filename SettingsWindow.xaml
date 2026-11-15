@@ -36,6 +36,15 @@
                             <StackPanel Margin="0,0,20,0"><TextBlock Text="{local:Loc Badges}" FontWeight="SemiBold" /><TextBlock Text="{local:Loc BadgesDescription}" Style="{StaticResource SettingsDescription}" Margin="0,4,0,0" /></StackPanel>
                             <CheckBox x:Name="BadgesToggle" Grid.Column="1" Style="{StaticResource SettingsSwitch}" AutomationProperties.Name="{local:Loc Badges}" />
                         </Grid></Border>
+                        <Border Style="{StaticResource SettingsRow}"><StackPanel>
+                            <TextBlock Text="{local:Loc AutoHide}" FontWeight="SemiBold" />
+                            <TextBlock Text="{local:Loc AutoHideDescription}" Style="{StaticResource SettingsDescription}" Margin="0,4,0,12" />
+                            <WrapPanel>
+                                <RadioButton x:Name="AutoHideDisabled" GroupName="AutoHide" Content="{local:Loc AutoHideDisabled}" Style="{StaticResource SettingsChoice}" />
+                                <RadioButton x:Name="AutoHideSmart" GroupName="AutoHide" Content="{local:Loc AutoHideSmart}" Style="{StaticResource SettingsChoice}" />
+                                <RadioButton x:Name="AutoHideAlways" GroupName="AutoHide" Content="{local:Loc AutoHideAlways}" Style="{StaticResource SettingsChoice}" />
+                            </WrapPanel>
+                        </StackPanel></Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

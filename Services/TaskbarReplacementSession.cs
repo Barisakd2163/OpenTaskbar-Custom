@@ -39,6 +39,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _fullScreenSuppressed;
     private double _nativeTaskbarHeight = 48;
     private const double DockHeadroomDips = 16;
+    private bool _autoHideEnabled;
     private Size _lastLayout;
     private int _stopInProgress;
 
@@ -182,7 +183,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             }
         }
 
-        var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
+        var replacementState = (_previousTaskbarState & AbsAlwaysOnTop) | (_autoHideEnabled ? AbsAutoHide : 0);
         SetTaskbarState(replacementState, _handle);
         HideNativeTaskbar();
 
@@ -272,6 +273,15 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public void RefreshPosition()
     {
+        PositionDockWindow();
+    }
+
+    public void UpdateAutoHide(bool autoHide)
+    {
+        _autoHideEnabled = autoHide;
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
+        var targetState = (_previousTaskbarState & AbsAlwaysOnTop) | (autoHide ? AbsAutoHide : 0);
+        SetTaskbarState(targetState, _handle);
         PositionDockWindow();
     }
 

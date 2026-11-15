@@ -35,6 +35,9 @@ public partial class SettingsWindow : Window
         AnimationsToggle.IsChecked = _applied.AnimationsEnabled;
         PreviewsToggle.IsChecked = _applied.PreviewsEnabled;
         BadgesToggle.IsChecked = _applied.NotificationBadgesEnabled;
+        AutoHideDisabled.IsChecked = _applied.AutoHide == AutoHideMode.Disabled;
+        AutoHideSmart.IsChecked = _applied.AutoHide == AutoHideMode.Smart;
+        AutoHideAlways.IsChecked = _applied.AutoHide == AutoHideMode.Always;
         var startup = _startup.Read();
         _startupEnabled = startup.Enabled;
         _startupAvailable = startup.Error is null;
@@ -74,7 +77,8 @@ public partial class SettingsWindow : Window
         Position = RightPosition.IsChecked == true ? DockPosition.Right : CenterPosition.IsChecked == true ? DockPosition.Center : DockPosition.Left,
         AnimationsEnabled = AnimationsToggle.IsChecked == true,
         PreviewsEnabled = PreviewsToggle.IsChecked == true,
-        NotificationBadgesEnabled = BadgesToggle.IsChecked == true
+        NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
+        AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled
     };
 
     private void Apply_Click(object sender, RoutedEventArgs e)
