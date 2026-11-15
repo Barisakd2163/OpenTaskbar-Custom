@@ -30,11 +30,6 @@
             <MenuItem Header="{local:Loc Terminate}" Icon="{StaticResource IconTerminate}" Style="{StaticResource DestructiveMenuItem}" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
         </ContextMenu>
         <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
-            <MenuItem Header="{local:Loc AutoHide}" Tag="AutoHide">
-                <MenuItem Header="{local:Loc AutoHideDisabled}" Tag="AutoHideDisabled" IsCheckable="True" Click="AutoHide_Click" />
-                <MenuItem Header="{local:Loc AutoHideSmart}" Tag="AutoHideSmart" IsCheckable="True" Click="AutoHide_Click" />
-                <MenuItem Header="{local:Loc AutoHideAlways}" Tag="AutoHideAlways" IsCheckable="True" Click="AutoHide_Click" />
-            </MenuItem>
             <MenuItem Header="{local:Loc Settings}" Icon="{StaticResource IconSettings}" Click="OpenSettings_Click" />
             <Separator />
             <MenuItem Header="{local:Loc Exit}" Icon="{StaticResource IconExit}" Click="ExitOpenTaskbar_Click" />

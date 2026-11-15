@@ -1045,12 +1045,6 @@ public partial class MainWindow : Window
 
         if (pinnedApp is null)
         {
-            if (FindMenuItem(contextMenu, "AutoHideDisabled") is { } disabledItem)
-                disabledItem.IsChecked = _preferences.Current.AutoHide == AutoHideMode.Disabled;
-            if (FindMenuItem(contextMenu, "AutoHideSmart") is { } smartItem)
-                smartItem.IsChecked = _preferences.Current.AutoHide == AutoHideMode.Smart;
-            if (FindMenuItem(contextMenu, "AutoHideAlways") is { } alwaysItem)
-                alwaysItem.IsChecked = _preferences.Current.AutoHide == AutoHideMode.Always;
             FocusContextMenu(contextMenu);
             return;
         }
@@ -1181,18 +1175,6 @@ public partial class MainWindow : Window
             _jumpListSession = null;
             await _jumpLists.ReleaseAsync(session);
         }
-    }
-
-    private void AutoHide_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuItem item || item.Tag is not string tag) return;
-        var mode = tag switch
-        {
-            "AutoHideSmart" => AutoHideMode.Smart,
-            "AutoHideAlways" => AutoHideMode.Always,
-            _ => AutoHideMode.Disabled
-        };
-        _preferences.Save(_preferences.Current with { AutoHide = mode });
     }
 
     private void DockAppContextMenu_Click(object sender, RoutedEventArgs e)
