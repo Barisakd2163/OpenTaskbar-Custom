@@ -41,6 +41,8 @@ public partial class MainWindow : Window
     private nint _foregroundWindow;
     private Button? _magnifiedButton;
     private readonly List<FrameworkElement> _magnifiedIcons = [];
+    private ContextMenu? _openContextMenu;
+    private bool _contextTargetWasForeground;
 
     public MainWindow()
     {
@@ -457,6 +459,7 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        AnimateActivationFeedback((Button)sender);
         OpenDockApp(app, toggleIfForeground: true);
     }
 
@@ -472,35 +475,48 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AnimateActivationFeedback(Button button)
+    {
+        if (!SystemParameters.ClientAreaAnimation || !button.IsMouseOver) return;
+        var translate = new TranslateTransform();
+        button.RenderTransform = translate;
+        var feedback = new DoubleAnimationUsingKeyFrames
+            {
+                Duration = TimeSpan.FromMilliseconds(150),
+                KeyFrames =
+                {
+                    new EasingDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60)),
+                        new CubicEase { EasingMode = EasingMode.EaseOut }),
+                    new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150)),
+                        new CubicEase { EasingMode = EasingMode.EaseOut })
+                }
+            };
+        feedback.Completed += (_, _) =>
+        {
+            if (ReferenceEquals(button.RenderTransform, translate))
+                button.RenderTransform = new ScaleTransform();
+        };
+        translate.BeginAnimation(TranslateTransform.YProperty, feedback);
+    }
+
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_magnifiedButton?.IsMouseOver == true) return;
-        var buttons = new List<Button> { StartButton };
-        foreach (var owner in new[] { PinnedApps, RunningApps })
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null && element is not Button && element != DockSurface)
         {
-            foreach (var app in owner.Items)
-            {
-                var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
-                if (button is not null) buttons.Add(button);
-            }
+            element = element is Visual ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element);
         }
 
-        var hovered = buttons.FirstOrDefault(button => button.IsMouseOver);
+        var hovered = element as Button;
         if (ReferenceEquals(hovered, _magnifiedButton)) return;
         ResetMagnification();
         _magnifiedButton = hovered;
         if (hovered is null) return;
-        var hoveredIndex = buttons.IndexOf(hovered);
-        for (var index = Math.Max(0, hoveredIndex - 1); index <= Math.Min(buttons.Count - 1, hoveredIndex + 1); index++)
-        {
-            var button = buttons[index];
-            FrameworkElement? icon = button == StartButton ? StartButton.Content as FrameworkElement
-                : FindVisualChild<Image>(button)?.Parent as FrameworkElement;
-            if (icon is null) continue;
-            var target = (double)FindResource(index == hoveredIndex ? "DockHoverScale" : "DockNeighborScale");
-            AnimateMagnification(icon, target);
-            _magnifiedIcons.Add(icon);
-        }
+        FrameworkElement? icon = hovered == StartButton ? StartButton.Content as FrameworkElement
+            : FindVisualChild<Image>(hovered)?.Parent as FrameworkElement;
+        if (icon is null) return;
+        AnimateMagnification(icon, (double)FindResource("DockHoverScale"));
+        _magnifiedIcons.Add(icon);
     }
 
     private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => ResetMagnification();
@@ -722,6 +738,12 @@ public partial class MainWindow : Window
 
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
     {
+        GetWindowThreadProcessId(windowHandle, out var processId);
+        if (_openContextMenu is not null)
+        {
+            if (processId == Environment.ProcessId) return;
+            _openContextMenu.IsOpen = false;
+        }
         _foregroundWindow = windowHandle;
         UpdateWindowIndicators(_windowTracker?.Snapshot ?? []);
         UpdateRunningApps(_windowTracker?.Snapshot ?? []);
@@ -754,10 +776,13 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        ResetMagnification();
+        if (_openContextMenu is not null && !ReferenceEquals(_openContextMenu, contextMenu))
+            _openContextMenu.IsOpen = false;
+        _openContextMenu = contextMenu;
 
         var settingsMenu = FindMenuItem(contextMenu, "DockSettings");
-        var positionMenu = settingsMenu?.Items.OfType<MenuItem>()
-            .FirstOrDefault(item => item.Header?.ToString() == "Konum");
+        var positionMenu = settingsMenu;
         if (positionMenu is not null)
         {
             foreach (var item in positionMenu.Items.OfType<MenuItem>())
@@ -767,6 +792,7 @@ public partial class MainWindow : Window
         }
 
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
+        _contextTargetWasForeground = pinnedApp?.IsForeground == true;
         var hasAppTarget = pinnedApp is not null;
         var isPinnedTarget = pinnedApp?.ShortcutPath is not null;
         var isRunning = pinnedApp?.IsRunning == true;
@@ -776,10 +802,11 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "CloseDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "TerminateDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
-        SetSeparatorVisibility(contextMenu, "SettingsDivider", hasAppTarget);
+        SetSeparatorVisibility(contextMenu, "RunningCommandsDivider", isRunning);
 
         if (pinnedApp is null)
         {
+            FocusContextMenu(contextMenu);
             return;
         }
 
@@ -802,13 +829,30 @@ public partial class MainWindow : Window
                 item.CommandParameter = browserArguments;
             }
         }
+        FocusContextMenu(contextMenu);
+    }
+
+    private static void FocusContextMenu(ContextMenu menu)
+    {
+        if (PresentationSource.FromVisual(menu) is HwndSource source)
+        {
+            SetForegroundWindow(source.Handle);
+        }
+        menu.Focus();
+    }
+
+    private void DockContextMenu_Closed(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, _openContextMenu)) _openContextMenu = null;
     }
 
     private void DockAppContextMenu_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { CommandParameter: DockApp app })
         {
-            OpenDockApp(app, toggleIfForeground: true);
+            if (_contextTargetWasForeground && FindWindowForExecutable(app.ExecutablePath) is { } window)
+                NativeWindowTracker.Activate(window.Handle);
+            OpenDockApp(app, toggleIfForeground: _contextTargetWasForeground);
         }
     }
 
@@ -1222,6 +1266,10 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
+        _openContextMenu = null;
+        _magnifiedIcons.Clear();
+        _magnifiedButton = null;
         _source?.RemoveHook(WindowProc);
         _source = null;
 
@@ -1248,6 +1296,13 @@ public partial class MainWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(nint windowHandle, uint message, nint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(nint windowHandle);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint value);

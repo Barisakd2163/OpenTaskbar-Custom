@@ -20,118 +20,117 @@
         Closed="Window_Closed">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened">
-            <ContextMenu.Resources>
-                <Style TargetType="MenuItem">
-                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-                    <Setter Property="Background" Value="Transparent" />
-                    <Setter Property="Padding" Value="12,7" />
-                    <Setter Property="MinHeight" Value="32" />
-                    <Setter Property="FontSize" Value="13" />
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="MenuItem">
-                                <Grid>
-                                    <Border x:Name="ItemSurface" Background="{TemplateBinding Background}"
-                                            CornerRadius="5" Padding="{TemplateBinding Padding}">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Name="Checkmark" Text="✓" Foreground="{TemplateBinding Foreground}"
-                                                       VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed" />
-                                            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
-                                                              VerticalAlignment="Center" />
-                                            <Path x:Name="SubmenuArrow" Grid.Column="2" Data="M0,0 L4,4 L0,8"
-                                                  Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4"
-                                                  VerticalAlignment="Center" Margin="12,0,2,0"
-                                                  Visibility="Collapsed" />
-                                        </Grid>
-                                    </Border>
-                                    <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
-                                           Placement="Right" PopupAnimation="Fade"
-                                           IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
-                                        <Border Background="{StaticResource SurfacePopup}" BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="1"
-                                                CornerRadius="{StaticResource PopupRadius}" Padding="5">
-                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
-                                        </Border>
-                                    </Popup>
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="HasItems" Value="True">
-                                        <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
-                                    </Trigger>
-                                    <Trigger Property="IsHighlighted" Value="True">
-                                        <Setter TargetName="ItemSurface" Property="Background" Value="{StaticResource SurfaceHover}" />
-                                    </Trigger>
-                                    <Trigger Property="IsChecked" Value="True">
-                                        <Setter TargetName="Checkmark" Property="Visibility" Value="Visible" />
-                                    </Trigger>
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter TargetName="ItemSurface" Property="Opacity" Value="0.42" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-                <Style TargetType="Separator">
-                    <Setter Property="Margin" Value="5,4" />
-                    <Setter Property="Height" Value="1" />
-                    <Setter Property="Background" Value="{StaticResource StrokeSubtle}" />
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Separator">
-                                <Border Height="1" Background="{TemplateBinding Background}" />
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ContextMenu.Resources>
-            <MenuItem Header="Uygulamayı aç" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
-            <MenuItem Header="Tarayıcı işlemleri" Tag="BrowserActions" Visibility="Collapsed">
-                <MenuItem Header="Yeni pencere" Tag="NewWindow" Click="BrowserAction_Click" />
-                <MenuItem Header="Gizli pencere" Tag="PrivateWindow" Click="BrowserAction_Click" />
-            </MenuItem>
-            <MenuItem Header="Uygulamayı kapat" Tag="CloseDockApp" Click="CloseDockApp_Click" />
-            <MenuItem Header="Süreci sonlandır…" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
-            <MenuItem Header="Sabitlemeyi kaldır" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
-            <Separator Tag="SettingsDivider" />
-            <MenuItem Header="Ayarlar" Tag="DockSettings">
-                <MenuItem Header="Konum">
-                    <MenuItem Header="Sol" Tag="Left" IsCheckable="True" Click="DockPosition_Click" />
-                    <MenuItem Header="Orta" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
-                    <MenuItem Header="Sağ" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
-                </MenuItem>
-            </MenuItem>
-        </ContextMenu>
-
-        <Style TargetType="ContextMenu">
-            <Setter Property="Background" Value="{StaticResource SurfacePopup}" />
+        <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeSubtle}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FontFamily" Value="{StaticResource InterfaceFont}" />
+            <Setter Property="FontSize" Value="{StaticResource TextSizeBody}" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="ItemSurface" Background="{TemplateBinding Background}"
+                                    CornerRadius="7" Padding="{TemplateBinding Padding}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="26" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="22" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{TemplateBinding Icon}" FontFamily="Segoe MDL2 Assets"
+                                               FontSize="14" Foreground="{StaticResource TextSecondary}"
+                                               VerticalAlignment="Center" />
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                                                      VerticalAlignment="Center" />
+                                    <TextBlock x:Name="Checkmark" Grid.Column="2" Text="&#xE73E;"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"
+                                               HorizontalAlignment="Right" Visibility="Collapsed" />
+                                    <TextBlock x:Name="SubmenuArrow" Grid.Column="2" Text="&#xE76C;"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="10" VerticalAlignment="Center"
+                                               HorizontalAlignment="Right" Visibility="Collapsed" />
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
+                                   Placement="Right" PopupAnimation="None"
+                                   IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                                <Border Background="{StaticResource MenuMaterial}" BorderBrush="{StaticResource MenuStroke}"
+                                        BorderThickness="1" CornerRadius="{StaticResource PopupRadius}" Padding="5">
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="True">
+                                <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemSurface" Property="Background" Value="{StaticResource SurfaceHover}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Checkmark" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ItemSurface" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="Separator">
+            <Setter Property="Margin" Value="9,5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="{StaticResource MenuStroke}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ContextMenu">
+            <Setter Property="StaysOpen" Value="False" />
+            <Setter Property="Background" Value="{StaticResource MenuMaterial}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MenuStroke}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="5" />
-            <Setter Property="MinWidth" Value="196" />
-            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="MinWidth" Value="224" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ContextMenu">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{StaticResource PopupRadius}" Padding="{TemplateBinding Padding}">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource PopupRadius}"
+                                Padding="{TemplateBinding Padding}">
                             <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+        <ContextMenu x:Key="AppContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+            <MenuItem Header="Uygulamayı aç" Icon="&#xE8A7;" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
+            <MenuItem Header="Tarayıcı işlemleri" Icon="&#xE774;" Tag="BrowserActions" Visibility="Collapsed">
+                <MenuItem Header="Yeni pencere" Icon="&#xE78B;" Tag="NewWindow" Click="BrowserAction_Click" />
+                <MenuItem Header="Gizli pencere" Icon="&#xE72E;" Tag="PrivateWindow" Click="BrowserAction_Click" />
+            </MenuItem>
+            <MenuItem Header="Sabitlemeyi kaldır" Icon="&#xE77A;" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
+            <Separator Tag="RunningCommandsDivider" />
+            <MenuItem Header="Uygulamayı kapat" Icon="&#xE711;" Tag="CloseDockApp" Click="CloseDockApp_Click" />
+            <MenuItem Header="Süreci sonlandır…" Icon="&#xE7BA;" Tag="TerminateDockApp" Click="TerminateDockApp_Click" />
+        </ContextMenu>
+        <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+            <MenuItem Header="Görev çubuğu konumu" Icon="&#xE713;" Tag="DockSettings">
+                <MenuItem Header="Sol" Icon="&#xE8E4;" Tag="Left" IsCheckable="True" Click="DockPosition_Click" />
+                <MenuItem Header="Orta" Icon="&#xE8E3;" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
+                <MenuItem Header="Sağ" Icon="&#xE8E2;" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
+            </MenuItem>
+        </ContextMenu>
 
         <Style x:Key="DockButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Width" Value="{StaticResource DockCellSize}" />
             <Setter Property="Height" Value="{StaticResource DockCellSize}" />
@@ -159,7 +158,6 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Surface" Property="Background" Value="{StaticResource SurfaceHover}" />
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource StrokeSubtle}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Surface" Property="Background" Value="{StaticResource SurfacePressed}" />
@@ -168,7 +166,7 @@
                                 <Setter TargetName="Surface" Property="Opacity" Value="0.48" />
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource StrokeFocus}" />
+                                <Setter TargetName="Surface" Property="Background" Value="{StaticResource SurfaceKeyboardFocus}" />
                             </Trigger>
                             <DataTrigger Binding="{Binding IsRunning}" Value="True">
                                 <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
@@ -215,7 +213,7 @@
         <DataTemplate x:Key="DockAppIconTemplate">
             <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
                     Click="DockApp_Click" AutomationProperties.Name="{Binding Name}"
-                    ToolTip="{Binding Name}" ToolTipService.InitialShowDelay="650" ContextMenu="{StaticResource DockContextMenu}"
+                    ToolTip="{Binding Name}" ToolTipService.InitialShowDelay="650" ContextMenu="{StaticResource AppContextMenu}"
                     Loaded="DockAppButton_Loaded"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave"
                     RenderTransformOrigin="0.5,0.5">
@@ -240,8 +238,8 @@
                     VerticalAlignment="Center">
             <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
                     AutomationProperties.Name="Başlat" ToolTip="Başlat" ToolTipService.InitialShowDelay="650">
-                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE782;" FontSize="23"
-                           Foreground="{StaticResource TextPrimary}" />
+                <Path Width="22" Height="22" Stretch="Uniform" Fill="{StaticResource WindowsLogoBrush}"
+                      Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
             </Button>
             <Border Width="1" Height="22" Background="{StaticResource StrokeSubtle}" Margin="4,0,5,0" />
             <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">

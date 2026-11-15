@@ -4,6 +4,13 @@
     <!-- Neutral materials preserve application icon colors and wallpaper visibility. -->
     <SolidColorBrush x:Key="TextPrimary" Color="#FFF1F3F5" />
     <SolidColorBrush x:Key="TextSecondary" Color="#FFADB5BF" />
+    <SolidColorBrush x:Key="WindowsLogoBrush" Color="#FF54B6F5" />
+    <SolidColorBrush x:Key="SurfaceKeyboardFocus" Color="#FF354652" />
+    <SolidColorBrush x:Key="MenuStroke" Color="#88525D6A" />
+    <LinearGradientBrush x:Key="MenuMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#E5242D39" Offset="0" />
+        <GradientStop Color="#EE111821" Offset="1" />
+    </LinearGradientBrush>
     <SolidColorBrush x:Key="SurfacePopup" Color="#FF181C22" />
     <SolidColorBrush x:Key="StrokeSubtle" Color="#24FFFFFF" />
     <SolidColorBrush x:Key="StrokeFocus" Color="#FFD0E8FA" />
@@ -27,7 +34,6 @@
     <sys:Double x:Key="PreviewHeight">236</sys:Double>
     <sys:Double x:Key="PreviewHeaderHeight">40</sys:Double>
     <sys:Double x:Key="DockHoverScale">1.22</sys:Double>
-    <sys:Double x:Key="DockNeighborScale">1.08</sys:Double>
     <sys:Double x:Key="HoverDurationMs">120</sys:Double>
     <sys:Double x:Key="PreviewDurationMs">160</sys:Double>
     <Thickness x:Key="DockInset">4,0</Thickness>

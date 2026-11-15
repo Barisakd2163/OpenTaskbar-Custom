@@ -12,7 +12,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Clicking an application's dock icon activates it, or minimizes its foreground window when the same application is already active.
 - Sizes the dock to its icon and status content up to screen width, without a scroll bar, and places it at the selected left, center, or right position.
 - Shows a notification dot on an application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
-- Uses a compact black context menu. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed, and supported browsers also offer new and private windows.
+- Uses separate translucent context menus for applications and the dock surface. Application menus include icons and only application commands; the dock menu contains alignment settings. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed, and supported browsers also offer new and private windows.
 - Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Hides the Explorer taskbar while the dock overlays its reserved bottom area, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
