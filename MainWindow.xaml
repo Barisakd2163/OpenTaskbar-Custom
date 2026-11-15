@@ -195,7 +195,7 @@
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
-            <TextBlock x:Name="StatusText" Foreground="#FFF0B78A" FontSize="{StaticResource TextSizeCaption}"
+            <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerText}" FontSize="{StaticResource TextSizeCaption}"
                        MaxWidth="280" VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
