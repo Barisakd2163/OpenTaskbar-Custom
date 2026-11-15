@@ -15,4 +15,13 @@ public sealed record DockApp(string Name, string ExecutablePath)
 
     [JsonIgnore]
     public bool HasNotification { get; init; }
+
+    [JsonIgnore]
+    public bool IsRunning { get; init; }
+
+    [JsonIgnore]
+    public bool IsForeground { get; init; }
+
+    [JsonIgnore]
+    public int WindowCount { get; init; }
 }

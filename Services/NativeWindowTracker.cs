@@ -82,6 +82,11 @@ public sealed class NativeWindowTracker : IDisposable
 
         _systemEventHook = SetWinEventHook(EventSystemAlert, EventSystemForeground, 0, _eventCallback, 0, 0, WineventOutOfContext);
         RefreshWindows();
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow != 0)
+        {
+            ForegroundWindowChanged?.Invoke(foregroundWindow);
+        }
     }
 
     private void OnWinEvent(nint hook, uint eventType, nint windowHandle, int objectId, int childId, uint eventThread, uint eventTime)

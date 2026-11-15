@@ -24,6 +24,8 @@ public partial class MainWindow : Window
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
+    private const int DwmwaSystemBackdropType = 38;
+    private const int DwmsbtTransientWindow = 3;
 
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
@@ -31,10 +33,12 @@ public partial class MainWindow : Window
     private readonly DockSettingsStore _dockSettingsStore = new();
     private readonly DispatcherTimer _previewCloseTimer;
     private readonly WindowThumbnailPreview _thumbnailPreview;
+    private readonly Dictionary<string, nint> _lastSelectedWindows = new(StringComparer.OrdinalIgnoreCase);
     private DockPosition _dockPosition = DockPosition.Left;
     private NativeWindowTracker? _windowTracker;
     private TaskbarReplacementSession? _replacementSession;
     private HwndSource? _source;
+    private nint _foregroundWindow;
 
     public MainWindow()
     {
@@ -73,6 +77,7 @@ public partial class MainWindow : Window
 
         _source = source;
         _source.AddHook(WindowProc);
+        ApplySystemBackdrop(source.Handle);
         if (!ExcludeFromTaskSwitcher(source.Handle))
         {
             ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
@@ -177,6 +182,7 @@ public partial class MainWindow : Window
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
         UpdateNotificationBadges(_pinnedApps, windows);
+        UpdateWindowIndicators(windows);
         if (UpdateRunningApps(windows))
         {
             ResizeDockToContent();
@@ -236,13 +242,22 @@ public partial class MainWindow : Window
                 var hasNotification = group.Any(window => window.HasNotification);
                 if (currentApps.TryGetValue(executablePath, out var existingApp))
                 {
-                    return existingApp with { HasNotification = hasNotification };
+                    return existingApp with
+                    {
+                        HasNotification = hasNotification,
+                        IsRunning = true,
+                        IsForeground = group.Any(window => window.Handle == _foregroundWindow),
+                        WindowCount = group.Count()
+                    };
                 }
 
                 return new DockApp(GetApplicationName(executablePath), executablePath)
                 {
                     Icon = ApplicationIconProvider.GetForFile(executablePath),
-                    HasNotification = hasNotification
+                    HasNotification = hasNotification,
+                    IsRunning = true,
+                    IsForeground = group.Any(window => window.Handle == _foregroundWindow),
+                    WindowCount = group.Count()
                 };
             })
             .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -439,7 +454,7 @@ public partial class MainWindow : Window
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false)
     {
         var executablePath = app.ExecutablePath;
-        var existingWindow = FindWindowForExecutable(executablePath);
+        var existingWindow = FindNextWindowForExecutable(executablePath);
         if (existingWindow is not null)
         {
             var activated = toggleIfForeground
@@ -451,6 +466,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            _lastSelectedWindows[executablePath] = existingWindow.Handle;
             ClearStatus();
             return;
         }
@@ -503,7 +519,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        _thumbnailPreview.ShowFor(window.Handle, (FrameworkElement)sender);
+        var appIcon = ((Button)sender).DataContext is DockApp app ? app.Icon : null;
+        _thumbnailPreview.ShowFor(window.Handle, (FrameworkElement)sender, window.Title, appIcon);
     }
 
     private void DockApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
@@ -559,8 +576,47 @@ public partial class MainWindow : Window
 
     private TrackedWindow? FindWindowForExecutable(string executablePath)
     {
-        return _windowTracker?.Snapshot.FirstOrDefault(window =>
-            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+        return _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == _foregroundWindow
+            && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+            ?? _windowTracker?.Snapshot.FirstOrDefault(window =>
+                string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private TrackedWindow? FindNextWindowForExecutable(string executablePath)
+    {
+        var matchingWindows = _windowTracker?.Snapshot.Where(window =>
+            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matchingWindows is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var foreground = matchingWindows.FirstOrDefault(window => window.Handle == _foregroundWindow);
+        if (foreground is not null)
+        {
+            return foreground;
+        }
+
+        var previousIndex = _lastSelectedWindows.TryGetValue(executablePath, out var previousHandle)
+            ? matchingWindows.FindIndex(window => window.Handle == previousHandle)
+            : -1;
+        return matchingWindows[(previousIndex + 1) % matchingWindows.Count];
+    }
+
+    private void UpdateWindowIndicators(IReadOnlyList<TrackedWindow> windows)
+    {
+        for (var index = 0; index < _pinnedApps.Count; index++)
+        {
+            var app = _pinnedApps[index];
+            var matching = windows.Where(window => string.Equals(window.ExecutablePath, app.ExecutablePath,
+                StringComparison.OrdinalIgnoreCase)).ToList();
+            var isForeground = matching.Any(window => window.Handle == _foregroundWindow);
+            var count = matching.Count;
+            if (app.IsRunning != (count > 0) || app.IsForeground != isForeground || app.WindowCount != count)
+            {
+                _pinnedApps[index] = app with { IsRunning = count > 0, IsForeground = isForeground, WindowCount = count };
+            }
+        }
     }
 
     private static string GetApplicationName(string executablePath)
@@ -573,6 +629,9 @@ public partial class MainWindow : Window
 
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
     {
+        _foregroundWindow = windowHandle;
+        UpdateWindowIndicators(_windowTracker?.Snapshot ?? []);
+        UpdateRunningApps(_windowTracker?.Snapshot ?? []);
         if (_replacementSession?.IsActive == true)
         {
             _replacementSession.RefreshPosition();
@@ -614,11 +673,12 @@ public partial class MainWindow : Window
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
         var hasAppTarget = pinnedApp is not null;
         var isPinnedTarget = pinnedApp?.ShortcutPath is not null;
+        var isRunning = pinnedApp?.IsRunning == true;
         var browserArguments = pinnedApp is null ? null : GetBrowserActions(pinnedApp.ExecutablePath);
         SetMenuItemVisibility(contextMenu, "ActivateDockApp", hasAppTarget);
         SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
-        SetMenuItemVisibility(contextMenu, "CloseDockApp", hasAppTarget);
-        SetMenuItemVisibility(contextMenu, "TerminateDockApp", hasAppTarget);
+        SetMenuItemVisibility(contextMenu, "CloseDockApp", isRunning);
+        SetMenuItemVisibility(contextMenu, "TerminateDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
         SetSeparatorVisibility(contextMenu, "SettingsDivider", hasAppTarget);
 
@@ -631,6 +691,9 @@ public partial class MainWindow : Window
         if (FindMenuItem(contextMenu, "ActivateDockApp") is { } activateMenuItem)
         {
             activateMenuItem.CommandParameter = pinnedApp;
+            activateMenuItem.Header = isRunning
+                ? (pinnedApp.IsForeground ? "Pencereyi küçült" : "Pencereyi öne getir")
+                : "Uygulamayı aç";
         }
         if (FindMenuItem(contextMenu, "UnpinDockApp") is { } unpinMenuItem)
         {
@@ -649,7 +712,7 @@ public partial class MainWindow : Window
     {
         if (sender is MenuItem { CommandParameter: DockApp app })
         {
-            OpenDockApp(app);
+            OpenDockApp(app, toggleIfForeground: true);
         }
     }
 
@@ -1016,6 +1079,13 @@ public partial class MainWindow : Window
         DockSurface.Width = dockWidth;
     }
 
+    private static void ApplySystemBackdrop(nint windowHandle)
+    {
+        var backdropType = DwmsbtTransientWindow;
+        _ = DwmSetWindowAttribute(windowHandle, DwmwaSystemBackdropType,
+            ref backdropType, Marshal.SizeOf<int>());
+    }
+
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)
     {
         Marshal.SetLastPInvokeError(0);
@@ -1083,6 +1153,9 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(nint windowHandle, int attribute, ref int value, int valueSize);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint value);

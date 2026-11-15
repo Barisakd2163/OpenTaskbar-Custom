@@ -141,12 +141,20 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1"
                                 CornerRadius="10" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Grid>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Border x:Name="ActiveIndicator" Height="3" Width="18" CornerRadius="2"
+                                        Background="#FFF3F5F7" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                        Margin="0,0,0,-1" Visibility="Collapsed" />
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#30242A34" />
+                                <Setter TargetName="Surface" Property="Background" Value="#705E748B" />
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="#7095A9BE" />
+                                <Setter TargetName="Surface" Property="BorderThickness" Value="1" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Surface" Property="Background" Value="#60242A34" />
@@ -157,6 +165,15 @@
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Surface" Property="Background" Value="#503C5666" />
                             </Trigger>
+                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="0.42" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsForeground}" Value="True">
+                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1" />
+                                <Setter TargetName="ActiveIndicator" Property="Height" Value="4" />
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -199,7 +216,7 @@
                     RenderTransformOrigin="0.5,0.5">
                 <Grid Width="32" Height="32">
                     <Image Source="{Binding Icon}" Stretch="Uniform" />
-                    <Ellipse Width="9" Height="9" Fill="#FFE5484D"
+                    <Ellipse Width="9" Height="9" Fill="#FFFF5A62"
                              Stroke="#FFF8F8F8" StrokeThickness="1"
                              HorizontalAlignment="Right" VerticalAlignment="Top"
                              Visibility="{Binding HasNotification, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -208,8 +225,9 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,0"
-            Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" ClipToBounds="True">
+    <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,2"
+            Background="#C9161A20" BorderBrush="#55FFFFFF" BorderThickness="1"
+            CornerRadius="14" ContextMenu="{StaticResource DockContextMenu}" ClipToBounds="True">
         <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                     VerticalAlignment="Center">
             <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">

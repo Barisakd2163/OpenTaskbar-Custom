@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace OpenTaskbar.Services;
 
@@ -21,6 +22,8 @@ public sealed class WindowThumbnailPreview : IDisposable
     private readonly Window _closeButtonWindow;
     private readonly TextBlock _placeholder;
     private readonly Button _closeButton;
+    private readonly Image _windowIcon;
+    private readonly TextBlock _windowTitle;
     private nint _destinationHandle;
     private nint _thumbnail;
     private nint _sourceHandle;
@@ -52,10 +55,34 @@ public sealed class WindowThumbnailPreview : IDisposable
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(8),
-            ToolTip = "Önizlemeyi kapat"
+            ToolTip = "Uygulamayı kapat"
         };
-        AutomationProperties.SetName(_closeButton, "Önizlemeyi kapat");
+        AutomationProperties.SetName(_closeButton, "Uygulamayı kapat");
         _closeButton.Click += CloseButton_Click;
+
+        _windowIcon = new Image { Width = 20, Height = 20, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 8, 0) };
+        _windowTitle = new TextBlock
+        {
+            Foreground = Brushes.White,
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var previewHeader = new DockPanel
+        {
+            LastChildFill = true,
+            Margin = new Thickness(8, 4, 6, 4),
+            Children = { _closeButton, _windowIcon, _windowTitle }
+        };
+        DockPanel.SetDock(_closeButton, Dock.Right);
+        DockPanel.SetDock(_windowIcon, Dock.Left);
+        var headerSurface = new Border
+        {
+            Height = 40,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = new SolidColorBrush(Color.FromArgb(224, 18, 21, 25)),
+            Child = previewHeader
+        };
 
         var surfaceContent = new Grid
         {
@@ -89,8 +116,8 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         _closeButtonWindow = new Window
         {
-            Width = 44,
-            Height = 44,
+            Width = 360,
+            Height = 40,
             WindowStyle = WindowStyle.None,
             ResizeMode = ResizeMode.NoResize,
             AllowsTransparency = true,
@@ -100,7 +127,7 @@ public sealed class WindowThumbnailPreview : IDisposable
             Background = Brushes.Transparent,
             Cursor = System.Windows.Input.Cursors.Hand,
             WindowStartupLocation = WindowStartupLocation.Manual,
-            Content = _closeButton
+            Content = headerSurface
         };
         _closeButtonWindow.Closed += CloseButtonWindow_Closed;
         _closeButtonWindow.MouseEnter += Window_MouseEnter;
@@ -119,7 +146,7 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     public nint SourceHandle => _sourceHandle;
 
-    public bool ShowFor(nint sourceHandle, FrameworkElement anchor)
+    public bool ShowFor(nint sourceHandle, FrameworkElement anchor, string windowTitle, BitmapSource? icon)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (sourceHandle == 0 || !IsWindow(sourceHandle))
@@ -133,6 +160,9 @@ public sealed class WindowThumbnailPreview : IDisposable
             ReleaseThumbnail();
             _sourceHandle = sourceHandle;
         }
+
+        _windowTitle.Text = windowTitle;
+        _windowIcon.Source = icon;
 
         if (!_window.IsVisible)
         {
@@ -282,9 +312,8 @@ public sealed class WindowThumbnailPreview : IDisposable
         var scale = dpi / 96d;
         var width = (int)Math.Ceiling(_closeButtonWindow.Width * scale);
         var height = (int)Math.Ceiling(_closeButtonWindow.Height * scale);
-        var margin = (int)Math.Ceiling(6 * scale);
         return SetWindowPos(closeHandle, HwndTopmost,
-            previewRect.Right - width - margin, previewRect.Top + margin, width, height,
+            previewRect.Left, previewRect.Top, width, height,
             SwpNoActivate | SwpNoOwnerZOrder);
     }
 
