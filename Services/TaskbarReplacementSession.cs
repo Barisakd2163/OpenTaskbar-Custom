@@ -37,8 +37,8 @@ public sealed class TaskbarReplacementSession : IDisposable
     private uint _previousTaskbarState;
     private bool _disposed;
     private bool _fullScreenSuppressed;
-    private double _nativeTaskbarHeight = 48;
-    private const double DockHeadroomDips = 16;
+    private double _nativeTaskbarHeight = 58;
+    private const double DockHeadroomDips = 20;
     private bool _autoHideEnabled;
     private Size _lastLayout;
     private int _stopInProgress;
@@ -302,8 +302,9 @@ public sealed class TaskbarReplacementSession : IDisposable
         var dpi = GetDpiForWindow(_handle);
         if (dpi == 0) return;
         var reservedHeight = monitorInfo.rcMonitor.Bottom - monitorInfo.rcWork.Bottom;
-        var height = reservedHeight > 0 ? reservedHeight
-            : Math.Max(1, (int)Math.Round(_nativeTaskbarHeight * dpi / 96d));
+        var preferredHeightPixels = (int)Math.Round(_nativeTaskbarHeight * dpi / 96d);
+        var height = reservedHeight > 0 ? Math.Max(reservedHeight, preferredHeightPixels)
+            : Math.Max(1, preferredHeightPixels);
         var headroom = (int)Math.Round(DockHeadroomDips * dpi / 96d);
         var totalHeight = height + headroom;
         var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,

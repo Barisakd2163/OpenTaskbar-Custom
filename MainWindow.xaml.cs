@@ -1522,11 +1522,12 @@ public partial class MainWindow : Window
     private void ApplyTaskbarLayout(Size area)
     {
         _dockArea = area;
-        var topGap = Math.Clamp(Math.Round(area.Height * 0.05), 2, 4);
-        var bottomGap = Math.Clamp(Math.Round(area.Height * 0.16), 6, 10);
+        var effectiveHeight = Math.Max(58, area.Height);
+        var topGap = Math.Clamp(Math.Round(effectiveHeight * 0.05), 2, 4);
+        var bottomGap = Math.Clamp(Math.Round(effectiveHeight * 0.14), 6, 10);
         DockSurface.Margin = new Thickness(12, topGap, 12, bottomGap);
-        Application.Current.Resources["DockCellHeight"] = Math.Max(20, area.Height - topGap - bottomGap - 4);
-        Application.Current.Resources["DockIconSize"] = Math.Clamp((area.Height - topGap - bottomGap - 4) * 0.68, 16, 28);
+        Application.Current.Resources["DockCellHeight"] = Math.Max(24, effectiveHeight - topGap - bottomGap - 4);
+        Application.Current.Resources["DockIconSize"] = Math.Clamp((effectiveHeight - topGap - bottomGap - 4) * 0.74, 20, 34);
         ResizeDockToContent();
     }
 
@@ -1547,8 +1548,8 @@ public partial class MainWindow : Window
         var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
             + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
         var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
-        Application.Current.Resources["DockCellSize"] = Math.Min(44,
-            Math.Max(16, (availableWidth - frameWidth - statusWidth) / count));
+        Application.Current.Resources["DockCellSize"] = Math.Min(52,
+            Math.Max(20, (availableWidth - frameWidth - statusWidth) / count));
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var padding = DockSurface.Padding;
         var margin = DockSurface.Margin;
