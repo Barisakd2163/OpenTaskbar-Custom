@@ -443,7 +443,7 @@ public partial class MainWindow : Window
         if (existingWindow is not null)
         {
             var activated = toggleIfForeground
-                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle)
+                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle, executablePath)
                 : NativeWindowTracker.Activate(existingWindow.Handle);
             if (!activated)
             {
@@ -545,8 +545,16 @@ public partial class MainWindow : Window
 
     private void ThumbnailPreview_CloseRequested(object? sender, EventArgs e)
     {
+        var sourceHandle = _thumbnailPreview.SourceHandle;
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        if (sourceHandle == 0 || !NativeWindowTracker.RequestClose(sourceHandle))
+        {
+            ShowStatus("Önizlenen pencereye kapatma isteği gönderilemedi.");
+            return;
+        }
+
+        ClearStatus();
     }
 
     private TrackedWindow? FindWindowForExecutable(string executablePath)

@@ -22,6 +22,8 @@ public sealed class NativeWindowTracker : IDisposable
     private const int GwlExStyle = -20;
     private const long WsExAppWindow = 0x00040000;
     private const long WsExToolWindow = 0x00000080;
+    private const uint GaRootOwner = 3;
+    private const uint WmClose = 0x0010;
     private const int ShowRestore = 9;
     private const int ShowMinimize = 6;
     private const uint ProcessQueryLimitedInformation = 0x1000;
@@ -199,6 +201,11 @@ public sealed class NativeWindowTracker : IDisposable
                     return true;
                 }
 
+                if (IsExplorerShellWindow(executablePath, windowHandle))
+                {
+                    return true;
+                }
+
                 if (previous is not null)
                 {
                     collection.Windows.Add(previous with
@@ -248,20 +255,35 @@ public sealed class NativeWindowTracker : IDisposable
         }
     }
 
-    public static bool ToggleActivation(nint windowHandle)
+    public static bool ToggleActivation(nint windowHandle, string executablePath)
     {
         if (!IsWindow(windowHandle))
         {
             return false;
         }
 
-        if (GetForegroundWindow() == windowHandle)
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow != 0)
         {
-            ShowWindow(windowHandle, ShowMinimize);
-            return true;
+            var foregroundRoot = GetAncestor(foregroundWindow, GaRootOwner);
+            if (foregroundRoot == 0)
+            {
+                foregroundRoot = foregroundWindow;
+            }
+
+            if (string.Equals(GetExecutablePath(foregroundRoot), executablePath, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowWindow(foregroundRoot, ShowMinimize);
+                return IsIconic(foregroundRoot);
+            }
         }
 
         return Activate(windowHandle);
+    }
+
+    public static bool RequestClose(nint windowHandle)
+    {
+        return IsWindow(windowHandle) && PostMessage(windowHandle, WmClose, 0, 0);
     }
 
     public void Dispose()
@@ -376,11 +398,33 @@ public sealed class NativeWindowTracker : IDisposable
             && executablePath.StartsWith(WindowsSystemAppsDirectory, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsExplorerShellWindow(string? executablePath, nint windowHandle)
+    {
+        if (!string.Equals(Path.GetFileName(executablePath), "explorer.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var className = new StringBuilder(256);
+        var length = GetClassName(windowHandle, className, className.Capacity);
+        return length <= 0 || className.ToString() is not ("CabinetWClass" or "ExploreWClass");
+    }
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern nint GetAncestor(nint windowHandle, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(nint windowHandle, StringBuilder className, int maximumCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(nint windowHandle, uint message, nint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

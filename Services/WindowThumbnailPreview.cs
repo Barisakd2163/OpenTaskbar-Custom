@@ -14,9 +14,11 @@ public sealed class WindowThumbnailPreview : IDisposable
     private const uint DwmThumbnailVisible = 0x00000008;
     private const uint MonitorDefaultToNearest = 2;
     private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoOwnerZOrder = 0x0200;
     private static readonly nint HwndTopmost = new(-1);
 
     private readonly Window _window;
+    private readonly Window _closeButtonWindow;
     private readonly TextBlock _placeholder;
     private readonly Button _closeButton;
     private nint _destinationHandle;
@@ -24,6 +26,7 @@ public sealed class WindowThumbnailPreview : IDisposable
     private nint _sourceHandle;
     private bool _disposed;
     private bool _windowClosed;
+    private bool _closeWindowClosed;
 
     public WindowThumbnailPreview(Style closeButtonStyle)
     {
@@ -54,9 +57,11 @@ public sealed class WindowThumbnailPreview : IDisposable
         AutomationProperties.SetName(_closeButton, "Önizlemeyi kapat");
         _closeButton.Click += CloseButton_Click;
 
-        var surfaceContent = new Grid();
+        var surfaceContent = new Grid
+        {
+            Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25))
+        };
         surfaceContent.Children.Add(_placeholder);
-        surfaceContent.Children.Add(_closeButton);
         var surface = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(1, 18, 21, 25)),
@@ -81,7 +86,25 @@ public sealed class WindowThumbnailPreview : IDisposable
         _window.MouseEnter += Window_MouseEnter;
         _window.MouseLeave += Window_MouseLeave;
         _window.PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
-        _window.Closed += (_, _) => _closeButton.Click -= CloseButton_Click;
+
+        _closeButtonWindow = new Window
+        {
+            Width = 44,
+            Height = 44,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = true,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Topmost = true,
+            Background = Brushes.Transparent,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Content = _closeButton
+        };
+        _closeButtonWindow.Closed += CloseButtonWindow_Closed;
+        _closeButtonWindow.MouseEnter += Window_MouseEnter;
+        _closeButtonWindow.MouseLeave += Window_MouseLeave;
     }
 
     public event EventHandler? PointerEntered;
@@ -119,6 +142,12 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         _destinationHandle = new WindowInteropHelper(_window).Handle;
         if (_destinationHandle == 0 || !PositionWindow(anchor))
+        {
+            _placeholder.Visibility = Visibility.Visible;
+            return false;
+        }
+
+        if (!PositionCloseButtonWindow())
         {
             _placeholder.Visibility = Visibility.Visible;
             return false;
@@ -167,6 +196,11 @@ public sealed class WindowThumbnailPreview : IDisposable
     {
         ReleaseThumbnail();
         _sourceHandle = 0;
+        if (_closeButtonWindow.IsVisible)
+        {
+            _closeButtonWindow.Hide();
+        }
+
         if (_window.IsVisible)
         {
             _window.Hide();
@@ -183,6 +217,15 @@ public sealed class WindowThumbnailPreview : IDisposable
         Hide();
         _disposed = true;
         _window.Closed -= Window_Closed;
+        _closeButtonWindow.Closed -= CloseButtonWindow_Closed;
+        _closeButtonWindow.MouseEnter -= Window_MouseEnter;
+        _closeButtonWindow.MouseLeave -= Window_MouseLeave;
+        _closeButton.Click -= CloseButton_Click;
+        if (!_closeWindowClosed)
+        {
+            _closeButtonWindow.Close();
+        }
+
         if (!_windowClosed)
         {
             _window.Close();
@@ -220,6 +263,31 @@ public sealed class WindowThumbnailPreview : IDisposable
         return SetWindowPos(_destinationHandle, HwndTopmost, left, top, width, height, SwpNoActivate);
     }
 
+    private bool PositionCloseButtonWindow()
+    {
+        var closeWindowInterop = new WindowInteropHelper(_closeButtonWindow);
+        if (!_closeButtonWindow.IsVisible)
+        {
+            closeWindowInterop.Owner = _destinationHandle;
+            _closeButtonWindow.Show();
+        }
+
+        var closeHandle = closeWindowInterop.Handle;
+        var dpi = closeHandle == 0 ? 0 : GetDpiForWindow(closeHandle);
+        if (dpi == 0 || !GetWindowRect(_destinationHandle, out var previewRect))
+        {
+            return false;
+        }
+
+        var scale = dpi / 96d;
+        var width = (int)Math.Ceiling(_closeButtonWindow.Width * scale);
+        var height = (int)Math.Ceiling(_closeButtonWindow.Height * scale);
+        var margin = (int)Math.Ceiling(6 * scale);
+        return SetWindowPos(closeHandle, HwndTopmost,
+            previewRect.Right - width - margin, previewRect.Top + margin, width, height,
+            SwpNoActivate | SwpNoOwnerZOrder);
+    }
+
     private static NativeRect FitThumbnail(NativeSize source, NativeRect client)
     {
         const int inset = 2;
@@ -250,6 +318,16 @@ public sealed class WindowThumbnailPreview : IDisposable
         ReleaseThumbnail();
         _destinationHandle = 0;
         _sourceHandle = 0;
+        if (!_closeWindowClosed)
+        {
+            _closeButtonWindow.Close();
+        }
+    }
+
+    private void CloseButtonWindow_Closed(object? sender, EventArgs e)
+    {
+        _closeWindowClosed = true;
+        _closeButton.Click -= CloseButton_Click;
     }
 
     private void Window_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
@@ -264,11 +342,6 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     private void Window_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (e.OriginalSource is DependencyObject source && _closeButton.IsAncestorOf(source))
-        {
-            return;
-        }
-
         e.Handled = true;
         PreviewClicked?.Invoke(this, EventArgs.Empty);
     }
@@ -344,6 +417,10 @@ public sealed class WindowThumbnailPreview : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetClientRect(nint windowHandle, out NativeRect rect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint windowHandle, out NativeRect rect);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
