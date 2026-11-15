@@ -1054,14 +1054,13 @@ public partial class MainWindow : Window
 
     private async Task LoadJumpListAsync(ContextMenu menu, nint window, string? shortcut)
     {
-        var parent = FindMenuItem(menu, "JumpListCommands");
-        if (parent is null) return;
+        var boundary = menu.Items.OfType<Separator>().FirstOrDefault(item => item.Tag as string == "JumpListCommands");
+        if (boundary is null) return;
         _jumpListLoad?.Cancel();
         _jumpListLoad?.Dispose();
         var load = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         _jumpListLoad = load;
-        parent.Items.Clear();
-        parent.Items.Add(new MenuItem { Header = "Görevler yükleniyor…", IsEnabled = false });
+        ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = "Görevler yükleniyor…", IsEnabled = false }]);
         try
         {
             var result = await _jumpLists.ReadAsync(window, shortcut, load.Token);
@@ -1071,13 +1070,16 @@ public partial class MainWindow : Window
                 return;
             }
             _jumpListSession = result.SessionId;
-            parent.Items.Clear();
+            var items = new List<Control>();
             foreach (var group in result.Groups)
             {
-                var category = new MenuItem { Header = group.Title.Replace("_", "__"), Icon = "\uE8FD" };
+                if (items.Count > 0) items.Add(new Separator());
+                var heading = new MenuItem { Header = group.Title.Replace("_", "__") };
+                heading.SetResourceReference(StyleProperty, "MenuSectionHeading");
+                items.Add(heading);
                 foreach (var entry in group.Entries)
                 {
-                    if (entry.IsSeparator) { category.Items.Add(new Separator()); continue; }
+                    if (entry.IsSeparator) { items.Add(new Separator()); continue; }
                     // Keep the session alive until Click queues invocation; WPF normally closes first.
                     var item = new MenuItem { Header = entry.Title.Replace("_", "__"), StaysOpenOnClick = true };
                     if (entry.Icon is not null) item.Icon = new Image { Source = entry.Icon, Width = 16, Height = 16 };
@@ -1089,9 +1091,8 @@ public partial class MainWindow : Window
                         if (!await invocation && IsLoaded)
                             ShowStatus("Uygulama görevi çalıştırılamadı. Menüyü yeniden açıp deneyin.");
                     };
-                    category.Items.Add(item);
+                    items.Add(item);
                 }
-                parent.Items.Add(category);
             }
             if (result.Status != JumpListStatus.Ready)
             {
@@ -1102,15 +1103,15 @@ public partial class MainWindow : Window
                     JumpListStatus.Unsupported => "Görev listesi bu Windows sürümünde desteklenmiyor",
                     _ => "Görev listesi okunamadı; menüyü yeniden açın"
                 };
-                parent.Items.Add(new MenuItem { Header = message, IsEnabled = false });
+                items.Add(new MenuItem { Header = message, IsEnabled = false });
             }
+            ReplaceJumpListItems(menu, boundary, items);
         }
         catch (OperationCanceledException)
         {
             if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
             {
-                parent.Items.Clear();
-                parent.Items.Add(new MenuItem { Header = "Görev listesi zamanında yanıt vermedi", IsEnabled = false });
+                ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = "Görev listesi zamanında yanıt vermedi", IsEnabled = false }]);
             }
         }
         catch (COMException ex)
@@ -1118,10 +1119,22 @@ public partial class MainWindow : Window
             Trace.TraceWarning("Shell worker failed: 0x{0:X8}", ex.HResult);
             if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
             {
-                parent.Items.Clear();
-                parent.Items.Add(new MenuItem { Header = "Windows görev hizmeti başlatılamadı", IsEnabled = false });
+                ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = "Windows görev hizmeti başlatılamadı", IsEnabled = false }]);
             }
         }
+    }
+
+    private static void ReplaceJumpListItems(ContextMenu menu, Separator boundary, IReadOnlyList<Control> items)
+    {
+        foreach (var previous in menu.Items.OfType<Control>().Where(item => item.Tag as string == "JumpListEntry").ToArray())
+            menu.Items.Remove(previous);
+        var index = menu.Items.IndexOf(boundary);
+        foreach (var item in items)
+        {
+            item.Tag = "JumpListEntry";
+            menu.Items.Insert(index++, item);
+        }
+        boundary.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void PopulateNativeMenu(ContextMenu menu, string tag, nint window, bool system)

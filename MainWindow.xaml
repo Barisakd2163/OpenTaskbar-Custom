@@ -79,6 +79,24 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="MenuSectionHeading" TargetType="MenuItem">
+            <Setter Property="IsEnabled" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontFamily" Value="{StaticResource InterfaceFont}" />
+            <Setter Property="FontSize" Value="{StaticResource TextSizeCaption}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="Separator">
             <Setter Property="Margin" Value="9,5" />
             <Setter Property="Template">
@@ -103,15 +121,18 @@
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource PopupRadius}"
                                 Padding="{TemplateBinding Padding}">
-                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                                          CanContentScroll="True" Focusable="False">
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                            </ScrollViewer>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
         <ContextMenu x:Key="AppContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+            <Separator Tag="JumpListCommands" Visibility="Collapsed" />
             <MenuItem Header="Uygulamayı aç" Icon="&#xE8A7;" Tag="ActivateDockApp" Click="DockAppContextMenu_Click" />
-            <MenuItem Header="Uygulamanın görevleri" Icon="&#xE8FD;" Tag="JumpListCommands" />
             <MenuItem Header="Uygulama komutları" Icon="&#xE8A7;" Tag="NativeAppCommands" Visibility="Collapsed" />
             <MenuItem Header="Pencere komutları" Icon="&#xE737;" Tag="NativeWindowCommands" Visibility="Collapsed" />
             <MenuItem Header="Görev çubuğuna sabitle" Icon="&#xE718;" Tag="PinDockApp" Visibility="Collapsed" Click="PinDockApp_Click" />
