@@ -38,6 +38,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _disposed;
     private bool _fullScreenSuppressed;
     private double _nativeTaskbarHeight = 48;
+    private const double DockHeadroomDips = 16;
     private Size _lastLayout;
     private int _stopInProgress;
 
@@ -293,13 +294,16 @@ public sealed class TaskbarReplacementSession : IDisposable
         var reservedHeight = monitorInfo.rcMonitor.Bottom - monitorInfo.rcWork.Bottom;
         var height = reservedHeight > 0 ? reservedHeight
             : Math.Max(1, (int)Math.Round(_nativeTaskbarHeight * dpi / 96d));
+        var headroom = (int)Math.Round(DockHeadroomDips * dpi / 96d);
+        var totalHeight = height + headroom;
         var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,
             height * 96d / dpi);
+        var totalHeightDips = totalHeight * 96d / dpi;
         if (_lastLayout != layout)
         {
             _lastLayout = layout;
             _window.Width = layout.Width;
-            _window.Height = layout.Height;
+            _window.Height = totalHeightDips;
             LayoutChanged?.Invoke(layout);
         }
         var monitorLeft = monitorInfo.rcMonitor.Left;
@@ -308,9 +312,9 @@ public sealed class TaskbarReplacementSession : IDisposable
         var left = monitorLeft;
         UpdateForeground(GetForegroundWindow());
         // Explorer already reserves the hidden native taskbar's area; another appbar position would reserve a second strip.
-        var top = monitorInfo.rcMonitor.Bottom - height;
+        var top = monitorInfo.rcMonitor.Bottom - totalHeight;
         if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, top,
-                width, height,
+                width, totalHeight,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");

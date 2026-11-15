@@ -78,6 +78,9 @@ public sealed class WindowThumbnailPreview : IDisposable
             CornerRadius = new CornerRadius(10),
             Child = surfaceGrid
         };
+        surface.SetResourceReference(Border.BackgroundProperty, "SurfacePopup");
+        surface.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
+        _placeholder.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
 
         _window = new Window
         {
@@ -94,6 +97,7 @@ public sealed class WindowThumbnailPreview : IDisposable
             Content = surface
         };
         _window.Closed += Window_Closed;
+        _window.SetResourceReference(Window.BackgroundProperty, "SurfacePopup");
         _window.SourceInitialized += PreviewWindow_SourceInitialized;
         _window.MouseEnter += Window_MouseEnter;
         _window.MouseLeave += Window_MouseLeave;
@@ -134,6 +138,7 @@ public sealed class WindowThumbnailPreview : IDisposable
     public event EventHandler? CloseRequested;
 
     public bool IsVisible => _window.IsVisible;
+    public bool AnimationsEnabled { get; set; } = true;
 
     public nint SourceHandle => _sourceHandle;
 
@@ -175,7 +180,7 @@ public sealed class WindowThumbnailPreview : IDisposable
         _closeButtonWindow.Width = totalWidth;
         _closeButtonWindow.Height = totalHeight;
 
-        var animateEntrance = SystemParameters.ClientAreaAnimation
+        var animateEntrance = AnimationsEnabled && SystemParameters.ClientAreaAnimation
             && (!_window.IsVisible || !_activeThumbnails.Select(t => t.Source).SequenceEqual(validWindows.Select(w => w.Handle)));
 
         _entranceTimer.Stop();

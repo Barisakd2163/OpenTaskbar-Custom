@@ -30,7 +30,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
-    private readonly DockSettingsStore _dockSettingsStore = new();
+    private readonly ApplicationPreferences _preferences = ((App)Application.Current).Preferences;
+    private SettingsWindow? _settingsWindow;
     private readonly ApplicationJumpListService _jumpLists = new();
     private CancellationTokenSource? _jumpListLoad;
     private long? _jumpListSession;
@@ -66,12 +67,13 @@ public partial class MainWindow : Window
         _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
         _thumbnailPreview.CloseRequested += ThumbnailPreview_CloseRequested;
-        var settingsResult = _dockSettingsStore.Load();
-        _dockPosition = settingsResult.Settings.Position;
-        LoadPinnedApps(settingsResult.Settings.PinOrder);
-        if (settingsResult.Error is not null)
+        _dockPosition = _preferences.Current.Position;
+        _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        _preferences.Changed += Preferences_Changed;
+        LoadPinnedApps(_preferences.Current.PinOrder);
+        if (_preferences.LoadError is not null)
         {
-            ShowStatus(settingsResult.Error);
+            ShowStatus(_preferences.LoadError);
         }
 
         PositionDock();
@@ -250,14 +252,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void UpdateNotificationBadges(
+    private void UpdateNotificationBadges(
         ObservableCollection<DockApp> apps,
         IReadOnlyList<TrackedWindow> windows)
     {
         for (var index = 0; index < apps.Count; index++)
         {
             var app = apps[index];
-            var hasNotification = windows.Any(window => window.HasNotification
+            var hasNotification = _preferences.Current.NotificationBadgesEnabled && windows.Any(window => window.HasNotification
                 && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
             if (app.HasNotification != hasNotification)
             {
@@ -290,7 +292,7 @@ public partial class MainWindow : Window
             .Select(group =>
             {
                 var executablePath = group.Key;
-                var hasNotification = group.Any(window => window.HasNotification);
+                var hasNotification = _preferences.Current.NotificationBadgesEnabled && group.Any(window => window.HasNotification);
                 if (currentApps.TryGetValue(executablePath, out var existingApp))
                 {
                     existingApp.HasNotification = hasNotification;
@@ -406,7 +408,7 @@ public partial class MainWindow : Window
         Action afterRemoval)
     {
         var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
-        if (!SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform scale)
+        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation) || button?.RenderTransform is not ScaleTransform scale)
         {
             RemoveDockApp(apps, app);
             afterRemoval();
@@ -474,7 +476,7 @@ public partial class MainWindow : Window
 
     private void DockAppButton_Loaded(object sender, RoutedEventArgs e)
     {
-        if (!SystemParameters.ClientAreaAnimation || sender is not Button button)
+        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation) || sender is not Button button)
         {
             return;
         }
@@ -663,7 +665,7 @@ public partial class MainWindow : Window
 
     private void AnimateActivationFeedback(Button button)
     {
-        if (!SystemParameters.ClientAreaAnimation) return;
+        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)) return;
         var icon = GetButtonIcon(button);
         if (icon is null) return;
 
@@ -675,11 +677,11 @@ public partial class MainWindow : Window
             KeyFrames =
             {
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(-14, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
+                new EasingDoubleKeyFrame(-12, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240)),
                     new CubicEase { EasingMode = EasingMode.EaseIn }),
-                new EasingDoubleKeyFrame(-7, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
+                new EasingDoubleKeyFrame(-5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)),
                     new CubicEase { EasingMode = EasingMode.EaseIn })
@@ -690,7 +692,7 @@ public partial class MainWindow : Window
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!SystemParameters.ClientAreaAnimation)
+        if ((!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation))
         {
             return;
         }
@@ -824,6 +826,11 @@ public partial class MainWindow : Window
     private void DockApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _previewCloseTimer.Stop();
+        if (!_preferences.Current.PreviewsEnabled)
+        {
+            _thumbnailPreview.Hide();
+            return;
+        }
         if (sender is not Button { Tag: string executablePath })
         {
             return;
@@ -1001,16 +1008,6 @@ public partial class MainWindow : Window
             _openContextMenu.IsOpen = false;
         _openContextMenu = contextMenu;
 
-        var settingsMenu = FindMenuItem(contextMenu, "DockSettings");
-        var positionMenu = settingsMenu;
-        if (positionMenu is not null)
-        {
-            foreach (var item in positionMenu.Items.OfType<MenuItem>())
-            {
-                item.IsChecked = string.Equals(item.Tag as string, _dockPosition.ToString(), StringComparison.Ordinal);
-            }
-        }
-
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
         _contextTargetWasForeground = pinnedApp?.IsForeground == true;
         var hasAppTarget = pinnedApp is not null;
@@ -1031,8 +1028,6 @@ public partial class MainWindow : Window
 
         SetMenuCommandParameter(contextMenu, pinnedApp.ExecutablePath);
         var targetWindow = FindWindowForExecutable(pinnedApp.ExecutablePath);
-        PopulateNativeMenu(contextMenu, "NativeAppCommands", targetWindow?.Handle ?? 0, false);
-        PopulateNativeMenu(contextMenu, "NativeWindowCommands", targetWindow?.Handle ?? 0, true);
         if (FindMenuItem(contextMenu, "ActivateDockApp") is { } activateMenuItem)
         {
             activateMenuItem.CommandParameter = pinnedApp;
@@ -1137,33 +1132,6 @@ public partial class MainWindow : Window
         boundary.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void PopulateNativeMenu(ContextMenu menu, string tag, nint window, bool system)
-    {
-        var parent = FindMenuItem(menu, tag);
-        if (parent is null) return;
-        parent.Items.Clear();
-        foreach (var entry in ApplicationWindowMenu.Read(window, system))
-            parent.Items.Add(CreateNativeMenuItem(entry));
-        parent.Visibility = parent.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private object CreateNativeMenuItem(WindowMenuEntry entry)
-    {
-        if (entry.IsSeparator) return new Separator();
-        var item = new MenuItem { Header = entry.Label.Replace("_", "__"), IsEnabled = entry.Enabled, IsChecked = entry.Checked };
-        foreach (var child in entry.Children) item.Items.Add(CreateNativeMenuItem(child));
-        if (entry.Command is { } command)
-        {
-            item.Click += (_, e) =>
-            {
-                e.Handled = true;
-                if (!ApplicationWindowMenu.Invoke(command))
-                    ShowStatus("Uygulama komutu çalıştırılamadı; pencereyi veya menüyü yeniden açın.");
-            };
-        }
-        return item;
-    }
-
     private static void FocusContextMenu(ContextMenu menu)
     {
         if (PresentationSource.FromVisual(menu) is HwndSource source)
@@ -1232,7 +1200,8 @@ public partial class MainWindow : Window
     private void SavePinOrder()
     {
         var order = _pinnedApps.Select(app => app.ExecutablePath).ToList();
-        _dockSettingsStore.Save(new DockSettings(_dockPosition, order));
+        var error = _preferences.Save(_preferences.Current with { PinOrder = order });
+        if (error is not null) ShowStatus(error);
     }
 
     private void UnpinDockApp_Click(object sender, RoutedEventArgs e)
@@ -1388,24 +1357,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private void DockPosition_Click(object sender, RoutedEventArgs e)
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { Tag: string positionName }
-            || !Enum.TryParse<DockPosition>(positionName, ignoreCase: false, out var position)
-            || !Enum.IsDefined(position))
+        if (_settingsWindow is null)
         {
-            return;
+            _settingsWindow = new SettingsWindow(_preferences);
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Show();
         }
+        if (_settingsWindow.WindowState == WindowState.Minimized) _settingsWindow.WindowState = WindowState.Normal;
+        _settingsWindow.Activate();
+    }
 
-        var currentOrder = _pinnedApps.Select(app => app.ExecutablePath).ToList();
-        var error = _dockSettingsStore.Save(new DockSettings(position, currentOrder));
-        if (error is not null)
+    private void Preferences_Changed(object? sender, EventArgs e)
+    {
+        _dockPosition = _preferences.Current.Position;
+        _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        _thumbnailPreview.Hide();
+        if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
+        ResetMagnification();
+        if (_windowTracker is not null)
         {
-            ShowStatus(error);
-            return;
+            UpdateNotificationBadges(_pinnedApps, _windowTracker.Snapshot);
+            UpdateNotificationBadges(_runningApps, _windowTracker.Snapshot);
         }
-
-        _dockPosition = position;
         if (_replacementSession?.IsActive == true)
         {
             ApplyDockAlignment();
@@ -1415,7 +1390,6 @@ public partial class MainWindow : Window
             PositionDock();
         }
 
-        ClearStatus();
     }
 
     private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
@@ -1619,6 +1593,8 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _preferences.Changed -= Preferences_Changed;
+        _settingsWindow?.CloseForShutdown();
         _jumpListLoad?.Cancel();
         _jumpListLoad?.Dispose();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
