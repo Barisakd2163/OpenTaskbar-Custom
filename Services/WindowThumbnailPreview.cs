@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
 
 namespace OpenTaskbar.Services;
 
@@ -25,6 +28,10 @@ public sealed class WindowThumbnailPreview : IDisposable
     private readonly Image _windowIcon;
     private readonly TextBlock _windowTitle;
     private readonly double _headerHeight;
+    private readonly DispatcherTimer _entranceTimer;
+    private readonly double _entranceDurationMs;
+    private DwmThumbnailProperties _entranceTarget;
+    private long _entranceStarted;
     private nint _destinationHandle;
     private nint _thumbnail;
     private nint _sourceHandle;
@@ -39,6 +46,12 @@ public sealed class WindowThumbnailPreview : IDisposable
         var textBrush = (Brush)resources["TextPrimary"];
         var strokeBrush = (Brush)resources["StrokeSubtle"];
         _headerHeight = (double)resources["PreviewHeaderHeight"];
+        _entranceDurationMs = (double)resources["PreviewDurationMs"];
+        _entranceTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _entranceTimer.Tick += EntranceTimer_Tick;
         _placeholder = new TextBlock
         {
             Text = "Önizleme kullanılamıyor",
@@ -177,6 +190,11 @@ public sealed class WindowThumbnailPreview : IDisposable
             return false;
         }
 
+        var animateEntrance = SystemParameters.ClientAreaAnimation
+            && (!_window.IsVisible || _sourceHandle != sourceHandle);
+        _entranceTimer.Stop();
+        _closeButtonWindow.BeginAnimation(UIElement.OpacityProperty, null);
+        _closeButtonWindow.Opacity = 1;
         if (_sourceHandle != sourceHandle)
         {
             ReleaseThumbnail();
@@ -236,6 +254,11 @@ public sealed class WindowThumbnailPreview : IDisposable
             Visible = true,
             SourceClientAreaOnly = false
         };
+        _entranceTarget = properties;
+        if (animateEntrance)
+        {
+            properties = EntranceFrame(0);
+        }
         if (DwmUpdateThumbnailProperties(_thumbnail, ref properties) != 0)
         {
             ReleaseThumbnail();
@@ -244,11 +267,56 @@ public sealed class WindowThumbnailPreview : IDisposable
         }
 
         _placeholder.Visibility = Visibility.Collapsed;
+        if (animateEntrance)
+        {
+            _entranceStarted = Stopwatch.GetTimestamp();
+            _closeButtonWindow.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(_entranceDurationMs))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            _entranceTimer.Start();
+        }
         return true;
+    }
+
+    private DwmThumbnailProperties EntranceFrame(double progress)
+    {
+        var frame = _entranceTarget;
+        var target = frame.Destination;
+        var insetX = (int)Math.Round((target.Right - target.Left) * 0.025 * (1 - progress));
+        var insetY = (int)Math.Round((target.Bottom - target.Top) * 0.025 * (1 - progress));
+        frame.Destination = new NativeRect(target.Left + insetX, target.Top + insetY,
+            target.Right - insetX, target.Bottom - insetY);
+        frame.Opacity = (byte)Math.Round(byte.MaxValue * progress);
+        return frame;
+    }
+
+    private void EntranceTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_thumbnail == 0 || !_window.IsVisible)
+        {
+            _entranceTimer.Stop();
+            return;
+        }
+
+        var progress = Math.Clamp(Stopwatch.GetElapsedTime(_entranceStarted).TotalMilliseconds / _entranceDurationMs, 0, 1);
+        var frame = EntranceFrame(1 - Math.Pow(1 - progress, 3));
+        if (DwmUpdateThumbnailProperties(_thumbnail, ref frame) != 0)
+        {
+            _entranceTimer.Stop();
+            ReleaseThumbnail();
+            _placeholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (progress >= 1) _entranceTimer.Stop();
     }
 
     public void Hide()
     {
+        _entranceTimer.Stop();
+        _closeButtonWindow.BeginAnimation(UIElement.OpacityProperty, null);
         ReleaseThumbnail();
         _sourceHandle = 0;
         if (_closeButtonWindow.IsVisible)
@@ -271,6 +339,7 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         Hide();
         _disposed = true;
+        _entranceTimer.Tick -= EntranceTimer_Tick;
         _window.Closed -= Window_Closed;
         _closeButtonWindow.Closed -= CloseButtonWindow_Closed;
         _closeButtonWindow.MouseEnter -= Window_MouseEnter;
@@ -362,6 +431,7 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     private void ReleaseThumbnail()
     {
+        _entranceTimer.Stop();
         if (_thumbnail == 0)
         {
             return;

@@ -39,6 +39,8 @@ public partial class MainWindow : Window
     private TaskbarReplacementSession? _replacementSession;
     private HwndSource? _source;
     private nint _foregroundWindow;
+    private Button? _magnifiedButton;
+    private readonly List<FrameworkElement> _magnifiedIcons = [];
 
     public MainWindow()
     {
@@ -456,6 +458,87 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
         OpenDockApp(app, toggleIfForeground: true);
+    }
+
+    private void StartButton_Click(object sender, RoutedEventArgs e)
+    {
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+        const uint wmSysCommand = 0x0112;
+        const int scTaskList = 0xF130;
+        if (_source is null || !PostMessage(_source.Handle, wmSysCommand, scTaskList, 0))
+        {
+            ShowStatus("Windows Başlat menüsüne açılma isteği gönderilemedi.");
+        }
+    }
+
+    private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_magnifiedButton?.IsMouseOver == true) return;
+        var buttons = new List<Button> { StartButton };
+        foreach (var owner in new[] { PinnedApps, RunningApps })
+        {
+            foreach (var app in owner.Items)
+            {
+                var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
+                if (button is not null) buttons.Add(button);
+            }
+        }
+
+        var hovered = buttons.FirstOrDefault(button => button.IsMouseOver);
+        if (ReferenceEquals(hovered, _magnifiedButton)) return;
+        ResetMagnification();
+        _magnifiedButton = hovered;
+        if (hovered is null) return;
+        var hoveredIndex = buttons.IndexOf(hovered);
+        for (var index = Math.Max(0, hoveredIndex - 1); index <= Math.Min(buttons.Count - 1, hoveredIndex + 1); index++)
+        {
+            var button = buttons[index];
+            FrameworkElement? icon = button == StartButton ? StartButton.Content as FrameworkElement
+                : FindVisualChild<Image>(button)?.Parent as FrameworkElement;
+            if (icon is null) continue;
+            var target = (double)FindResource(index == hoveredIndex ? "DockHoverScale" : "DockNeighborScale");
+            AnimateMagnification(icon, target);
+            _magnifiedIcons.Add(icon);
+        }
+    }
+
+    private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => ResetMagnification();
+
+    private void ResetMagnification()
+    {
+        foreach (var icon in _magnifiedIcons) AnimateMagnification(icon, 1);
+        _magnifiedIcons.Clear();
+        _magnifiedButton = null;
+    }
+
+    private void AnimateMagnification(FrameworkElement icon, double target)
+    {
+        if (icon.RenderTransform is not ScaleTransform scale || scale.IsFrozen)
+        {
+            scale = new ScaleTransform();
+            icon.RenderTransform = scale;
+            icon.RenderTransformOrigin = new Point(0.5, 0.5);
+        }
+
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = 1;
+            scale.ScaleY = 1;
+            return;
+        }
+
+        var duration = TimeSpan.FromMilliseconds((double)FindResource("HoverDurationMs"));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(target, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(target, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
     }
 
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false)
@@ -1161,6 +1244,10 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(nint windowHandle, uint message, nint wParam, nint lParam);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint value);

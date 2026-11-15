@@ -4,6 +4,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 
 ## Current features
 
+- Includes a Windows Start button, subtle pointer magnification for application icons, and a short live-preview entrance animation. Motion follows the Windows client-area animation setting.
 - Shows Windows-pinned applications and open applications without duplicating an application that is already pinned.
 - Animates app icons in and out with short opacity and scale transitions when windows open or close. Motion follows the Windows client-area animation setting.
 - Uses each application's executable icon and avoids shortcut-arrow overlays or generic Windows window icons.
