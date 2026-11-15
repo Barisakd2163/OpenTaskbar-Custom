@@ -25,6 +25,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<PinnedApp> _pinnedApps = [];
     private readonly ObservableCollection<TrackedWindow> _runningWindows = [];
     private readonly PinnedAppStore _pinnedAppStore = new();
+    private readonly DockSettingsStore _dockSettingsStore = new();
+    private DockPosition _dockPosition = DockPosition.Left;
     private NativeWindowTracker? _windowTracker;
     private TaskbarReplacementSession? _replacementSession;
     private HwndSource? _source;
@@ -35,6 +37,13 @@ public partial class MainWindow : Window
         PinnedApps.ItemsSource = _pinnedApps;
         RunningWindows.ItemsSource = _runningWindows;
         LoadPinnedApps();
+        var settingsResult = _dockSettingsStore.Load();
+        _dockPosition = settingsResult.Settings.Position;
+        if (settingsResult.Error is not null)
+        {
+            ShowStatus(settingsResult.Error);
+        }
+
         PositionDock();
     }
 
@@ -80,6 +89,7 @@ public partial class MainWindow : Window
         var workArea = SystemParameters.WorkArea;
         Width = SystemParameters.PrimaryScreenWidth;
         DockSurface.Width = Width;
+        ApplyDockAlignment();
         Left = workArea.Left;
         Top = Math.Max(workArea.Top, workArea.Bottom - Height);
     }
@@ -95,6 +105,7 @@ public partial class MainWindow : Window
 
         Width = SystemParameters.PrimaryScreenWidth;
         DockSurface.Width = Width;
+        ApplyDockAlignment();
         Height = 64;
         var session = new TaskbarReplacementSession(this, source.Handle);
         session.OperationFailed += ShowStatus;
@@ -224,6 +235,83 @@ public partial class MainWindow : Window
     {
         StatusText.Text = string.Empty;
         _replacementSession?.RefreshPosition();
+    }
+
+    private void DockContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu contextMenu)
+        {
+            return;
+        }
+
+        var settingsMenu = contextMenu.Items.OfType<MenuItem>()
+            .FirstOrDefault(item => item.Header?.ToString() == "Ayarlar");
+        var positionMenu = settingsMenu?.Items.OfType<MenuItem>()
+            .FirstOrDefault(item => item.Header?.ToString() == "Konum");
+        if (positionMenu is not null)
+        {
+            foreach (var item in positionMenu.Items.OfType<MenuItem>())
+            {
+                item.IsChecked = string.Equals(item.Tag as string, _dockPosition.ToString(), StringComparison.Ordinal);
+            }
+        }
+
+        var pinnedTarget = contextMenu.PlacementTarget is FrameworkElement
+        {
+            DataContext: PinnedApp,
+            Tag: string executablePath
+        };
+        var removePinItem = contextMenu.Items.OfType<MenuItem>()
+            .FirstOrDefault(item => item.CommandParameter as string == "RemovePinnedApp");
+        var divider = contextMenu.Items.OfType<Separator>()
+            .FirstOrDefault(item => item.Tag as string == "PinnedAppDivider");
+        if (removePinItem is not null)
+        {
+            removePinItem.Visibility = pinnedTarget ? Visibility.Visible : Visibility.Collapsed;
+            removePinItem.Tag = pinnedTarget && contextMenu.PlacementTarget is FrameworkElement { Tag: string path }
+                ? path
+                : null;
+        }
+
+        if (divider is not null)
+        {
+            divider.Visibility = pinnedTarget ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void DockPosition_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string positionName }
+            || !Enum.TryParse<DockPosition>(positionName, ignoreCase: false, out var position)
+            || !Enum.IsDefined(position))
+        {
+            return;
+        }
+
+        var error = _dockSettingsStore.Save(new DockSettings(position));
+        if (error is not null)
+        {
+            ShowStatus(error);
+            return;
+        }
+
+        _dockPosition = position;
+        ApplyDockAlignment();
+        ClearStatus();
+    }
+
+    private void ApplyDockAlignment()
+    {
+        var alignment = _dockPosition switch
+        {
+            DockPosition.Left => HorizontalAlignment.Left,
+            DockPosition.Center => HorizontalAlignment.Center,
+            DockPosition.Right => HorizontalAlignment.Right,
+            _ => throw new InvalidOperationException("Dock konumu desteklenmiyor.")
+        };
+
+        DockContents.HorizontalAlignment = alignment;
+        DockScrollViewer.HorizontalContentAlignment = alignment;
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)

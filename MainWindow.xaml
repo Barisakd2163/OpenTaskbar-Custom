@@ -18,7 +18,19 @@
         SourceInitialized="Window_SourceInitialized"
         Closed="Window_Closed">
     <Window.Resources>
-        <SolidColorBrush x:Key="PanelBrush" Color="#F0181D26" />
+        <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened">
+            <MenuItem Header="Ayarlar">
+                <MenuItem Header="Konum">
+                    <MenuItem Header="Sol" Tag="Left" IsCheckable="True" Click="DockPosition_Click" />
+                    <MenuItem Header="Orta" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
+                    <MenuItem Header="Sağ" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
+                </MenuItem>
+            </MenuItem>
+            <Separator Tag="PinnedAppDivider" Visibility="Collapsed" />
+            <MenuItem Header="Sabitlemeyi kaldır" CommandParameter="RemovePinnedApp"
+                      Visibility="Collapsed" Click="RemovePinnedApp_Click" />
+        </ContextMenu>
+
         <Style x:Key="DockButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -54,10 +66,11 @@
         </Style>
     </Window.Resources>
 
-    <Border x:Name="DockSurface" HorizontalAlignment="Center" Padding="8,6"
-            Background="{StaticResource PanelBrush}">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-            <StackPanel Orientation="Horizontal">
+    <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,6"
+            Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
+        <ScrollViewer x:Name="DockScrollViewer" HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left">
+            <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left">
                 <ItemsControl x:Name="PinnedApps">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -66,14 +79,8 @@
                         <DataTemplate>
                             <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
                                     Click="PinnedApp_Click" AutomationProperties.Name="{Binding Name}"
-                                    ToolTip="{Binding Name}">
+                                    ToolTip="{Binding Name}" ContextMenu="{StaticResource DockContextMenu}">
                                 <Image Source="{Binding Icon}" Width="32" Height="32" Stretch="Uniform" />
-                                <Button.ContextMenu>
-                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Header="Sabitlemeyi kaldır" Tag="{Binding ExecutablePath}"
-                                                  Click="RemovePinnedApp_Click" />
-                                    </ContextMenu>
-                                </Button.ContextMenu>
                             </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -86,7 +93,7 @@
                         <DataTemplate>
                             <Button Style="{StaticResource DockButton}" Tag="{Binding Handle}"
                                     Click="RunningWindow_Click" AutomationProperties.Name="{Binding Title}"
-                                    ToolTip="{Binding Title}">
+                                    ToolTip="{Binding Title}" ContextMenu="{StaticResource DockContextMenu}">
                                 <Image Source="{Binding Icon}" Width="32" Height="32" Stretch="Uniform" />
                             </Button>
                         </DataTemplate>

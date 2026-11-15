@@ -9,7 +9,6 @@ public static class ApplicationIconProvider
 {
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint ShellIcon = 0x00000100;
-    private const uint ShellSmallIcon = 0x00000001;
     private const uint WmGetIcon = 0x007F;
     private const uint SmtoAbortIfHung = 0x0002;
     private const uint IconRequestTimeoutMs = 75;
@@ -20,20 +19,20 @@ public static class ApplicationIconProvider
 
     public static BitmapSource? GetForWindow(nint windowHandle)
     {
-        var iconHandle = RequestWindowIcon(windowHandle, IconSmall2);
+        var iconHandle = RequestWindowIcon(windowHandle, IconBig);
         if (iconHandle == 0)
         {
-            iconHandle = RequestWindowIcon(windowHandle, IconBig);
-        }
-
-        if (iconHandle == 0)
-        {
-            iconHandle = GetClassLongPtr(windowHandle, GclpHIconSmall);
+            iconHandle = RequestWindowIcon(windowHandle, IconSmall2);
         }
 
         if (iconHandle == 0)
         {
             iconHandle = GetClassLongPtr(windowHandle, GclpHIcon);
+        }
+
+        if (iconHandle == 0)
+        {
+            iconHandle = GetClassLongPtr(windowHandle, GclpHIconSmall);
         }
 
         var bitmap = ToBitmapSource(iconHandle);
@@ -71,7 +70,7 @@ public static class ApplicationIconProvider
     public static BitmapSource? GetForFile(string path)
     {
         var fileInfo = new ShellFileInfo();
-        var result = SHGetFileInfo(path, 0, ref fileInfo, (uint)Marshal.SizeOf<ShellFileInfo>(), ShellIcon | ShellSmallIcon);
+        var result = SHGetFileInfo(path, 0, ref fileInfo, (uint)Marshal.SizeOf<ShellFileInfo>(), ShellIcon);
         if (result == 0 || fileInfo.Icon == 0)
         {
             return null;
@@ -103,7 +102,7 @@ public static class ApplicationIconProvider
         try
         {
             var bitmap = Imaging.CreateBitmapSourceFromHIcon(iconCopy, System.Windows.Int32Rect.Empty,
-                BitmapSizeOptions.FromWidthAndHeight(32, 32));
+                BitmapSizeOptions.FromEmptyOptions());
             bitmap.Freeze();
             return bitmap;
         }
