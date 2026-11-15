@@ -8,6 +8,7 @@ namespace OpenTaskbar.Services;
 public static class ApplicationIconProvider
 {
     private const uint ShellIcon = 0x00000100;
+    private const int TargetIconResolution = 128;
 
     public static BitmapSource? GetForFile(string path)
     {
@@ -20,6 +21,15 @@ public static class ApplicationIconProvider
             }
 
             return null;
+        }
+
+        if (File.Exists(path))
+        {
+            var directIcon = GetExecutableIcon(path);
+            if (directIcon is not null)
+            {
+                return directIcon;
+            }
         }
 
         var fileInfo = new ShellFileInfo();
@@ -47,6 +57,29 @@ public static class ApplicationIconProvider
 
     private static BitmapSource? GetExecutableIcon(string path, int index = 0)
     {
+        // Primary path: Extract high-resolution icon resource (up to 128x128) for macOS-style large dock display.
+        var icons = new nint[1];
+        var ids = new uint[1];
+        try
+        {
+            var extracted = PrivateExtractIcons(path, index, TargetIconResolution, TargetIconResolution, icons, ids, 1, 0);
+            if (extracted > 0 && icons[0] != 0)
+            {
+                try
+                {
+                    return ToBitmapSource(icons[0]);
+                }
+                finally
+                {
+                    DestroyIcon(icons[0]);
+                }
+            }
+        }
+        catch
+        {
+            // Fall through to ExtractIconEx when PrivateExtractIcons is unavailable
+        }
+
         var count = ExtractIconEx(path, index, out var largeIcon, out var smallIcon, 1);
         if (count == 0 || (largeIcon == 0 && smallIcon == 0))
         {
@@ -103,6 +136,17 @@ public static class ApplicationIconProvider
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
         public string? TypeName;
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint PrivateExtractIcons(
+        string szFileName,
+        int nIconIndex,
+        int cxIcon,
+        int cyIcon,
+        nint[] phicon,
+        uint[] piconid,
+        uint nIcons,
+        uint flags);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "ExtractIconExW")]
     private static extern uint ExtractIconEx(string file, int iconIndex, out nint largeIcon, out nint smallIcon, uint iconCount);

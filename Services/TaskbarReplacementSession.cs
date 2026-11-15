@@ -37,8 +37,8 @@ public sealed class TaskbarReplacementSession : IDisposable
     private uint _previousTaskbarState;
     private bool _disposed;
     private bool _fullScreenSuppressed;
-    private double _nativeTaskbarHeight = 58;
-    private const double DockHeadroomDips = 20;
+    private double _nativeTaskbarHeight = 72;
+    private const double DockHeadroomDips = 28;
     private bool _autoHideEnabled;
     private Size _lastLayout;
     private int _stopInProgress;

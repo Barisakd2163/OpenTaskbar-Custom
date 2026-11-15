@@ -160,7 +160,7 @@ public sealed class DockAutoHideController : IDisposable
     public void AnimateHide()
     {
         IsHidden = true;
-        double hideOffset = Math.Max(66, _dockSurface.ActualHeight + 20);
+        double hideOffset = Math.Max(84, _dockSurface.ActualHeight + 24);
         var anim = new DoubleAnimation
         {
             To = hideOffset,
