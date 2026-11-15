@@ -13,11 +13,11 @@ public sealed class PinnedAppStore
         "OpenTaskbar",
         "pinned-apps.json");
 
-    public (IReadOnlyList<PinnedApp> Apps, string? Error) Load()
+    public (IReadOnlyList<PinnedApp> Apps, string? Error, bool IsFirstRun) Load()
     {
         if (!File.Exists(_path))
         {
-            return ([], null);
+            return ([], null, true);
         }
 
         try
@@ -26,22 +26,22 @@ public sealed class PinnedAppStore
             if (apps is null || apps.Any(app => string.IsNullOrWhiteSpace(app.Name)
                 || string.IsNullOrWhiteSpace(app.ExecutablePath)))
             {
-                return ([], "Sabitleme listesi geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.");
+                return ([], "Sabitleme listesi geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.", false);
             }
 
-            return (apps, null);
+            return (apps, null, false);
         }
         catch (JsonException)
         {
-            return ([], "Sabitleme listesi okunamadı. JSON biçimini düzeltin veya dosyayı silip yeniden başlatın.");
+            return ([], "Sabitleme listesi okunamadı. JSON biçimini düzeltin veya dosyayı silip yeniden başlatın.", false);
         }
         catch (IOException)
         {
-            return ([], "Sabitleme listesi diskten okunamadı.");
+            return ([], "Sabitleme listesi diskten okunamadı.", false);
         }
         catch (UnauthorizedAccessException)
         {
-            return ([], "Sabitleme listesine erişim izni yok.");
+            return ([], "Sabitleme listesine erişim izni yok.", false);
         }
     }
 

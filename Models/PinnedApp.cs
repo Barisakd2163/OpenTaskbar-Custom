@@ -6,6 +6,10 @@ namespace OpenTaskbar.Models;
 
 public sealed record PinnedApp(string Name, string ExecutablePath)
 {
+    public string? LaunchArguments { get; init; }
+
+    public string? IconPath { get; init; }
+
     [JsonIgnore]
     public bool Exists => File.Exists(ExecutablePath);
 

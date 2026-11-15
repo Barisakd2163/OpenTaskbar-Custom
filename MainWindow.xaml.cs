@@ -152,9 +152,32 @@ public partial class MainWindow : Window
     private void LoadPinnedApps()
     {
         var result = _pinnedAppStore.Load();
-        foreach (var app in result.Apps)
+        var apps = result.Apps.ToList();
+        if (result.IsFirstRun)
         {
-            _pinnedApps.Add(app with { Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath) });
+            var importResult = WindowsTaskbarPinImporter.Import();
+            apps = importResult.Apps.ToList();
+            if (apps.Count > 0)
+            {
+                var saveError = _pinnedAppStore.Save(apps);
+                if (saveError is not null)
+                {
+                    ShowStatus(saveError);
+                }
+            }
+
+            if (importResult.Error is not null)
+            {
+                ShowStatus(importResult.Error);
+            }
+        }
+
+        foreach (var app in apps)
+        {
+            _pinnedApps.Add(app with
+            {
+                Icon = ApplicationIconProvider.GetForFile(app.IconPath ?? app.ExecutablePath)
+            });
         }
 
         if (result.Error is not null)
@@ -190,18 +213,19 @@ public partial class MainWindow : Window
 
     private void PinnedApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string executablePath })
+        if (sender is not Button { DataContext: PinnedApp app })
         {
             return;
         }
 
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
-        OpenPinnedApp(executablePath);
+        OpenPinnedApp(app);
     }
 
-    private void OpenPinnedApp(string executablePath)
+    private void OpenPinnedApp(PinnedApp app)
     {
+        var executablePath = app.ExecutablePath;
         var existingWindow = FindWindowForExecutable(executablePath);
         if (existingWindow is not null)
         {
@@ -223,7 +247,11 @@ public partial class MainWindow : Window
 
         try
         {
-            Process.Start(new ProcessStartInfo(executablePath) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(executablePath)
+            {
+                Arguments = app.LaunchArguments ?? string.Empty,
+                UseShellExecute = true
+            });
             ClearStatus();
         }
         catch (Win32Exception)
@@ -375,6 +403,10 @@ public partial class MainWindow : Window
         }
 
         SetMenuCommandParameter(contextMenu, pinnedApp.ExecutablePath);
+        if (FindMenuItem(contextMenu, "ActivatePinnedApp") is { } activateMenuItem)
+        {
+            activateMenuItem.CommandParameter = pinnedApp;
+        }
         if (browserArguments is not null)
         {
             foreach (var item in FindMenuItem(contextMenu, "BrowserActions")?.Items.OfType<MenuItem>() ?? [])
@@ -498,9 +530,9 @@ public partial class MainWindow : Window
 
     private void PinnedAppContextMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem { CommandParameter: string executablePath })
+        if (sender is MenuItem { CommandParameter: PinnedApp app })
         {
-            OpenPinnedApp(executablePath);
+            OpenPinnedApp(app);
         }
     }
 
