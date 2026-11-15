@@ -195,6 +195,11 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        OpenPinnedApp(executablePath);
+    }
+
+    private void OpenPinnedApp(string executablePath)
+    {
         var existingWindow = FindWindowForExecutable(executablePath);
         if (existingWindow is not null)
         {
@@ -283,7 +288,7 @@ public partial class MainWindow : Window
 
     private void RemovePinnedApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { Tag: string executablePath })
+        if (sender is not MenuItem { CommandParameter: string executablePath })
         {
             return;
         }
@@ -327,8 +332,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var settingsMenu = contextMenu.Items.OfType<MenuItem>()
-            .FirstOrDefault(item => item.Header?.ToString() == "Ayarlar");
+        var settingsMenu = FindMenuItem(contextMenu, "DockSettings");
         var positionMenu = settingsMenu?.Items.OfType<MenuItem>()
             .FirstOrDefault(item => item.Header?.ToString() == "Konum");
         if (positionMenu is not null)
@@ -339,26 +343,209 @@ public partial class MainWindow : Window
             }
         }
 
-        var pinnedTarget = contextMenu.PlacementTarget is FrameworkElement
+        var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as PinnedApp;
+        var isPinnedTarget = pinnedApp is not null;
+        var browserArguments = pinnedApp is null ? null : GetBrowserActions(pinnedApp.ExecutablePath);
+        SetMenuItemVisibility(contextMenu, "ActivatePinnedApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
+        SetMenuItemVisibility(contextMenu, "ClosePinnedApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "TerminatePinnedApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "RemovePinnedApp", isPinnedTarget);
+        SetSeparatorVisibility(contextMenu, "PinnedAppDivider", isPinnedTarget);
+        SetSeparatorVisibility(contextMenu, "SettingsDivider", isPinnedTarget);
+
+        if (pinnedApp is null)
         {
-            DataContext: PinnedApp,
-            Tag: string executablePath
-        };
-        var removePinItem = contextMenu.Items.OfType<MenuItem>()
-            .FirstOrDefault(item => item.CommandParameter as string == "RemovePinnedApp");
-        var divider = contextMenu.Items.OfType<Separator>()
-            .FirstOrDefault(item => item.Tag as string == "PinnedAppDivider");
-        if (removePinItem is not null)
-        {
-            removePinItem.Visibility = pinnedTarget ? Visibility.Visible : Visibility.Collapsed;
-            removePinItem.Tag = pinnedTarget && contextMenu.PlacementTarget is FrameworkElement { Tag: string path }
-                ? path
-                : null;
+            return;
         }
 
-        if (divider is not null)
+        SetMenuCommandParameter(contextMenu, pinnedApp.ExecutablePath);
+        if (browserArguments is not null)
         {
-            divider.Visibility = pinnedTarget ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var item in FindMenuItem(contextMenu, "BrowserActions")?.Items.OfType<MenuItem>() ?? [])
+            {
+                item.CommandParameter = browserArguments;
+            }
+        }
+    }
+
+    private void PinnedAppContextMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { CommandParameter: string executablePath })
+        {
+            OpenPinnedApp(executablePath);
+        }
+    }
+
+    private void BrowserAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { CommandParameter: BrowserActions actions, Tag: string action })
+        {
+            return;
+        }
+
+        var arguments = action switch
+        {
+            "NewWindow" => actions.NewWindowArguments,
+            "PrivateWindow" => actions.PrivateWindowArguments,
+            _ => null
+        };
+        if (arguments is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo(actions.ExecutablePath) { UseShellExecute = false };
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            Process.Start(startInfo);
+            ClearStatus();
+        }
+        catch (Win32Exception)
+        {
+            ShowStatus("Tarayıcı penceresi Windows tarafından başlatılamadı.");
+        }
+        catch (InvalidOperationException)
+        {
+            ShowStatus("Tarayıcı penceresi başlatılamadı.");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            ShowStatus("Tarayıcıyı başlatmak için erişim izni yok.");
+        }
+        catch (IOException)
+        {
+            ShowStatus("Tarayıcı dosyasına erişilemedi.");
+        }
+    }
+
+    private void ClosePinnedApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { CommandParameter: string executablePath })
+        {
+            return;
+        }
+
+        var (processes, inaccessibleCount) = FindProcessesForExecutable(executablePath);
+        var closedCount = 0;
+        var failedCount = inaccessibleCount;
+        foreach (var process in processes)
+        {
+            try
+            {
+                if (process.CloseMainWindow())
+                {
+                    closedCount++;
+                }
+                else
+                {
+                    failedCount++;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The process exited while the menu command was running.
+            }
+            catch (Win32Exception)
+            {
+                failedCount++;
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        if (closedCount > 0 && failedCount == 0)
+        {
+            ClearStatus();
+        }
+        else if (closedCount == 0)
+        {
+            ShowStatus("Uygulamaya normal kapanma isteği gönderilemedi. Zorla kapatmak için süreç sonlandırma seçeneğini kullanın.");
+        }
+        else
+        {
+            ShowStatus("Bazı uygulama süreçlerine normal kapanma isteği gönderilemedi.");
+        }
+    }
+
+    private void TerminatePinnedApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { CommandParameter: string executablePath })
+        {
+            return;
+        }
+
+        var (processes, inaccessibleCount) = FindProcessesForExecutable(executablePath);
+        if (processes.Count == 0)
+        {
+            ShowStatus(inaccessibleCount == 0
+                ? "Uygulamanın çalışan süreci bulunamadı."
+                : "Uygulama süreçlerine erişilemiyor; uygulama yöneticisi iznini denetleyin.");
+            return;
+        }
+
+        var appName = _pinnedApps.FirstOrDefault(app =>
+            string.Equals(app.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))?.Name
+            ?? Path.GetFileNameWithoutExtension(executablePath);
+        var confirmation = MessageBox.Show(
+            $"{appName} uygulamasına ait {processes.Count} süreç zorla sonlandırılacak. Kaydedilmemiş çalışmalar kaybolabilir. Devam edilsin?",
+            "OpenTaskbar · Süreci sonlandır",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            DisposeProcesses(processes);
+            return;
+        }
+
+        var terminatedCount = 0;
+        var failedCount = inaccessibleCount;
+        foreach (var process in processes)
+        {
+            try
+            {
+                if (process.Id == Environment.ProcessId)
+                {
+                    failedCount++;
+                    continue;
+                }
+
+                process.Kill(entireProcessTree: true);
+                terminatedCount++;
+            }
+            catch (InvalidOperationException)
+            {
+                // The process exited while the menu command was running.
+            }
+            catch (Win32Exception)
+            {
+                failedCount++;
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        if (failedCount == 0 && terminatedCount > 0)
+        {
+            ClearStatus();
+        }
+        else if (terminatedCount == 0)
+        {
+            ShowStatus("Uygulama süreçleri sonlandırılamadı. Yetkiyi ve uygulamanın tekrar başlamadığını denetleyin.");
+        }
+        else
+        {
+            ShowStatus("Bazı uygulama süreçleri sonlandırılamadı.");
         }
     }
 
@@ -390,6 +577,116 @@ public partial class MainWindow : Window
 
         ClearStatus();
     }
+
+    private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
+    {
+        foreach (var item in owner.Items.OfType<MenuItem>())
+        {
+            if (string.Equals(item.Tag as string, tag, StringComparison.Ordinal))
+            {
+                return item;
+            }
+
+            var nested = FindMenuItem(item, tag);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetMenuItemVisibility(ItemsControl owner, string tag, bool visible)
+    {
+        var item = FindMenuItem(owner, tag);
+        if (item is not null)
+        {
+            item.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private static void SetSeparatorVisibility(ItemsControl owner, string tag, bool visible)
+    {
+        var separator = owner.Items.OfType<Separator>()
+            .FirstOrDefault(item => string.Equals(item.Tag as string, tag, StringComparison.Ordinal));
+        if (separator is not null)
+        {
+            separator.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private static void SetMenuCommandParameter(ItemsControl owner, string executablePath)
+    {
+        foreach (var item in owner.Items.OfType<MenuItem>())
+        {
+            item.CommandParameter = executablePath;
+            SetMenuCommandParameter(item, executablePath);
+        }
+    }
+
+    private static BrowserActions? GetBrowserActions(string executablePath)
+    {
+        var browserName = Path.GetFileName(executablePath).ToLowerInvariant();
+        var newWindowArgument = browserName == "firefox.exe" ? "-new-window" : "--new-window";
+        var privateArgument = browserName switch
+        {
+            "msedge.exe" => "--inprivate",
+            "firefox.exe" => "-private-window",
+            "opera.exe" => "--private",
+            _ when browserName is "chrome.exe" or "brave.exe" or "vivaldi.exe" => "--incognito",
+            _ => null
+        };
+
+        return privateArgument is null
+            ? null
+            : new BrowserActions(executablePath, [newWindowArgument], [privateArgument]);
+    }
+
+    private static (List<Process> Processes, int InaccessibleCount) FindProcessesForExecutable(string executablePath)
+    {
+        var matchingProcesses = new List<Process>();
+        var inaccessibleCount = 0;
+        var processName = Path.GetFileNameWithoutExtension(executablePath);
+        foreach (var process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                if (string.Equals(process.MainModule?.FileName, executablePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchingProcesses.Add(process);
+                }
+                else
+                {
+                    process.Dispose();
+                }
+            }
+            catch (Win32Exception)
+            {
+                inaccessibleCount++;
+                process.Dispose();
+            }
+            catch (InvalidOperationException)
+            {
+                process.Dispose();
+            }
+        }
+
+        return (matchingProcesses, inaccessibleCount);
+    }
+
+    private static void DisposeProcesses(IEnumerable<Process> processes)
+    {
+        foreach (var process in processes)
+        {
+            process.Dispose();
+        }
+    }
+
+    private sealed record BrowserActions(
+        string ExecutablePath,
+        IReadOnlyList<string> NewWindowArguments,
+        IReadOnlyList<string> PrivateWindowArguments);
 
     private void ApplyDockAlignment()
     {

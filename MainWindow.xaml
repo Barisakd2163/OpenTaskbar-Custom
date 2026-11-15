@@ -19,17 +19,116 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened">
-            <MenuItem Header="Ayarlar">
+            <ContextMenu.Resources>
+                <Style TargetType="MenuItem">
+                    <Setter Property="Foreground" Value="#FFF1F1F1" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Padding" Value="12,7" />
+                    <Setter Property="MinHeight" Value="32" />
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Grid>
+                                    <Border x:Name="ItemSurface" Background="{TemplateBinding Background}"
+                                            CornerRadius="5" Padding="{TemplateBinding Padding}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="Checkmark" Text="✓" Foreground="{TemplateBinding Foreground}"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed" />
+                                            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                                                              VerticalAlignment="Center" />
+                                            <Path x:Name="SubmenuArrow" Grid.Column="2" Data="M0,0 L4,4 L0,8"
+                                                  Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4"
+                                                  VerticalAlignment="Center" Margin="12,0,2,0"
+                                                  Visibility="Collapsed" />
+                                        </Grid>
+                                    </Border>
+                                    <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
+                                           Placement="Right" PopupAnimation="Fade"
+                                           IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <Border Background="#FF1B1D21" BorderBrush="#FF343840" BorderThickness="1"
+                                                CornerRadius="8" Padding="5">
+                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="HasItems" Value="True">
+                                        <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
+                                    </Trigger>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="ItemSurface" Property="Background" Value="#FF30343B" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="Checkmark" Property="Visibility" Value="Visible" />
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter TargetName="ItemSurface" Property="Opacity" Value="0.42" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <Style TargetType="Separator">
+                    <Setter Property="Margin" Value="5,4" />
+                    <Setter Property="Height" Value="1" />
+                    <Setter Property="Background" Value="#FF343840" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Separator">
+                                <Border Height="1" Background="{TemplateBinding Background}" />
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ContextMenu.Resources>
+            <MenuItem Header="Uygulamayı aç" Tag="ActivatePinnedApp" Click="PinnedAppContextMenu_Click" />
+            <MenuItem Header="Tarayıcı işlemleri" Tag="BrowserActions" Visibility="Collapsed">
+                <MenuItem Header="Yeni pencere" Tag="NewWindow" Click="BrowserAction_Click" />
+                <MenuItem Header="Gizli pencere" Tag="PrivateWindow" Click="BrowserAction_Click" />
+            </MenuItem>
+            <MenuItem Header="Uygulamayı kapat" Tag="ClosePinnedApp" Click="ClosePinnedApp_Click" />
+            <MenuItem Header="Süreci sonlandır…" Tag="TerminatePinnedApp" Click="TerminatePinnedApp_Click" />
+            <Separator Tag="PinnedAppDivider" Visibility="Collapsed" />
+            <MenuItem Header="Sabitlemeyi kaldır" Tag="RemovePinnedApp" Visibility="Collapsed"
+                      Click="RemovePinnedApp_Click" />
+            <Separator Tag="SettingsDivider" />
+            <MenuItem Header="Ayarlar" Tag="DockSettings">
                 <MenuItem Header="Konum">
                     <MenuItem Header="Sol" Tag="Left" IsCheckable="True" Click="DockPosition_Click" />
                     <MenuItem Header="Orta" Tag="Center" IsCheckable="True" Click="DockPosition_Click" />
                     <MenuItem Header="Sağ" Tag="Right" IsCheckable="True" Click="DockPosition_Click" />
                 </MenuItem>
             </MenuItem>
-            <Separator Tag="PinnedAppDivider" Visibility="Collapsed" />
-            <MenuItem Header="Sabitlemeyi kaldır" CommandParameter="RemovePinnedApp"
-                      Visibility="Collapsed" Click="RemovePinnedApp_Click" />
         </ContextMenu>
+
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background" Value="#FF1B1D21" />
+            <Setter Property="Foreground" Value="#FFF1F1F1" />
+            <Setter Property="BorderBrush" Value="#FF343840" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="5" />
+            <Setter Property="MinWidth" Value="196" />
+            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <Style x:Key="DockButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
@@ -68,7 +167,7 @@
 
     <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,0"
             Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
-        <ScrollViewer x:Name="DockScrollViewer" HorizontalScrollBarVisibility="Auto"
+        <ScrollViewer x:Name="DockScrollViewer" HorizontalScrollBarVisibility="Hidden"
                       VerticalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left"
                       VerticalContentAlignment="Center">
             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"

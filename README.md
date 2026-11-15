@@ -9,6 +9,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Shows a DWM live thumbnail above a pinned application while its icon is hovered.
 - Shrinks the dock to its icon group and places it at the selected left, center, or right position.
 - Shows a notification dot on a pinned application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
+- Uses a compact black context menu. Pinned applications can be opened, closed gracefully, or force-terminated after confirmation; supported browsers also offer new and private windows.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Stores pinned paths in `%LOCALAPPDATA%\OpenTaskbar\pinned-apps.json`.
 - Removes a pin from its context menu.
@@ -40,6 +41,7 @@ dotnet run --project OpenTaskbar.csproj
 - Taskbar replacement depends on Windows Explorer's AppBar and auto-hide APIs. A recovery record at `%LOCALAPPDATA%\OpenTaskbar\taskbar-state.txt` preserves the original Windows taskbar state after an unexpected exit.
 - The dock is positioned at the bottom edge of the monitor containing its window; its icon group can align left, center, or right.
 - Applications do not expose a universal unread count or notification badge API, so notification dots appear only when Windows raises a system alert for a window.
+- Browser tab favicon badges are private to the browser's page UI and are not exposed as a system notification signal. Supporting them requires an integration such as a browser extension; OpenTaskbar does not infer unread state from screenshots or page content.
 - Owned dialogs and untitled windows are omitted from activation and hover previews. A pinned executable with no embedded icon is shown without a generic replacement icon.
 - Pins refer to executable paths; moving or removing an executable requires removing and adding the pin again.
 - Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.
