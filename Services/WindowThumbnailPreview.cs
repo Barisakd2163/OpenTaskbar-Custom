@@ -33,6 +33,13 @@ public sealed class WindowThumbnailPreview : IDisposable
             VerticalAlignment = VerticalAlignment.Center
         };
 
+        var surface = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(18, 21, 25)),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(74, 81, 90)),
+            Child = _placeholder
+        };
         _window = new Window
         {
             Width = 360,
@@ -42,16 +49,20 @@ public sealed class WindowThumbnailPreview : IDisposable
             ShowInTaskbar = false,
             ShowActivated = false,
             Topmost = true,
-            Background = new SolidColorBrush(Color.FromRgb(18, 21, 25)),
-            Content = new Border
-            {
-                BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(74, 81, 90)),
-                Child = _placeholder
-            }
+            Background = surface.Background,
+            Content = surface
         };
         _window.Closed += Window_Closed;
+        _window.MouseEnter += Window_MouseEnter;
+        _window.MouseLeave += Window_MouseLeave;
+        _window.PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
     }
+
+    public event EventHandler? PointerEntered;
+
+    public event EventHandler? PointerLeft;
+
+    public event EventHandler? PreviewClicked;
 
     public bool IsVisible => _window.IsVisible;
 
@@ -211,6 +222,22 @@ public sealed class WindowThumbnailPreview : IDisposable
         ReleaseThumbnail();
         _destinationHandle = 0;
         _sourceHandle = 0;
+    }
+
+    private void Window_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        PointerEntered?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void Window_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        PointerLeft?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void Window_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        PreviewClicked?.Invoke(this, EventArgs.Empty);
     }
 
     [StructLayout(LayoutKind.Sequential)]

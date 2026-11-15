@@ -41,9 +41,12 @@ public partial class MainWindow : Window
         _thumbnailPreview = new WindowThumbnailPreview();
         _previewCloseTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(220)
+            Interval = TimeSpan.FromMilliseconds(500)
         };
         _previewCloseTimer.Tick += PreviewCloseTimer_Tick;
+        _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
+        _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
+        _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
         LoadPinnedApps();
         var settingsResult = _dockSettingsStore.Load();
         _dockPosition = settingsResult.Settings.Position;
@@ -288,16 +291,19 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
-        OpenDockApp(app);
+        OpenDockApp(app, toggleIfForeground: true);
     }
 
-    private void OpenDockApp(DockApp app)
+    private void OpenDockApp(DockApp app, bool toggleIfForeground = false)
     {
         var executablePath = app.ExecutablePath;
         var existingWindow = FindWindowForExecutable(executablePath);
         if (existingWindow is not null)
         {
-            if (!NativeWindowTracker.Activate(existingWindow.Handle))
+            var activated = toggleIfForeground
+                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle)
+                : NativeWindowTracker.Activate(existingWindow.Handle);
+            if (!activated)
             {
                 ShowStatus("Uygulama penceresi etkinleştirilemedi. Windows odağı engellemiş olabilir.");
                 return;
@@ -368,6 +374,31 @@ public partial class MainWindow : Window
     {
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+    }
+
+    private void ThumbnailPreview_PointerEntered(object? sender, EventArgs e)
+    {
+        _previewCloseTimer.Stop();
+    }
+
+    private void ThumbnailPreview_PointerLeft(object? sender, EventArgs e)
+    {
+        _previewCloseTimer.Stop();
+        _previewCloseTimer.Start();
+    }
+
+    private void ThumbnailPreview_PreviewClicked(object? sender, EventArgs e)
+    {
+        var sourceHandle = _thumbnailPreview.SourceHandle;
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+        if (sourceHandle == 0 || !NativeWindowTracker.Activate(sourceHandle))
+        {
+            ShowStatus("Önizleme penceresi etkinleştirilemedi. Windows odağı engellemiş olabilir.");
+            return;
+        }
+
+        ClearStatus();
     }
 
     private TrackedWindow? FindWindowForExecutable(string executablePath)
@@ -853,6 +884,9 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
+        _thumbnailPreview.PointerEntered -= ThumbnailPreview_PointerEntered;
+        _thumbnailPreview.PointerLeft -= ThumbnailPreview_PointerLeft;
+        _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;
         _thumbnailPreview.Dispose();
     }
 

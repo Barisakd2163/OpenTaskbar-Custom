@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Threading;
@@ -18,8 +19,14 @@ public sealed class NativeWindowTracker : IDisposable
     private const int ObjectWindow = 0;
     private const int ChildIdSelf = 0;
     private const int WindowOwner = 4;
+    private const int GwlExStyle = -20;
+    private const long WsExAppWindow = 0x00040000;
+    private const long WsExToolWindow = 0x00000080;
     private const int ShowRestore = 9;
+    private const int ShowMinimize = 6;
     private const uint ProcessQueryLimitedInformation = 0x1000;
+    private static readonly string WindowsSystemAppsDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SystemApps") + Path.DirectorySeparatorChar;
 
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _refreshTimer;
@@ -166,6 +173,12 @@ public sealed class NativeWindowTracker : IDisposable
             return true;
         }
 
+        var extendedStyle = GetWindowLongPtr(windowHandle, GwlExStyle).ToInt64();
+        if ((extendedStyle & WsExToolWindow) != 0 && (extendedStyle & WsExAppWindow) == 0)
+        {
+            return true;
+        }
+
         var titleLength = GetWindowTextLength(windowHandle);
         if (titleLength <= 0)
         {
@@ -179,7 +192,14 @@ public sealed class NativeWindowTracker : IDisposable
         {
             if (GCHandle.FromIntPtr(state).Target is WindowCollectionState collection)
             {
-                if (collection.Previous.TryGetValue(windowHandle, out var previous))
+                collection.Previous.TryGetValue(windowHandle, out var previous);
+                var executablePath = previous?.ExecutablePath ?? GetExecutablePath(windowHandle);
+                if (IsWindowsSystemApp(executablePath))
+                {
+                    return true;
+                }
+
+                if (previous is not null)
                 {
                     collection.Windows.Add(previous with
                     {
@@ -190,7 +210,7 @@ public sealed class NativeWindowTracker : IDisposable
                 else
                 {
                     collection.Windows.Add(new TrackedWindow(windowHandle, value,
-                        GetExecutablePath(windowHandle), _notificationWindows.Contains(windowHandle)));
+                        executablePath, _notificationWindows.Contains(windowHandle)));
                 }
             }
         }
@@ -226,6 +246,22 @@ public sealed class NativeWindowTracker : IDisposable
                 AttachThreadInput(currentThread, targetThread, false);
             }
         }
+    }
+
+    public static bool ToggleActivation(nint windowHandle)
+    {
+        if (!IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        if (GetForegroundWindow() == windowHandle)
+        {
+            ShowWindow(windowHandle, ShowMinimize);
+            return true;
+        }
+
+        return Activate(windowHandle);
     }
 
     public void Dispose()
@@ -333,6 +369,18 @@ public sealed class NativeWindowTracker : IDisposable
             CloseHandle(processHandle);
         }
     }
+
+    private static bool IsWindowsSystemApp(string? executablePath)
+    {
+        return executablePath is not null
+            && executablePath.StartsWith(WindowsSystemAppsDirectory, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern nint GetWindowLongPtr(nint windowHandle, int index);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

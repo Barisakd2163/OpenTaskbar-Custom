@@ -13,7 +13,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Hides the Explorer taskbar while the dock overlays its reserved bottom area, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
-- Uses Windows accessibility events to match open windows with application icons and update notification badges. It enumerates windows once at startup and briefly coalesces bursts of change events.
+- Uses Windows accessibility events to match eligible open windows with application icons and update notification badges. It omits owned and tool windows, plus windows hosted by Windows system apps under `%WINDIR%\SystemApps`, and briefly coalesces bursts of change events.
 - Runs without administrator rights or network access. Taskbar replacement changes only the current user's Windows taskbar state.
 
 ## Performance approach
@@ -41,7 +41,7 @@ dotnet run --project OpenTaskbar.csproj
 - The dock is positioned at the bottom edge of the monitor containing its window; its icon group can align left, center, or right.
 - Applications do not expose a universal unread count or notification badge API, so notification dots appear only when Windows raises a system alert for a window.
 - Browser tab favicon badges are private to the browser's page UI and are not exposed as a system notification signal. Supporting them requires an integration such as a browser extension; OpenTaskbar does not infer unread state from screenshots or page content.
-- Owned dialogs and untitled windows are omitted from activation and hover previews. A pinned executable with no embedded icon is shown without a generic replacement icon.
+- Owned dialogs, tool windows, Windows system-app helper windows, and untitled windows are omitted from the dock and hover previews. A pinned executable with no embedded icon is shown without a generic replacement icon.
 - Pins come from Windows shortcut files; moving or removing an executable requires updating its Windows taskbar shortcut.
 - Open windows are shown even when they are not pinned. Packaged Windows taskbar pins stored only as application IDs are not imported unless that application is running.
 - Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.
