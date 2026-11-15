@@ -268,7 +268,10 @@ public sealed class TaskbarReplacementSession : IDisposable
         data.rc.Top = data.rc.Bottom - height;
         data.rc.Right = data.rc.Left + width;
         SHAppBarMessage(AbmSetPos, ref data);
-        if (!SetWindowPos(_handle, HwndTopmost, data.rc.Left, data.rc.Top,
+        var windowLeft = left;
+        var windowTop = monitorInfo.rcMonitor.Bottom - height;
+        // Explorer keeps its taskbar work-area reservation while its taskbar window is hidden.
+        if (!SetWindowPos(_handle, HwndTopmost, windowLeft, windowTop,
                 width, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
