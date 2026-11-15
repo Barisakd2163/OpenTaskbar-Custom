@@ -84,6 +84,10 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - `ContextMenus.xaml`: Vector outline icon styles, Jump List headers, and menu item templates.
 - `SettingsControls.xaml`: Segmented controls, toggles, radio buttons, and preferences layout.
 
+### Settings navigation
+
+The 160 DIP sidebar uses 44 DIP minimum-height tabs with a consistent 16 DIP Segoe MDL2 icon column. Selection is marked by a slim accent bar and a subtle neutral surface; hover and keyboard focus have separate treatments. Disabled Widgets retains its label and icon without hover emphasis. Native TabControl keyboard/selection behavior is retained. Decorative navigation glyphs are non-focusable template children; the actual tab header supplies its accessible name.
+
 ## Settings verification
 
 Release compilation and temporary-file checks cover legacy opacity defaults, finite/range validation, saved values, pin preservation, live material changes, unchanged text opacity, preview rollback, and Apply state. WPF renders were inspected in dark/light, Turkish/English, default and minimum sizes. A native Windows 11 probe confirmed Acrylic type 3, maximize bounds within the monitor work area, and restore/minimize states; a cropped screen capture verified the actual custom window. Pointer dragging, resize grips, keyboard shortcuts, multiple-monitor DPI transitions, and Windows transparency/power-policy variations still require interactive validation. Computer Use was not used.
