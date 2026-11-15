@@ -70,9 +70,9 @@
             Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
         <ScrollViewer x:Name="DockScrollViewer" HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left"
-                      VerticalContentAlignment="Bottom">
+                      VerticalContentAlignment="Center">
             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
-                        VerticalAlignment="Bottom">
+                        VerticalAlignment="Center">
                 <ItemsControl x:Name="PinnedApps">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
