@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -12,6 +13,15 @@ namespace OpenTaskbar;
 
 public partial class MainWindow : Window
 {
+    private const int GwlExStyle = -20;
+    private const long WsExAppWindow = 0x00040000;
+    private const long WsExToolWindow = 0x00000080;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
+
     private readonly ObservableCollection<PinnedApp> _pinnedApps = [];
     private readonly ObservableCollection<TrackedWindow> _runningWindows = [];
     private readonly PinnedAppStore _pinnedAppStore = new();
@@ -39,6 +49,11 @@ public partial class MainWindow : Window
 
         _source = source;
         _source.AddHook(WindowProc);
+        if (!ExcludeFromTaskSwitcher(source.Handle))
+        {
+            ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
+        }
+
         _windowTracker = new NativeWindowTracker(Dispatcher);
         _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
         try
@@ -211,6 +226,30 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
+    private static bool ExcludeFromTaskSwitcher(nint windowHandle)
+    {
+        Marshal.SetLastPInvokeError(0);
+        var currentStyle = GetWindowLongPtr(windowHandle, GwlExStyle);
+        if (currentStyle == 0 && Marshal.GetLastPInvokeError() != 0)
+        {
+            return false;
+        }
+
+        var style = new nint((currentStyle.ToInt64() | WsExToolWindow) & ~WsExAppWindow);
+        if (style != currentStyle)
+        {
+            Marshal.SetLastPInvokeError(0);
+            var previousStyle = SetWindowLongPtr(windowHandle, GwlExStyle, style);
+            if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
+            {
+                return false;
+            }
+        }
+
+        return SetWindowPos(windowHandle, 0, 0, 0, 0, 0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (_replacementSession is null)
@@ -242,4 +281,14 @@ public partial class MainWindow : Window
             _windowTracker = null;
         }
     }
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern nint GetWindowLongPtr(nint windowHandle, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint value);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(nint windowHandle, nint insertAfter, int x, int y, int width, int height, uint flags);
 }
