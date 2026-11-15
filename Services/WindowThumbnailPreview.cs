@@ -53,7 +53,7 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         _placeholder = new TextBlock
         {
-            Text = "Önizleme kullanılamıyor",
+            Text = UiText.Get("PreviewUnavailable"),
             Foreground = (Brush)resources["TextSecondary"],
             FontFamily = (FontFamily)resources["InterfaceFont"],
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -152,6 +152,7 @@ public sealed class WindowThumbnailPreview : IDisposable
     public bool ShowForWindows(IReadOnlyList<TrackedWindow> windows, FrameworkElement anchor, BitmapSource? defaultIcon)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _placeholder.Text = UiText.Get("PreviewUnavailable");
         var validWindows = windows.Where(w => w.Handle != 0 && IsWindow(w.Handle)).Take(6).ToList();
         if (validWindows.Count == 0)
         {
@@ -251,9 +252,9 @@ public sealed class WindowThumbnailPreview : IDisposable
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, 0, 0),
-                ToolTip = "Pencereyi kapat"
+                ToolTip = UiText.Get("CloseWindow")
             };
-            AutomationProperties.SetName(closeBtn, "Pencereyi kapat");
+            AutomationProperties.SetName(closeBtn, UiText.Get("CloseWindow"));
             closeBtn.Click += (_, e) =>
             {
                 e.Handled = true;
@@ -502,11 +503,13 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         var left = (int)Math.Round(anchorTop.X) - width / 2;
         left = Math.Clamp(left, monitorInfo.Monitor.Left, monitorInfo.Monitor.Right - width);
-        var top = (int)Math.Round(anchorTop.Y) - height - 8;
+        var gapDips = Application.Current?.Resources["PreviewGap"] is double g ? g : 16.0;
+        var gap = (int)Math.Round(gapDips * dpi / 96d);
+        var top = (int)Math.Round(anchorTop.Y) - height - gap;
         if (top < monitorInfo.Monitor.Top)
         {
             var anchorHeight = (int)Math.Ceiling(anchor.ActualHeight * dpi / 96d);
-            top = (int)Math.Round(anchorTop.Y) + anchorHeight + 8;
+            top = (int)Math.Round(anchorTop.Y) + anchorHeight + gap;
         }
 
         top = Math.Min(top, monitorInfo.Monitor.Bottom - height);

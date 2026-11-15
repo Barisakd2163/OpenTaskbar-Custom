@@ -18,6 +18,7 @@
     <sys:Double x:Key="PreviewWidth">344</sys:Double>
     <sys:Double x:Key="PreviewHeight">236</sys:Double>
     <sys:Double x:Key="PreviewHeaderHeight">40</sys:Double>
+    <sys:Double x:Key="PreviewGap">16</sys:Double>
     <sys:Double x:Key="DockHoverScale">1.28</sys:Double>
     <sys:Double x:Key="HoverDurationMs">120</sys:Double>
     <sys:Double x:Key="PreviewDurationMs">160</sys:Double>
