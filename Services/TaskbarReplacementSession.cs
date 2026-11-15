@@ -10,21 +10,14 @@ public sealed class TaskbarReplacementSession : IDisposable
 {
     private const uint AbmNew = 0x00000000;
     private const uint AbmRemove = 0x00000001;
-    private const uint AbmQueryPos = 0x00000002;
-    private const uint AbmSetPos = 0x00000003;
     private const uint AbmGetState = 0x00000004;
-    private const uint AbmActivate = 0x00000006;
     private const uint AbmSetState = 0x0000000A;
-    private const uint AbmWindowPosChanged = 0x00000009;
     private const uint AbsAutoHide = 0x00000001;
     private const uint AbsAlwaysOnTop = 0x00000002;
     private const uint SupportedTaskbarState = AbsAutoHide | AbsAlwaysOnTop;
-    private const uint AbeBottom = 3;
     private const uint AbnStateChange = 0;
     private const uint AbnPosChanged = 1;
     private const uint AbnFullScreenApp = 2;
-    private const uint WmActivate = 0x0006;
-    private const uint WmWindowPosChanged = 0x0047;
     private const uint WmDisplayChange = 0x007E;
     private const uint WmDpiChanged = 0x02E0;
     private const uint CallbackMessage = 0x8000 + 0x52;
@@ -138,7 +131,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
             _registered = true;
             _active = true;
-            PositionAppBar();
+            PositionDockWindow();
         }
         catch
         {
@@ -160,7 +153,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             {
                 case AbnPosChanged:
                     EnforceNativeTaskbarHidden();
-                    PositionAppBar();
+                    PositionDockWindow();
                     return true;
                 case AbnFullScreenApp:
                     if (lParam != 0)
@@ -170,7 +163,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                     else
                     {
                         ShowWindow(_handle, SwShowNoActivate);
-                        PositionAppBar();
+                        PositionDockWindow();
                     }
                     return true;
                 case AbnStateChange:
@@ -179,20 +172,9 @@ public sealed class TaskbarReplacementSession : IDisposable
             }
         }
 
-        if (message == WmWindowPosChanged)
+        if (message is WmDisplayChange or WmDpiChanged)
         {
-            var data = CreateData();
-            SHAppBarMessage(AbmWindowPosChanged, ref data);
-        }
-        else if (message == WmActivate)
-        {
-            var data = CreateData();
-            data.lParam = (wParam.ToInt64() & 0xFFFF) == 0 ? 0 : 1;
-            SHAppBarMessage(AbmActivate, ref data);
-        }
-        else if (message is WmDisplayChange or WmDpiChanged)
-        {
-            PositionAppBar();
+            PositionDockWindow();
         }
 
         return false;
@@ -227,12 +209,12 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public void RefreshPosition()
     {
-        PositionAppBar();
+        PositionDockWindow();
     }
 
-    private void PositionAppBar()
+    private void PositionDockWindow()
     {
-        if (!_registered)
+        if (!_active && !_registered)
         {
             return;
         }
@@ -256,22 +238,9 @@ public sealed class TaskbarReplacementSession : IDisposable
             DockPosition.Right => monitorRight - width,
             _ => monitorLeft
         };
-        var data = CreateData();
-        data.uEdge = AbeBottom;
-        data.rc = new Rect(
-            left,
-            monitorInfo.rcMonitor.Bottom - height,
-            left + width,
-            monitorInfo.rcMonitor.Bottom);
-
-        SHAppBarMessage(AbmQueryPos, ref data);
-        data.rc.Top = data.rc.Bottom - height;
-        data.rc.Right = data.rc.Left + width;
-        SHAppBarMessage(AbmSetPos, ref data);
-        var windowLeft = left;
-        var windowTop = monitorInfo.rcMonitor.Bottom - height;
-        // Explorer keeps its taskbar work-area reservation while its taskbar window is hidden.
-        if (!SetWindowPos(_handle, HwndTopmost, windowLeft, windowTop,
+        // Explorer already reserves the hidden native taskbar's area; another appbar position would reserve a second strip.
+        var top = monitorInfo.rcMonitor.Bottom - height;
+        if (!SetWindowPos(_handle, HwndTopmost, left, top,
                 width, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
