@@ -210,15 +210,29 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_replacementSession is null)
+        {
+            return;
+        }
+
+        var error = _replacementSession.Stop();
+        if (_replacementSession.IsActive)
+        {
+            e.Cancel = true;
+            ShowStatus(error ?? "Windows görev çubuğu geri yüklenemedi. Uygulama açık bırakıldı.");
+            return;
+        }
+
+        _replacementSession.Dispose();
+        _replacementSession = null;
+    }
+
     private void Window_Closed(object? sender, EventArgs e)
     {
         _source?.RemoveHook(WindowProc);
         _source = null;
-        if (_replacementSession is not null)
-        {
-            _replacementSession.Dispose();
-            _replacementSession = null;
-        }
 
         if (_windowTracker is not null)
         {
