@@ -106,6 +106,7 @@ public partial class SettingsWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        ThemeManager.SetSurfaceOpacity(Math.Round(OpacitySlider.Value) / 100);
         UpdateOpacityLabel();
         UpdateBackdrop();
     }
@@ -150,6 +151,7 @@ public partial class SettingsWindow : Window
         var settings = ReadSelection();
         if (_preferences.Save(settings) is { } error)
         {
+            error = UiText.LocalizeError(error);
             if (startupChanged && _startup.SetEnabled(_startupEnabled) is not null)
                 error += " " + UiText.Get("StartupRestoreError");
             ShowResult(error, error: true);

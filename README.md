@@ -14,7 +14,8 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Dock Pinning:** Pin running applications or unpin shortcuts directly from the context menu. Classic taskbar shortcuts are imported from the user's Windows pin folder.
 - **Native Windows Jump Lists:** View recent/frequent destinations and published application tasks directly in the context menu via lightweight STA Shell reading.
 - **Crash Recovery & State Journaling:** Automatically restores the native Windows taskbar on exit or unexpected shutdown using a local state journal (`taskbar-state.txt`). Reconnects on Explorer restarts (`TaskbarCreated`).
-- **Dedicated Settings Window:** Customize dock alignment (Left, Center, Right), theme (Dark/Light), auto-hide mode (Disabled, Smart, Always), animations, previews, and Windows startup.
+- **Dedicated Settings Window:** A compact window with custom title-bar controls. Customize alignment (Left, Center, Right), theme (Dark/Light), auto-hide, animations, previews, and Windows startup. General settings fit at the default size; smaller windows keep all options reachable by scrolling.
+- **Glass & Surface Opacity:** Settings use native Desktop Acrylic on Windows 11 build 22621 or later. Adjust background opacity from 60–100% for settings, the dock, and context menus without fading text or icons. Changes preview live, save on Apply, and revert when discarded. Unsupported Windows versions and high-contrast mode use an opaque settings surface.
 - **Vector Icons:** Clean vector outline icons (Lucide icon set, 24x24 coordinate space) for context menus and dock controls.
 
 ## Requirements
@@ -38,11 +39,11 @@ dotnet build OpenTaskbar.csproj -c Release
 ```
 
 The output executable is located at:
-`bin\x64\Release\net10.0-windows\OpenTaskbar.exe`
+`bin\Release\net10.0-windows\OpenTaskbar.exe`
 
 ## Configuration and Storage
 
-- `%LOCALAPPDATA%\OpenTaskbar\settings.json`: User preferences, dock alignment, theme, auto-hide mode, and pin order.
+- `%LOCALAPPDATA%\OpenTaskbar\settings.json`: Preferences, alignment, theme, auto-hide, pin order, and `SurfaceOpacity` (0.6–1.0, default 0.9). Existing settings files receive the default opacity.
 - `%LOCALAPPDATA%\OpenTaskbar\taskbar-state.txt`: Safety journal that preserves the original Windows taskbar state for crash recovery.
 - `Software\Microsoft\Windows\CurrentVersion\Run\OpenTaskbar`: Current-user Windows registry key used when "Start with Windows" is enabled.
 

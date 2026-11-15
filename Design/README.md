@@ -35,6 +35,10 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 ## Visual Materials
 
+- **Settings Glass:** Native Desktop Acrylic (`DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW`) on Windows 11 build 22621+. `WindowChrome` provides the custom 48 DIP caption and native resize border. Text and icons remain opaque while settings, dock, and menu background brushes share the persisted surface opacity (60–100%, default 90%). No layered-window opacity or software blur is used. Unsupported systems and high-contrast mode use an opaque settings surface.
+- **Compact Settings Layout:** One caption, a 148 DIP navigation column, 52 DIP general rows, and a fixed Apply footer. Remove introductory and persistent save-hint copy. Short auto-hide options form a vertical list. Uniform choice groups share aligned edges. The default 740 × 600 DIP window fits all general settings; smaller sizes scroll to the final option. Custom maximize sizing follows the current monitor work area and DPI.
+- **Preference Feedback:** Enable Apply only for edited preferences or recoverable settings-load errors. Surface-opacity changes preview immediately and revert to saved preferences on close, including after pin reordering. Keep startup permission errors accessible on the disabled switch and show save errors/results in the footer.
+
 - **Translucent Smoked Glass:** Deep translucent charcoal acrylic-style background (`#D916191F` in Dark theme, `#D9F3F4F6` in Light theme).
 - **Specular Top Highlight:** 1 DIP top border highlight (`#4DFFFFFF`) simulating light reflection on glass edges.
 - **Ambient Shadow:** Soft multi-layer drop shadow (`BlurRadius="24"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.45"`) separating the dock from desktop wallpapers.
@@ -79,3 +83,9 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - `Palettes/Light.xaml`: Light theme color palette and material brushes.
 - `ContextMenus.xaml`: Vector outline icon styles, Jump List headers, and menu item templates.
 - `SettingsControls.xaml`: Segmented controls, toggles, radio buttons, and preferences layout.
+
+## Settings verification
+
+Release compilation and temporary-file checks cover legacy opacity defaults, finite/range validation, saved values, pin preservation, live material changes, unchanged text opacity, preview rollback, and Apply state. WPF renders were inspected in dark/light, Turkish/English, default and minimum sizes. A native Windows 11 probe confirmed Acrylic type 3, maximize bounds within the monitor work area, and restore/minimize states; a cropped screen capture verified the actual custom window. Pointer dragging, resize grips, keyboard shortcuts, multiple-monitor DPI transitions, and Windows transparency/power-policy variations still require interactive validation. Computer Use was not used.
+
+References: [Microsoft WindowChrome](https://learn.microsoft.com/en-us/dotnet/api/system.windows.shell.windowchrome), [Microsoft DWM system backdrop types](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type).
