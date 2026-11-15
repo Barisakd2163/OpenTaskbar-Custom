@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
-using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
@@ -30,23 +30,34 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private readonly Window _window;
     private readonly nint _handle;
-    private readonly Func<DockPosition> _getDockPosition;
     private bool _registered;
     private bool _active;
     private bool _stateChangeStarted;
     private uint _previousTaskbarState;
     private bool _disposed;
+    private bool _fullScreenSuppressed;
+    private double _nativeTaskbarHeight = 48;
+    private Size _lastLayout;
 
-    public TaskbarReplacementSession(Window window, nint handle, Func<DockPosition> getDockPosition)
+    public TaskbarReplacementSession(Window window, nint handle)
     {
         _window = window;
         _handle = handle;
-        _getDockPosition = getDockPosition;
     }
 
     public bool IsActive => _active;
 
     public event Action<string>? OperationFailed;
+    public event Action<Size>? LayoutChanged;
+    public event Action<bool>? FullScreenChanged;
+
+    public void UpdateForeground(nint windowHandle)
+    {
+        if (!_active) return;
+        GetWindowThreadProcessId(windowHandle, out var processId);
+        if (processId == Environment.ProcessId) return;
+        SetFullScreenSuppression(IsFullScreen(windowHandle));
+    }
 
     private static bool HasPendingRecovery(out string? error)
     {
@@ -92,6 +103,14 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         _previousTaskbarState = pending ? ReadJournal() : GetTaskbarState();
+        var nativeTaskbar = FindWindow("Shell_TrayWnd", null);
+        if (nativeTaskbar != 0 && GetWindowRect(nativeTaskbar, out var taskbarRect))
+        {
+            var nativeDpi = GetDpiForWindow(nativeTaskbar);
+            if (nativeDpi > 0 && taskbarRect.Bottom > taskbarRect.Top
+                && taskbarRect.Right - taskbarRect.Left > taskbarRect.Bottom - taskbarRect.Top)
+                _nativeTaskbarHeight = (taskbarRect.Bottom - taskbarRect.Top) * 96d / nativeDpi;
+        }
         try
         {
             if (!pending)
@@ -156,7 +175,15 @@ public sealed class TaskbarReplacementSession : IDisposable
                     PositionDockWindow();
                     return true;
                 case AbnFullScreenApp:
-                    PositionDockWindow();
+                    if (lParam != 0)
+                    {
+                        UpdateForeground(GetForegroundWindow());
+                    }
+                    else
+                    {
+                        SetFullScreenSuppression(false);
+                        PositionDockWindow();
+                    }
                     return true;
                 case AbnStateChange:
                     EnforceNativeTaskbarHidden();
@@ -219,25 +246,55 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         var dpi = GetDpiForWindow(_handle);
-        var height = Math.Max(1, (int)Math.Round(_window.Height * dpi / 96d));
+        if (dpi == 0) return;
+        var reservedHeight = monitorInfo.rcMonitor.Bottom - monitorInfo.rcWork.Bottom;
+        var height = reservedHeight > 0 ? reservedHeight
+            : Math.Max(1, (int)Math.Round(_nativeTaskbarHeight * dpi / 96d));
+        var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,
+            height * 96d / dpi);
+        if (_lastLayout != layout)
+        {
+            _lastLayout = layout;
+            _window.Width = layout.Width;
+            _window.Height = layout.Height;
+            LayoutChanged?.Invoke(layout);
+        }
         var monitorLeft = monitorInfo.rcMonitor.Left;
         var monitorRight = monitorInfo.rcMonitor.Right;
-        var width = Math.Clamp((int)Math.Ceiling(_window.Width * dpi / 96d), 1, monitorRight - monitorLeft);
-        var left = _getDockPosition() switch
-        {
-            DockPosition.Left => monitorLeft,
-            DockPosition.Center => monitorLeft + (monitorRight - monitorLeft - width) / 2,
-            DockPosition.Right => monitorRight - width,
-            _ => monitorLeft
-        };
+        var width = monitorRight - monitorLeft;
+        var left = monitorLeft;
+        UpdateForeground(GetForegroundWindow());
         // Explorer already reserves the hidden native taskbar's area; another appbar position would reserve a second strip.
         var top = monitorInfo.rcMonitor.Bottom - height;
-        if (!SetWindowPos(_handle, HwndTopmost, left, top,
+        if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, top,
                 width, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
         }
+    }
+
+    private bool IsFullScreen(nint windowHandle)
+    {
+        if (windowHandle == 0 || !IsWindowVisible(windowHandle) || IsIconic(windowHandle)
+            || MonitorFromWindow(windowHandle, MonitorDefaultToNearest) != MonitorFromWindow(_handle, MonitorDefaultToNearest))
+            return false;
+        var className = new StringBuilder(128);
+        GetClassName(windowHandle, className, className.Capacity);
+        if (className.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+        var monitor = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+        return GetMonitorInfo(MonitorFromWindow(windowHandle, MonitorDefaultToNearest), ref monitor)
+            && GetWindowRect(windowHandle, out var rect)
+            && rect.Left <= monitor.rcMonitor.Left && rect.Top <= monitor.rcMonitor.Top
+            && rect.Right >= monitor.rcMonitor.Right && rect.Bottom >= monitor.rcMonitor.Bottom;
+    }
+
+    private void SetFullScreenSuppression(bool suppressed)
+    {
+        if (_fullScreenSuppressed == suppressed) return;
+        _fullScreenSuppressed = suppressed;
+        ShowWindow(_handle, suppressed ? SwHide : SwShowNoActivate);
+        FullScreenChanged?.Invoke(suppressed);
     }
 
     private static uint GetTaskbarState()
@@ -419,6 +476,23 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint windowHandle, out Rect rect);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(nint windowHandle, StringBuilder name, int length);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

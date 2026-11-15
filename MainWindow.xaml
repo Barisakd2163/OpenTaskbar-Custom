@@ -5,7 +5,7 @@
         Title="OpenTaskbar"
         Width="360"
         Height="{StaticResource DockWindowHeight}"
-        MinHeight="{StaticResource DockWindowHeight}"
+        MinHeight="0"
         FontFamily="{StaticResource InterfaceFont}"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         WindowStyle="None"
@@ -115,6 +115,8 @@
                 <MenuItem Header="Yeni pencere" Icon="&#xE78B;" Tag="NewWindow" Click="BrowserAction_Click" />
                 <MenuItem Header="Gizli pencere" Icon="&#xE72E;" Tag="PrivateWindow" Click="BrowserAction_Click" />
             </MenuItem>
+            <MenuItem Header="Uygulama komutları" Icon="&#xE8A7;" Tag="NativeAppCommands" Visibility="Collapsed" />
+            <MenuItem Header="Pencere komutları" Icon="&#xE737;" Tag="NativeWindowCommands" Visibility="Collapsed" />
             <MenuItem Header="Sabitlemeyi kaldır" Icon="&#xE77A;" Tag="UnpinDockApp" Visibility="Collapsed" Click="UnpinDockApp_Click" />
             <Separator Tag="RunningCommandsDivider" />
             <MenuItem Header="Uygulamayı kapat" Icon="&#xE711;" Tag="CloseDockApp" Click="CloseDockApp_Click" />
@@ -132,8 +134,8 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="{StaticResource DockCellSize}" />
-            <Setter Property="Height" Value="{StaticResource DockCellSize}" />
+            <Setter Property="Width" Value="{DynamicResource DockCellSize}" />
+            <Setter Property="Height" Value="{DynamicResource DockCellHeight}" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
@@ -146,8 +148,8 @@
                                 CornerRadius="{StaticResource ControlRadius}" Padding="{TemplateBinding Padding}">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="36" />
-                                    <RowDefinition Height="6" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="5" />
                                 </Grid.RowDefinitions>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 <Border x:Name="ActiveIndicator" Grid.Row="1" Height="3" Width="5" CornerRadius="2"
@@ -217,7 +219,7 @@
                     Loaded="DockAppButton_Loaded"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave"
                     RenderTransformOrigin="0.5,0.5">
-                <Grid Width="{StaticResource DockIconSize}" Height="{StaticResource DockIconSize}">
+                <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}">
                     <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{StaticResource NotificationBrush}"
                              Stroke="{StaticResource SurfacePopup}" StrokeThickness="1"
@@ -228,17 +230,17 @@
         </DataTemplate>
     </Window.Resources>
 
+    <Grid x:Name="DockHost" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
     <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="{StaticResource DockPadding}"
             Margin="{StaticResource DockInset}" VerticalAlignment="Center"
             Background="{StaticResource DockMaterial}" BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="1"
             CornerRadius="{StaticResource DockRadius}" ContextMenu="{StaticResource DockContextMenu}"
             MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
-        <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
         <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                     VerticalAlignment="Center">
             <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
                     AutomationProperties.Name="Başlat" ToolTip="Başlat" ToolTipService.InitialShowDelay="650">
-                <Path Width="22" Height="22" Stretch="Uniform" Fill="{StaticResource WindowsLogoBrush}"
+                <Path Width="20" Height="20" Stretch="Uniform" Fill="{StaticResource WindowsLogoBrush}"
                       Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
             </Button>
             <Border Width="1" Height="22" Background="{StaticResource StrokeSubtle}" Margin="4,0,5,0" />
@@ -265,6 +267,6 @@
                 </TextBlock.Style>
             </TextBlock>
         </StackPanel>
-        </Viewbox>
     </Border>
+    </Grid>
 </Window>

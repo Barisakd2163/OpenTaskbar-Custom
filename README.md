@@ -6,13 +6,15 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 
 - Includes a Windows Start button, subtle pointer magnification for application icons, and a short live-preview entrance animation. Motion follows the Windows client-area animation setting.
 - Shows Windows-pinned applications and open applications without duplicating an application that is already pinned.
+- Hides the replacement strip, previews, and menus while a foreground application occupies its monitor in full screen, and restores the strip after focus returns to a regular window.
 - Animates app icons in and out with short opacity and scale transitions when windows open or close. Motion follows the Windows client-area animation setting.
 - Uses each application's executable icon and avoids shortcut-arrow overlays or generic Windows window icons.
 - Shows a DWM live thumbnail above an open application while its icon is hovered; clicking the preview activates its window, while the top-right close control sends that window a normal close request.
 - Clicking an application's dock icon activates it, or minimizes its foreground window when the same application is already active.
-- Sizes the dock to its icon and status content up to screen width, without a scroll bar, and places it at the selected left, center, or right position.
+- Sizes the visible dock to its icon and status content, without a scroll bar or whole-interface scaling, and places it at the selected left, center, or right position within the measured taskbar strip. The remaining strip also accepts the dock's right-click settings menu.
 - Shows a notification dot on an application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
 - Uses separate translucent context menus for applications and the dock surface. Application menus include icons and only application commands; the dock menu contains alignment settings. Applications can be opened, closed gracefully, or force-terminated after confirmation; pinned shortcuts can be removed, and supported browsers also offer new and private windows.
+- Includes real application menu-bar and system-menu commands when an application exposes standard Win32 menus. Applications that draw private menus do not expose those commands through this integration.
 - Reads classic application shortcuts from the current user's Windows taskbar pin folder at startup, so the dock follows the Windows pin list without keeping a separate copy.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Hides the Explorer taskbar while the dock overlays its reserved bottom area, so moving the pointer to the bottom edge does not reveal the old taskbar. It stores the prior taskbar state so normal exit can restore it.
@@ -52,6 +54,7 @@ dotnet run --project OpenTaskbar.csproj
 - Pins come from Windows shortcut files; moving or removing an executable requires updating its Windows taskbar shortcut.
 - Open windows are shown even when they are not pinned. Packaged Windows taskbar pins stored only as application IDs are not imported unless that application is running.
 - Automatic sign-in startup, adding new pins from the dock, and window grouping are not implemented.
+- Custom Jump List tasks and categories are not imported: the documented Windows destination-list reader exposes only Recent/Frequent destinations, not private application commands or custom tasks.
 
 ## License
 

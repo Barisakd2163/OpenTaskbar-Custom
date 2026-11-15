@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private readonly List<FrameworkElement> _magnifiedIcons = [];
     private ContextMenu? _openContextMenu;
     private bool _contextTargetWasForeground;
+    private Size _dockArea;
 
     public MainWindow()
     {
@@ -138,8 +139,10 @@ public partial class MainWindow : Window
 
         ResizeDockToContent();
         ApplyDockAlignment();
-        var session = new TaskbarReplacementSession(this, source.Handle, () => _dockPosition);
+        var session = new TaskbarReplacementSession(this, source.Handle);
         session.OperationFailed += ShowStatus;
+        session.LayoutChanged += ApplyTaskbarLayout;
+        session.FullScreenChanged += OnFullScreenChanged;
         try
         {
             session.Start();
@@ -738,6 +741,7 @@ public partial class MainWindow : Window
 
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
     {
+        _replacementSession?.UpdateForeground(windowHandle);
         GetWindowThreadProcessId(windowHandle, out var processId);
         if (_openContextMenu is not null)
         {
@@ -811,6 +815,9 @@ public partial class MainWindow : Window
         }
 
         SetMenuCommandParameter(contextMenu, pinnedApp.ExecutablePath);
+        var targetWindow = FindWindowForExecutable(pinnedApp.ExecutablePath);
+        PopulateNativeMenu(contextMenu, "NativeAppCommands", targetWindow?.Handle ?? 0, false);
+        PopulateNativeMenu(contextMenu, "NativeWindowCommands", targetWindow?.Handle ?? 0, true);
         if (FindMenuItem(contextMenu, "ActivateDockApp") is { } activateMenuItem)
         {
             activateMenuItem.CommandParameter = pinnedApp;
@@ -830,6 +837,33 @@ public partial class MainWindow : Window
             }
         }
         FocusContextMenu(contextMenu);
+    }
+
+    private void PopulateNativeMenu(ContextMenu menu, string tag, nint window, bool system)
+    {
+        var parent = FindMenuItem(menu, tag);
+        if (parent is null) return;
+        parent.Items.Clear();
+        foreach (var entry in ApplicationWindowMenu.Read(window, system))
+            parent.Items.Add(CreateNativeMenuItem(entry));
+        parent.Visibility = parent.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private object CreateNativeMenuItem(WindowMenuEntry entry)
+    {
+        if (entry.IsSeparator) return new Separator();
+        var item = new MenuItem { Header = entry.Label.Replace("_", "__"), IsEnabled = entry.Enabled, IsChecked = entry.Checked };
+        foreach (var child in entry.Children) item.Items.Add(CreateNativeMenuItem(child));
+        if (entry.Command is { } command)
+        {
+            item.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (!ApplicationWindowMenu.Invoke(command))
+                    ShowStatus("Uygulama komutu çalıştırılamadı; pencereyi veya menüyü yeniden açın.");
+            };
+        }
+        return item;
     }
 
     private static void FocusContextMenu(ContextMenu menu)
@@ -1204,21 +1238,49 @@ public partial class MainWindow : Window
             _ => throw new InvalidOperationException("Dock konumu desteklenmiyor.")
         };
 
-        DockContents.HorizontalAlignment = alignment;
+        DockSurface.HorizontalAlignment = alignment;
         _replacementSession?.RefreshPosition();
+    }
+
+    private void ApplyTaskbarLayout(Size area)
+    {
+        _dockArea = area;
+        var gap = Math.Clamp(Math.Round(area.Height * 0.08), 2, 6);
+        DockSurface.Margin = new Thickness(12, gap, 12, gap);
+        Application.Current.Resources["DockCellHeight"] = Math.Max(20, area.Height - gap * 2 - 4);
+        Application.Current.Resources["DockIconSize"] = Math.Clamp((area.Height - gap * 2 - 4) * 0.67, 16, 28);
+        ResizeDockToContent();
+    }
+
+    private void OnFullScreenChanged(bool suppressed)
+    {
+        if (!suppressed) return;
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+        if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
+        ResetMagnification();
     }
 
     private void ResizeDockToContent()
     {
+        // Fit cells explicitly; a Viewbox would scale every control after transient layout changes.
+        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
+        var count = Math.Max(1, 1 + _pinnedApps.Count + _runningApps.Count);
+        var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
+            + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
+        var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
+        Application.Current.Resources["DockCellSize"] = Math.Min(44,
+            Math.Max(16, (availableWidth - frameWidth - statusWidth) / count));
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var padding = DockSurface.Padding;
         var margin = DockSurface.Margin;
         var border = DockSurface.BorderThickness;
         var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right
             + margin.Left + margin.Right + border.Left + border.Right);
-        var maximumWidth = Math.Max(16, SystemParameters.PrimaryScreenWidth);
+        var maximumWidth = Math.Max(16, availableWidth);
         var dockWidth = Math.Clamp(desiredWidth, 16, maximumWidth);
-        Width = dockWidth;
+        DockSurface.Width = Math.Max(16, dockWidth - margin.Left - margin.Right);
+        if (_dockArea.Width <= 0) Width = dockWidth;
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)

@@ -13,6 +13,7 @@ public sealed class NativeWindowTracker : IDisposable
     private const uint EventObjectShow = 0x8002;
     private const uint EventObjectHide = 0x8003;
     private const uint EventObjectNameChange = 0x800C;
+    private const uint EventObjectLocationChange = 0x800B;
     private const uint EventSystemAlert = 0x0002;
     private const uint EventSystemForeground = 0x0003;
     private const uint WineventOutOfContext = 0x0000;
@@ -72,7 +73,7 @@ public sealed class NativeWindowTracker : IDisposable
             throw new InvalidOperationException("Windows pencere bildirimleri dinlenemedi.");
         }
 
-        _nameChangeHook = SetWinEventHook(EventObjectNameChange, EventObjectNameChange, 0, _eventCallback, 0, 0, WineventOutOfContext);
+        _nameChangeHook = SetWinEventHook(EventObjectLocationChange, EventObjectNameChange, 0, _eventCallback, 0, 0, WineventOutOfContext);
         if (_nameChangeHook == 0)
         {
             UnhookWinEvent(_windowHook);
@@ -93,6 +94,13 @@ public sealed class NativeWindowTracker : IDisposable
     {
         if (_disposed)
         {
+            return;
+        }
+
+        if (eventType == EventObjectLocationChange)
+        {
+            if (objectId == ObjectWindow && childId == ChildIdSelf && windowHandle == GetForegroundWindow())
+                QueueRefresh();
             return;
         }
 
@@ -144,6 +152,7 @@ public sealed class NativeWindowTracker : IDisposable
     private void RefreshTimer_Tick(object? sender, EventArgs e)
     {
         _refreshTimer.Stop();
+        ForegroundWindowChanged?.Invoke(GetForegroundWindow());
         RefreshWindows();
     }
 
