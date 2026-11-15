@@ -4,8 +4,8 @@
         xmlns:local="clr-namespace:OpenTaskbar"
         Title="OpenTaskbar"
         Width="360"
-        Height="64"
-        MinHeight="64"
+        Height="48"
+        MinHeight="48"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -35,9 +35,9 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Width" Value="48" />
-            <Setter Property="Height" Value="48" />
+            <Setter Property="Height" Value="40" />
             <Setter Property="Margin" Value="2,0" />
-            <Setter Property="Padding" Value="7" />
+            <Setter Property="Padding" Value="4" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -66,11 +66,13 @@
         </Style>
     </Window.Resources>
 
-    <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,6"
+    <Border x:Name="DockSurface" HorizontalAlignment="Stretch" Padding="8,0"
             Background="#01000000" ContextMenu="{StaticResource DockContextMenu}">
         <ScrollViewer x:Name="DockScrollViewer" HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left">
-            <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left">
+                      VerticalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left"
+                      VerticalContentAlignment="Bottom">
+            <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom">
                 <ItemsControl x:Name="PinnedApps">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>

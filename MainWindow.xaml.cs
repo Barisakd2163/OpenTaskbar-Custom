@@ -114,7 +114,7 @@ public partial class MainWindow : Window
 
         ResizeDockToContent();
         ApplyDockAlignment();
-        Height = 64;
+        Height = 48;
         var session = new TaskbarReplacementSession(this, source.Handle, () => _dockPosition);
         session.OperationFailed += ShowStatus;
         try
@@ -125,7 +125,7 @@ public partial class MainWindow : Window
         catch (InvalidOperationException ex)
         {
             session.Dispose();
-            Height = 64;
+            Height = 48;
             PositionDock();
             ShowStatus(ex.Message);
         }
