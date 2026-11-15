@@ -269,14 +269,23 @@ public sealed class NativeWindowTracker : IDisposable
         }
     }
 
-    public static bool ToggleActivation(nint windowHandle, string executablePath)
+    public static nint GetForegroundApplicationWindow()
+    {
+        var foreground = GetForegroundWindow();
+        GetWindowThreadProcessId(foreground, out var processId);
+        if (foreground == 0 || processId == Environment.ProcessId) return 0;
+        var root = GetAncestor(foreground, GaRootOwner);
+        return root != 0 ? root : foreground;
+    }
+
+    public static bool ToggleActivation(nint windowHandle, string executablePath, nint? foregroundAtPress = null)
     {
         if (!IsWindow(windowHandle))
         {
             return false;
         }
 
-        var foregroundWindow = GetForegroundWindow();
+        var foregroundWindow = foregroundAtPress ?? GetForegroundApplicationWindow();
         if (foregroundWindow != 0)
         {
             var foregroundRoot = GetAncestor(foregroundWindow, GaRootOwner);
@@ -285,10 +294,11 @@ public sealed class NativeWindowTracker : IDisposable
                 foregroundRoot = foregroundWindow;
             }
 
-            if (string.Equals(GetExecutablePath(foregroundRoot), executablePath, StringComparison.OrdinalIgnoreCase))
+            if (IsWindow(foregroundRoot) && !IsIconic(foregroundRoot)
+                && (foregroundRoot == windowHandle
+                    || string.Equals(GetExecutablePath(foregroundRoot), executablePath, StringComparison.OrdinalIgnoreCase)))
             {
-                ShowWindow(foregroundRoot, ShowMinimize);
-                return IsIconic(foregroundRoot);
+                return ShowWindowAsync(foregroundRoot, ShowMinimize);
             }
         }
 
@@ -458,4 +468,8 @@ public sealed class NativeWindowTracker : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(nint windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindowAsync(nint windowHandle, int command);
 }

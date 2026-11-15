@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     private ContextMenu? _openContextMenu;
     private bool _contextTargetWasForeground;
     private Size _dockArea;
+    private nint? _foregroundAtAppPress;
 
     public MainWindow()
     {
@@ -453,6 +454,18 @@ public partial class MainWindow : Window
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, 1, duration) { EasingFunction = easing });
     }
 
+    private void DockApp_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // Snapshot before Button focus handling and preview dismissal can change foreground activation.
+        var foreground = NativeWindowTracker.GetForegroundApplicationWindow();
+        _foregroundAtAppPress = foreground != 0 ? foreground : _foregroundWindow;
+    }
+
+    private void DockApp_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        _foregroundAtAppPress = null;
+    }
+
     private void DockApp_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: DockApp app })
@@ -460,10 +473,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        var foregroundAtPress = _foregroundAtAppPress;
+        _foregroundAtAppPress = null;
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
         AnimateActivationFeedback((Button)sender);
-        OpenDockApp(app, toggleIfForeground: true);
+        OpenDockApp(app, toggleIfForeground: true, foregroundAtPress);
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
@@ -560,18 +575,22 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OpenDockApp(DockApp app, bool toggleIfForeground = false)
+    private void OpenDockApp(DockApp app, bool toggleIfForeground = false, nint? foregroundAtPress = null)
     {
         var executablePath = app.ExecutablePath;
-        var existingWindow = FindNextWindowForExecutable(executablePath);
+        var existingWindow = foregroundAtPress is { } pressedWindow
+            ? _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == pressedWindow
+                && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+            : null;
+        existingWindow ??= FindNextWindowForExecutable(executablePath);
         if (existingWindow is not null)
         {
             var activated = toggleIfForeground
-                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle, executablePath)
+                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle, executablePath, foregroundAtPress)
                 : NativeWindowTracker.Activate(existingWindow.Handle);
             if (!activated)
             {
-                ShowStatus("Uygulama penceresi etkinleştirilemedi. Windows odağı engellemiş olabilir.");
+                ShowStatus("Pencereyi öne getirme veya küçültme isteği tamamlanamadı. Windows odağı engellemiş olabilir.");
                 return;
             }
 
@@ -743,9 +762,10 @@ public partial class MainWindow : Window
     {
         _replacementSession?.UpdateForeground(windowHandle);
         GetWindowThreadProcessId(windowHandle, out var processId);
+        // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
+        if (processId == Environment.ProcessId) return;
         if (_openContextMenu is not null)
         {
-            if (processId == Environment.ProcessId) return;
             _openContextMenu.IsOpen = false;
         }
         _foregroundWindow = windowHandle;

@@ -28,6 +28,7 @@
 - Menus use WPF outside-click dismissal, receive foreground focus when opened, and close when a different process receives foreground activation. Track only one open root menu.
 - Application clicks get a 150 ms, 2 DIP lift feedback. Restoring a minimized window uses Windows' native restore path. Custom animation of another process's already-visible window is not implemented: `AnimateWindow` requires ownership by the calling thread.
 - Mouse clicks on dock/preview surfaces do not steal foreground activation before the command runs. Explicit application commands activate their selected target.
+- Snapshot the foreground application on preview mouse-down, before button focus and thumbnail dismissal. Use that snapshot to select and minimize the active window. Ignore OpenTaskbar-owned foreground events when remembering the last external window. Minimize with `ShowWindowAsync`; success means Windows accepted the request, not that the transition has already completed. Clear pointer snapshots on keyboard input.
 - Show window title and application icon in a 40 DIP preview header. Reserve thumbnail space below it. Its close button sends a normal close request only to the previewed window.
 - Hide the thumbnail before opening an application context menu. Disable the redundant name tooltip while a window preview is available.
 

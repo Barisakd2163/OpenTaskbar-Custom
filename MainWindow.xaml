@@ -217,6 +217,8 @@
                     Click="DockApp_Click" AutomationProperties.Name="{Binding Name}"
                     ToolTip="{Binding Name}" ToolTipService.InitialShowDelay="650" ContextMenu="{StaticResource AppContextMenu}"
                     Loaded="DockAppButton_Loaded"
+                    PreviewMouseLeftButtonDown="DockApp_PreviewMouseLeftButtonDown"
+                    PreviewKeyDown="DockApp_PreviewKeyDown"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave"
                     RenderTransformOrigin="0.5,0.5">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}">
