@@ -10,6 +10,7 @@ OpenTaskbar is a lightweight Windows taskbar replacement. It overlays the reserv
 - Shrinks the dock to its icon group and places it at the selected left, center, or right position.
 - Shows a notification dot on a pinned application's icon when one of its windows raises a Windows system alert; the dot clears when the window becomes foreground.
 - Uses a compact black context menu. Pinned applications can be opened, closed gracefully, or force-terminated after confirmation; supported browsers also offer new and private windows.
+- Pins a currently open application from the context menu. When the pin list is empty, a visible add button opens the same menu.
 - Opens dock settings from the right-click menu and saves the left, center, or right alignment in `%LOCALAPPDATA%\OpenTaskbar\settings.json`.
 - Stores pinned paths in `%LOCALAPPDATA%\OpenTaskbar\pinned-apps.json`.
 - Removes a pin from its context menu.

@@ -161,6 +161,8 @@ public partial class MainWindow : Window
         {
             ShowStatus(result.Error);
         }
+
+        UpdateEmptyDockState();
     }
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
@@ -308,7 +310,17 @@ public partial class MainWindow : Window
         }
 
         _pinnedApps.Remove(app);
+        UpdateEmptyDockState();
         ClearStatus();
+    }
+
+    private void AddPinnedAppButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { ContextMenu: { } contextMenu } button)
+        {
+            contextMenu.PlacementTarget = button;
+            contextMenu.IsOpen = true;
+        }
     }
 
     private void ShowStatus(string message)
@@ -346,13 +358,16 @@ public partial class MainWindow : Window
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as PinnedApp;
         var isPinnedTarget = pinnedApp is not null;
         var browserArguments = pinnedApp is null ? null : GetBrowserActions(pinnedApp.ExecutablePath);
+        var availablePinCount = PopulatePinRunningAppMenu(contextMenu);
         SetMenuItemVisibility(contextMenu, "ActivatePinnedApp", isPinnedTarget);
         SetMenuItemVisibility(contextMenu, "BrowserActions", browserArguments is not null);
         SetMenuItemVisibility(contextMenu, "ClosePinnedApp", isPinnedTarget);
         SetMenuItemVisibility(contextMenu, "TerminatePinnedApp", isPinnedTarget);
         SetMenuItemVisibility(contextMenu, "RemovePinnedApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "PinRunningApps", availablePinCount > 0);
         SetSeparatorVisibility(contextMenu, "PinnedAppDivider", isPinnedTarget);
-        SetSeparatorVisibility(contextMenu, "SettingsDivider", isPinnedTarget);
+        SetSeparatorVisibility(contextMenu, "PinAppsDivider", isPinnedTarget && availablePinCount > 0);
+        SetSeparatorVisibility(contextMenu, "SettingsDivider", isPinnedTarget || availablePinCount > 0);
 
         if (pinnedApp is null)
         {
@@ -367,6 +382,118 @@ public partial class MainWindow : Window
                 item.CommandParameter = browserArguments;
             }
         }
+    }
+
+    private int PopulatePinRunningAppMenu(ContextMenu contextMenu)
+    {
+        var pinMenu = FindMenuItem(contextMenu, "PinRunningApps");
+        if (pinMenu is null)
+        {
+            return 0;
+        }
+
+        pinMenu.Items.Clear();
+        var pinnedPaths = _pinnedApps.Select(app => app.ExecutablePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var availableApps = (_windowTracker?.Snapshot ?? [])
+            .Where(window => window.ExecutablePath is not null
+                && File.Exists(window.ExecutablePath)
+                && !pinnedPaths.Contains(window.ExecutablePath))
+            .GroupBy(window => window.ExecutablePath!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                ExecutablePath = group.Key,
+                Name = GetApplicationName(group.Key)
+            })
+            .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        foreach (var app in availableApps)
+        {
+            var header = new StackPanel { Orientation = Orientation.Horizontal };
+            var icon = ApplicationIconProvider.GetForFile(app.ExecutablePath);
+            if (icon is not null)
+            {
+                header.Children.Add(new Image
+                {
+                    Source = icon,
+                    Width = 20,
+                    Height = 20,
+                    Stretch = System.Windows.Media.Stretch.Uniform,
+                    Margin = new Thickness(0, 0, 9, 0)
+                });
+            }
+
+            header.Children.Add(new TextBlock
+            {
+                Text = app.Name,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            var menuItem = new MenuItem
+            {
+                Header = header,
+                Tag = app.ExecutablePath,
+                CommandParameter = app.ExecutablePath,
+                ToolTip = app.ExecutablePath
+            };
+            menuItem.Click += PinRunningApp_Click;
+            pinMenu.Items.Add(menuItem);
+        }
+
+        return availableApps.Count;
+    }
+
+    private void PinRunningApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { CommandParameter: string executablePath })
+        {
+            return;
+        }
+
+        if (_pinnedApps.Any(app => string.Equals(app.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        if (!File.Exists(executablePath))
+        {
+            ShowStatus("Uygulama dosyası artık bulunamıyor; sabitleme yapılmadı.");
+            return;
+        }
+
+        var app = new PinnedApp(GetApplicationName(executablePath), executablePath)
+        {
+            Icon = ApplicationIconProvider.GetForFile(executablePath),
+            HasNotification = _windowTracker?.Snapshot.Any(window => window.HasNotification
+                && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)) == true
+        };
+        var updatedApps = _pinnedApps.Append(app).ToList();
+        var error = _pinnedAppStore.Save(updatedApps);
+        if (error is not null)
+        {
+            ShowStatus(error);
+            return;
+        }
+
+        _pinnedApps.Add(app);
+        UpdateEmptyDockState();
+        ClearStatus();
+    }
+
+    private static string GetApplicationName(string executablePath)
+    {
+        var description = FileVersionInfo.GetVersionInfo(executablePath).FileDescription;
+        return string.IsNullOrWhiteSpace(description)
+            ? Path.GetFileNameWithoutExtension(executablePath)
+            : description.Trim();
+    }
+
+    private void UpdateEmptyDockState()
+    {
+        AddPinnedAppButton.Visibility = _pinnedApps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ResizeDockToContent();
+        ApplyDockAlignment();
     }
 
     private void PinnedAppContextMenu_Click(object sender, RoutedEventArgs e)
