@@ -310,8 +310,8 @@ public sealed class NativeWindowTracker : IDisposable
 
     private static string? GetExecutablePath(nint windowHandle)
     {
-        var processId = GetWindowThreadProcessId(windowHandle, out _);
-        if (processId == 0)
+        var threadId = GetWindowThreadProcessId(windowHandle, out var processId);
+        if (threadId == 0 || processId == 0)
         {
             return null;
         }
