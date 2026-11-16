@@ -50,6 +50,22 @@ public partial class SettingsWindow : Window
         AutoHideAlways.IsChecked = _applied.AutoHide == AutoHideMode.Always;
         OpacitySlider.Value = _applied.SurfaceOpacity * 100;
         UpdateOpacityLabel();
+        MagnificationToggle.IsChecked = _applied.MagnificationEnabled;
+        CompactSize.IsChecked = _applied.Size == DockSize.Compact;
+        MediumSize.IsChecked = _applied.Size == DockSize.Medium;
+        LargeSize.IsChecked = _applied.Size == DockSize.Large;
+        FloatingLayout.IsChecked = _applied.Layout == DockLayout.Floating;
+        FullWidthLayout.IsChecked = _applied.Layout == DockLayout.FullWidth;
+        ClockToggle.IsChecked = _applied.ShowClock;
+        MediaToggle.IsChecked = _applied.ShowMedia;
+        SystemStatsToggle.IsChecked = _applied.ShowSystemStats;
+        AudioToggle.IsChecked = _applied.ShowAudio;
+        QuickSettingsToggle.IsChecked = _applied.ShowQuickSettings;
+        FocusToggle.IsChecked = _applied.ShowFocus;
+        FocusMinutesSlider.Value = _applied.FocusMinutes;
+        BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
+        FocusSessionsSlider.Value = _applied.FocusSessions;
+        UpdateWidgetOptionState();
         var startup = _startup.Read();
         _startupEnabled = startup.Enabled;
         _startupAvailable = startup.Error is null;
@@ -108,6 +124,7 @@ public partial class SettingsWindow : Window
     {
         ThemeManager.SetSurfaceOpacity(Math.Round(OpacitySlider.Value) / 100);
         UpdateOpacityLabel();
+        UpdateWidgetOptionState();
         UpdateBackdrop();
     }
 
@@ -137,8 +154,36 @@ public partial class SettingsWindow : Window
         PreviewsEnabled = PreviewsToggle.IsChecked == true,
         NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
         AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
-        SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100
+        SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100,
+        MagnificationEnabled = MagnificationToggle.IsChecked == true,
+        Layout = FullWidthLayout.IsChecked == true ? DockLayout.FullWidth : DockLayout.Floating,
+        Size = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact,
+        ShowClock = ClockToggle.IsChecked == true,
+        ShowMedia = MediaToggle.IsChecked == true,
+        ShowSystemStats = SystemStatsToggle.IsChecked == true,
+        ShowAudio = AudioToggle.IsChecked == true,
+        ShowQuickSettings = QuickSettingsToggle.IsChecked == true,
+        ShowFocus = FocusToggle.IsChecked == true,
+        FocusMinutes = (int)Math.Round(FocusMinutesSlider.Value),
+        FocusBreakMinutes = (int)Math.Round(BreakMinutesSlider.Value),
+        FocusSessions = (int)Math.Round(FocusSessionsSlider.Value)
     };
+
+    private void UpdateWidgetOptionState()
+    {
+        // Alignment only applies to the floating dock; focus lengths only matter while the timer is shown.
+        PositionRow.IsEnabled = FullWidthLayout.IsChecked != true;
+        FocusOptions.IsEnabled = FocusToggle.IsChecked == true;
+        FocusMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(FocusMinutesSlider.Value));
+        BreakMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(BreakMinutesSlider.Value));
+        FocusSessionsValue.Text = ((int)Math.Round(FocusSessionsSlider.Value)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private void FocusSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_initializing) return;
+        PreferenceEdited(sender, e);
+    }
 
     private void Apply_Click(object sender, RoutedEventArgs e)
     {
@@ -190,6 +235,7 @@ public partial class SettingsWindow : Window
     {
         if (_initializing) return;
         SaveStatus.Visibility = Visibility.Collapsed;
+        UpdateWidgetOptionState();
         UpdateApplyState();
     }
 

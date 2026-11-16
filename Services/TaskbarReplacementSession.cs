@@ -13,6 +13,9 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint AbmRemove = 0x00000001;
     private const uint AbmGetState = 0x00000004;
     private const uint AbmSetState = 0x0000000A;
+    private const uint AbmQueryPos = 0x00000002;
+    private const uint AbmSetPos = 0x00000003;
+    private const uint AbeBottom = 3;
     private const uint AbsAutoHide = 0x00000001;
     private const uint AbsAlwaysOnTop = 0x00000002;
     private const uint SupportedTaskbarState = AbsAutoHide | AbsAlwaysOnTop;
@@ -37,8 +40,11 @@ public sealed class TaskbarReplacementSession : IDisposable
     private uint _previousTaskbarState;
     private bool _disposed;
     private bool _fullScreenSuppressed;
-    private double _nativeTaskbarHeight = 66;
-    private const double DockHeadroomDips = 24;
+    private bool _hideRetryPending;
+    private double _shelfHeight = DockMetrics.ShelfHeight;
+    private (int Left, int Bottom, int Explorer, int Extra)? _reservation;
+    private double _nativeTaskbarHeight = DockMetrics.ShelfHeight;
+    private const double DockHeadroomDips = DockMetrics.Headroom;
     private bool _autoHideEnabled;
     private Size _lastLayout;
     private int _stopInProgress;
@@ -51,6 +57,18 @@ public sealed class TaskbarReplacementSession : IDisposable
     }
 
     public bool IsActive => _active || _stateChangeStarted;
+
+    // Explorer's hidden taskbar keeps reserving the work area; auto-hide releases it for the dock's hide modes.
+    private uint ReplacementState => (_previousTaskbarState & AbsAlwaysOnTop) | (_autoHideEnabled ? AbsAutoHide : 0);
+
+    private static TaskbarReplacementSession? _current;
+
+    /// <summary>
+    /// Restores the Windows taskbar from any thread. Used by crash handlers, where the UI thread may be unusable.
+    /// </summary>
+    public static string? EmergencyRestore() => Volatile.Read(ref _current)?.Stop();
+
+    public static bool HasActiveSession => Volatile.Read(ref _current)?.IsActive == true;
 
     public event Action<string>? OperationFailed;
     public event Action<Size>? LayoutChanged;
@@ -135,6 +153,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         try
         {
             _stateChangeStarted = true;
+            Volatile.Write(ref _current, this);
             var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
             if (!SetTaskbarState(replacementState, _handle))
             {
@@ -154,6 +173,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             }
 
             _registered = true;
+            _reservation = null;
             _active = true;
             PositionDockWindow();
         }
@@ -172,6 +192,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         _registered = false;
+        _reservation = null;
         var nativeTaskbar = FindWindow("Shell_TrayWnd", null);
         if (nativeTaskbar != 0 && GetWindowRect(nativeTaskbar, out var taskbarRect))
         {
@@ -183,8 +204,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             }
         }
 
-        var replacementState = (_previousTaskbarState & AbsAlwaysOnTop) | (_autoHideEnabled ? AbsAutoHide : 0);
-        SetTaskbarState(replacementState, _handle);
+        SetTaskbarState(ReplacementState, _handle);
         HideNativeTaskbar();
 
         var data = CreateData();
@@ -192,6 +212,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (SHAppBarMessage(AbmNew, ref data) != 0)
         {
             _registered = true;
+            _reservation = null;
         }
 
         PositionDockWindow();
@@ -255,6 +276,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 var data = CreateData();
                 SHAppBarMessage(AbmRemove, ref data);
                 _registered = false;
+                _reservation = null;
             }
 
             var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
@@ -280,8 +302,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         _autoHideEnabled = autoHide;
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
-        var targetState = (_previousTaskbarState & AbsAlwaysOnTop) | (autoHide ? AbsAutoHide : 0);
-        SetTaskbarState(targetState, _handle);
+        SetTaskbarState(ReplacementState, _handle);
         PositionDockWindow();
     }
 
@@ -301,10 +322,11 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         var dpi = GetDpiForWindow(_handle);
         if (dpi == 0) return;
-        var reservedHeight = monitorInfo.rcMonitor.Bottom - monitorInfo.rcWork.Bottom;
-        var preferredHeightPixels = (int)Math.Round(_nativeTaskbarHeight * dpi / 96d);
-        var height = reservedHeight > 0 ? Math.Max(reservedHeight, preferredHeightPixels)
-            : Math.Max(1, preferredHeightPixels);
+        // Explorer's hidden taskbar keeps reserving its own height unless auto-hide is on. The dock reserves only
+        // the part of its shelf that exceeds that strip, so maximized windows never sit underneath it.
+        var explorerHeight = _autoHideEnabled ? 0 : (int)Math.Round(_nativeTaskbarHeight * dpi / 96d);
+        var height = Math.Max(1, (int)Math.Round(ShelfHeight * dpi / 96d));
+        ReserveExtraHeight(monitorInfo.rcMonitor, explorerHeight, _autoHideEnabled ? 0 : Math.Max(0, height - explorerHeight));
         var headroom = (int)Math.Round(DockHeadroomDips * dpi / 96d);
         var totalHeight = height + headroom;
         var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,
@@ -322,13 +344,43 @@ public sealed class TaskbarReplacementSession : IDisposable
         var width = monitorRight - monitorLeft;
         var left = monitorLeft;
         UpdateForeground(GetForegroundWindow());
-        // Explorer already reserves the hidden native taskbar's area; another appbar position would reserve a second strip.
         var top = monitorInfo.rcMonitor.Bottom - totalHeight;
         if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, top,
                 width, totalHeight,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
+        }
+    }
+
+    /// <summary>
+    /// Reserves <paramref name="extraHeight"/> pixels directly above Explorer's strip through this AppBar.
+    /// Zero releases the reservation. Unchanged requests are skipped so ABN_POSCHANGED cannot loop.
+    /// </summary>
+    private void ReserveExtraHeight(Rect monitor, int explorerHeight, int extraHeight)
+    {
+        if (!_registered) return;
+        var request = (monitor.Left, monitor.Bottom, explorerHeight, extraHeight);
+        if (_reservation == request) return;
+        _reservation = request;
+        var data = CreateData();
+        data.uEdge = AbeBottom;
+        var bottom = monitor.Bottom - explorerHeight;
+        data.rc = new Rect(monitor.Left, bottom - extraHeight, monitor.Right, bottom);
+        SHAppBarMessage(AbmQueryPos, ref data);
+        data.rc.Top = data.rc.Bottom - extraHeight;
+        SHAppBarMessage(AbmSetPos, ref data);
+    }
+
+    /// <summary>Shelf height in DIPs for the selected dock size; the window adds headroom above it.</summary>
+    public double ShelfHeight
+    {
+        get => _shelfHeight;
+        set
+        {
+            if (_shelfHeight == value) return;
+            _shelfHeight = value;
+            if (_active && Volatile.Read(ref _stopInProgress) == 0) PositionDockWindow();
         }
     }
 
@@ -340,6 +392,10 @@ public sealed class TaskbarReplacementSession : IDisposable
         var className = new StringBuilder(128);
         GetClassName(windowHandle, className, className.Capacity);
         if (className.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+        // With auto-hide the work area is the whole monitor, so ordinary maximized windows cover it too.
+        // Only captionless windows (games, video, F11 browsers) count as full screen.
+        const long wsCaption = 0x00C00000;
+        if (IsZoomed(windowHandle) && (GetWindowLongPtr(windowHandle, GwlStyle).ToInt64() & wsCaption) == wsCaption) return false;
         var monitor = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
         return GetMonitorInfo(MonitorFromWindow(windowHandle, MonitorDefaultToNearest), ref monitor)
             && GetWindowRect(windowHandle, out var rect)
@@ -374,7 +430,31 @@ public sealed class TaskbarReplacementSession : IDisposable
             ShowWindow(taskbarHandle, SwHide);
         }
 
+        // Secondary-monitor taskbars are best effort; the primary one decides success.
+        foreach (var secondary in FindSecondaryTaskbars())
+        {
+            if (IsWindowVisible(secondary)) ShowWindow(secondary, SwHide);
+        }
+
         return !IsWindowVisible(taskbarHandle);
+    }
+
+    private static List<nint> FindSecondaryTaskbars()
+    {
+        var handles = new List<nint>();
+        var className = new StringBuilder(64);
+        EnumWindows((handle, _) =>
+        {
+            className.Clear();
+            if (GetClassName(handle, className, className.Capacity) > 0
+                && className.ToString() == "Shell_SecondaryTrayWnd")
+            {
+                handles.Add(handle);
+            }
+
+            return true;
+        }, 0);
+        return handles;
     }
 
     private static bool ShowNativeTaskbar()
@@ -386,23 +466,50 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         ShowWindow(taskbarHandle, SwShowNoActivate);
+        foreach (var secondary in FindSecondaryTaskbars())
+        {
+            ShowWindow(secondary, SwShowNoActivate);
+        }
+
         return IsWindowVisible(taskbarHandle);
     }
 
     private void EnforceNativeTaskbarHidden()
     {
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
-        var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
-        if (!SetTaskbarState(replacementState, _handle))
+        if (!SetTaskbarState(ReplacementState, _handle))
         {
             OperationFailed?.Invoke("Windows görev çubuğunun otomatik açılması yeniden etkinleşti.");
             return;
         }
 
-        if (!HideNativeTaskbar())
+        if (!HideNativeTaskbar()) RetryHideNativeTaskbar();
+    }
+
+    // Explorer briefly re-shows an auto-hidden taskbar when the pointer touches the screen edge; retry before reporting.
+    private void RetryHideNativeTaskbar()
+    {
+        if (_hideRetryPending) return;
+        _hideRetryPending = true;
+        var timer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, _window.Dispatcher)
         {
-            OperationFailed?.Invoke("Windows görev çubuğu yeniden gizlenemedi.");
-        }
+            Interval = TimeSpan.FromMilliseconds(300)
+        };
+        var attempts = 0;
+        timer.Tick += (_, _) =>
+        {
+            attempts++;
+            if (!_active || Volatile.Read(ref _stopInProgress) != 0 || HideNativeTaskbar() || attempts >= 3)
+            {
+                timer.Stop();
+                _hideRetryPending = false;
+                if (_active && attempts >= 3 && !HideNativeTaskbar())
+                {
+                    OperationFailed?.Invoke("Windows görev çubuğu yeniden gizlenemedi.");
+                }
+            }
+        };
+        timer.Start();
     }
 
     private static bool SetTaskbarState(uint state, nint windowHandle)
@@ -487,6 +594,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (error is not null) Trace.TraceError(error);
         if (IsActive) return;
         _disposed = true;
+        Interlocked.CompareExchange(ref _current, null, this);
         AppDomain.CurrentDomain.ProcessExit -= Process_Exit;
     }
 
@@ -534,6 +642,21 @@ public sealed class TaskbarReplacementSession : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    private const int GwlStyle = -16;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsZoomed(nint windowHandle);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern nint GetWindowLongPtr(nint windowHandle, int index);
+
+    private delegate bool EnumWindowsProc(nint windowHandle, nint lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "FindWindowW")]
     private static extern nint FindWindow(string? className, string? windowName);

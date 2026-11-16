@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                    xmlns:svc="clr-namespace:OpenTaskbar.Services">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="Palettes/Dark.xaml" />
     </ResourceDictionary.MergedDictionaries>
@@ -10,21 +11,21 @@
     <Thickness x:Key="MenuDividerInset">12,7</Thickness>
     <sys:Double x:Key="TextSizeBody">13</sys:Double>
     <sys:Double x:Key="TextSizeCaption">12</sys:Double>
-    <sys:Double x:Key="DockHeadroom">24</sys:Double>
-    <sys:Double x:Key="DockWindowHeight">90</sys:Double>
-    <sys:Double x:Key="DockCellSize">52</sys:Double>
-    <sys:Double x:Key="DockCellHeight">52</sys:Double>
-    <sys:Double x:Key="DockIconSize">42</sys:Double>
+    <!-- Dock geometry lives in Services/DockMetrics.cs; these keys expose it to XAML. -->
+    <x:Static x:Key="DockHeadroom" Member="svc:DockMetrics.Headroom" />
+    <x:Static x:Key="DockWindowHeight" Member="svc:DockMetrics.WindowHeight" />
+    <x:Static x:Key="DockCellSize" Member="svc:DockMetrics.CellSize" />
+    <x:Static x:Key="DockCellHeight" Member="svc:DockMetrics.CellSize" />
+    <x:Static x:Key="DockIconSize" Member="svc:DockMetrics.IconSize" />
+    <x:Static x:Key="DockEdgeTriggerHeight" Member="svc:DockMetrics.EdgeTriggerHeight" />
     <sys:Double x:Key="PreviewWidth">344</sys:Double>
     <sys:Double x:Key="PreviewHeight">236</sys:Double>
     <sys:Double x:Key="PreviewHeaderHeight">40</sys:Double>
-    <sys:Double x:Key="PreviewGap">18</sys:Double>
-    <sys:Double x:Key="DockHoverScale">1.28</sys:Double>
-    <sys:Double x:Key="HoverDurationMs">120</sys:Double>
+    <x:Static x:Key="PreviewGap" Member="svc:DockMetrics.PreviewGap" />
+    <x:Static x:Key="DockHoverScale" Member="svc:DockMetrics.HoverScale" />
     <sys:Double x:Key="PreviewDurationMs">160</sys:Double>
-    <Thickness x:Key="DockInset">12,0,12,6</Thickness>
-    <Thickness x:Key="DockPadding">10,4</Thickness>
-    <Thickness x:Key="ControlStroke">1</Thickness>
+    <x:Static x:Key="DockInset" Member="svc:DockMetrics.Inset" />
+    <x:Static x:Key="DockPadding" Member="svc:DockMetrics.Padding" />
     <CornerRadius x:Key="DockRadius">18</CornerRadius>
     <CornerRadius x:Key="ControlRadius">12</CornerRadius>
     <CornerRadius x:Key="PopupRadius">10</CornerRadius>
@@ -72,9 +73,6 @@
     <StreamGeometry x:Key="IconClose">M18 6L6 18 M6 6l12 12</StreamGeometry>
     <StreamGeometry x:Key="IconTerminate">M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86L7.86 2z M12 8v4 M12 16h0.01</StreamGeometry>
     <StreamGeometry x:Key="IconSettings">M21 4h-7 M10 4H3 M14 2v4 M21 12h-9 M8 12H3 M12 10v4 M21 20h-5 M12 20H3 M16 18v4</StreamGeometry>
-    <StreamGeometry x:Key="IconAlignLeft">M21 6H3 M15 12H3 M17 18H3</StreamGeometry>
-    <StreamGeometry x:Key="IconAlignCenter">M21 6H3 M17 12H7 M19 18H5</StreamGeometry>
-    <StreamGeometry x:Key="IconAlignRight">M21 6H3 M21 12H9 M21 18H7</StreamGeometry>
     <StreamGeometry x:Key="IconExit">M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9</StreamGeometry>
     <StreamGeometry x:Key="IconCheck">M20 6L9 17l-5-5</StreamGeometry>
     <StreamGeometry x:Key="IconChevronRight">M9 18l6-6-6-6</StreamGeometry>

@@ -1,0 +1,31 @@
+<w:DockWidget x:Class="OpenTaskbar.Widgets.SystemStatsWidget"
+              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+              xmlns:w="clr-namespace:OpenTaskbar.Widgets"
+              xmlns:local="clr-namespace:OpenTaskbar.Services">
+    <StackPanel Orientation="Horizontal">
+        <Button x:Name="BatteryButton" Style="{StaticResource WidgetCardButton}" Width="{StaticResource WidgetHeight}"
+                Padding="0" BorderThickness="0" Background="{DynamicResource WidgetAccentFill}" Visibility="Collapsed"
+                Click="BatteryButton_Click">
+            <Grid>
+                <TextBlock x:Name="BatteryText" Style="{StaticResource WidgetText}" Foreground="{DynamicResource WidgetAccentText}"
+                           FontSize="14" HorizontalAlignment="Center" />
+                <ContentControl x:Name="ChargingIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconZap}"
+                                Width="9" Height="9" Foreground="{DynamicResource WidgetAccentText}"
+                                HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,-11" Visibility="Collapsed" />
+            </Grid>
+        </Button>
+        <Button x:Name="CpuButton" Style="{StaticResource WidgetCardButton}" Width="{StaticResource WidgetHeight}" Padding="3"
+                Click="TaskManager_Click">
+            <w:RingMeter x:Name="CpuRing" Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="CPU" CaptionBrush="{DynamicResource TextSecondary}"
+                         TrackBrush="{DynamicResource WidgetTrack}" ValueBrush="{DynamicResource WidgetAccent}"
+                         Foreground="{DynamicResource TextPrimary}" />
+        </Button>
+        <Button x:Name="MemoryButton" Style="{StaticResource WidgetCardButton}" Width="{StaticResource WidgetHeight}" Padding="3"
+                Click="TaskManager_Click">
+            <w:RingMeter x:Name="MemoryRing" Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="RAM" CaptionBrush="{DynamicResource TextSecondary}"
+                         TrackBrush="{DynamicResource WidgetTrack}" ValueBrush="{DynamicResource WidgetAccent}"
+                         Foreground="{DynamicResource TextPrimary}" />
+        </Button>
+    </StackPanel>
+</w:DockWidget>

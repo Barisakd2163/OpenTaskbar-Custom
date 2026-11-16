@@ -29,7 +29,6 @@
         <GradientStop Color="#22000000" Offset="1" />
     </LinearGradientBrush>
     <SolidColorBrush x:Key="SettingsBackground" Color="#FFF7F8FA" />
-    <SolidColorBrush x:Key="SettingsSidebar" Color="#FFEEF0F3" />
     <SolidColorBrush x:Key="SettingsControl" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SettingsControlHover" Color="#FFE8EBEF" />
     <SolidColorBrush x:Key="AccentBrush" Color="#FF245D87" />
@@ -38,4 +37,18 @@
     <SolidColorBrush x:Key="MenuDivider" Color="#20000000" />
     <SolidColorBrush x:Key="SettingsSidebarOverlay" Color="#24FFFFFF" />
     <SolidColorBrush x:Key="CaptionCloseForeground" Color="#FFFFFFFF" />
+    <!-- Dock widgets -->
+    <SolidColorBrush x:Key="WidgetCard" Color="#0D000000" />
+    <SolidColorBrush x:Key="WidgetCardHover" Color="#18000000" />
+    <SolidColorBrush x:Key="WidgetCardStroke" Color="#14000000" />
+    <SolidColorBrush x:Key="WidgetTrack" Color="#1F000000" />
+    <SolidColorBrush x:Key="WidgetAccent" Color="#FF0284C7" />
+    <SolidColorBrush x:Key="WidgetAccentText" Color="#FFFFFFFF" />
+    <LinearGradientBrush x:Key="WidgetAccentFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FF4EA8FF" Offset="0" />
+        <GradientStop Color="#FF2F80ED" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="WidgetFocusAccent" Color="#FFDC2626" />
+    <SolidColorBrush x:Key="WidgetOnStroke" Color="#FF2563EB" />
+    <SolidColorBrush x:Key="WidgetWarning" Color="#FFD97706" />
 </ResourceDictionary>

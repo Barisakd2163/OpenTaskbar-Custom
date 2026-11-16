@@ -155,7 +155,8 @@
             <RowDefinition Height="{Binding Source={StaticResource DockHeadroom}}" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Border Grid.Row="1" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" />
+        <!-- Catches clicks only while the shelf area is reserved (auto-hide off); otherwise windows below stay clickable. -->
+        <Border x:Name="DockBackdrop" Grid.Row="1" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" />
         <Border x:Name="DockSurface" Grid.Row="1" HorizontalAlignment="Stretch" Padding="{StaticResource DockPadding}"
                 Margin="{StaticResource DockInset}" VerticalAlignment="Bottom"
                 Background="{DynamicResource DockMaterial}" BorderBrush="{DynamicResource DockBorderMaterial}" BorderThickness="1"
@@ -167,6 +168,11 @@
             <Border.Effect>
                 <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="3" Direction="270" Opacity="0.38" RenderingBias="Performance" />
             </Border.Effect>
+        <Grid x:Name="DockLayoutRoot">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="WidgetColumn" Width="Auto" />
+            </Grid.ColumnDefinitions>
         <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                     VerticalAlignment="Center">
             <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
@@ -208,8 +214,12 @@
                 </TextBlock.Style>
             </TextBlock>
         </StackPanel>
+            <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
+            <StackPanel x:Name="WidgetStrip" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                        HorizontalAlignment="Left" Margin="6,0,0,0" SizeChanged="WidgetStrip_SizeChanged" />
+        </Grid>
     </Border>
-    <Border x:Name="DockEdgeTrigger" Grid.Row="1" VerticalAlignment="Bottom" Height="3" Background="#01000000"
+    <Border x:Name="DockEdgeTrigger" Grid.Row="1" VerticalAlignment="Bottom" Height="{StaticResource DockEdgeTriggerHeight}" Background="#01000000"
             MouseEnter="DockEdgeTrigger_MouseEnter" MouseLeave="DockEdgeTrigger_MouseLeave" />
     </Grid>
 </Window>

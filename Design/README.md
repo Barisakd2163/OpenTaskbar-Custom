@@ -10,14 +10,13 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 | Token | Value | Description |
 | :--- | :--- | :--- |
-| `DockWindowHeight` | `90 DIP` | Total height of the transparent window container |
+| `DockWindowHeight` | headroom + shelf | Total height of the transparent window container |
 | `DockHeadroom` | `24 DIP` | Transparent top headroom allowing unclipped icon magnification |
-| `_nativeTaskbarHeight` | `66 DIP` | Base height of the floating dock container shelf |
-| `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
-| `DockCellHeight` | `52 DIP` | Height of an individual dock application item cell |
-| `DockIconSize` | `42 DIP` | Prominent icon display size with balanced cell margins |
+| Shelf | 48 / 58 / 66 DIP | Dock shelf height for Compact / Medium / Large (`DockMetrics.For`) |
+| `DockCellSize` / `DockCellHeight` | 38 / 44 / 50 DIP | Square application cell per size; width shrinks to fit narrow screens |
+| `DockIconSize` | 28 / 34 / 42 DIP | Icon size per dock size |
 | `DockHoverScale` | `1.28x` | Peak magnification scale for the hovered dock item |
-| `DockRadius` | `18 DIP` | Pill container corner radius (`CornerRadius="18"`) |
+| `DockRadius` | 14 / 16 / 18 DIP | Surface corner radius per dock size |
 | `ControlRadius` | `12 DIP` | Standard control and button corner radius |
 | `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |
 | `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
@@ -41,12 +40,12 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 - **Translucent Smoked Glass:** Deep translucent charcoal acrylic-style background (`#D916191F` in Dark theme, `#D9F3F4F6` in Light theme).
 - **Specular Top Highlight:** 1 DIP top border highlight (`#4DFFFFFF`) simulating light reflection on glass edges.
-- **Ambient Shadow:** Soft multi-layer drop shadow (`BlurRadius="24"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.45"`) separating the dock from desktop wallpapers.
+- **Ambient Shadow:** Soft multi-layer drop shadow (`BlurRadius="20"`, `ShadowDepth="3"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.38"`) separating the dock from desktop wallpapers.
 - **Status Indicators:**
   - Running application: Muted 4 DIP circular dot (`#94A3B8`).
   - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
   - Alert / notification: Upper-right red badge (`#EF4444`).
-- **Icons:** Vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps) for all context menus, tray items, and dock controls.
+- **Icons:** Vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps) for context menus, widgets, and dock controls. Widgets draw them in a 24x24 canvas inside a `Viewbox` (`WidgetIcon` stroked, `WidgetGlyph` filled) so every icon scales from the same box.
 
 ---
 
@@ -69,10 +68,29 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - **Disabled:** Dock remains persistently visible.
 - **Smart:** Dock stays visible on the desktop and behind non-overlapping windows. When an active or maximized window overlaps the bottom dock region, the dock smoothly translates down off-screen.
 - **Always:** Dock remains hidden below the screen edge by default.
-- **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease transition.
+- **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease-in-out transition; reveal uses 220 ms cubic ease-out. With animations off both are instant. While hidden, only the edge strip receives input; the reserved-area backdrop is collapsed so windows below stay clickable.
+- **Full-screen detection:** Captionless windows that cover the monitor (games, video, F11 browsers) hide the dock. Maximized windows with a caption do not, because with auto-hide they also cover the whole monitor.
 
 ### Launch Bounce
 - Clicking an application icon triggers a 420 ms damped vertical launch bounce animation (-12 DIP peak) on its translate transform to provide tactile feedback while the application opens.
+
+---
+
+## Layouts and Widgets
+
+- **Floating:** The dock hugs its content and follows the Left/Center/Right alignment. Widgets sit after the applications inside the same surface.
+- **Full width:** The surface spans the monitor with a 6 DIP side inset. Applications stay left and widgets are pinned to the right edge. Alignment is disabled.
+- **Sizing:** Widgets keep their natural width. When space is short, application cells shrink first (down to 24 DIP).
+- **Widget card** (`WidgetCardBorder` / `WidgetCardButton`): 46 DIP high, 12 DIP radius, a `WidgetCard` fill with a 1 DIP `WidgetCardStroke`, and 3 DIP horizontal spacing.
+- **Colors:**
+  - `WidgetAccent` (sky blue): meter values and the on state.
+  - `WidgetAccentFill` (blue gradient): the battery tile and the volume track.
+  - `WidgetWarning`: meters at 75% and above.
+  - `WidgetFocusAccent` (red): meters at 90% and above, the focus phase, and low battery.
+  - `WidgetOnStroke`: the outline of active Wi-Fi/Bluetooth pills.
+- **Meters:** `RingMeter` draws a 3 DIP ring clockwise from 12 o'clock with a small caption (CPU/RAM) above the value.
+- **Focus timer:** The card outline turns red while focusing and blue during a break. A finished phase plays the system sound and pulses the card three times (skipped when animations are off).
+- **Typography:** Widget titles are 12 DIP semibold, captions 11 DIP, the clock 15 DIP, and the focus countdown 20 DIP with tabular numerals.
 
 ---
 
@@ -83,6 +101,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - `Palettes/Light.xaml`: Light theme color palette and material brushes.
 - `ContextMenus.xaml`: Vector outline icon styles, Jump List headers, and menu item templates.
 - `SettingsControls.xaml`: Segmented controls, toggles, radio buttons, and preferences layout.
+- `Widgets.xaml`: Widget tokens, card/button/pill/slider styles, and the widget icon geometries.
 
 ## Settings verification
 

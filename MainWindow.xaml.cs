@@ -11,6 +11,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar;
 
@@ -52,6 +53,9 @@ public partial class MainWindow : Window
     private Point _dragStartPoint;
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
+    private string? _statusMessage;
+    private readonly WidgetCoordinator _widgets;
+    private double _dockTopGap;
 
     public MainWindow()
     {
@@ -71,12 +75,17 @@ public partial class MainWindow : Window
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
         LoadPinnedApps(_preferences.Current.PinOrder);
         if (_preferences.LoadError is not null)
         {
             ShowStatus(_preferences.LoadError);
         }
 
+        _widgets = new WidgetCoordinator(WidgetStrip, Dispatcher, ShowStatus);
+        _widgets.Apply(_preferences.Current);
+        ApplySizeProfile();
+        ApplyLayoutMode();
         PositionDock();
     }
 
@@ -121,9 +130,26 @@ public partial class MainWindow : Window
             DockSurfaceTranslate,
             DockSurface,
             () => (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
+        _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
+        ApplyBackdropHitTesting();
 
         StartReplacementMode();
+#if DEBUG
+        // Verifies crash recovery: the unhandled-exception handlers must restore the Windows taskbar.
+        if (Environment.GetCommandLineArgs().Contains("--crash-test"))
+        {
+            var crashTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+            crashTimer.Tick += (_, _) => throw new InvalidOperationException("Crash test requested with --crash-test.");
+            crashTimer.Start();
+        }
+
+        // Opens Settings at startup so its XAML and bindings can be exercised without clicking the dock.
+        if (Environment.GetCommandLineArgs().Contains("--open-settings"))
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => OpenSettings_Click(this, new RoutedEventArgs()));
+        }
+#endif
     }
 
     private void PositionDock()
@@ -161,6 +187,7 @@ public partial class MainWindow : Window
         session.OperationFailed += ShowStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
+        session.ShelfHeight = Profile.Shelf;
         _replacementSession = session;
         try
         {
@@ -683,17 +710,17 @@ public partial class MainWindow : Window
 
         var bounce = new DoubleAnimationUsingKeyFrames
         {
-            Duration = TimeSpan.FromMilliseconds(420),
+            Duration = TimeSpan.FromMilliseconds(DockMetrics.LaunchBounceMs),
             KeyFrames =
             {
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(-12, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
+                new EasingDoubleKeyFrame(-DockMetrics.LaunchBounceHeight, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240)),
                     new CubicEase { EasingMode = EasingMode.EaseIn }),
                 new EasingDoubleKeyFrame(-5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
-                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)),
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(DockMetrics.LaunchBounceMs)),
                     new CubicEase { EasingMode = EasingMode.EaseIn })
             }
         };
@@ -702,15 +729,15 @@ public partial class MainWindow : Window
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        if (!_preferences.Current.MagnificationEnabled)
         {
             return;
         }
 
         var mousePos = e.GetPosition(DockContents);
         var mouseX = mousePos.X;
-        const double influenceRadius = 90.0;
-        var maxScale = (double)FindResource("DockHoverScale");
+        const double influenceRadius = DockMetrics.InfluenceRadius;
+        const double maxScale = DockMetrics.HoverScale;
 
         var currentMagnified = new HashSet<FrameworkElement>();
 
@@ -818,7 +845,7 @@ public partial class MainWindow : Window
 
         try
         {
-            Process.Start(new ProcessStartInfo(executablePath)
+            using var _ = Process.Start(new ProcessStartInfo(executablePath)
             {
                 Arguments = app.LaunchArguments ?? string.Empty,
                 UseShellExecute = true
@@ -1005,13 +1032,20 @@ public partial class MainWindow : Window
 
     private void ShowStatus(string message)
     {
+        _statusMessage = message;
         StatusText.Text = UiText.LocalizeError(message);
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
 
+    private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_statusMessage is not null) StatusText.Text = UiText.LocalizeError(_statusMessage);
+    }
+
     private void ClearStatus()
     {
+        _statusMessage = null;
         StatusText.Text = string.Empty;
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
@@ -1397,8 +1431,13 @@ public partial class MainWindow : Window
     {
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        if (_autoHideController is not null) _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController?.SetMode(_preferences.Current.AutoHide);
         _replacementSession?.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
+        ApplyBackdropHitTesting();
+        _widgets.Apply(_preferences.Current);
+        ApplySizeProfile();
+        ApplyLayoutMode();
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
         ResetMagnification();
@@ -1505,8 +1544,59 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool IsFullWidth => _preferences.Current.Layout == DockLayout.FullWidth;
+
+    private void ApplyLayoutMode()
+    {
+        WidgetColumn.Width = IsFullWidth ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        WidgetStrip.HorizontalAlignment = IsFullWidth ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        ApplyDockMargin();
+        ApplyDockAlignment();
+        ResizeDockToContent();
+    }
+
+    private void ApplyDockMargin()
+    {
+        var side = IsFullWidth ? DockMetrics.FullWidthSideInset : DockMetrics.SideInset;
+        DockSurface.Margin = new Thickness(side, _dockTopGap, side, Profile.BottomGap);
+    }
+
+    private DockSizeProfile Profile => DockMetrics.For(_preferences.Current.Size);
+
+    private void ApplySizeProfile()
+    {
+        var profile = Profile;
+        Application.Current.Resources["DockCellHeight"] = profile.Cell;
+        Application.Current.Resources["DockIconSize"] = profile.Icon;
+        DockSurface.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
+        DockSurface.CornerRadius = new CornerRadius(profile.Radius);
+        var scale = profile.WidgetScale;
+        WidgetStrip.LayoutTransform = scale < 1 ? new ScaleTransform(scale, scale) : Transform.Identity;
+        if (_replacementSession is not null)
+        {
+            _replacementSession.ShelfHeight = profile.Shelf;
+        }
+        else
+        {
+            Height = DockMetrics.Headroom + profile.Shelf;
+        }
+    }
+
+    private void WidgetStrip_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
+    }
+
     private void ApplyDockAlignment()
     {
+        if (IsFullWidth)
+        {
+            DockSurface.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _replacementSession?.RefreshPosition();
+            return;
+        }
+
         var alignment = _dockPosition switch
         {
             DockPosition.Left => HorizontalAlignment.Left,
@@ -1519,16 +1609,19 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
+    private void ApplyBackdropHitTesting()
+    {
+        DockBackdrop.Visibility = _preferences.Current.AutoHide == AutoHideMode.Disabled
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void ApplyTaskbarLayout(Size area)
     {
         _dockArea = area;
-        var effectiveHeight = Math.Max(66, area.Height);
-        var bottomGap = 6.0;
-        var topGap = Math.Max(0.0, effectiveHeight - 60 - bottomGap);
-        DockSurface.Margin = new Thickness(12, topGap, 12, bottomGap);
-        var availableCellHeight = Math.Min(52, effectiveHeight - bottomGap - topGap - 8);
-        Application.Current.Resources["DockCellHeight"] = Math.Max(32, availableCellHeight);
-        Application.Current.Resources["DockIconSize"] = Math.Clamp(availableCellHeight * 0.80, 24, 44);
+        // The session sizes the shelf to the selected profile; any surplus height sits above the surface.
+        var profile = Profile;
+        _dockTopGap = Math.Max(0.0, area.Height - profile.SurfaceHeight - profile.BottomGap);
+        ApplyDockMargin();
         ResizeDockToContent();
     }
 
@@ -1545,19 +1638,32 @@ public partial class MainWindow : Window
     {
         // Fit cells explicitly; a Viewbox would scale every control after transient layout changes.
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
+        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
+        WidgetStrip.Margin = hasWidgets ? new Thickness(6, 0, 0, 0) : default;
+        WidgetStrip.Measure(unbounded);
+        var widgetsWidth = hasWidgets ? WidgetStrip.DesiredSize.Width : 0;
         var count = Math.Max(1, 1 + _pinnedApps.Count + _runningApps.Count);
         var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
             + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
         var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
-        Application.Current.Resources["DockCellSize"] = Math.Min(52,
-            Math.Max(24, (availableWidth - frameWidth - statusWidth) / count));
-        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        // Widgets keep their size; app cells shrink first when the screen is narrow.
+        Application.Current.Resources["DockCellSize"] = Math.Min(Profile.Cell,
+            Math.Max(DockMetrics.MinCellSize, (availableWidth - frameWidth - statusWidth - widgetsWidth) / count));
+        DockContents.Measure(unbounded);
+        var maximumWidth = Math.Max(16, availableWidth);
+        if (IsFullWidth)
+        {
+            DockSurface.Width = double.NaN;
+            if (_dockArea.Width <= 0) Width = maximumWidth;
+            return;
+        }
+
         var padding = DockSurface.Padding;
         var margin = DockSurface.Margin;
         var border = DockSurface.BorderThickness;
-        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right
+        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + widgetsWidth + padding.Left + padding.Right
             + margin.Left + margin.Right + border.Left + border.Right);
-        var maximumWidth = Math.Max(16, availableWidth);
         var dockWidth = Math.Clamp(desiredWidth, 16, maximumWidth);
         DockSurface.Width = Math.Max(16, dockWidth - margin.Left - margin.Right);
         if (_dockArea.Width <= 0) Width = dockWidth;
@@ -1622,6 +1728,7 @@ public partial class MainWindow : Window
     private void Window_Closed(object? sender, EventArgs e)
     {
         _preferences.Changed -= Preferences_Changed;
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         _settingsWindow?.CloseForShutdown();
         _jumpListLoad?.Cancel();
         _jumpListLoad?.Dispose();
@@ -1648,6 +1755,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.Dispose();
         _autoHideController?.Dispose();
         _autoHideController = null;
+        _widgets.Dispose();
         _jumpLists.Dispose();
     }
 

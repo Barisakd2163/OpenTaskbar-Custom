@@ -6,14 +6,24 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 ## Features
 
-- **macOS-Style Floating Dock:** Smooth rounded pill container (`CornerRadius="18"`) with prominent high-resolution application icons (42 DIP base, extracted at up to 128x128), translucent smoked glass material, specular top highlight, and ambient shadow.
-- **Continuous Fisheye Magnification:** Smooth parabolic wave scaling across hovered and adjacent icons (up to 1.28x) expanding into transparent headroom without layout jitter.
+- **macOS-Style Floating Dock:** Smooth rounded pill container with high-resolution application icons (extracted at up to 128x128) in three sizes: Compact (28 DIP icons, fits the Windows taskbar height, default), Medium (34 DIP), and Large (42 DIP). Medium and Large reserve only the extra height above the Windows taskbar strip, so maximized windows are never covered, translucent smoked glass material, specular top highlight, and ambient shadow.
+- **Continuous Fisheye Magnification:** Smooth parabolic wave scaling across hovered and adjacent icons (up to 1.28x) expanding into transparent headroom without layout jitter. It can be turned off separately from other animations.
 - **Multi-Window Live Thumbnail Previews:** Interactive live DWM window preview cards for open applications with one-click window activation and individual window close controls.
-- **Smart Auto-Hide (IntelliHide):** Automatically slides down off-screen when an active or maximized window overlaps the dock, and stays visible on the desktop. Smoothly reveals when the mouse touches the bottom screen edge.
+- **Smart Auto-Hide (IntelliHide):** Automatically slides down off-screen when an active or maximized window overlaps the dock, and stays visible on the desktop. Smoothly reveals when the mouse touches the bottom screen edge. While hidden, only a 3 DIP edge strip receives input, so windows underneath stay clickable.
 - **Drag-and-Drop Reordering:** Reorder dock icons interactively with persistent order saved automatically.
 - **Dock Pinning:** Pin running applications or unpin shortcuts directly from the context menu. Classic taskbar shortcuts are imported from the user's Windows pin folder.
 - **Native Windows Jump Lists:** View recent/frequent destinations and published application tasks directly in the context menu via lightweight STA Shell reading.
-- **Crash Recovery & State Journaling:** Automatically restores the native Windows taskbar on exit or unexpected shutdown using a local state journal (`taskbar-state.txt`). Reconnects on Explorer restarts (`TaskbarCreated`).
+- **Two Layouts:** A floating dock aligned left, center, or right, or a full-width bar with applications on the left and widgets pinned to the right edge.
+- **Dock Widgets:** Each can be turned on in Settings → Widgets.
+  - Media controls for the current system media session (title, artist, artwork, previous/play-pause/next).
+  - Battery, processor, and memory meters.
+  - A Pomodoro-style focus timer with configurable focus, break, and session counts.
+  - The default sound device, with its volume and mute.
+  - Wi-Fi and Bluetooth toggles.
+  - Shortcuts for display projection, mobile hotspot, Quick Settings, and the notification center.
+  - Clock and date.
+- **Tray Replacement:** The Windows notification area is hidden with the taskbar. The widgets open Windows' own flyouts (Quick Settings, notifications and calendar, projection) instead of hosting other applications' tray icons.
+- **Crash Recovery & State Journaling:** Restores the native Windows taskbar, including secondary-monitor taskbars, on exit, session end, or unhandled errors. It uses a local state journal (`taskbar-state.txt`). If the process is killed outright, the next launch restores it. Reconnects on Explorer restarts (`TaskbarCreated`).
 - **Dedicated Settings Window:** A compact window with custom title-bar controls. Customize alignment (Left, Center, Right), theme (Dark/Light), auto-hide, animations, previews, and Windows startup. General settings fit at the default size; smaller windows keep all options reachable by scrolling.
 - **Glass & Surface Opacity:** Settings use native Desktop Acrylic on Windows 11 build 22621 or later. Adjust background opacity from 60–100% for settings, the dock, and context menus without fading text or icons. Changes preview live, save on Apply, and revert when discarded. Unsupported Windows versions and high-contrast mode use an opaque settings surface.
 - **Vector Icons:** Clean vector outline icons (Lucide icon set, 24x24 coordinate space) for context menus and dock controls.
@@ -22,7 +32,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 - Windows 10 (version 2004 / build 19041 or later) or Windows 11
 - Windows x64 architecture
-- .NET 10 Desktop Runtime (or .NET 10 SDK when building from source)
+- The release `OpenTaskbar.exe` is self-contained and needs no .NET installation. Building from source requires the .NET 10 SDK.
 
 ## Run the Release
 
@@ -48,22 +58,28 @@ The output is written to `dist\OpenTaskbar.exe`.
 
 ## Configuration and Storage
 
-- `%LOCALAPPDATA%\OpenTaskbar\settings.json`: Preferences, alignment, theme, auto-hide, pin order, and `SurfaceOpacity` (0.6–1.0, default 0.9). Existing settings files receive the default opacity.
+- `%LOCALAPPDATA%\OpenTaskbar\settings.json`: Preferences, layout, alignment, theme, auto-hide, pin order, widget visibility, focus timer lengths, and `SurfaceOpacity` (0.6–1.0, default 0.9). Settings missing from older files receive their defaults.
 - `%LOCALAPPDATA%\OpenTaskbar\taskbar-state.txt`: Safety journal that preserves the original Windows taskbar state for crash recovery.
+- `%LOCALAPPDATA%\OpenTaskbar\log.txt`: Diagnostic log (startup, errors, crash recovery). Rotated to `log.old.txt` above 1 MB.
 - `Software\Microsoft\Windows\CurrentVersion\Run\OpenTaskbar`: Current-user Windows registry key used when "Start with Windows" is enabled.
 
 ## Project Structure
 
-- `Design/`: Shared XAML styles, materials, typography, and dark/light color palettes (`Palettes/`).
-- `Models/`: Application data structures (`DockApp.cs`, `DockSettings.cs`, `WindowInfo.cs`).
+- `Design/`: Shared XAML styles, materials, typography, widget styles (`Widgets.xaml`), and dark/light color palettes (`Palettes/`).
+- `Models/`: Application data structures (`DockApp.cs`, `DockSettings.cs`, `TrackedWindow.cs`, `ApplicationJumpList.cs`).
+- `Widgets/`: Dock widgets (`DockWidget` base class, `WidgetCoordinator`, `RingMeter`, and one control per widget).
 - `Services/`:
-  - `TaskbarReplacementSession.cs`: Native Windows taskbar suppression, AppBar registration, and monitor layout.
+  - `TaskbarReplacementSession.cs`: Native and secondary-monitor taskbar suppression, AppBar registration, full-screen detection, and monitor layout.
+  - `DockMetrics.cs`: Single source of dock geometry and motion values, exposed to XAML through `Design/Theme.xaml`.
+  - `AppLog.cs`: File logging for diagnostics and crash recovery.
+  - `CoreAudio.cs`, `SystemStats.cs`, `ShellShortcuts.cs`: Default sound device, system meters, and Windows flyout/settings shortcuts used by widgets.
   - `DockAutoHideController.cs`: Smart auto-hide, window overlap evaluation, and bottom edge trigger.
   - `WindowThumbnailPreview.cs`: DWM live multi-window thumbnail strip and preview cards.
   - `NativeWindowTracker.cs`: Win32 window event hooks and alert state tracking.
   - `ApplicationJumpListService.cs`: Background Jump List reader and task invocation.
   - `WindowsTaskbarPinImporter.cs`: Windows shortcut file importer and resolver.
   - `DockSettingsStore.cs` & `ApplicationPreferences.cs`: Settings persistence and state management.
+  - `UiText.cs` & `ThemeManager.cs`: Turkish/English interface text and runtime theme/opacity materials.
 - `MainWindow.xaml`: Dock UI surface, Start button, application icon items, and context menus.
 - `SettingsWindow.xaml`: Tabbed preferences window.
 

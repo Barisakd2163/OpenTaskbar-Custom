@@ -75,9 +75,9 @@ public static class ApplicationIconProvider
                 }
             }
         }
-        catch
+        catch (Exception ex) when (ex is EntryPointNotFoundException or ExternalException or ArgumentException)
         {
-            // Fall through to ExtractIconEx when PrivateExtractIcons is unavailable
+            // Fall through to ExtractIconEx when PrivateExtractIcons is unavailable or the bitmap conversion fails.
         }
 
         var count = ExtractIconEx(path, index, out var largeIcon, out var smallIcon, 1);

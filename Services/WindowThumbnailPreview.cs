@@ -144,11 +144,6 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     public IReadOnlyList<nint> ActiveHandles => _activeThumbnails.Select(t => t.Source).ToList();
 
-    public bool ShowFor(nint sourceHandle, FrameworkElement anchor, string windowTitle, BitmapSource? icon)
-    {
-        return ShowForWindows([new TrackedWindow(sourceHandle, windowTitle, null)], anchor, icon);
-    }
-
     public bool ShowForWindows(IReadOnlyList<TrackedWindow> windows, FrameworkElement anchor, BitmapSource? defaultIcon)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -503,7 +498,7 @@ public sealed class WindowThumbnailPreview : IDisposable
 
         var left = (int)Math.Round(anchorTop.X) - width / 2;
         left = Math.Clamp(left, monitorInfo.Monitor.Left, monitorInfo.Monitor.Right - width);
-        var gapDips = Application.Current?.Resources["PreviewGap"] is double g ? g : 18.0;
+        var gapDips = DockMetrics.PreviewGap;
         var gap = (int)Math.Round(gapDips * dpi / 96d);
         var top = (int)Math.Round(anchorTop.Y) - height - gap;
         if (top < monitorInfo.Monitor.Top)

@@ -22,6 +22,10 @@ public sealed class DockAutoHideController : IDisposable
     private bool _disposed;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
+    public bool AnimationsEnabled { get; set; } = true;
+
+    private TimeSpan MotionDuration(double milliseconds) => AnimationsEnabled && SystemParameters.ClientAreaAnimation
+        ? TimeSpan.FromMilliseconds(milliseconds) : TimeSpan.Zero;
     public bool IsHidden { get; private set; }
     public bool IsMouseOverDock { get; private set; }
     public bool IsMouseAtEdge { get; private set; }
@@ -44,7 +48,7 @@ public sealed class DockAutoHideController : IDisposable
 
         _hideTimer = new DispatcherTimer(DispatcherPriority.Normal)
         {
-            Interval = TimeSpan.FromMilliseconds(400)
+            Interval = TimeSpan.FromMilliseconds(DockMetrics.AutoHideDelayMs)
         };
         _hideTimer.Tick += HideTimer_Tick;
     }
@@ -150,7 +154,7 @@ public sealed class DockAutoHideController : IDisposable
         var anim = new DoubleAnimation
         {
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(220),
+            Duration = MotionDuration(DockMetrics.RevealMs),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         _dockTranslate.BeginAnimation(TranslateTransform.YProperty, anim);
@@ -160,12 +164,12 @@ public sealed class DockAutoHideController : IDisposable
     public void AnimateHide()
     {
         IsHidden = true;
-        double hideOffset = Math.Max(72, _dockSurface.ActualHeight + 16);
+        double hideOffset = Math.Max(DockMetrics.HideMinimumOffset, _dockSurface.ActualHeight + 16);
         var anim = new DoubleAnimation
         {
             To = hideOffset,
-            Duration = TimeSpan.FromMilliseconds(200),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            Duration = MotionDuration(DockMetrics.HideMs),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
         _dockTranslate.BeginAnimation(TranslateTransform.YProperty, anim);
         VisibilityChanged?.Invoke(false);
