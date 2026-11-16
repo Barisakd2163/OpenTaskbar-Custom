@@ -37,9 +37,6 @@
         <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
             <MenuItem Header="{local:Loc OpenLauncher}" Icon="{StaticResource IconSearch}" Click="OpenLauncher_Click" />
             <MenuItem Header="{local:Loc AddStack}" Icon="{StaticResource IconFolderPlus}" Click="AddStack_Click" />
-            <MenuItem Header="{local:Loc DockSize}" Icon="{StaticResource IconLayers}" Tag="DockSizeMenu">
-                <MenuItem Header="…" />
-            </MenuItem>
             <MenuItem Header="{local:Loc Profiles}" Icon="{StaticResource IconLayers}" Tag="ProfilesMenu">
                 <MenuItem Header="…" />
             </MenuItem>
@@ -89,6 +86,7 @@
                     AllowDrop="True"
                     Drop="DockApp_Drop"
                     DragOver="DockApp_DragOver"
+                    DragLeave="DockApp_DragLeave"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave"
                     MouseUp="DockApp_MouseUp" MouseWheel="DockApp_MouseWheel">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
@@ -121,6 +119,7 @@
                     PreviewMouseLeftButtonUp="StackButton_PreviewMouseLeftButtonUp"
                     PreviewMouseMove="StackButton_PreviewMouseMove"
                     DragOver="StackButton_DragOver"
+                    DragLeave="StackButton_DragLeave"
                     Drop="StackButton_Drop">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}" RenderTransformOrigin="0.5,0.95">
                     <Grid.RenderTransform>

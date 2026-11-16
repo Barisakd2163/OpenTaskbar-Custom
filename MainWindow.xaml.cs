@@ -61,6 +61,7 @@ public partial class MainWindow : Window
     private nint? _foregroundAtAppPress;
     private uint _taskbarCreatedMessage;
     private Point _dragStartPoint;
+    private readonly HashSet<FrameworkElement> _displacedIcons = [];
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
@@ -651,6 +652,122 @@ public partial class MainWindow : Window
         _draggedApp = null;
     }
 
+    private void AnimateAppDrag(Button button, DockApp app)
+    {
+        var icon = GetButtonIcon(button);
+        var (scale, translate) = icon != null ? GetIconTransforms(icon) : (null, null);
+        var animDuration = TimeSpan.FromMilliseconds(130);
+        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        button.Opacity = 0.55;
+        if (scale is not null && translate is not null && _preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.10, animDuration) { EasingFunction = easeOut });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.10, animDuration) { EasingFunction = easeOut });
+            translate.BeginAnimation(IsVertical ? TranslateTransform.XProperty : TranslateTransform.YProperty,
+                new DoubleAnimation(-4 * BounceDirection, animDuration) { EasingFunction = easeOut });
+        }
+
+        try
+        {
+            DragDrop.DoDragDrop(button, app, DragDropEffects.Move);
+        }
+        finally
+        {
+            button.Opacity = 1.0;
+            ResetDisplacements();
+            if (scale is not null && translate is not null)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.0, animDuration) { EasingFunction = easeOut });
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.0, animDuration) { EasingFunction = easeOut });
+                translate.BeginAnimation(IsVertical ? TranslateTransform.XProperty : TranslateTransform.YProperty,
+                    new DoubleAnimation(0, animDuration) { EasingFunction = easeOut });
+            }
+        }
+    }
+
+    private void UpdateDragDisplacements(Button targetButton, DragEventArgs e)
+    {
+        var icon = GetButtonIcon(targetButton);
+        if (icon is null) return;
+
+        var pos = e.GetPosition(targetButton);
+        var isPastHalf = IsVertical ? pos.Y > targetButton.ActualHeight / 2 : pos.X > targetButton.ActualWidth / 2;
+        var shift = isPastHalf ? -12.0 : 12.0;
+
+        var (_, translate) = GetIconTransforms(icon);
+        var prop = IsVertical ? TranslateTransform.YProperty : TranslateTransform.XProperty;
+
+        var anim = new DoubleAnimation(shift, TimeSpan.FromMilliseconds(130))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        translate.BeginAnimation(prop, anim);
+        _displacedIcons.Add(icon);
+    }
+
+    private void ResetIconDisplacement(FrameworkElement icon)
+    {
+        if (!_displacedIcons.Remove(icon)) return;
+        var (_, translate) = GetIconTransforms(icon);
+        var prop = IsVertical ? TranslateTransform.YProperty : TranslateTransform.XProperty;
+        var anim = new DoubleAnimation(0, TimeSpan.FromMilliseconds(130))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        translate.BeginAnimation(prop, anim);
+    }
+
+    private void ResetDisplacements()
+    {
+        foreach (var icon in _displacedIcons)
+        {
+            var (_, translate) = GetIconTransforms(icon);
+            translate.BeginAnimation(TranslateTransform.XProperty, null);
+            translate.BeginAnimation(TranslateTransform.YProperty, null);
+            translate.X = 0;
+            translate.Y = 0;
+        }
+        _displacedIcons.Clear();
+    }
+
+    private void AnimateDropSettle(Button button)
+    {
+        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            var icon = GetButtonIcon(button);
+            if (icon is null) return;
+
+            var (scale, _) = GetIconTransforms(icon);
+            var settleScale = new DoubleAnimationUsingKeyFrames
+            {
+                Duration = TimeSpan.FromMilliseconds(200),
+                KeyFrames =
+                {
+                    new EasingDoubleKeyFrame(1.12, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                    new EasingDoubleKeyFrame(0.96, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), new CubicEase { EasingMode = EasingMode.EaseOut }),
+                    new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200)), new CubicEase { EasingMode = EasingMode.EaseOut })
+                }
+            };
+
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, settleScale);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, settleScale);
+        });
+    }
+
+    private void DockApp_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is Button button && GetButtonIcon(button) is { } icon)
+        {
+            ResetIconDisplacement(icon);
+        }
+    }
+
     private void DockApp_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _draggedApp is null || sender is not Button button)
@@ -669,7 +786,7 @@ public partial class MainWindow : Window
             _previewCloseTimer.Stop();
             _thumbnailPreview.Hide();
             ResetMagnification();
-            DragDrop.DoDragDrop(button, app, DragDropEffects.Move);
+            AnimateAppDrag(button, app);
         }
     }
 
@@ -682,6 +799,11 @@ public partial class MainWindow : Window
         {
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
+
+            if (_preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation)
+            {
+                UpdateDragDisplacements(targetButton, e);
+            }
         }
         else
         {
@@ -703,12 +825,15 @@ public partial class MainWindow : Window
             var newIndex = _pinnedApps.IndexOf(targetApp);
             if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
             {
+                ResetDisplacements();
                 _pinnedApps.Move(oldIndex, newIndex);
                 SavePinOrder();
                 _replacementSession?.RefreshPosition();
+                AnimateDropSettle(targetButton);
             }
         }
 
+        ResetDisplacements();
         e.Handled = true;
     }
 
@@ -1268,7 +1393,6 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
         SetSeparatorVisibility(contextMenu, "RunningCommandsDivider", isRunning);
         SetMenuItemVisibility(contextMenu, "HideInProfile", isPinnedTarget && ActiveProfile is not null);
-        if (FindMenuItem(contextMenu, "DockSizeMenu") is { } sizeMenu) PopulateDockSizeMenu(sizeMenu);
         if (FindMenuItem(contextMenu, "ProfilesMenu") is { } profilesMenu) PopulateProfilesMenu(profilesMenu);
         if (FindMenuItem(contextMenu, "UpdateMenu") is { } updateMenu)
         {
@@ -1870,46 +1994,6 @@ public partial class MainWindow : Window
         ApplyDockMargin();
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
-    }
-
-    private void PopulateDockSizeMenu(MenuItem menu)
-    {
-        menu.Items.Clear();
-        var currentSize = _preferences.Current.Size;
-        var currentScale = _preferences.Current.DockScale;
-        foreach (var (size, key) in new[] { (DockSize.Compact, "SizeCompact"), (DockSize.Medium, "SizeMedium"), (DockSize.Large, "SizeLarge") })
-        {
-            var item = new MenuItem
-            {
-                Header = UiText.Get(key),
-                IsCheckable = true,
-                IsChecked = currentSize == size
-            };
-            item.Click += (_, _) =>
-            {
-                var err = _preferences.Save(_preferences.Current with { Size = size });
-                if (err is not null) ShowStatus(err);
-            };
-            menu.Items.Add(item);
-        }
-
-        menu.Items.Add(new Separator());
-        foreach (var scale in new[] { 0.85, 1.0, 1.15, 1.30, 1.50 })
-        {
-            var percent = (int)Math.Round(scale * 100);
-            var item = new MenuItem
-            {
-                Header = UiText.Format("OpacityPercent", percent),
-                IsCheckable = true,
-                IsChecked = Math.Abs(currentScale - scale) < 0.03
-            };
-            item.Click += (_, _) =>
-            {
-                var err = _preferences.Save(_preferences.Current with { DockScale = scale });
-                if (err is not null) ShowStatus(err);
-            };
-            menu.Items.Add(item);
-        }
     }
 
     private void ApplySizeProfile()
