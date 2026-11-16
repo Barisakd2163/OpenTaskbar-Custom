@@ -46,6 +46,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Live DWM Thumbnails:** Interactive live window thumbnail previews with window titles and close buttons.
 - **Native Jump Lists:** Right-click any application to open its native Windows Jump List with pinned tasks and recent files.
 - **Foreground Highlighting:** Active foreground windows are clearly distinguished with illuminated accent capsules, independent of keyboard focus.
+- **Packaged App Icons:** Running Store and packaged apps without executable icon resources show their Start menu icon. Apps hosted by ApplicationFrameHost share one dock cell, which shows the icon of the topmost hosted app.
 - **Multi-Monitor Docks:** Optional secondary docks for multi-monitor setups.
 
 ### Smart Auto-Hide (IntelliHide)

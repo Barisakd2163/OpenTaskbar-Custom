@@ -28,6 +28,7 @@ public sealed class NativeWindowTracker : IDisposable
     private const int ShowRestore = 9;
     private const int ShowMinimize = 6;
     private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const int ErrorInsufficientBuffer = 122;
     private static readonly string WindowsSystemAppsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SystemApps") + Path.DirectorySeparatorChar;
 
@@ -446,6 +447,38 @@ public sealed class NativeWindowTracker : IDisposable
         }
     }
 
+    // Packaged processes such as WhatsApp.Root.exe report their AppUserModelID even when their windows do not.
+    internal static string? GetPackagedAppId(nint windowHandle)
+    {
+        var threadId = GetWindowThreadProcessId(windowHandle, out var processId);
+        if (threadId == 0 || processId == 0)
+        {
+            return null;
+        }
+
+        var processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (processHandle == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var length = 0u;
+            if (GetApplicationUserModelId(processHandle, ref length, null) != ErrorInsufficientBuffer || length == 0)
+            {
+                return null;
+            }
+
+            var appId = new StringBuilder((int)length);
+            return GetApplicationUserModelId(processHandle, ref length, appId) == 0 ? appId.ToString() : null;
+        }
+        finally
+        {
+            CloseHandle(processHandle);
+        }
+    }
+
     private static bool IsWindowsSystemApp(string? executablePath)
     {
         return executablePath is not null
@@ -463,6 +496,9 @@ public sealed class NativeWindowTracker : IDisposable
         var length = GetClassName(windowHandle, className, className.Capacity);
         return length <= 0 || className.ToString() is not ("CabinetWClass" or "ExploreWClass");
     }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetApplicationUserModelId(nint processHandle, ref uint length, StringBuilder? applicationUserModelId);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);

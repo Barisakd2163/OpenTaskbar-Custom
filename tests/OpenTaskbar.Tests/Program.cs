@@ -10,6 +10,7 @@ CatalogChecks();
 LocalizationChecks();
 SettingsChecks();
 InitialLanguageChecks();
+checks += RunningAppChecks.Run();
 checks += WidgetViewChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 

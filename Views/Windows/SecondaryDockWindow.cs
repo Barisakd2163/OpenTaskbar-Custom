@@ -19,15 +19,16 @@ public sealed class SecondaryDockWindow : Window
     private readonly nint _monitor;
     private readonly StackPanel _apps;
     private readonly TextBlock _clock;
-    private readonly Dictionary<string, BitmapSource?> _icons;
+    private readonly RunningAppIconCache _icons;
     private nint _handle;
     private string _signature = string.Empty;
+    private List<BitmapSource?> _shownIcons = [];
     private bool _stripAvailable = true;
     private bool _fullScreen;
 
     private void ApplyVisibility() => Visibility = _stripAvailable && !_fullScreen ? Visibility.Visible : Visibility.Hidden;
 
-    public SecondaryDockWindow(nint monitor, Dictionary<string, BitmapSource?> iconCache)
+    public SecondaryDockWindow(nint monitor, RunningAppIconCache iconCache)
     {
         _monitor = monitor;
         _icons = iconCache;
@@ -109,13 +110,17 @@ public sealed class SecondaryDockWindow : Window
         _fullScreen = foreground != 0 && MonitorFromWindow(foreground, 2) == _monitor && IsFullScreen(foreground);
         ApplyVisibility();
         var signature = string.Join("|", mine.Select(group => group.Key + ":" + group.Count() + ":" + group.Any(w => w.Handle == foreground)));
-        if (signature == _signature) return;
+        // Icons are compared too because a Store app's icon can resolve after its window appears.
+        var icons = mine.Select(group => _icons.Get(group.Key, group.First().Handle)).ToList();
+        if (signature == _signature && icons.SequenceEqual(_shownIcons, ReferenceEqualityComparer.Instance)) return;
         _signature = signature;
+        _shownIcons = icons;
         _apps.Children.Clear();
-        foreach (var group in mine)
+        for (var index = 0; index < mine.Count; index++)
         {
+            var group = mine[index];
             var path = group.Key;
-            if (!_icons.TryGetValue(path, out var icon)) _icons[path] = icon = ApplicationIconProvider.GetForFile(path);
+            var icon = icons[index];
             var isForeground = group.Any(window => window.Handle == foreground);
             var image = new Image { Source = icon, Width = 26, Height = 26 };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
