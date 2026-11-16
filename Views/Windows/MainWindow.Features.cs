@@ -352,19 +352,19 @@ public partial class MainWindow
         if (!ReferenceEquals(_updateCheck, check) || !IsLoaded) return;
         if (!succeeded)
         {
-            // Background checks stay quiet when offline; a manual check says it could not reach GitHub.
-            if (userInitiated) ShowStatus(UiText.Get("ErrorUpdateCheck"));
+            // Background checks stay quiet when offline; a manual check informs via toast.
+            if (userInitiated) NotificationService.ShowInfoToast(UiText.Get("ErrorUpdateCheck"));
             return;
         }
 
         _availableUpdate = release;
         if (release is not null)
         {
-            ShowStatus(UiText.Format("UpdateAvailable", release.Tag), isError: false);
+            NotificationService.ShowUpdateToast(release.Tag, release.Url);
         }
         else if (userInitiated)
         {
-            ShowStatus(UiText.Format("UpdateCurrent", UpdateChecker.CurrentVersion.ToString(3)), isError: false);
+            NotificationService.ShowInfoToast(UiText.Format("UpdateCurrent", UpdateChecker.CurrentVersion.ToString(3)));
         }
     }
 

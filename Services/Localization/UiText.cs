@@ -222,6 +222,8 @@ public sealed class UiText : INotifyPropertyChanged
             ["UpdateAvailable"] = ("OpenTaskbar {0} yayımlandı. Dock menüsünden indirme sayfasını açabilirsiniz.", "OpenTaskbar {0} is available. Open the download page from the dock menu."),
             ["UpdateCurrent"] = ("OpenTaskbar güncel (sürüm {0}).", "OpenTaskbar is up to date (version {0})."),
             ["UpdateDownload"] = ("{0} sürümünü indir", "Download {0}"),
+            ["UpdateToastBody"] = ("Yeni bir sürüm yayımlandı ({0}). İndirmek için tıklayın.", "A new version is available ({0}). Click to download."),
+            ["UpdateAvailableTitle"] = ("OpenTaskbar Güncellemesi", "OpenTaskbar Update"),
             ["Calendar"] = ("Takvim", "Calendar"),
             ["PreviousMonth"] = ("Önceki ay", "Previous month"),
             ["NextMonth"] = ("Sonraki ay", "Next month"),

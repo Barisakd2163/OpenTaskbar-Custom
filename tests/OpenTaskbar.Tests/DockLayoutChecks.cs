@@ -514,6 +514,12 @@ internal static class DockLayoutChecks
         Check(testReport.Humidity == 68.0 && testReport.WindSpeed == 12.5, "WeatherReport must track humidity and wind speed.");
         Check(testReport.Days.Count == 4, "WeatherReport must track 4 total days (today + 3 forecast days).");
 
+        // Verify native Windows Toast notification registration and update localized strings
+        Check(NotificationService.AppId == "OpenTaskbar", "NotificationService AUMID must be OpenTaskbar.");
+        NotificationService.EnsureRegistered();
+        Check(UiText.Format("UpdateToastBody", "v0.2.5").Contains("v0.2.5"), "UpdateToastBody must format version tag.");
+        Check(!string.IsNullOrWhiteSpace(UiText.Get("UpdateAvailableTitle")), "UpdateAvailableTitle must not be empty.");
+
         return checks;
     }
 }
