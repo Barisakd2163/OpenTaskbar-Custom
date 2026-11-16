@@ -140,7 +140,7 @@
             <DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Content" Value="{local:Loc TimedWidgetPause}" /></DataTrigger>
         </Style.Triggers>
     </Style>
-    <DataTemplate DataType="{x:Type models:DockWidget}">
+    <DataTemplate DataType="{x:Type models:DockWidgetItem}">
         <Grid AutomationProperties.Name="{Binding Label}">
             <!-- Default tile preview (Battery, Storage, DayProgress) -->
             <Border x:Name="DefaultTile" Style="{StaticResource DockWidgetFrame}">

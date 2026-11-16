@@ -52,16 +52,16 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     private static readonly IReadOnlyDictionary<string, WidgetDefinition> DefinitionsById =
         Definitions.ToDictionary(item => item.Id, StringComparer.Ordinal);
 
-    public IReadOnlyList<DockWidget> CreateWidgets(IReadOnlyList<string>? selected) =>
+    public IReadOnlyList<DockWidgetItem> CreateWidgets(IReadOnlyList<string>? selected) =>
         Definitions.Where(definition => selected?.Contains(definition.Id, StringComparer.Ordinal) == true)
             .Select(CreateWidget)
             .ToArray();
 
-    private DockWidget CreateWidget(WidgetDefinition definition) => definition.Id switch
+    private DockWidgetItem CreateWidget(WidgetDefinition definition) => definition.Id switch
     {
         StopwatchId => _stopwatch,
         CountdownId => _countdown,
-        _ => new DockWidget(definition.Id, UiText.Get(definition.LabelKey))
+        _ => new DockWidgetItem(definition.Id, UiText.Get(definition.LabelKey))
     };
 
     public IReadOnlyList<DockWidgetOption> CreateOptions(IReadOnlyList<string>? installed, IReadOnlyList<string>? selected) =>
@@ -74,7 +74,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
             CreateWidget(definition)))
             .ToArray();
 
-    public static void Refresh(IEnumerable<DockWidget> widgets, AppLanguage language)
+    public static void Refresh(IEnumerable<DockWidgetItem> widgets, AppLanguage language)
     {
         var culture = CultureInfo.GetCultureInfo(language == AppLanguage.Turkish ? "tr-TR" : "en-US");
         foreach (var widget in widgets)

@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Shell;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
@@ -118,6 +119,28 @@ public partial class SettingsWindow : Window
         _source?.AddHook(WindowProc);
         _sourceReady = true;
         UpdateBackdrop();
+        if (_preferences.Current.AnimationsEnabled)
+        {
+            PlayOpenAnimation();
+        }
+    }
+
+    private void PlayOpenAnimation()
+    {
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(180))
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+        var scaleAnim = new System.Windows.Media.Animation.DoubleAnimation(0.96, 1.0, TimeSpan.FromMilliseconds(180))
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+        var transform = new ScaleTransform(0.96, 0.96);
+        SettingsFrame.RenderTransformOrigin = new Point(0.5, 0.5);
+        SettingsFrame.RenderTransform = transform;
+        SettingsFrame.BeginAnimation(UIElement.OpacityProperty, fade);
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
     }
 
     private nint WindowProc(nint window, int message, nint wParam, nint lParam, ref bool handled)
@@ -136,6 +159,8 @@ public partial class SettingsWindow : Window
         var dpi = GetDpiForWindow(window);
         var scale = dpi > 0 ? dpi / 96d : 1;
         sizing.MinTrackSize = new NativePoint((int)Math.Ceiling(MinWidth * scale), (int)Math.Ceiling(MinHeight * scale));
+        if (MaxWidth > 0 && !double.IsInfinity(MaxWidth) && !double.IsNaN(MaxWidth))
+            sizing.MaxTrackSize = new NativePoint((int)Math.Ceiling(MaxWidth * scale), (int)Math.Ceiling(MaxHeight * scale));
         Marshal.StructureToPtr(sizing, lParam, false);
         handled = true;
         return 0;
@@ -252,7 +277,18 @@ public partial class SettingsWindow : Window
 
     private void SettingsTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (!_initializing && ReferenceEquals(e.Source, SettingsTabs)) UpdateWidgetPreviewRefresh();
+        if (!_initializing && ReferenceEquals(e.Source, SettingsTabs))
+        {
+            UpdateWidgetPreviewRefresh();
+            if (_preferences.Current.AnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
+            {
+                var fade = new System.Windows.Media.Animation.DoubleAnimation(0.4, 1.0, TimeSpan.FromMilliseconds(150))
+                {
+                    EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+                };
+                host.BeginAnimation(UIElement.OpacityProperty, fade);
+            }
+        }
     }
 
     private void UpdateWidgetPreviewRefresh()
@@ -603,14 +639,57 @@ public partial class SettingsWindow : Window
         _startupEnabled = StartupToggle.IsChecked == true;
     }
 
+    private bool _isClosing;
+    private bool _isClosingCompleted;
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (_closingApplication || Application.Current.Dispatcher.HasShutdownStarted) return;
+        if (_closingApplication || Application.Current.Dispatcher.HasShutdownStarted || _isClosingCompleted) return;
+        if (_preferences.Current.AnimationsEnabled && IsLoaded && !_isClosing)
+        {
+            e.Cancel = true;
+            AnimateAndClose();
+            return;
+        }
         if (_autoSaveTimer.IsEnabled)
         {
             _autoSaveTimer.Stop();
             SaveSettings();
         }
+    }
+
+    private void AnimateAndClose()
+    {
+        if (_isClosing) return;
+        _isClosing = true;
+        if (_autoSaveTimer.IsEnabled)
+        {
+            _autoSaveTimer.Stop();
+            SaveSettings();
+        }
+
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(160))
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+        var scaleAnim = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.95, TimeSpan.FromMilliseconds(160))
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+
+        var transform = new ScaleTransform(1.0, 1.0);
+        SettingsFrame.RenderTransformOrigin = new Point(0.5, 0.5);
+        SettingsFrame.RenderTransform = transform;
+
+        fade.Completed += (_, _) =>
+        {
+            _isClosingCompleted = true;
+            Close();
+        };
+
+        SettingsFrame.BeginAnimation(UIElement.OpacityProperty, fade);
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
     }
 
     private void PreferenceEdited(object sender, RoutedEventArgs e)

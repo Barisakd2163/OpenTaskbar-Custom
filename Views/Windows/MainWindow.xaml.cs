@@ -33,7 +33,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
-    private readonly ObservableCollection<Models.DockWidget> _widgets = [];
+    private readonly ObservableCollection<DockWidgetItem> _widgets = [];
     private readonly DockWidgetService _widgetService = new(TimeProvider.System);
     private readonly WidgetPanelHost _widgetPanel;
     private readonly DispatcherTimer _timedWidgetRefreshTimer;
@@ -1853,7 +1853,7 @@ public partial class MainWindow : Window
 
     private void TimedWidget_DetailsRequested(object sender, RoutedEventArgs e)
     {
-        if (e.OriginalSource is not TimedWidgetTile { DataContext: Models.DockWidget widget } tile) return;
+        if (e.OriginalSource is not TimedWidgetTile { DataContext: DockWidgetItem widget } tile) return;
         e.Handled = true;
         _widgetPanel.Open(tile, widget is CountdownDockWidget ? UiText.Get("WidgetCountdown") : UiText.Get("WidgetStopwatch"),
             new TimedWidgetPanel { DataContext = widget });

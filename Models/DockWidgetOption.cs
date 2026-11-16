@@ -4,7 +4,7 @@ using System.Windows;
 
 namespace OpenTaskbar.Models;
 
-public sealed class DockWidgetOption(string id, string label, string description, bool isInstalled, bool isEnabled, DockWidget preview) : INotifyPropertyChanged
+public sealed class DockWidgetOption(string id, string label, string description, bool isInstalled, bool isEnabled, DockWidgetItem preview) : INotifyPropertyChanged
 {
     private bool _isInstalled = isInstalled;
     private bool _isEnabled = isEnabled;
@@ -15,7 +15,7 @@ public sealed class DockWidgetOption(string id, string label, string description
     public string Id { get; } = id;
     public string Label => _label;
     public string Description => _description;
-    public DockWidget Preview { get; } = preview;
+    public DockWidgetItem Preview { get; } = preview;
     public FrameworkElement? SettingsView { get; set; }
 
     public bool HasSettings => string.Equals(Id, "Clock", StringComparison.OrdinalIgnoreCase)

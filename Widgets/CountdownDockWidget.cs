@@ -5,7 +5,7 @@ namespace OpenTaskbar.Services;
 
 public enum CountdownState { NotConfigured, Ready, Running, Paused, Finished }
 
-public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidget(DockWidgetService.CountdownId, UiText.Get("WidgetCountdown")), ITimedDockWidget
+public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetItem(DockWidgetService.CountdownId, UiText.Get("WidgetCountdown")), ITimedDockWidget
 {
     public const int MinimumMinutes = 1;
     public const int MaximumMinutes = 1440;

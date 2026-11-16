@@ -1,12 +1,17 @@
 using System.ComponentModel;
+
 namespace OpenTaskbar.Models;
 
-public class DockWidget(string id, string label) : INotifyPropertyChanged
+/// <summary>
+/// Data model item representing a dock widget tile (e.g. clock, battery, countdown, stopwatch).
+/// </summary>
+public class DockWidgetItem(string id, string label) : INotifyPropertyChanged
 {
     private string _value = string.Empty;
     private string _label = label;
 
     public string Id { get; } = id;
+
     public string Label
     {
         get => _label;
@@ -17,6 +22,7 @@ public class DockWidget(string id, string label) : INotifyPropertyChanged
             NotifyChanged(nameof(Label));
         }
     }
+
     public string Value
     {
         get => _value;
@@ -30,4 +36,11 @@ public class DockWidget(string id, string label) : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void NotifyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+}
+
+/// <summary>
+/// Alias for <see cref="DockWidgetItem"/> to preserve compatibility.
+/// </summary>
+public class DockWidget(string id, string label) : DockWidgetItem(id, label)
+{
 }

@@ -2,7 +2,7 @@ using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
-public sealed class StopwatchDockWidget(TimeProvider timeProvider) : DockWidget(DockWidgetService.StopwatchId, UiText.Get("WidgetStopwatch")), ITimedDockWidget
+public sealed class StopwatchDockWidget(TimeProvider timeProvider) : DockWidgetItem(DockWidgetService.StopwatchId, UiText.Get("WidgetStopwatch")), ITimedDockWidget
 {
     private TimeSpan _elapsed;
     private long _startedAt;

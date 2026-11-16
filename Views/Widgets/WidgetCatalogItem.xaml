@@ -53,9 +53,19 @@
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />
+                        <Setter Property="Opacity" Value="0" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsSettingsExpanded}" Value="True">
                                 <Setter Property="Visibility" Value="Visible" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction><QuadraticEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>

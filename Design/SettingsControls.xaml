@@ -2,8 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:local="clr-namespace:OpenTaskbar.Services"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
-    <sys:Double x:Key="SettingsReadingWidth">760</sys:Double>
-    <Thickness x:Key="SettingsPageInset">24,18</Thickness>
+    <sys:Double x:Key="SettingsReadingWidth">900</sys:Double>
+    <Thickness x:Key="SettingsPageInset">28,20</Thickness>
     <Thickness x:Key="SettingsRowInset">0,10</Thickness>
     <sys:Double x:Key="WidgetCatalogItemWidth">232</sys:Double>
     <sys:Double x:Key="WidgetCatalogPreviewHeight">116</sys:Double>
@@ -397,7 +397,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TabControl">
                     <Grid KeyboardNavigation.TabNavigation="Local">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="160" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Border Background="{DynamicResource SettingsSidebarOverlay}" Padding="10,12">
                             <StackPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1" KeyboardNavigation.TabNavigation="Once"
                                         KeyboardNavigation.DirectionalNavigation="Contained" />
