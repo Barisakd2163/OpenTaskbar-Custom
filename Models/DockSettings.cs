@@ -25,7 +25,7 @@ public sealed record DockSettings(
     DockPosition Position = DockPosition.Center,
     IReadOnlyList<string>? PinOrder = null,
     AppTheme Theme = AppTheme.Dark,
-    AppLanguage Language = AppLanguage.Turkish,
+    AppLanguage Language = AppLanguage.English,
     bool AnimationsEnabled = true,
     bool PreviewsEnabled = true,
     bool NotificationBadgesEnabled = true,
