@@ -1881,9 +1881,13 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(profile.Radius);
+        DockInnerBevel.CornerRadius = new CornerRadius(Math.Max(1, profile.Radius - 1));
         // The sheen sits on the inner top edge of the glass frame, inset past the rounded corners.
         var sheenHorizontal = Math.Max(4, profile.Radius - 8);
-        DockSheen.Margin = new Thickness(sheenHorizontal, -profile.VerticalPadding, sheenHorizontal, 0);
+        DockSheen.Margin = new Thickness(sheenHorizontal, -profile.VerticalPadding + 1, sheenHorizontal, 0);
+        var bevelH = -9;
+        var bevelV = -profile.VerticalPadding + 1;
+        DockInnerBevel.Margin = IsVertical ? new Thickness(bevelV, bevelH, bevelV, bevelH) : new Thickness(bevelH, bevelV, bevelH, bevelV);
         if (IsVertical) DockFrame.Padding = new Thickness(profile.VerticalPadding, 10, profile.VerticalPadding, 10);
         var scale = profile.WidgetScale;
         var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;

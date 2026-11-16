@@ -165,7 +165,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                                         VerticalAlignment="Center">
-                            <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
+                            <Button x:Name="StartButton" Style="{StaticResource StartDockButton}" Click="StartButton_Click"
                                     AutomationProperties.Name="{local:Loc Start}" ToolTip="{local:Loc Start}" ToolTipService.InitialShowDelay="650">
                                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
                                       RenderTransformOrigin="0.5,0.95">
@@ -175,7 +175,7 @@
                                             <TranslateTransform Y="0" />
                                         </TransformGroup>
                                     </Grid.RenderTransform>
-                                    <Path Width="24" Height="24" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
+                                    <Path Width="18" Height="18" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
                                           MaxWidth="{DynamicResource DockIconSize}" MaxHeight="{DynamicResource DockIconSize}"
                                           Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
                                 </Grid>
@@ -247,9 +247,15 @@
                             </Border>
                         </Grid>
                     </views:DockScrollViewer>
-                    <!-- Specular line along the top edge of the glass. -->
-                    <Border Height="1" VerticalAlignment="Top" Margin="18,-5,18,0" IsHitTestVisible="False"
-                            Background="{DynamicResource DockHighlight}" x:Name="DockSheen" />
+                    <!-- Dual-layer optical glass bevel refraction highlight line -->
+                    <Border x:Name="DockInnerBevel" BorderThickness="1"
+                            BorderBrush="{DynamicResource DockInnerBevelMaterial}"
+                            CornerRadius="{StaticResource DockInnerRadius}"
+                            Margin="-9,-3,-9,-3" IsHitTestVisible="False" />
+                    <!-- Specular ambient sheen curving across the top half of the glass dock -->
+                    <Border x:Name="DockSheen" Height="20" VerticalAlignment="Top" Margin="6,-3,6,0"
+                            CornerRadius="{StaticResource DockSheenRadius}"
+                            Background="{DynamicResource DockHighlight}" IsHitTestVisible="False" />
                 </Grid>
             </Border>
             <Thumb x:Name="LeftResizeThumb" HorizontalAlignment="Left" VerticalAlignment="Stretch"

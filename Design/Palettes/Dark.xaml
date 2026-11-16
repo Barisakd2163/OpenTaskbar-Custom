@@ -13,12 +13,21 @@
         <GradientStop Color="#3A7DD3FC" Offset="0" />
         <GradientStop Color="#00000000" Offset="1" />
     </RadialGradientBrush>
-    <LinearGradientBrush x:Key="DockHighlight" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#00FFFFFF" Offset="0" />
-        <GradientStop Color="#55FFFFFF" Offset="0.3" />
-        <GradientStop Color="#40A5F3FC" Offset="0.7" />
+    <LinearGradientBrush x:Key="DockHighlight" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#22FFFFFF" Offset="0" />
+        <GradientStop Color="#08FFFFFF" Offset="0.45" />
         <GradientStop Color="#00FFFFFF" Offset="1" />
     </LinearGradientBrush>
+    <LinearGradientBrush x:Key="DockInnerBevelMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#2EFFFFFF" Offset="0" />
+        <GradientStop Color="#0CFFFFFF" Offset="0.25" />
+        <GradientStop Color="#00000000" Offset="0.65" />
+        <GradientStop Color="#1C000000" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="StartTileBackground" Color="#16FFFFFF" />
+    <SolidColorBrush x:Key="StartTileBorder" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="StartTileHover" Color="#2BFFFFFF" />
+    <SolidColorBrush x:Key="StartTilePressed" Color="#3EFFFFFF" />
     <SolidColorBrush x:Key="WidgetIsland" Color="#10FFFFFF" />
     <SolidColorBrush x:Key="WidgetIslandStroke" Color="#14FFFFFF" />
     <SolidColorBrush x:Key="SurfaceKeyboardFocus" Color="#FF354652" />
@@ -37,21 +46,24 @@
     <SolidColorBrush x:Key="SurfaceSelectedStrong" Color="#2A7CC4FF" />
     <SolidColorBrush x:Key="SurfaceDanger" Color="#FFC43846" />
     <SolidColorBrush x:Key="NotificationBrush" Color="#FFFF6673" />
-    <SolidColorBrush x:Key="IndicatorBrush" Color="#8CCBD5E1" />
+    <SolidColorBrush x:Key="IndicatorBrush" Color="#B0CBD5E1" />
     <LinearGradientBrush x:Key="IndicatorForegroundBrush" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#FF5EEAD4" Offset="0" />
         <GradientStop Color="#FF38BDF8" Offset="1" />
     </LinearGradientBrush>
-    <!-- Graphite glass with a faint cool sheen at the top. -->
+    <!-- Midnight Obsidian glass with a rich translucent optical body. -->
     <LinearGradientBrush x:Key="DockMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#CC222833" Offset="0" />
-        <GradientStop Color="#D9161A22" Offset="0.45" />
-        <GradientStop Color="#E60F1218" Offset="1" />
+        <GradientStop Color="#D610141D" Offset="0" />
+        <GradientStop Color="#E40D1017" Offset="0.45" />
+        <GradientStop Color="#EE090B10" Offset="1" />
     </LinearGradientBrush>
+    <!-- Fresnel optical rim light: bright specular highlight on top, grounded ambient occlusion at bottom. -->
     <LinearGradientBrush x:Key="DockBorderMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#38FFFFFF" Offset="0" />
-        <GradientStop Color="#0FFFFFFF" Offset="0.6" />
-        <GradientStop Color="#1AFFFFFF" Offset="1" />
+        <GradientStop Color="#85FFFFFF" Offset="0" />
+        <GradientStop Color="#30FFFFFF" Offset="0.12" />
+        <GradientStop Color="#15FFFFFF" Offset="0.45" />
+        <GradientStop Color="#08FFFFFF" Offset="0.85" />
+        <GradientStop Color="#6E000000" Offset="1" />
     </LinearGradientBrush>
     <SolidColorBrush x:Key="SettingsBackground" Color="#FF181A1E" />
     <SolidColorBrush x:Key="SettingsControl" Color="#FF22252A" />

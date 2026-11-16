@@ -60,8 +60,8 @@
                             <Ellipse x:Name="HoverGlow" Grid.RowSpan="2" Margin="-6,0,-6,-4" Fill="{DynamicResource IconHoverGlow}"
                                      Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <!-- Running apps get a short capsule; the foreground app a longer glowing one. -->
-                            <Rectangle x:Name="ActiveIndicator" Grid.Row="1" Height="3" Width="8" RadiusX="1.5" RadiusY="1.5"
+                            <!-- Running apps get a refined luminous dot; the foreground app a vibrant glowing mini capsule. -->
+                            <Rectangle x:Name="ActiveIndicator" Grid.Row="1" Height="4" Width="4" RadiusX="2" RadiusY="2"
                                        Fill="{DynamicResource IndicatorBrush}" VerticalAlignment="Center"
                                        HorizontalAlignment="Center" Visibility="Collapsed" />
                         </Grid>
@@ -82,19 +82,50 @@
                         </Trigger>
                         <DataTrigger Binding="{Binding IsRunning}" Value="True">
                             <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                            <Setter TargetName="ActiveIndicator" Property="Opacity" Value="0.55" />
+                            <Setter TargetName="ActiveIndicator" Property="Opacity" Value="0.75" />
                         </DataTrigger>
                         <DataTrigger Binding="{Binding IsForeground}" Value="True">
                             <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
                             <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1.0" />
-                            <Setter TargetName="ActiveIndicator" Property="Width" Value="16" />
+                            <Setter TargetName="ActiveIndicator" Property="Width" Value="8" />
+                            <Setter TargetName="ActiveIndicator" Property="Height" Value="4" />
+                            <Setter TargetName="ActiveIndicator" Property="RadiusX" Value="2" />
+                            <Setter TargetName="ActiveIndicator" Property="RadiusY" Value="2" />
                             <Setter TargetName="ActiveIndicator" Property="Fill" Value="{DynamicResource IndicatorForegroundBrush}" />
                             <Setter TargetName="ActiveIndicator" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="#38BDF8" BlurRadius="8" ShadowDepth="0" Opacity="0.85" />
+                                    <DropShadowEffect Color="#38BDF8" BlurRadius="6" ShadowDepth="0" Opacity="0.95" />
                                 </Setter.Value>
                             </Setter>
                         </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Tactile recessed glass tile for the Start button matching Lumabar's hardware-button look. -->
+    <Style x:Key="StartDockButton" TargetType="Button" BasedOn="{StaticResource DockButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
+                        <Border x:Name="StartTile" Margin="4,4,4,4"
+                                CornerRadius="10"
+                                Background="{DynamicResource StartTileBackground}"
+                                BorderBrush="{DynamicResource StartTileBorder}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="StartTile" Property="Background" Value="{DynamicResource StartTileHover}" />
+                            <Setter TargetName="StartTile" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="StartTile" Property="Background" Value="{DynamicResource StartTilePressed}" />
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
