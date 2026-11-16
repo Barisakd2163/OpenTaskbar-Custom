@@ -1683,9 +1683,12 @@ public partial class MainWindow : Window
         _widgetPanel.Close(restoreFocus: false);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
         _widgets.Clear();
+        var clockStripActive = selected?.Contains(DockWidgetService.ClockId, StringComparer.OrdinalIgnoreCase) == true;
+        var statsStripActive = selected?.Contains(DockWidgetService.SystemStatsId, StringComparer.OrdinalIgnoreCase) == true;
         var filtered = selected?.Where(id =>
-            (!_preferences.Current.ShowClock || (id != DockWidgetService.ClockId && id != DockWidgetService.DateId))
-            && (!_preferences.Current.ShowSystemStats || (id != DockWidgetService.BatteryId && id != "Memory")))
+            !WidgetCoordinator.HandlesWidget(id)
+            && (!clockStripActive || id != DockWidgetService.DateId)
+            && (!statsStripActive || (id != DockWidgetService.BatteryId && id != "Memory")))
             .ToArray();
         foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;

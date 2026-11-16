@@ -191,47 +191,30 @@
                             </ItemsControl>
                             <TextBlock x:Name="WidgetNoResults" Text="{local:Loc WidgetNoResults}" Visibility="Collapsed"
                                        TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" AutomationProperties.LiveSetting="Polite" />
-                            <Border Style="{StaticResource SettingsRow}" Margin="0,16,0,0"><DockPanel>
-                                <CheckBox x:Name="ClockToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetClock}" />
-                                <TextBlock Text="{local:Loc WidgetClock}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="MediaToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetMedia}" />
-                                <TextBlock Text="{local:Loc WidgetMedia}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="SystemStatsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetSystemStats}" AutomationProperties.HelpText="{local:Loc WidgetSystemStatsDescription}" />
-                                <TextBlock Text="{local:Loc WidgetSystemStats}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc WidgetSystemStatsDescription}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="AudioToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetAudio}" />
-                                <TextBlock Text="{local:Loc WidgetAudio}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="QuickSettingsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetQuickSettings}" AutomationProperties.HelpText="{local:Loc WidgetQuickSettingsDescription}" />
-                                <TextBlock Text="{local:Loc WidgetQuickSettings}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc WidgetQuickSettingsDescription}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="DesktopsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetDesktops}" />
-                                <TextBlock Text="{local:Loc WidgetDesktops}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="TrayToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetTray}" />
-                                <TextBlock Text="{local:Loc WidgetTray}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="WeatherToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetWeather}" />
-                                <TextBlock Text="{local:Loc WidgetWeather}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <StackPanel x:Name="WeatherOptions" Margin="0,10,0,6">
+                            <StackPanel x:Name="InstalledWidgetsSection" Margin="0,20,0,0">
+                                <TextBlock Text="{local:Loc InstalledWidgetsHeading}" Style="{StaticResource SettingsHeading}" />
+                                <ItemsControl x:Name="InstalledWidgetsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource SettingsRow}">
+                                                <DockPanel>
+                                                    <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                              IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                              ToolTip="{local:Loc WidgetShow}"
+                                                              AutomationProperties.Name="{Binding Label}"
+                                                              AutomationProperties.HelpText="{Binding Description}" />
+                                                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondary}"
+                                                                   FontSize="{StaticResource TextSizeCaption}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                            <StackPanel x:Name="WeatherOptions" Margin="0,14,0,6">
                                 <TextBlock Text="{local:Loc WeatherCity}" FontWeight="SemiBold" Margin="0,0,0,6" />
                                 <TextBox x:Name="WeatherCityBox" MaxLength="80" Padding="8,6" Background="{DynamicResource SettingsControl}"
                                          Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
@@ -239,11 +222,6 @@
                                          AutomationProperties.Name="{local:Loc WeatherCity}" AutomationProperties.HelpText="{local:Loc WeatherCityHint}" />
                                 <TextBlock Text="{local:Loc WeatherCityHint}" Foreground="{DynamicResource TextSecondary}" Margin="0,6,0,0" TextWrapping="Wrap" />
                             </StackPanel>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="FocusToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc WidgetFocus}" />
-                                <TextBlock Text="{local:Loc WidgetFocus}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
                             <StackPanel x:Name="FocusOptions" Margin="0,16,0,0">
                                 <DockPanel Margin="0,0,0,10">
                                     <TextBlock x:Name="FocusMinutesValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
@@ -267,29 +245,31 @@
                                         SmallChange="1" LargeChange="2" Style="{StaticResource SettingsOpacitySlider}"
                                         AutomationProperties.Name="{local:Loc FocusSessionCount}" ValueChanged="FocusSlider_ValueChanged" />
                             </StackPanel>
-                            <TextBlock Text="{local:Loc WidgetOrderHeading}" Style="{StaticResource SettingsHeading}" Margin="0,24,0,4" />
-                            <TextBlock Text="{local:Loc WidgetOrderDescription}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" TextWrapping="Wrap" />
-                            <Border Background="{DynamicResource SurfaceElevated}" BorderBrush="{DynamicResource MenuStroke}" BorderThickness="1" CornerRadius="8" Padding="6">
-                                <ItemsControl x:Name="WidgetOrderList">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="0,0,0,1" Padding="8,6">
-                                                <DockPanel>
-                                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                                                        <Button Content="▲" ToolTip="{local:Loc MoveUp}" Width="28" Height="28" Margin="0,0,4,0"
-                                                                Style="{StaticResource SettingsSecondaryButton}" Click="WidgetMoveUp_Click" Tag="{Binding Id}"
-                                                                AutomationProperties.Name="{local:Loc MoveUp}" />
-                                                        <Button Content="▼" ToolTip="{local:Loc MoveDown}" Width="28" Height="28"
-                                                                Style="{StaticResource SettingsSecondaryButton}" Click="WidgetMoveDown_Click" Tag="{Binding Id}"
-                                                                AutomationProperties.Name="{local:Loc MoveDown}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
-                                                </DockPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Border>
+                            <StackPanel x:Name="WidgetOrderSection" Margin="0,24,0,0">
+                                <TextBlock Text="{local:Loc WidgetOrderHeading}" Style="{StaticResource SettingsHeading}" Margin="0,0,0,4" />
+                                <TextBlock Text="{local:Loc WidgetOrderDescription}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" TextWrapping="Wrap" />
+                                <Border Background="{DynamicResource SurfaceElevated}" BorderBrush="{DynamicResource MenuStroke}" BorderThickness="1" CornerRadius="8" Padding="6">
+                                    <ItemsControl x:Name="WidgetOrderList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="0,0,0,1" Padding="8,6">
+                                                    <DockPanel>
+                                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                                            <Button Content="▲" ToolTip="{local:Loc MoveUp}" Width="28" Height="28" Margin="0,0,4,0"
+                                                                    Style="{StaticResource SettingsSecondaryButton}" Click="WidgetMoveUp_Click" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="{local:Loc MoveUp}" />
+                                                            <Button Content="▼" ToolTip="{local:Loc MoveDown}" Width="28" Height="28"
+                                                                    Style="{StaticResource SettingsSecondaryButton}" Click="WidgetMoveDown_Click" Tag="{Binding Id}"
+                                                                    AutomationProperties.Name="{local:Loc MoveDown}" />
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                                                    </DockPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

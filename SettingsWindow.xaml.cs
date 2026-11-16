@@ -26,6 +26,7 @@ public partial class SettingsWindow : Window
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
+    private readonly ObservableCollection<DockWidgetOption> _installedWidgetOptions = [];
     private readonly ObservableCollection<WidgetOrderItem> _widgetOrderItems = [];
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
@@ -42,9 +43,15 @@ public partial class SettingsWindow : Window
         _preferences = preferences;
         _applied = preferences.Current;
         InitializeComponent();
-        foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets)) _widgetOptions.Add(option);
+        foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets))
+        {
+            option.PropertyChanged += WidgetOption_PropertyChanged;
+            _widgetOptions.Add(option);
+        }
         WidgetOptionsList.ItemsSource = _widgetOptions;
+        InstalledWidgetsList.ItemsSource = _installedWidgetOptions;
         WidgetOrderList.ItemsSource = _widgetOrderItems;
+        RefreshInstalledWidgetsList();
         LoadWidgetOrder(_applied.WidgetOrder);
         System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions).Filter = item =>
             item is DockWidgetOption option && option.MatchesSearch(WidgetSearch.Text.Trim(),
@@ -81,12 +88,6 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = _applied.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
         UpdateDockScaleLabel();
-        ClockToggle.IsChecked = _applied.ShowClock;
-        MediaToggle.IsChecked = _applied.ShowMedia;
-        SystemStatsToggle.IsChecked = _applied.ShowSystemStats;
-        AudioToggle.IsChecked = _applied.ShowAudio;
-        QuickSettingsToggle.IsChecked = _applied.ShowQuickSettings;
-        FocusToggle.IsChecked = _applied.ShowFocus;
         FocusMinutesSlider.Value = _applied.FocusMinutes;
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = _applied.FocusSessions;
@@ -183,55 +184,85 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private DockSettings ReadSelection() => _preferences.Current with
+    private DockSettings ReadSelection()
     {
-        Theme = LightTheme.IsChecked == true ? AppTheme.Light : AppTheme.Dark,
-        Language = EnglishLanguage.IsChecked == true ? AppLanguage.English : AppLanguage.Turkish,
-        // Full width keeps the last floating alignment so switching back restores it.
-        Position = RightPosition.IsChecked == true ? DockPosition.Right : LeftPosition.IsChecked == true ? DockPosition.Left
-            : CenterPosition.IsChecked == true ? DockPosition.Center : _preferences.Current.Position,
-        AnimationsEnabled = AnimationsToggle.IsChecked == true,
-        PreviewsEnabled = PreviewsToggle.IsChecked == true,
-        NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
-        AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
-        SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100,
-        Widgets = _widgetOptions.Where(option => option.IsInstalled && option.IsEnabled).Select(option => option.Id).ToArray(),
-        InstalledWidgets = _widgetOptions.Where(option => option.IsInstalled).Select(option => option.Id).ToArray(),
-        MagnificationEnabled = MagnificationToggle.IsChecked == true,
-        Layout = FullWidthLayout.IsChecked == true ? DockLayout.FullWidth : DockLayout.Floating,
-        Size = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact,
-        DockScale = Math.Round(DockScaleSlider.Value) / 100,
-        ShowClock = ClockToggle.IsChecked == true,
-        ShowMedia = MediaToggle.IsChecked == true,
-        ShowSystemStats = SystemStatsToggle.IsChecked == true,
-        ShowAudio = AudioToggle.IsChecked == true,
-        ShowQuickSettings = QuickSettingsToggle.IsChecked == true,
-        ShowFocus = FocusToggle.IsChecked == true,
-        FocusMinutes = (int)Math.Round(FocusMinutesSlider.Value),
-        FocusBreakMinutes = (int)Math.Round(BreakMinutesSlider.Value),
-        FocusSessions = (int)Math.Round(FocusSessionsSlider.Value),
-        ShowRecycleBin = RecycleBinToggle.IsChecked == true,
-        ShowOnAllMonitors = AllMonitorsToggle.IsChecked == true,
-        CurrentDesktopOnly = CurrentDesktopToggle.IsChecked == true,
-        CheckUpdates = UpdatesToggle.IsChecked == true,
-        Edge = LeftEdge.IsChecked == true ? DockEdge.Left : RightEdge.IsChecked == true ? DockEdge.Right : DockEdge.Bottom,
-        ShowVirtualDesktops = DesktopsToggle.IsChecked == true,
-        ShowTray = TrayToggle.IsChecked == true,
-        ShowWeather = WeatherToggle.IsChecked == true,
-        WeatherCity = WeatherCityBox.Text.Trim(),
-        LauncherHotkey = LauncherAltSpace.IsChecked == true ? HotkeyChoice.AltSpace
-            : LauncherCtrlSpace.IsChecked == true ? HotkeyChoice.CtrlSpace
-            : LauncherCtrlAltSpace.IsChecked == true ? HotkeyChoice.CtrlAltSpace : HotkeyChoice.Disabled,
-        DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : DockWinAltD.IsChecked == true ? HotkeyChoice.WinAltD : HotkeyChoice.Disabled,
-        StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
-        StartPlacement = StartLast.IsChecked == true ? StartButtonPlacement.End : StartHidden.IsChecked == true ? StartButtonPlacement.Hidden : StartButtonPlacement.Start,
-        WheelVolume = WheelVolumeToggle.IsChecked == true,
-        WidgetOrder = _widgetOrderItems.Select(w => w.Id).ToArray()
-    };
+        var enabledWidgets = _widgetOptions.Where(option => option.IsInstalled && option.IsEnabled).Select(option => option.Id).ToArray();
+        var installedWidgets = _widgetOptions.Where(option => option.IsInstalled).Select(option => option.Id).ToArray();
+        bool IsEnabled(string id) => enabledWidgets.Contains(id, StringComparer.OrdinalIgnoreCase);
+        return _preferences.Current with
+        {
+            Theme = LightTheme.IsChecked == true ? AppTheme.Light : AppTheme.Dark,
+            Language = EnglishLanguage.IsChecked == true ? AppLanguage.English : AppLanguage.Turkish,
+            // Full width keeps the last floating alignment so switching back restores it.
+            Position = RightPosition.IsChecked == true ? DockPosition.Right : LeftPosition.IsChecked == true ? DockPosition.Left
+                : CenterPosition.IsChecked == true ? DockPosition.Center : _preferences.Current.Position,
+            AnimationsEnabled = AnimationsToggle.IsChecked == true,
+            PreviewsEnabled = PreviewsToggle.IsChecked == true,
+            NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
+            AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
+            SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100,
+            Widgets = enabledWidgets,
+            InstalledWidgets = installedWidgets,
+            MagnificationEnabled = MagnificationToggle.IsChecked == true,
+            Layout = FullWidthLayout.IsChecked == true ? DockLayout.FullWidth : DockLayout.Floating,
+            Size = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact,
+            DockScale = Math.Round(DockScaleSlider.Value) / 100,
+            ShowClock = IsEnabled("Clock"),
+            ShowMedia = IsEnabled("Media"),
+            ShowSystemStats = IsEnabled("SystemStats"),
+            ShowAudio = IsEnabled("Audio"),
+            ShowQuickSettings = IsEnabled("QuickSettings"),
+            ShowFocus = IsEnabled("Focus"),
+            FocusMinutes = (int)Math.Round(FocusMinutesSlider.Value),
+            FocusBreakMinutes = (int)Math.Round(BreakMinutesSlider.Value),
+            FocusSessions = (int)Math.Round(FocusSessionsSlider.Value),
+            ShowRecycleBin = RecycleBinToggle.IsChecked == true,
+            ShowOnAllMonitors = AllMonitorsToggle.IsChecked == true,
+            CurrentDesktopOnly = CurrentDesktopToggle.IsChecked == true,
+            CheckUpdates = UpdatesToggle.IsChecked == true,
+            Edge = LeftEdge.IsChecked == true ? DockEdge.Left : RightEdge.IsChecked == true ? DockEdge.Right : DockEdge.Bottom,
+            ShowVirtualDesktops = IsEnabled("Desktops"),
+            ShowTray = IsEnabled("Tray"),
+            ShowWeather = IsEnabled("Weather"),
+            WeatherCity = WeatherCityBox.Text.Trim(),
+            LauncherHotkey = LauncherAltSpace.IsChecked == true ? HotkeyChoice.AltSpace
+                : LauncherCtrlSpace.IsChecked == true ? HotkeyChoice.CtrlSpace
+                : LauncherCtrlAltSpace.IsChecked == true ? HotkeyChoice.CtrlAltSpace : HotkeyChoice.Disabled,
+            DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : DockWinAltD.IsChecked == true ? HotkeyChoice.WinAltD : HotkeyChoice.Disabled,
+            StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
+            StartPlacement = StartLast.IsChecked == true ? StartButtonPlacement.End : StartHidden.IsChecked == true ? StartButtonPlacement.Hidden : StartButtonPlacement.Start,
+            WheelVolume = WheelVolumeToggle.IsChecked == true,
+            WidgetOrder = _widgetOrderItems.Select(w => w.Id).ToArray()
+        };
+    }
+
+    private void RefreshInstalledWidgetsList()
+    {
+        _installedWidgetOptions.Clear();
+        foreach (var option in _widgetOptions.Where(option => option.IsInstalled))
+        {
+            _installedWidgetOptions.Add(option);
+        }
+    }
+
+    private void WidgetOption_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_initializing) return;
+        if (e.PropertyName is nameof(DockWidgetOption.IsInstalled) or nameof(DockWidgetOption.IsEnabled))
+        {
+            RefreshInstalledWidgetsList();
+            LoadWidgetOrder(_widgetOrderItems.Select(w => w.Id).ToArray());
+            PreferenceEdited(this, new RoutedEventArgs());
+        }
+    }
 
     private void LoadWidgetOrder(IReadOnlyList<string>? savedOrder)
     {
         _widgetOrderItems.Clear();
+        var installedRichIds = _widgetOptions
+            .Where(o => o.IsInstalled && WidgetCoordinator.HandlesWidget(o.Id))
+            .Select(o => o.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var order = (savedOrder ?? []).ToList();
         foreach (var def in WidgetCoordinator.DefaultWidgetOrder)
         {
@@ -243,6 +274,7 @@ public partial class SettingsWindow : Window
 
         foreach (var id in order)
         {
+            if (!installedRichIds.Contains(id)) continue;
             var labelKey = WidgetCoordinator.GetLabelKey(id);
             if (labelKey is not null)
             {
@@ -317,6 +349,7 @@ public partial class SettingsWindow : Window
     private void WidgetInstallation_Click(object sender, RoutedEventArgs e)
     {
         if (e.OriginalSource is not FrameworkElement { DataContext: DockWidgetOption option }) return;
+        _initializing = true;
         if (option.IsInstalled)
         {
             option.IsInstalled = false;
@@ -327,6 +360,10 @@ public partial class SettingsWindow : Window
             option.IsInstalled = true;
             option.IsEnabled = true;
         }
+        _initializing = false;
+        RefreshInstalledWidgetsList();
+        LoadWidgetOrder(_widgetOrderItems.Select(w => w.Id).ToArray());
+        UpdateWidgetOptionState();
         SaveSettings();
     }
 
@@ -348,9 +385,6 @@ public partial class SettingsWindow : Window
         BottomEdge.IsChecked = settings.Edge == DockEdge.Bottom;
         LeftEdge.IsChecked = settings.Edge == DockEdge.Left;
         RightEdge.IsChecked = settings.Edge == DockEdge.Right;
-        DesktopsToggle.IsChecked = settings.ShowVirtualDesktops;
-        TrayToggle.IsChecked = settings.ShowTray;
-        WeatherToggle.IsChecked = settings.ShowWeather;
         WeatherCityBox.Text = settings.WeatherCity;
         LauncherAltSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.AltSpace;
         LauncherCtrlSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.CtrlSpace;
@@ -430,12 +464,12 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = settings.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         UpdateDockScaleLabel();
-        ClockToggle.IsChecked = settings.ShowClock;
-        MediaToggle.IsChecked = settings.ShowMedia;
-        SystemStatsToggle.IsChecked = settings.ShowSystemStats;
-        AudioToggle.IsChecked = settings.ShowAudio;
-        QuickSettingsToggle.IsChecked = settings.ShowQuickSettings;
-        FocusToggle.IsChecked = settings.ShowFocus;
+        foreach (var option in _widgetOptions)
+        {
+            option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;
+            option.IsEnabled = settings.Widgets?.Contains(option.Id, StringComparer.Ordinal) == true;
+        }
+        RefreshInstalledWidgetsList();
         FocusMinutesSlider.Value = settings.FocusMinutes;
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = settings.FocusSessions;
@@ -445,9 +479,11 @@ public partial class SettingsWindow : Window
 
     private void UpdateWidgetOptionState()
     {
-        // Alignment only applies to the floating dock; focus lengths only matter while the timer is shown.
-        FocusOptions.IsEnabled = FocusToggle.IsChecked == true;
-        WeatherOptions.IsEnabled = WeatherToggle.IsChecked == true;
+        bool IsInstalled(string id) => _widgetOptions.Any(o => string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase) && o.IsInstalled);
+        InstalledWidgetsSection.Visibility = _installedWidgetOptions.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        WidgetOrderSection.Visibility = _widgetOrderItems.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        FocusOptions.Visibility = IsInstalled("Focus") ? Visibility.Visible : Visibility.Collapsed;
+        WeatherOptions.Visibility = IsInstalled("Weather") ? Visibility.Visible : Visibility.Collapsed;
         FocusMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(FocusMinutesSlider.Value));
         BreakMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(BreakMinutesSlider.Value));
         FocusSessionsValue.Text = ((int)Math.Round(FocusSessionsSlider.Value)).ToString(System.Globalization.CultureInfo.InvariantCulture);

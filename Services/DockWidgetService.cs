@@ -14,6 +14,14 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
 
     public const string ClockId = "Clock";
     public const string DateId = "Date";
+    public const string MediaId = "Media";
+    public const string SystemStatsId = "SystemStats";
+    public const string FocusId = "Focus";
+    public const string AudioId = "Audio";
+    public const string QuickSettingsId = "QuickSettings";
+    public const string DesktopsId = "Desktops";
+    public const string TrayId = "Tray";
+    public const string WeatherId = "Weather";
     public const string BatteryId = "Battery";
     public const string StopwatchId = "Stopwatch";
     public const string CountdownId = "Countdown";
@@ -24,6 +32,14 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     [
         new(ClockId, "WidgetClock", culture => DateTime.Now.ToString("HH:mm", culture)),
         new(DateId, "WidgetDate", culture => DateTime.Now.ToString("ddd, d MMM", culture)),
+        new(MediaId, "WidgetMedia", _ => "▶ · 02:15"),
+        new(AudioId, "WidgetAudio", _ => "100%"),
+        new(QuickSettingsId, "WidgetQuickSettings", _ => "Wi-Fi · BT"),
+        new(SystemStatsId, "WidgetSystemStats", _ => "CPU · RAM"),
+        new(FocusId, "WidgetFocus", _ => "25:00"),
+        new(WeatherId, "WidgetWeather", _ => "21°"),
+        new(DesktopsId, "WidgetDesktops", _ => "1 / 2"),
+        new(TrayId, "WidgetTray", _ => "▲"),
         new(BatteryId, "WidgetBattery", _ => ReadBatteryStatus()),
         new("Memory", "WidgetMemory", SystemWidgetData.ReadMemory),
         new("Storage", "WidgetStorage", SystemWidgetData.ReadStorage),
