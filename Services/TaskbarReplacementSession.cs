@@ -31,6 +31,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint WmDpiChanged = 0x02E0;
     private const uint CallbackMessage = 0x8000 + 0x52;
     private const uint MonitorDefaultToNearest = 2;
+    private const uint GaRootOwner = 3;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpNoOwnerZOrder = 0x0200;
     private const int SwHide = 0;
@@ -512,19 +513,46 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private bool IsFullScreen(nint windowHandle)
     {
-        if (windowHandle == 0 || !IsWindowVisible(windowHandle) || IsIconic(windowHandle)
-            || MonitorFromWindow(windowHandle, MonitorDefaultToNearest) != MonitorFromWindow(_handle, MonitorDefaultToNearest))
+        if (windowHandle == 0 || !IsWindowVisible(windowHandle) || IsIconic(windowHandle))
             return false;
+
+        var root = GetAncestor(windowHandle, GaRootOwner);
+        var targetHandle = root != 0 ? root : windowHandle;
+
+        if (MonitorFromWindow(targetHandle, MonitorDefaultToNearest) != MonitorFromWindow(_handle, MonitorDefaultToNearest))
+            return false;
+
         var className = new StringBuilder(128);
-        GetClassName(windowHandle, className, className.Capacity);
+        GetClassName(targetHandle, className, className.Capacity);
         if (className.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
-        // A captioned maximized window may fill an auto-hidden work area without being full screen.
-        if (IsZoomed(windowHandle) && (GetWindowLongPtr(windowHandle, GwlStyle).ToInt64() & WsCaption) == WsCaption) return false;
+
         var monitor = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
-        return GetMonitorInfo(MonitorFromWindow(windowHandle, MonitorDefaultToNearest), ref monitor)
-            && GetWindowRect(windowHandle, out var rect)
-            && rect.Left <= monitor.rcMonitor.Left && rect.Top <= monitor.rcMonitor.Top
-            && rect.Right >= monitor.rcMonitor.Right && rect.Bottom >= monitor.rcMonitor.Bottom;
+        if (!GetMonitorInfo(MonitorFromWindow(targetHandle, MonitorDefaultToNearest), ref monitor)
+            || !GetWindowRect(targetHandle, out var rect))
+            return false;
+
+        var style = GetWindowLongPtr(targetHandle, GwlStyle).ToInt64();
+        var zoomed = IsZoomed(targetHandle);
+        return IsFullScreenBounds(rect, style, zoomed, monitor.rcMonitor, monitor.rcWork);
+    }
+
+    internal static bool IsFullScreenBounds(Rect windowRect, long windowStyle, bool isZoomed, Rect monitorBounds, Rect workBounds)
+    {
+        var coversMonitor = windowRect.Left <= monitorBounds.Left + 2 && windowRect.Top <= monitorBounds.Top + 2
+            && windowRect.Right >= monitorBounds.Right - 2 && windowRect.Bottom >= monitorBounds.Bottom - 2;
+        if (!coversMonitor) return false;
+
+        var workAreaEqualsMonitor = workBounds.Left == monitorBounds.Left
+            && workBounds.Top == monitorBounds.Top
+            && workBounds.Right == monitorBounds.Right
+            && workBounds.Bottom == monitorBounds.Bottom;
+
+        if (workAreaEqualsMonitor && isZoomed && (windowStyle & WsCaption) == WsCaption)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private void SetFullScreenSuppression(bool suppressed)
@@ -743,7 +771,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Rect(int left, int top, int right, int bottom)
+    internal struct Rect(int left, int top, int right, int bottom)
     {
         public int Left = left;
         public int Top = top;
@@ -785,6 +813,9 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetAncestor(nint hwnd, uint flags);
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();

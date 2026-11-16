@@ -135,12 +135,23 @@ public sealed class SecondaryDockWindow : Window
 
     private bool IsFullScreen(nint window)
     {
-        const long caption = 0x00C00000;
-        if ((GetWindowLongPtr(window, -16).ToInt64() & caption) == caption) return false;
+        if (window == 0) return false;
+
+        var root = GetAncestor(window, 3);
+        var targetHandle = root != 0 ? root : window;
+
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        return GetMonitorInfo(_monitor, ref info) && GetWindowRect(window, out var rect)
-            && rect.Left <= info.Monitor.Left && rect.Top <= info.Monitor.Top
-            && rect.Right >= info.Monitor.Right && rect.Bottom >= info.Monitor.Bottom;
+        if (!GetMonitorInfo(_monitor, ref info) || !GetWindowRect(targetHandle, out var rect))
+            return false;
+
+        var monitorRect = new TaskbarReplacementSession.Rect(info.Monitor.Left, info.Monitor.Top, info.Monitor.Right, info.Monitor.Bottom);
+        var workRect = new TaskbarReplacementSession.Rect(info.Work.Left, info.Work.Top, info.Work.Right, info.Work.Bottom);
+        var winRect = new TaskbarReplacementSession.Rect(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        var style = GetWindowLongPtr(targetHandle, -16).ToInt64();
+        const long wsMaximize = 0x01000000;
+        var zoomed = (style & wsMaximize) != 0;
+
+        return TaskbarReplacementSession.IsFullScreenBounds(winRect, style, zoomed, monitorRect, workRect);
     }
 
     /// <summary>Handles of every display except the primary one.</summary>
@@ -171,6 +182,7 @@ public sealed class SecondaryDockWindow : Window
     [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(nint window, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern nint GetWindowLongPtr(nint window, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetWindowLongPtr(nint window, int index, nint value);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]

@@ -414,6 +414,37 @@ internal static class DockLayoutChecks
         Check(WidgetCoordinator.HandlesWidget("Media"), "HandlesWidget must return true for default widget Media.");
         Check(!WidgetCoordinator.HandlesWidget("NonExistentWidget"), "HandlesWidget must return false for unknown widget.");
 
+        // Verify Fullscreen video / window bounds detection (TaskbarReplacementSession.IsFullScreenBounds)
+        const long wsCaption = 0x00C00000;
+        var normalMon = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
+        var normalWork = new TaskbarReplacementSession.Rect(0, 0, 1920, 1032);
+        var normalMaximizedWin = new TaskbarReplacementSession.Rect(-8, -8, 1928, 1040);
+        Check(!TaskbarReplacementSession.IsFullScreenBounds(normalMaximizedWin, wsCaption, isZoomed: true, normalMon, normalWork),
+            "Normal maximized window conforming to work area must not be detected as full screen.");
+
+        var fullScreenVideoWin = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
+        Check(TaskbarReplacementSession.IsFullScreenBounds(fullScreenVideoWin, 0, isZoomed: false, normalMon, normalWork),
+            "Fullscreen video covering monitor must be detected as full screen.");
+
+        Check(TaskbarReplacementSession.IsFullScreenBounds(fullScreenVideoWin, wsCaption, isZoomed: true, normalMon, normalWork),
+            "Fullscreen video spanning across reserved shelf must be detected as full screen even if browser retained caption style.");
+
+        var highDpiMon = new TaskbarReplacementSession.Rect(0, 0, 2560, 1440);
+        var highDpiWork = new TaskbarReplacementSession.Rect(0, 0, 2560, 1380);
+        var highDpiVideoWin = new TaskbarReplacementSession.Rect(1, 0, 2559, 1440);
+        Check(TaskbarReplacementSession.IsFullScreenBounds(highDpiVideoWin, 0, isZoomed: false, highDpiMon, highDpiWork),
+            "High-DPI fullscreen video with subpixel rounding within 2px tolerance must be detected as full screen.");
+
+        var autoHideMon = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
+        var autoHideWork = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
+        var autoHideMaximizedWin = new TaskbarReplacementSession.Rect(-8, -8, 1928, 1088);
+        Check(!TaskbarReplacementSession.IsFullScreenBounds(autoHideMaximizedWin, wsCaption, isZoomed: true, autoHideMon, autoHideWork),
+            "Captioned maximized window in auto-hide mode must not be detected as full screen.");
+
+        var autoHideVideoWin = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
+        Check(TaskbarReplacementSession.IsFullScreenBounds(autoHideVideoWin, 0, isZoomed: false, autoHideMon, autoHideWork),
+            "Fullscreen video in auto-hide mode must be detected as full screen.");
+
         return checks;
     }
 }

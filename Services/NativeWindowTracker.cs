@@ -102,8 +102,15 @@ public sealed class NativeWindowTracker : IDisposable
 
         if (eventType == EventObjectLocationChange)
         {
-            if (objectId == ObjectWindow && childId == ChildIdSelf && windowHandle == GetForegroundWindow())
-                QueueRefresh();
+            if (objectId == ObjectWindow && childId == ChildIdSelf)
+            {
+                var foreground = GetForegroundWindow();
+                if (foreground != 0 && (windowHandle == foreground || GetAncestor(windowHandle, GaRootOwner) == foreground))
+                {
+                    QueueRefresh();
+                    ForegroundWindowChanged?.Invoke(foreground);
+                }
+            }
             return;
         }
 

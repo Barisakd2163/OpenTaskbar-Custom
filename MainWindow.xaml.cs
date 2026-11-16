@@ -365,6 +365,12 @@ public partial class MainWindow : Window
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
         windows = FilterWindows(windows);
+        var foreground = NativeWindowTracker.GetForegroundApplicationWindow();
+        if (foreground != 0)
+        {
+            _replacementSession?.UpdateForeground(foreground);
+            _autoHideController?.CheckForegroundWindow(foreground);
+        }
         foreach (var path in _lastSelectedWindows.Keys.Where(path => !windows.Any(window =>
                      string.Equals(window.ExecutablePath, path, StringComparison.OrdinalIgnoreCase))).ToList())
         {
@@ -1315,6 +1321,7 @@ public partial class MainWindow : Window
     {
         _replacementSession?.UpdateForeground(windowHandle);
         _autoHideController?.CheckForegroundWindow(windowHandle);
+        UpdateSecondaryDocks();
         GetWindowThreadProcessId(windowHandle, out var processId);
         // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
         if (processId == Environment.ProcessId) return;
@@ -1329,7 +1336,6 @@ public partial class MainWindow : Window
         if (_foregroundWindow == windowHandle) return;
         _foregroundWindow = windowHandle;
         UpdateWindowIndicators(VisibleSnapshot);
-        UpdateSecondaryDocks();
         foreach (var app in _runningApps)
         {
             app.IsForeground = VisibleSnapshot.Any(window => window.Handle == windowHandle
@@ -1824,7 +1830,7 @@ public partial class MainWindow : Window
         var filtered = selected?.Where(id =>
             !WidgetCoordinator.HandlesWidget(id)
             && (!clockStripActive || id != DockWidgetService.DateId)
-            && (!statsStripActive || (id != DockWidgetService.BatteryId && id != "Memory")))
+            && (!statsStripActive || id != DockWidgetService.BatteryId))
             .ToArray();
         foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
@@ -2208,6 +2214,7 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
+        DockFlyout.CloseAll();
         ResetMagnification();
     }
 
