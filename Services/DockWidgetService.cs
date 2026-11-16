@@ -4,8 +4,10 @@ using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
-public static class DockWidgetService
+public sealed class DockWidgetService(TimeProvider timeProvider)
 {
+    private readonly StopwatchDockWidget _stopwatch = new(timeProvider);
+    private readonly CountdownDockWidget _countdown = new(timeProvider);
     private const byte UnknownBatteryLifePercent = 255;
     private const byte NoSystemBattery = 128;
     private const byte ChargingBatteryFlag = 8;
@@ -14,6 +16,7 @@ public static class DockWidgetService
     public const string DateId = "Date";
     public const string BatteryId = "Battery";
     public const string StopwatchId = "Stopwatch";
+    public const string CountdownId = "Countdown";
 
     private sealed record WidgetDefinition(string Id, string LabelKey, Func<CultureInfo, string>? Read);
 
@@ -26,16 +29,22 @@ public static class DockWidgetService
         new("Storage", "WidgetStorage", SystemWidgetData.ReadStorage),
         new("DayProgress", "WidgetDayProgress", culture =>
             (DateTime.Now.TimeOfDay.TotalSeconds / TimeSpan.FromDays(1).TotalSeconds).ToString("P0", culture)),
-        new(StopwatchId, "WidgetStopwatch", null)
+        new(StopwatchId, "WidgetStopwatch", null),
+        new(CountdownId, "WidgetCountdown", null)
     ];
 
     public static IReadOnlyCollection<string> SupportedIds { get; } = Definitions.Select(item => item.Id).ToArray();
     private static readonly IReadOnlyDictionary<string, WidgetDefinition> DefinitionsById =
         Definitions.ToDictionary(item => item.Id, StringComparer.Ordinal);
 
-    public static IReadOnlyList<DockWidget> CreateWidgets(IReadOnlyList<string>? selected, StopwatchDockWidget stopwatch) =>
+    public IReadOnlyList<DockWidget> CreateWidgets(IReadOnlyList<string>? selected) =>
         Definitions.Where(definition => selected?.Contains(definition.Id, StringComparer.Ordinal) == true)
-            .Select(definition => definition.Id == StopwatchId ? stopwatch : new DockWidget(definition.Id, UiText.Get(definition.LabelKey)))
+            .Select(definition => definition.Id switch
+            {
+                StopwatchId => _stopwatch,
+                CountdownId => _countdown,
+                _ => new DockWidget(definition.Id, UiText.Get(definition.LabelKey))
+            })
             .ToArray();
 
     public static IReadOnlyList<DockWidgetOption> CreateOptions(IReadOnlyList<string>? installed, IReadOnlyList<string>? selected) =>
@@ -52,8 +61,8 @@ public static class DockWidgetService
         var culture = CultureInfo.GetCultureInfo(language == AppLanguage.Turkish ? "tr-TR" : "en-US");
         foreach (var widget in widgets)
         {
-            if (widget is StopwatchDockWidget stopwatch)
-                stopwatch.Refresh();
+            if (widget is ITimedDockWidget timed)
+                timed.Refresh();
             else if (DefinitionsById.TryGetValue(widget.Id, out var definition) && definition.Read is not null)
                 widget.Value = definition.Read(culture);
         }

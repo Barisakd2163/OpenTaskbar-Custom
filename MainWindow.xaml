@@ -240,6 +240,7 @@
                             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" /></Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" /></Trigger>
                             <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45" /></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -254,24 +255,60 @@
                 </StackPanel>
             </Border>
         </DataTemplate>
+        <DataTemplate x:Key="TimedWidgetControls">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Value}" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"
+                           FontSize="{StaticResource TextSizeWidgetValue}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                <Button Click="TimedWidgetToggle_Click" Width="{StaticResource DockWidgetPrimaryActionWidth}" IsEnabled="{Binding CanToggle}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource DockWidgetAction}">
+                            <Setter Property="Content" Value="{local:Loc TimedWidgetStart}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Content" Value="{local:Loc TimedWidgetPause}" /></DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Content="{local:Loc TimedWidgetReset}" Style="{StaticResource DockWidgetAction}" Click="TimedWidgetReset_Click" />
+            </StackPanel>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type local:StopwatchDockWidget}">
             <Border Style="{StaticResource DockWidgetFrame}" AutomationProperties.Name="{local:Loc WidgetStopwatch}">
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{local:Loc WidgetStopwatch}" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeWidgetLabel}" />
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource TimedWidgetControls}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type local:CountdownDockWidget}">
+            <Border Style="{StaticResource DockWidgetFrame}" AutomationProperties.Name="{local:Loc WidgetCountdown}">
+                <StackPanel VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Value}" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"
-                                   FontSize="{StaticResource TextSizeWidgetValue}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
-                        <Button Click="StopwatchToggle_Click" Width="{StaticResource DockWidgetPrimaryActionWidth}">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource DockWidgetAction}">
-                                    <Setter Property="Content" Value="{local:Loc StopwatchStart}" />
+                        <TextBlock Text="{local:Loc WidgetCountdown}" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeWidgetLabel}" />
+                        <TextBlock Text="{Binding StatusText}" Margin="{StaticResource DockWidgetActionMargin}"
+                                   FontSize="{StaticResource TextSizeWidgetLabel}" AutomationProperties.LiveSetting="Polite">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Content" Value="{local:Loc StopwatchPause}" /></DataTrigger>
+                                        <DataTrigger Binding="{Binding HasValidationError}" Value="True"><Setter Property="Foreground" Value="{DynamicResource DangerText}" /></DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button Content="{local:Loc StopwatchReset}" Style="{StaticResource DockWidgetAction}" Click="StopwatchReset_Click" />
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox Text="{Binding MinutesText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditDuration}"
+                                 PreviewMouseLeftButtonDown="WidgetDuration_PreviewMouseLeftButtonDown"
+                                 Width="{StaticResource DockWidgetDurationWidth}" Height="{StaticResource DockWidgetActionHeight}"
+                                 Padding="{StaticResource DockWidgetDurationPadding}" VerticalContentAlignment="Center"
+                                 Background="{DynamicResource SettingsControl}" Foreground="{DynamicResource TextPrimary}"
+                                 CaretBrush="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource StrokeSubtle}"
+                                 AutomationProperties.Name="{local:Loc CountdownMinutes}" AutomationProperties.HelpText="{Binding StatusText}"
+                                 ToolTip="{local:Loc CountdownMinutes}" />
+                        <TextBlock Text="{local:Loc MinuteUnit}" Margin="{StaticResource DockWidgetActionMargin}"
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource TimedWidgetControls}" Margin="{StaticResource DockWidgetActionMargin}" />
                     </StackPanel>
                 </StackPanel>
             </Border>

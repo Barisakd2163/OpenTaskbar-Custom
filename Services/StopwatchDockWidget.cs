@@ -2,12 +2,13 @@ using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
-public sealed class StopwatchDockWidget(TimeProvider timeProvider) : DockWidget(DockWidgetService.StopwatchId, UiText.Get("WidgetStopwatch"))
+public sealed class StopwatchDockWidget(TimeProvider timeProvider) : DockWidget(DockWidgetService.StopwatchId, UiText.Get("WidgetStopwatch")), ITimedDockWidget
 {
     private TimeSpan _elapsed;
     private long _startedAt;
 
     public bool IsRunning { get; private set; }
+    public bool CanToggle => true;
     public TimeSpan Elapsed => _elapsed + (IsRunning ? timeProvider.GetElapsedTime(_startedAt) : TimeSpan.Zero);
 
     public void Toggle()

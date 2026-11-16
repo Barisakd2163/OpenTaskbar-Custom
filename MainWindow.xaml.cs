@@ -31,8 +31,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly ObservableCollection<DockWidget> _widgets = [];
-    private readonly StopwatchDockWidget _stopwatch = new(TimeProvider.System);
-    private readonly DispatcherTimer _stopwatchRefreshTimer;
+    private readonly DockWidgetService _widgetService = new(TimeProvider.System);
+    private readonly DispatcherTimer _timedWidgetRefreshTimer;
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ApplicationPreferences _preferences = ((App)Application.Current).Preferences;
     private SettingsWindow? _settingsWindow;
@@ -83,11 +83,11 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(15)
         };
         _widgetRefreshTimer.Tick += WidgetRefreshTimer_Tick;
-        _stopwatchRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _timedWidgetRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromSeconds(1)
         };
-        _stopwatchRefreshTimer.Tick += StopwatchRefreshTimer_Tick;
+        _timedWidgetRefreshTimer.Tick += TimedWidgetRefreshTimer_Tick;
         ApplyWidgets(_preferences.Current.Widgets);
         _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
@@ -1460,12 +1460,13 @@ public partial class MainWindow : Window
 
     private void ApplyWidgets(IReadOnlyList<string>? selected)
     {
+        foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
         _widgets.Clear();
-        foreach (var widget in DockWidgetService.CreateWidgets(selected, _stopwatch)) _widgets.Add(widget);
-        if (_widgets.Contains(_stopwatch) && _stopwatch.IsRunning) _stopwatchRefreshTimer.Start();
-        else _stopwatchRefreshTimer.Stop();
+        foreach (var widget in _widgetService.CreateWidgets(selected)) _widgets.Add(widget);
+        foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
         WidgetDivider.Visibility = _widgets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+        UpdateTimedWidgetRefresh();
         ResizeDockToContent();
     }
 
@@ -1480,20 +1481,37 @@ public partial class MainWindow : Window
         if (e.WidthChanged) ResizeDockToContent();
     }
 
-    private void StopwatchToggle_Click(object sender, RoutedEventArgs e)
+    private void TimedWidgetToggle_Click(object sender, RoutedEventArgs e)
     {
-        _stopwatch.Toggle();
-        if (_stopwatch.IsRunning) _stopwatchRefreshTimer.Start();
-        else _stopwatchRefreshTimer.Stop();
+        if (sender is Button { DataContext: ITimedDockWidget widget }) widget.Toggle();
     }
 
-    private void StopwatchReset_Click(object sender, RoutedEventArgs e)
+    private void WidgetDuration_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        _stopwatch.Reset();
-        _stopwatchRefreshTimer.Stop();
+        // App commands preserve the foreground window; editing a duration needs keyboard focus instead.
+        if (!IsActive && !Activate()) ShowStatus(UiText.Get("WidgetInputFocusError"));
     }
 
-    private void StopwatchRefreshTimer_Tick(object? sender, EventArgs e) => _stopwatch.Refresh();
+    private void TimedWidgetReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ITimedDockWidget widget }) widget.Reset();
+    }
+
+    private void TimedWidget_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ITimedDockWidget.IsRunning)) UpdateTimedWidgetRefresh();
+    }
+
+    private void UpdateTimedWidgetRefresh()
+    {
+        if (_widgets.OfType<ITimedDockWidget>().Any(widget => widget.IsRunning)) _timedWidgetRefreshTimer.Start();
+        else _timedWidgetRefreshTimer.Stop();
+    }
+
+    private void TimedWidgetRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        foreach (var widget in _widgets.OfType<ITimedDockWidget>()) widget.Refresh();
+    }
 
     private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
     {
@@ -1773,8 +1791,9 @@ public partial class MainWindow : Window
         _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
         _widgetRefreshTimer.Stop();
         _widgetRefreshTimer.Tick -= WidgetRefreshTimer_Tick;
-        _stopwatchRefreshTimer.Stop();
-        _stopwatchRefreshTimer.Tick -= StopwatchRefreshTimer_Tick;
+        _timedWidgetRefreshTimer.Stop();
+        _timedWidgetRefreshTimer.Tick -= TimedWidgetRefreshTimer_Tick;
+        foreach (var widget in _widgets.OfType<ITimedDockWidget>()) widget.PropertyChanged -= TimedWidget_PropertyChanged;
         _thumbnailPreview.PointerEntered -= ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft -= ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;

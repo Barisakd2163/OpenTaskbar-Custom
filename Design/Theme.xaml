@@ -21,6 +21,8 @@
     <Thickness x:Key="DockWidgetActionMargin">6,0,0,0</Thickness>
     <sys:Double x:Key="DockWidgetActionHeight">28</sys:Double>
     <sys:Double x:Key="DockWidgetPrimaryActionWidth">66</sys:Double>
+    <sys:Double x:Key="DockWidgetDurationWidth">40</sys:Double>
+    <Thickness x:Key="DockWidgetDurationPadding">4,2</Thickness>
     <CornerRadius x:Key="DockWidgetActionRadius">5</CornerRadius>
     <sys:Double x:Key="DockHeadroom">24</sys:Double>
     <sys:Double x:Key="DockWindowHeight">98</sys:Double>
