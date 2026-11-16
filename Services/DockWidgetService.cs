@@ -64,10 +64,14 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         var culture = CultureInfo.GetCultureInfo(language == AppLanguage.Turkish ? "tr-TR" : "en-US");
         foreach (var widget in widgets)
         {
-            if (widget is ITimedDockWidget timed)
-                timed.Refresh();
-            else if (DefinitionsById.TryGetValue(widget.Id, out var definition) && definition.Read is not null)
-                widget.Value = definition.Read(culture);
+            if (DefinitionsById.TryGetValue(widget.Id, out var definition))
+            {
+                widget.Label = UiText.Get(definition.LabelKey);
+                if (widget is ITimedDockWidget timed)
+                    timed.Refresh();
+                else if (definition.Read is not null)
+                    widget.Value = definition.Read(culture);
+            }
         }
     }
 

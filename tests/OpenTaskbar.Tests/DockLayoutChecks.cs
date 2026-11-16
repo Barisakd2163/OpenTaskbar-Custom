@@ -254,6 +254,28 @@ internal static class DockLayoutChecks
         app.Resources["DockCellHeight"] = DockMetrics.CellSize;
         app.Resources["DockIconSize"] = DockMetrics.IconSize;
 
+        // Verify dynamic widget label localization
+        var widgetService = new DockWidgetService(TimeProvider.System);
+        var testWidgets = widgetService.CreateWidgets(DockWidgetService.SupportedIds.ToArray());
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+        DockWidgetService.Refresh(testWidgets, AppLanguage.Turkish);
+        var clockTr = testWidgets.First(w => w.Id == DockWidgetService.ClockId);
+        var stopwatchTr = testWidgets.First(w => w.Id == DockWidgetService.StopwatchId);
+        Check(clockTr.Label == "Saat", "Clock widget label must localize to Turkish.");
+        Check(stopwatchTr.Label == "Kronometre", "Stopwatch widget label must localize to Turkish.");
+
+        UiText.Current.SetLanguage(AppLanguage.English);
+        DockWidgetService.Refresh(testWidgets, AppLanguage.English);
+        Check(clockTr.Label == "Clock", "Clock widget label must localize to English.");
+        Check(stopwatchTr.Label == "Stopwatch", "Stopwatch widget label must localize to English.");
+
+        // Verify TaskbarReplacement error keys localization
+        Check(UiText.Get("ErrorTaskbarHide") == "Cannot hide the Windows taskbar.", "Taskbar hide error must localize to English.");
+        Check(UiText.Get("ErrorTaskbarRestoreFailed").Contains("Cannot restore the Windows taskbar"), "Taskbar restore error must localize to English.");
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+        Check(UiText.Get("ErrorTaskbarHide") == "Windows görev çubuğu gizlenemedi.", "Taskbar hide error must localize to Turkish.");
+        Check(UiText.Get("ErrorTaskbarRestoreFailed").Contains("Windows görev çubuğu geri yüklenemedi"), "Taskbar restore error must localize to Turkish.");
+
         return checks;
     }
 }

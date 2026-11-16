@@ -88,7 +88,8 @@ public partial class MainWindow
         PinnedApps.ItemsPanel = panel;
         RunningApps.ItemsPanel = panel;
         StackItems.ItemsPanel = panel;
-        foreach (var divider in new[] { StartDivider, RunningAppsDivider, ExtrasDivider })
+        DockWidgets.ItemsPanel = panel;
+        foreach (var divider in new[] { StartDivider, RunningAppsDivider, ExtrasDivider, WidgetDivider })
         {
             divider.Width = vertical ? 22 : 1;
             divider.Height = vertical ? 1 : 22;

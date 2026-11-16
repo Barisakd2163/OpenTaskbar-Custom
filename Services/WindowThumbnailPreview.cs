@@ -462,6 +462,8 @@ public sealed class WindowThumbnailPreview : IDisposable
         _closeButtonWindow.Closed -= CloseButtonWindow_Closed;
         _closeButtonWindow.MouseEnter -= Window_MouseEnter;
         _closeButtonWindow.MouseLeave -= Window_MouseLeave;
+        _window.MouseEnter -= Window_MouseEnter;
+        _window.MouseLeave -= Window_MouseLeave;
         if (!_closeWindowClosed)
         {
             _closeButtonWindow.Close();

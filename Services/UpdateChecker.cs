@@ -38,7 +38,8 @@ public static class UpdateChecker
             if (!Version.TryParse(tag.TrimStart('v', 'V').Split('-', '+')[0], out var version)) return (null, false);
             return (Normalize(version) > Normalize(CurrentVersion) ? new Release(version, tag, url) : null, true);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
+            or TimeoutException or JsonException or KeyNotFoundException or InvalidOperationException)
         {
             AppLog.Info($"Update check failed: {ex.Message}");
             return (null, false);

@@ -49,8 +49,8 @@ public static class WeatherService
                 current.GetProperty("apparent_temperature").GetDouble(),
                 days), null);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException
-            or InvalidOperationException or FormatException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
+            or TimeoutException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
             AppLog.Info($"Weather unavailable: {ex.Message}");
             return (null, UiText.Get("ErrorWeatherLoad"));

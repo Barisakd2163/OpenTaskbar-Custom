@@ -199,14 +199,14 @@ public sealed class TaskbarReplacementSession : IDisposable
 
             if (!HideNativeTaskbar())
             {
-                throw new InvalidOperationException("Windows görev çubuğu gizlenemedi.");
+                throw new InvalidOperationException(UiText.Get("ErrorTaskbarHide"));
             }
 
             var data = CreateData();
             data.uCallbackMessage = CallbackMessage;
             if (SHAppBarMessage(AbmNew, ref data) == 0)
             {
-                throw new InvalidOperationException("OpenTaskbar Windows'a AppBar olarak kaydedilemedi.");
+                throw new InvalidOperationException(UiText.Get("ErrorAppBarRegister"));
             }
 
             _registered = true;
@@ -245,7 +245,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         if (!SetTaskbarState(ReplacementState, _handle) || !HideNativeTaskbar())
         {
-            OperationFailed?.Invoke("Windows görev çubuğu yeniden gizlenemedi.");
+            OperationFailed?.Invoke(UiText.Get("ErrorTaskbarRehide"));
             return;
         }
 
@@ -253,7 +253,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         data.uCallbackMessage = CallbackMessage;
         if (SHAppBarMessage(AbmNew, ref data) == 0)
         {
-            OperationFailed?.Invoke("OpenTaskbar Windows'a AppBar olarak kaydedilemedi.");
+            OperationFailed?.Invoke(UiText.Get("ErrorAppBarRegister"));
             return;
         }
         _registered = true;
@@ -306,7 +306,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         if (Interlocked.CompareExchange(ref _stopInProgress, 1, 0) != 0)
         {
-            return "Windows görev çubuğu geri yükleme işlemi devam ediyor.";
+            return UiText.Get("ErrorTaskbarRestoreInProgress");
         }
 
         try
@@ -326,7 +326,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
             var taskbarShown = ShowNativeTaskbar();
             if (!stateRestored || !taskbarShown)
-                return "Windows görev çubuğu geri yüklenemedi. Kapatmayı yeniden deneyin veya Windows görev çubuğu ayarlarını denetleyin.";
+                return UiText.Get("ErrorTaskbarRestoreFailed");
 
             _stateChangeStarted = false;
             return DeleteJournal();
@@ -348,7 +348,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         if (!SetTaskbarState(ReplacementState, _handle))
         {
-            OperationFailed?.Invoke("Windows görev çubuğunun otomatik gizleme ayarı değiştirilemedi.");
+            OperationFailed?.Invoke(UiText.Get("ErrorTaskbarAutoHideToggle"));
             return;
         }
         PositionDockWindow();
@@ -683,7 +683,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var state)
             || (state & ~SupportedTaskbarState) != 0)
         {
-            throw new InvalidDataException("Görev çubuğu kurtarma kaydı geçersiz.");
+            throw new InvalidDataException(UiText.Get("ErrorTaskbarJournalInvalid"));
         }
 
         return state;
@@ -702,11 +702,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (IOException)
         {
-            return "Görev çubuğu ayarı geri yüklendi ancak kurtarma kaydı silinemedi.";
+            return UiText.Get("ErrorTaskbarJournalDelete");
         }
         catch (UnauthorizedAccessException)
         {
-            return "Görev çubuğu ayarı geri yüklendi ancak kurtarma kaydını silme izni yok.";
+            return UiText.Get("ErrorTaskbarJournalAccess");
         }
     }
 
