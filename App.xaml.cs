@@ -14,11 +14,13 @@ public partial class App : Application
     private Mutex? _instanceMutex;
     public ApplicationPreferences Preferences { get; private set; } = new(new DockSettingsStore());
     public bool IsPreview { get; private set; }
+    public bool IsInspection { get; private set; }
     public bool OpenSettingsOnStartup { get; private set; }
 
     protected override void OnStartup(StartupEventArgs e)
     {
         IsPreview = e.Args.Contains("--preview", StringComparer.Ordinal);
+        IsInspection = e.Args.Contains("--inspect", StringComparer.Ordinal);
         OpenSettingsOnStartup = e.Args.Contains("--settings", StringComparer.Ordinal);
         if (IsPreview)
             Preferences = new ApplicationPreferences(new DockSettingsStore(Path.Combine(

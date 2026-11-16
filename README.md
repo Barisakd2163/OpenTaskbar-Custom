@@ -48,6 +48,8 @@ dotnet run --project OpenTaskbar.csproj -- --preview --settings
 
 Preview runs the same dock and settings UI with live local data in a separately discoverable window. It can coexist with the regular dock and uses `%LOCALAPPDATA%\OpenTaskbar\preview-settings.json`, a separate empty-by-default configuration. `--settings` opens Settings on startup and also works in regular mode. Only one instance of each mode can run at a time.
 
+To inspect the real taskbar replacement workflow, use `--inspect --settings` instead. This uses the normal settings file and native taskbar replacement; the dock remains visible in Alt+Tab so desktop inspection tools can target it. Exit OpenTaskbar to restore the native Windows taskbar before switching between regular and inspection launches. Inspection shares the regular instance lock.
+
 To create a self-contained portable executable:
 
 ```powershell

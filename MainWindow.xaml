@@ -345,7 +345,7 @@
                         </ItemsControl.ItemsPanel>
                     </ItemsControl>
                     <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" />
-                    <ItemsControl x:Name="DockWidgets">
+                    <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>

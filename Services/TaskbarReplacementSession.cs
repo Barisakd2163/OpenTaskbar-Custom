@@ -37,8 +37,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private uint _previousTaskbarState;
     private bool _disposed;
     private bool _fullScreenSuppressed;
-    private double _nativeTaskbarHeight = 66;
-    private const double DockHeadroomDips = 24;
+    private double _nativeTaskbarHeight;
     private bool _autoHideEnabled;
     private Size _lastLayout;
     private int _stopInProgress;
@@ -47,6 +46,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         _window = window;
         _handle = handle;
+        _nativeTaskbarHeight = (double)window.FindResource("DockMinimumShelfHeight");
         AppDomain.CurrentDomain.ProcessExit += Process_Exit;
     }
 
@@ -302,10 +302,12 @@ public sealed class TaskbarReplacementSession : IDisposable
         var dpi = GetDpiForWindow(_handle);
         if (dpi == 0) return;
         var reservedHeight = monitorInfo.rcMonitor.Bottom - monitorInfo.rcWork.Bottom;
-        var preferredHeightPixels = (int)Math.Round(_nativeTaskbarHeight * dpi / 96d);
+        // The floating dock needs its own minimum shelf height even when Explorer's taskbar is shorter.
+        var shelfHeight = Math.Max(_nativeTaskbarHeight, (double)_window.FindResource("DockMinimumShelfHeight"));
+        var preferredHeightPixels = (int)Math.Ceiling(shelfHeight * dpi / 96d);
         var height = reservedHeight > 0 ? Math.Max(reservedHeight, preferredHeightPixels)
             : Math.Max(1, preferredHeightPixels);
-        var headroom = (int)Math.Round(DockHeadroomDips * dpi / 96d);
+        var headroom = (int)Math.Ceiling((double)_window.FindResource("DockHeadroom") * dpi / 96d);
         var totalHeight = height + headroom;
         var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,
             height * 96d / dpi);

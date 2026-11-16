@@ -61,11 +61,12 @@ public partial class MainWindow : Window
     private bool _resizingFromLeft;
     private double _resizeAnchor;
     private readonly bool _isPreview = ((App)Application.Current).IsPreview;
+    private readonly bool _isInspection = ((App)Application.Current).IsInspection;
 
     public MainWindow()
     {
         InitializeComponent();
-        ShowInTaskbar = _isPreview;
+        ShowInTaskbar = _isPreview || _isInspection;
         if (((App)Application.Current).OpenSettingsOnStartup)
             Loaded += (_, _) => OpenSettings_Click(this, new RoutedEventArgs());
         PinnedApps.ItemsSource = _pinnedApps;
@@ -117,7 +118,7 @@ public partial class MainWindow : Window
         _source = source;
         _source.AddHook(WindowProc);
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
-        if (!_isPreview && !ExcludeFromTaskSwitcher(source.Handle))
+        if (!_isPreview && !_isInspection && !ExcludeFromTaskSwitcher(source.Handle))
         {
             ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
         }
@@ -1419,7 +1420,11 @@ public partial class MainWindow : Window
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow(_preferences);
-            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Closed += (_, _) =>
+            {
+                _settingsWindow = null;
+                _autoHideController?.EvaluateState();
+            };
             _settingsWindow.Show();
         }
         if (_settingsWindow.WindowState == WindowState.Minimized) _settingsWindow.WindowState = WindowState.Normal;
@@ -1468,6 +1473,11 @@ public partial class MainWindow : Window
     {
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
         ResizeDockToContent();
+    }
+
+    private void DockWidgets_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged) ResizeDockToContent();
     }
 
     private void StopwatchToggle_Click(object sender, RoutedEventArgs e)
@@ -1589,12 +1599,15 @@ public partial class MainWindow : Window
     private void ApplyTaskbarLayout(Size area)
     {
         _dockArea = area;
-        var effectiveHeight = Math.Max(66, area.Height);
-        var bottomGap = 6.0;
-        var topGap = Math.Max(0.0, effectiveHeight - 60 - bottomGap);
-        DockSurface.Margin = new Thickness(12, topGap, 12, bottomGap);
-        var availableCellHeight = Math.Min(52, effectiveHeight - bottomGap - topGap - 8);
-        Application.Current.Resources["DockCellHeight"] = Math.Max(32, availableCellHeight);
+        var effectiveHeight = Math.Max((double)FindResource("DockMinimumShelfHeight"), area.Height);
+        var inset = (Thickness)FindResource("DockInset");
+        DockSurface.Margin = inset;
+        var availableCellHeight = effectiveHeight - inset.Top - inset.Bottom
+            - DockSurface.Padding.Top - DockSurface.Padding.Bottom
+            - DockSurface.BorderThickness.Top - DockSurface.BorderThickness.Bottom
+            - (double)FindResource("DockScrollBarHeight");
+        Application.Current.Resources["DockCellHeight"] = Math.Clamp(availableCellHeight,
+            (double)FindResource("DockMinimumCellSize"), (double)FindResource("DockMaximumCellSize"));
         ResizeDockToContent();
     }
 

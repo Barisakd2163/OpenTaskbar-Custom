@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 
 namespace OpenTaskbar.Models;
 
@@ -6,10 +7,30 @@ public sealed class DockWidgetOption(string id, string label, string description
 {
     private bool _isInstalled = isInstalled;
     private bool _isEnabled = isEnabled;
+    private string _label = label;
+    private string _description = description;
 
     public string Id { get; } = id;
-    public string Label { get; } = label;
-    public string Description { get; } = description;
+    public string Label => _label;
+    public string Description => _description;
+
+    public bool MatchesSearch(string query, CultureInfo culture) =>
+        culture.CompareInfo.IndexOf(Label, query, CompareOptions.IgnoreCase) >= 0
+        || culture.CompareInfo.IndexOf(Description, query, CompareOptions.IgnoreCase) >= 0;
+
+    public void UpdateText(string label, string description)
+    {
+        if (_label != label)
+        {
+            _label = label;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
+        }
+        if (_description != description)
+        {
+            _description = description;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Description)));
+        }
+    }
 
     public bool IsInstalled
     {

@@ -201,6 +201,9 @@ public sealed class NativeWindowTracker : IDisposable
             return true;
         }
 
+        GetWindowThreadProcessId(windowHandle, out var processId);
+        if (processId == Environment.ProcessId) return true;
+
         var extendedStyle = GetWindowLongPtr(windowHandle, GwlExStyle).ToInt64();
         if ((extendedStyle & WsExToolWindow) != 0 && (extendedStyle & WsExAppWindow) == 0)
         {

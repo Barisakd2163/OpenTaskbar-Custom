@@ -10,9 +10,9 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 | Token | Value | Description |
 | :--- | :--- | :--- |
-| `DockWindowHeight` | `98 DIP` | Total height of the transparent window container, including the scrollbar and icon row |
+| `DockWindowHeight` | `98 DIP` | Initial and preview window height; replacement mode derives its height from the shelf and headroom |
 | `DockHeadroom` | `24 DIP` | Transparent top headroom allowing unclipped icon magnification |
-| `_nativeTaskbarHeight` | `66 DIP` | Base height of the floating dock container shelf |
+| `DockMinimumShelfHeight` | `74 DIP` | Minimum shelf shared by the replacement window and dock layout; accommodates icon indicators, widget controls, padding, borders, and scrolling even when Explorer's taskbar is shorter |
 | `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
 | `DockMinimumCellSize` | `24 DIP` | Smallest application cell width while dock contents are being fitted |
 | `DockMaximumCellSize` | `52 DIP` | Largest application cell width while dock contents are being fitted |

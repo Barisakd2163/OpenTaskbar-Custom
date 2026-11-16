@@ -24,6 +24,7 @@
     <CornerRadius x:Key="DockWidgetActionRadius">5</CornerRadius>
     <sys:Double x:Key="DockHeadroom">24</sys:Double>
     <sys:Double x:Key="DockWindowHeight">98</sys:Double>
+    <sys:Double x:Key="DockMinimumShelfHeight">74</sys:Double>
     <sys:Double x:Key="DockCellSize">52</sys:Double>
     <sys:Double x:Key="DockMinimumCellSize">24</sys:Double>
     <sys:Double x:Key="DockMaximumCellSize">52</sys:Double>
