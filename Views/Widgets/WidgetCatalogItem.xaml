@@ -8,13 +8,20 @@
     <Button x:Name="PreviewButton" Style="{StaticResource WidgetCatalogPreviewButton}" Click="Preview_Click"
             AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
         <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None">
                 <ContentControl.LayoutTransform>
-                    <ScaleTransform ScaleX="1.15" ScaleY="1.15" />
+                    <ScaleTransform ScaleX="1.05" ScaleY="1.05" />
                 </ContentControl.LayoutTransform>
             </ContentControl>
-            <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" />
+            <TextBlock Grid.Row="1" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,6,0,0"
+                       FontSize="{StaticResource TextSizeCaption}" Foreground="{DynamicResource TextSecondary}"
+                       TextTrimming="CharacterEllipsis" IsHitTestVisible="False" />
+            <TextBlock Grid.RowSpan="2" Style="{StaticResource WidgetCatalogInstallMark}" />
         </Grid>
     </Button>
 </UserControl>

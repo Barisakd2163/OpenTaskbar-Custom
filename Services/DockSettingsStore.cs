@@ -109,6 +109,7 @@ public sealed class DockSettingsStore
         && settings.Widgets?.Any(widget => settings.InstalledWidgets?.Contains(widget, StringComparer.Ordinal) != true) != true
         && Enum.IsDefined(settings.LauncherHotkey) && Enum.IsDefined(settings.DockHotkey)
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
+        && Enum.IsDefined(settings.DateStyle)
         && settings.WeatherCity is { Length: <= 80 }
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true

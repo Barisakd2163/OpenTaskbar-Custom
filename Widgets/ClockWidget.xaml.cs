@@ -10,8 +10,9 @@ namespace OpenTaskbar.Widgets;
 public partial class ClockWidget : DockWidget
 {
     private readonly DockFlyout _calendar = new();
-    private string _lastMinute = string.Empty;
+    private string _lastRenderKey = string.Empty;
     private DateOnly _shownMonth;
+    private DateTime _lastWeatherFetchUtc = DateTime.MinValue;
 
     public ClockWidget()
     {
@@ -21,10 +22,21 @@ public partial class ClockWidget : DockWidget
 
     private CultureInfo Culture => CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
 
+    protected override void OnActivated()
+    {
+        _lastRenderKey = string.Empty;
+        OnTick(DateTime.Now);
+        EnsureWeatherLoaded();
+    }
+
     protected override void OnSettingsChanged()
     {
-        _lastMinute = string.Empty;
-        UpdateWeatherDisplay();
+        _lastRenderKey = string.Empty;
+        if (IsActive)
+        {
+            OnTick(DateTime.Now);
+            EnsureWeatherLoaded();
+        }
     }
 
     protected override void OnDeactivated() => _calendar.Close();
@@ -32,22 +44,57 @@ public partial class ClockWidget : DockWidget
     protected override void OnTick(DateTime now)
     {
         var culture = Culture;
-        var minute = now.ToString("g", culture);
-        if (minute != _lastMinute)
+        var timeFormat = Settings.Clock24Hour
+            ? (Settings.ClockShowSeconds ? "HH:mm:ss" : "HH:mm")
+            : (Settings.ClockShowSeconds ? "hh:mm:ss tt" : "hh:mm tt");
+        var timeString = now.ToString(timeFormat, culture);
+        var renderKey = $"{timeString}|{Settings.DateStyle}|{Settings.Language}";
+        if (renderKey != _lastRenderKey)
         {
-            _lastMinute = minute;
-            TimeText.Text = now.ToString("t", culture);
-            DayOfWeekText.Text = now.ToString("dddd", culture).ToUpper(culture);
-            DateText.Text = now.ToString(Settings.Language == AppLanguage.English ? "MMM d" : "d MMM", culture);
+            _lastRenderKey = renderKey;
+            TimeText.Text = timeString;
+            switch (Settings.DateStyle)
+            {
+                case ClockDateStyle.DayAndShortDate:
+                    DateColumn.Visibility = Visibility.Visible;
+                    DayOfWeekText.Visibility = Visibility.Visible;
+                    DayOfWeekText.Text = now.ToString("dddd", culture).ToUpper(culture);
+                    DateText.Text = now.ToString(Settings.Language == AppLanguage.English ? "MMM d" : "d MMM", culture);
+                    break;
+                case ClockDateStyle.ShortDateOnly:
+                    DateColumn.Visibility = Visibility.Visible;
+                    DayOfWeekText.Visibility = Visibility.Collapsed;
+                    DateText.Text = now.ToString(Settings.Language == AppLanguage.English ? "MMM d, yyyy" : "d MMM yyyy", culture);
+                    break;
+                case ClockDateStyle.NumericDate:
+                    DateColumn.Visibility = Visibility.Visible;
+                    DayOfWeekText.Visibility = Visibility.Collapsed;
+                    DateText.Text = now.ToString("d", culture);
+                    break;
+                case ClockDateStyle.Hidden:
+                    DateColumn.Visibility = Visibility.Collapsed;
+                    break;
+            }
             ClockButton.ToolTip = now.ToString("D", culture);
         }
 
+        if (Settings.ClockShowWeather && (DateTime.UtcNow - _lastWeatherFetchUtc).TotalMinutes >= 30)
+        {
+            EnsureWeatherLoaded();
+        }
         UpdateWeatherDisplay();
+    }
+
+    private void EnsureWeatherLoaded()
+    {
+        if (!Settings.ClockShowWeather) return;
+        _lastWeatherFetchUtc = DateTime.UtcNow;
+        _ = WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language == AppLanguage.English, CancellationToken.None);
     }
 
     private void UpdateWeatherDisplay()
     {
-        if (Settings.ShowWeather && WeatherService.LastReport is { } report)
+        if (Settings.ClockShowWeather && WeatherService.LastReport is { } report)
         {
             WeatherIcon.Text = DescribeWeatherGlyph(report.Code);
             WeatherTemp.Text = $"{Math.Round(report.Temperature)}°";

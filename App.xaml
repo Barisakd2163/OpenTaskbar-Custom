@@ -8,9 +8,9 @@
                 <ResourceDictionary Source="Design/Theme.xaml" />
                 <ResourceDictionary Source="Design/DockControls.xaml" />
                 <ResourceDictionary Source="Design/ContextMenus.xaml" />
+                <ResourceDictionary Source="Design/Widgets.xaml" />
                 <ResourceDictionary Source="Design/WidgetControls.xaml" />
                 <ResourceDictionary Source="Design/SettingsControls.xaml" />
-                <ResourceDictionary Source="Design/Widgets.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

@@ -12,7 +12,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Left: Day name & Date -->
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+            <StackPanel x:Name="DateColumn" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
                 <TextBlock x:Name="DayOfWeekText" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"
                            TextAlignment="Left" HorizontalAlignment="Left" />
                 <TextBlock x:Name="DateText" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"

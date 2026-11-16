@@ -31,7 +31,6 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     private static readonly WidgetDefinition[] Definitions =
     [
         new(ClockId, "WidgetClock", culture => DateTime.Now.ToString("HH:mm", culture)),
-        new(DateId, "WidgetDate", culture => DateTime.Now.ToString("ddd, d MMM", culture)),
         new(MediaId, "WidgetMedia", _ => "▶ · 02:15"),
         new(AudioId, "WidgetAudio", _ => "100%"),
         new(QuickSettingsId, "WidgetQuickSettings", _ => "Wi-Fi · BT"),
@@ -49,7 +48,8 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new(CountdownId, "WidgetCountdown", null)
     ];
 
-    public static IReadOnlyCollection<string> SupportedIds { get; } = Definitions.Select(item => item.Id).ToArray();
+    public static IReadOnlyCollection<string> SupportedIds { get; } =
+        Definitions.Select(item => item.Id).Append(DateId).Distinct(StringComparer.Ordinal).ToArray();
     private static readonly IReadOnlyDictionary<string, WidgetDefinition> DefinitionsById =
         Definitions.ToDictionary(item => item.Id, StringComparer.Ordinal);
 

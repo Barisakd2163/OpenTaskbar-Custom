@@ -15,24 +15,15 @@ using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar;
 
-public sealed class WidgetOrderItem(string id, string label)
-{
-    public string Id { get; } = id;
-    public string Label { get; } = label;
-}
-
 public partial class SettingsWindow : Window
 {
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
-    private readonly ObservableCollection<DockWidgetOption> _installedWidgetOptions = [];
-    private readonly ObservableCollection<WidgetOrderItem> _widgetOrderItems = [];
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private bool _startupEnabled;
     private bool _startupAvailable;
-    private bool _widgetOrderChanged;
     private DockSettings _applied;
     private bool _closingApplication;
     private bool _initializing = true;
@@ -46,14 +37,9 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets))
         {
-            option.PropertyChanged += WidgetOption_PropertyChanged;
             _widgetOptions.Add(option);
         }
         WidgetOptionsList.ItemsSource = _widgetOptions;
-        InstalledWidgetsList.ItemsSource = _installedWidgetOptions;
-        WidgetOrderList.ItemsSource = _widgetOrderItems;
-        RefreshInstalledWidgetsList();
-        LoadWidgetOrder(_applied.WidgetOrder);
         System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions).Filter = item =>
             item is DockWidgetOption option && option.MatchesSearch(WidgetSearch.Text.Trim(),
                 CultureInfo.GetCultureInfo(_preferences.Current.Language == AppLanguage.Turkish ? "tr-TR" : "en-US"));
@@ -233,80 +219,14 @@ public partial class SettingsWindow : Window
             StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
             StartPlacement = StartLast.IsChecked == true ? StartButtonPlacement.End : StartHidden.IsChecked == true ? StartButtonPlacement.Hidden : StartButtonPlacement.Start,
             WheelVolume = WheelVolumeToggle.IsChecked == true,
-            WidgetOrder = _widgetOrderChanged ? _widgetOrderItems.Select(w => w.Id).ToArray() : _applied.WidgetOrder
+            Clock24Hour = Clock12HourRadio.IsChecked != true,
+            ClockShowSeconds = ClockSecondsToggle.IsChecked == true,
+            DateStyle = DateStyleHidden.IsChecked == true ? ClockDateStyle.Hidden
+                : DateStyleNumeric.IsChecked == true ? ClockDateStyle.NumericDate
+                : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
+                : ClockDateStyle.DayAndShortDate,
+            ClockShowWeather = ClockWeatherToggle.IsChecked == true
         };
-    }
-
-    private void RefreshInstalledWidgetsList()
-    {
-        _installedWidgetOptions.Clear();
-        foreach (var option in _widgetOptions.Where(option => option.IsInstalled))
-        {
-            _installedWidgetOptions.Add(option);
-        }
-    }
-
-    private void WidgetOption_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (_initializing) return;
-        if (e.PropertyName is nameof(DockWidgetOption.IsInstalled) or nameof(DockWidgetOption.IsEnabled))
-        {
-            RefreshInstalledWidgetsList();
-            LoadWidgetOrder(_widgetOrderItems.Select(w => w.Id).ToArray());
-            PreferenceEdited(this, new RoutedEventArgs());
-        }
-    }
-
-    private void LoadWidgetOrder(IReadOnlyList<string>? savedOrder)
-    {
-        _widgetOrderItems.Clear();
-        var order = (savedOrder ?? []).ToList();
-        foreach (var def in WidgetCoordinator.DefaultWidgetOrder)
-        {
-            if (!order.Contains(def, StringComparer.OrdinalIgnoreCase))
-            {
-                order.Add(def);
-            }
-        }
-
-        foreach (var id in order)
-        {
-            var labelKey = WidgetCoordinator.GetLabelKey(id);
-            if (labelKey is not null)
-            {
-                _widgetOrderItems.Add(new WidgetOrderItem(id, UiText.Get(labelKey)));
-            }
-        }
-    }
-
-    private void WidgetMoveUp_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: string id })
-        {
-            var list = _widgetOrderItems.ToList();
-            var index = list.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (index > 0)
-            {
-                _widgetOrderChanged = true;
-                _widgetOrderItems.Move(index, index - 1);
-                PreferenceEdited(sender, e);
-            }
-        }
-    }
-
-    private void WidgetMoveDown_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: string id })
-        {
-            var list = _widgetOrderItems.ToList();
-            var index = list.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0 && index < _widgetOrderItems.Count - 1)
-            {
-                _widgetOrderChanged = true;
-                _widgetOrderItems.Move(index, index + 1);
-                PreferenceEdited(sender, e);
-            }
-        }
     }
 
     private void WidgetSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -359,8 +279,6 @@ public partial class SettingsWindow : Window
             option.IsEnabled = true;
         }
         _initializing = false;
-        RefreshInstalledWidgetsList();
-        LoadWidgetOrder(_widgetOrderItems.Select(w => w.Id).ToArray());
         UpdateWidgetOptionState();
         SaveSettings();
     }
@@ -383,6 +301,14 @@ public partial class SettingsWindow : Window
         BottomEdge.IsChecked = settings.Edge == DockEdge.Bottom;
         LeftEdge.IsChecked = settings.Edge == DockEdge.Left;
         RightEdge.IsChecked = settings.Edge == DockEdge.Right;
+        Clock24HourRadio.IsChecked = settings.Clock24Hour;
+        Clock12HourRadio.IsChecked = !settings.Clock24Hour;
+        ClockSecondsToggle.IsChecked = settings.ClockShowSeconds;
+        DateStyleDayShort.IsChecked = settings.DateStyle == ClockDateStyle.DayAndShortDate;
+        DateStyleShort.IsChecked = settings.DateStyle == ClockDateStyle.ShortDateOnly;
+        DateStyleNumeric.IsChecked = settings.DateStyle == ClockDateStyle.NumericDate;
+        DateStyleHidden.IsChecked = settings.DateStyle == ClockDateStyle.Hidden;
+        ClockWeatherToggle.IsChecked = settings.ClockShowWeather;
         WeatherCityBox.Text = settings.WeatherCity;
         LauncherAltSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.AltSpace;
         LauncherCtrlSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.CtrlSpace;
@@ -467,21 +393,19 @@ public partial class SettingsWindow : Window
             option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;
             option.IsEnabled = settings.Widgets?.Contains(option.Id, StringComparer.Ordinal) == true;
         }
-        RefreshInstalledWidgetsList();
         FocusMinutesSlider.Value = settings.FocusMinutes;
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = settings.FocusSessions;
         LoadFeatureSelection(settings);
-        LoadWidgetOrder(settings.WidgetOrder);
     }
 
     private void UpdateWidgetOptionState()
     {
         bool IsInstalled(string id) => _widgetOptions.Any(o => string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase) && o.IsInstalled);
-        InstalledWidgetsSection.Visibility = _installedWidgetOptions.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        WidgetOrderSection.Visibility = _widgetOrderItems.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        ClockOptions.Visibility = IsInstalled("Clock") ? Visibility.Visible : Visibility.Collapsed;
         FocusOptions.Visibility = IsInstalled("Focus") ? Visibility.Visible : Visibility.Collapsed;
-        WeatherOptions.Visibility = IsInstalled("Weather") ? Visibility.Visible : Visibility.Collapsed;
+        WeatherOptions.Visibility = IsInstalled("Weather") || (IsInstalled("Clock") && ClockWeatherToggle.IsChecked == true)
+            ? Visibility.Visible : Visibility.Collapsed;
         FocusMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(FocusMinutesSlider.Value));
         BreakMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(BreakMinutesSlider.Value));
         FocusSessionsValue.Text = ((int)Math.Round(FocusSessionsSlider.Value)).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -513,7 +437,6 @@ public partial class SettingsWindow : Window
             return;
         }
         _applied = settings;
-        _widgetOrderChanged = false;
         _startupEnabled = StartupToggle.IsChecked == true;
         ShowResult(UiText.Get("SettingsSaved"), error: false);
         UpdateApplyState();

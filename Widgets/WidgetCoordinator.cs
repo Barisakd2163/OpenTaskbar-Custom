@@ -60,20 +60,23 @@ public sealed class WidgetCoordinator : IDisposable
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
+    private static bool IsCatalogEnabled(DockSettings settings, string id) =>
+        settings.Widgets?.Contains(id, StringComparer.OrdinalIgnoreCase) == true;
+
     public WidgetCoordinator(Panel strip, Dispatcher dispatcher, Action<string> reportError)
     {
         _strip = strip;
         _widgets =
         [
-            new("Media", "WidgetMedia", new MediaWidget(), s => s.ShowMedia),
-            new("Desktops", "WidgetDesktops", new DesktopsWidget(), s => s.ShowVirtualDesktops),
-            new("SystemStats", "WidgetSystemStats", new SystemStatsWidget(), s => s.ShowSystemStats),
-            new("Focus", "WidgetFocus", new FocusWidget(), s => s.ShowFocus),
-            new("Weather", "WidgetWeather", new WeatherWidget(), s => s.ShowWeather),
-            new("Audio", "WidgetAudio", new AudioWidget(), s => s.ShowAudio),
-            new("QuickSettings", "WidgetQuickSettings", new QuickSettingsWidget(), s => s.ShowQuickSettings),
-            new("Tray", "WidgetTray", new TrayWidget(), s => s.ShowTray),
-            new("Clock", "WidgetClock", new ClockWidget(), s => s.ShowClock)
+            new("Media", "WidgetMedia", new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
+            new("Desktops", "WidgetDesktops", new DesktopsWidget(), s => IsCatalogEnabled(s, "Desktops")),
+            new("SystemStats", "WidgetSystemStats", new SystemStatsWidget(), s => IsCatalogEnabled(s, "SystemStats")),
+            new("Focus", "WidgetFocus", new FocusWidget(), s => IsCatalogEnabled(s, "Focus")),
+            new("Weather", "WidgetWeather", new WeatherWidget(), s => IsCatalogEnabled(s, "Weather")),
+            new("Audio", "WidgetAudio", new AudioWidget(), s => IsCatalogEnabled(s, "Audio")),
+            new("QuickSettings", "WidgetQuickSettings", new QuickSettingsWidget(), s => IsCatalogEnabled(s, "QuickSettings")),
+            new("Tray", "WidgetTray", new TrayWidget(), s => IsCatalogEnabled(s, "Tray")),
+            new("Clock", "WidgetClock", new ClockWidget(), s => IsCatalogEnabled(s, "Clock") || IsCatalogEnabled(s, "Date"))
         ];
 
         foreach (var item in _widgets)

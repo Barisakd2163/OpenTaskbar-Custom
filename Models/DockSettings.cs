@@ -16,6 +16,7 @@ public enum DockEdge { Bottom, Left, Right }
 public enum HotkeyChoice { Disabled, AltSpace, CtrlSpace, CtrlAltSpace, CtrlAltD, WinAltD }
 public enum StartButtonAction { WindowsStart, Launcher }
 public enum StartButtonPlacement { Start, End, Hidden }
+public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
 
 /// <summary>A named view of the dock that hides some pinned apps; pins themselves are never removed.</summary>
 public sealed record DockProfile(string Name, IReadOnlyList<string> HiddenApps);
@@ -64,4 +65,8 @@ public sealed record DockSettings(
     IReadOnlyList<DockProfile>? Profiles = null,
     string? ActiveProfile = null,
     double DockScale = 1.0,
-    IReadOnlyList<string>? WidgetOrder = null);
+    IReadOnlyList<string>? WidgetOrder = null,
+    bool Clock24Hour = true,
+    bool ClockShowSeconds = false,
+    ClockDateStyle DateStyle = ClockDateStyle.DayAndShortDate,
+    bool ClockShowWeather = true);
