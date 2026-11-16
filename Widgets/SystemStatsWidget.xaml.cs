@@ -113,5 +113,5 @@ public partial class SystemStatsWidget : DockWidget
 
     private void BatteryButton_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("ms-settings:batterysaver"));
 
-    private void TaskManager_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("taskmgr.exe"));
+    private void TaskManager_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenTaskManager());
 }

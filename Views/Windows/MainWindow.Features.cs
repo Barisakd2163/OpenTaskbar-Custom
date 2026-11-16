@@ -166,6 +166,8 @@ public partial class MainWindow
 
     private void OpenLauncher_Click(object sender, RoutedEventArgs e) => ToggleLauncher();
 
+    private void OpenTaskManager_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenTaskManager());
+
     // ---- Keyboard navigation and accessibility (#16) ----
 
     private void StartKeyboardNavigation()
