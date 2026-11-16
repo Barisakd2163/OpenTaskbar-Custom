@@ -771,11 +771,11 @@ public partial class MainWindow : Window
 
     private static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
     {
-        if (icon.RenderTransform is TransformGroup group)
+        if (icon.RenderTransform is TransformGroup { IsFrozen: false, IsSealed: false } group)
         {
             var s = group.Children.OfType<ScaleTransform>().FirstOrDefault();
             var t = group.Children.OfType<TranslateTransform>().FirstOrDefault();
-            if (s is not null && t is not null)
+            if (s is { IsFrozen: false, IsSealed: false } && t is { IsFrozen: false, IsSealed: false })
             {
                 return (s, t);
             }
