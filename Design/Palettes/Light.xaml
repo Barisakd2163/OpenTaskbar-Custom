@@ -17,8 +17,6 @@
     <SolidColorBrush x:Key="SurfacePressed" Color="#20000000" />
     <SolidColorBrush x:Key="SurfaceSelected" Color="#0C000000" />
     <SolidColorBrush x:Key="DockWidgetSurface" Color="#CCFFFFFF" />
-    <SolidColorBrush x:Key="DockScrollThumb" Color="#FF78838F" />
-    <SolidColorBrush x:Key="DockResizeGrip" Color="#66000000" />
     <SolidColorBrush x:Key="SurfaceDanger" Color="#FFC43846" />
     <SolidColorBrush x:Key="NotificationBrush" Color="#FFD22D42" />
     <SolidColorBrush x:Key="IndicatorBrush" Color="#AA303A47" />

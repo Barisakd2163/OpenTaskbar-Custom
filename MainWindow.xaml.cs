@@ -151,7 +151,9 @@ public partial class MainWindow : Window
             source.Handle,
             DockSurfaceTranslate,
             DockSurface,
-            () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
+            () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible
+                || DockScrollViewer.IsPanning || LeftResizeThumb.IsDragging || RightResizeThumb.IsDragging
+                || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
 
@@ -1634,15 +1636,7 @@ public partial class MainWindow : Window
     private void ApplyTaskbarLayout(Size area)
     {
         _dockArea = area;
-        var effectiveHeight = Math.Max((double)FindResource("DockMinimumShelfHeight"), area.Height);
-        var inset = (Thickness)FindResource("DockInset");
-        DockSurface.Margin = inset;
-        var availableCellHeight = effectiveHeight - inset.Top - inset.Bottom
-            - DockSurface.Padding.Top - DockSurface.Padding.Bottom
-            - DockSurface.BorderThickness.Top - DockSurface.BorderThickness.Bottom
-            - (double)FindResource("DockScrollBarHeight");
-        Application.Current.Resources["DockCellHeight"] = Math.Clamp(availableCellHeight,
-            (double)FindResource("DockMinimumCellSize"), (double)FindResource("DockMaximumCellSize"));
+        DockSurface.Margin = (Thickness)FindResource("DockInset");
         ResizeDockToContent();
     }
 
@@ -1662,10 +1656,10 @@ public partial class MainWindow : Window
         var maximumSurfaceWidth = Math.Max(1, _resizingFromLeft
             ? _resizeAnchor - margin.Left
             : availableWidth - margin.Right - _resizeAnchor);
-        var minimumSurfaceWidth = Math.Min((double)FindResource("DockMinimumWidth"), maximumSurfaceWidth);
+        var minimumSurfaceWidth = Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth);
         var delta = _resizingFromLeft ? -e.HorizontalChange : e.HorizontalChange;
         var nextWidth = Math.Clamp(DockSurface.ActualWidth + delta, minimumSurfaceWidth, maximumSurfaceWidth);
-        _dockWidthOverride = nextWidth + margin.Left + margin.Right;
+        _dockWidthOverride = nextWidth;
         DockSurface.Width = nextWidth;
         ResizeDockToContent();
         DockSurface.UpdateLayout();
@@ -1698,38 +1692,23 @@ public partial class MainWindow : Window
         ResetMagnification();
     }
 
+    private double DockHorizontalChrome => DockFrame.Padding.Left + DockFrame.Padding.Right
+        + DockFrame.BorderThickness.Left + DockFrame.BorderThickness.Right
+        + DockScrollViewer.ContentInset.Left + DockScrollViewer.ContentInset.Right;
+
+    private double MinimumDockSurfaceWidth => (double)FindResource("DockCellSize") + DockHorizontalChrome;
+
     private void ResizeDockToContent()
     {
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
-        var count = Math.Max(1, 1 + _pinnedApps.Count + _runningApps.Count);
-        DockWidgets.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
-            + DockSurface.Margin.Left + DockSurface.Margin.Right + (double)FindResource("DockFrameWidthAllowance");
-        StatusText.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var statusWidth = StatusText.DesiredSize.Width;
-        var widgetWidth = DockWidgets.DesiredSize.Width + (_widgets.Count > 0 ? WidgetDivider.ActualWidth + WidgetDivider.Margin.Left + WidgetDivider.Margin.Right : 0);
-        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var overflowAllowance = (double)FindResource("DockContentOverflowAllowance");
-        var desiredContentWidth = DockContents.DesiredSize.Width;
-        var borderWidth = DockSurface.BorderThickness.Left + DockSurface.BorderThickness.Right;
-        var desiredWidth = Math.Ceiling(desiredContentWidth + frameWidth + borderWidth + overflowAllowance);
-        var absoluteMinimumWidth = (double)FindResource("DockAbsoluteMinimumWidth");
-        var maximumWidth = Math.Max(absoluteMinimumWidth, availableWidth);
-        var dockWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
-            Math.Min((double)FindResource("DockMinimumWidth"), maximumWidth), maximumWidth);
-        Application.Current.Resources["DockCellSize"] = Math.Clamp(
-            (dockWidth - frameWidth - statusWidth - widgetWidth) / count,
-            (double)FindResource("DockMinimumCellSize"), (double)FindResource("DockMaximumCellSize"));
-        // Reserve room for magnification even when the dock compresses app cells.
-        Application.Current.Resources["DockIconSize"] = Math.Min((double)FindResource("DockMaximumIconSize"),
-            Math.Min((double)FindResource("DockCellSize"), (double)FindResource("DockCellHeight"))
-                - (double)FindResource("DockIconCellInset"));
-        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        DockSurface.Width = Math.Max(1, dockWidth - DockSurface.Margin.Left - DockSurface.Margin.Right);
+        DockContents.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var margin = DockSurface.Margin;
+        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
+        var desiredWidth = DockContents.DesiredSize.Width + DockHorizontalChrome;
+        DockSurface.Width = Math.Clamp(_dockWidthOverride ?? desiredWidth,
+            Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
         if (_dockArea.Width <= 0)
-        {
-            Width = dockWidth;
-        }
+            Width = DockSurface.Width + margin.Left + margin.Right;
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)

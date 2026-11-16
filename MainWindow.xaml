@@ -37,63 +37,6 @@
             <MenuItem Header="{local:Loc Exit}" Icon="{StaticResource IconExit}" Click="ExitOpenTaskbar_Click" />
         </ContextMenu>
 
-        <Style x:Key="DockButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="{DynamicResource DockCellSize}" />
-            <Setter Property="Height" Value="{DynamicResource DockCellHeight}" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.95" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Surface" Background="{TemplateBinding Background}"
-                                BorderBrush="Transparent" BorderThickness="0"
-                                CornerRadius="{StaticResource ControlRadius}" Padding="{TemplateBinding Padding}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*" />
-                                    <RowDefinition Height="6" />
-                                </Grid.RowDefinitions>
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <Ellipse x:Name="ActiveIndicator" Grid.Row="1" Height="4" Width="4"
-                                         Fill="{DynamicResource IndicatorBrush}" VerticalAlignment="Center"
-                                         HorizontalAlignment="Center" Visibility="Collapsed" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="Transparent" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Surface" Property="Opacity" Value="0.48" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
-                            </Trigger>
-                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="0.55" />
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsForeground}" Value="True">
-                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1.0" />
-                                <Setter TargetName="ActiveIndicator" Property="Width" Value="5" />
-                                <Setter TargetName="ActiveIndicator" Property="Height" Value="5" />
-                                <Setter TargetName="ActiveIndicator" Property="Fill" Value="{DynamicResource IndicatorForegroundBrush}" />
-                            </DataTrigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="PreviewCloseButton" TargetType="Button">
             <Setter Property="Width" Value="28" />
             <Setter Property="Height" Value="28" />
@@ -121,32 +64,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="DockResizeThumb" TargetType="Thumb">
-            <Setter Property="Width" Value="{StaticResource DockResizeGripWidth}" />
-            <Setter Property="Cursor" Value="SizeWE" />
-            <Setter Property="Focusable" Value="False" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Thumb">
-                        <Border x:Name="ResizeSurface" Width="2" Background="{DynamicResource DockResizeGrip}"
-                                CornerRadius="{StaticResource DockScrollThumbRadius}" Margin="{StaticResource DockResizeGripInset}" Opacity="0.2" />
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ResizeSurface" Property="Width" Value="4" />
-                                <Setter TargetName="ResizeSurface" Property="Opacity" Value="1" />
-                                <Setter TargetName="ResizeSurface" Property="Background" Value="{DynamicResource AccentBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="ResizeSurface" Property="Width" Value="4" />
-                                <Setter TargetName="ResizeSurface" Property="Opacity" Value="1" />
-                                <Setter TargetName="ResizeSurface" Property="Background" Value="{DynamicResource AccentBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <DataTemplate x:Key="DockAppIconTemplate">
             <Button Style="{StaticResource DockButton}" Tag="{Binding ExecutablePath}"
                     Click="DockApp_Click" AutomationProperties.Name="{Binding Name}"
@@ -160,7 +77,7 @@
                     Drop="DockApp_Drop"
                     DragOver="DockApp_DragOver"
                     MouseEnter="DockApp_MouseEnter" MouseLeave="DockApp_MouseLeave">
-                <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
+                <Grid Width="{StaticResource DockIconSize}" Height="{StaticResource DockIconSize}"
                       RenderTransformOrigin="0.5,0.95">
                     <Grid.RenderTransform>
                         <TransformGroup>
@@ -168,7 +85,7 @@
                             <TranslateTransform Y="0" />
                         </TransformGroup>
                     </Grid.RenderTransform>
-                    <Image Source="{Binding Icon}" Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
+                    <Image Source="{Binding Icon}" Width="{StaticResource DockIconSize}" Height="{StaticResource DockIconSize}"
                            Stretch="Uniform" ClipToBounds="True" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{DynamicResource NotificationBrush}"
                              Stroke="{DynamicResource SurfacePopup}" StrokeThickness="1"
@@ -185,72 +102,74 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Border x:Name="DockBackdrop" Grid.Row="1" Background="#01000000" ContextMenu="{StaticResource DockContextMenu}" />
-        <Border x:Name="DockSurface" Grid.Row="1" HorizontalAlignment="Stretch" Padding="{StaticResource DockPadding}"
-                Margin="{StaticResource DockInset}" VerticalAlignment="Bottom"
-                Background="{DynamicResource DockMaterial}" BorderBrush="{DynamicResource DockBorderMaterial}" BorderThickness="1"
-                CornerRadius="{StaticResource DockRadius}" ContextMenu="{StaticResource DockContextMenu}"
-                MouseEnter="DockSurface_MouseEnter" MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
-            <Border.RenderTransform>
+        <Grid x:Name="DockSurface" Grid.Row="1" HorizontalAlignment="Stretch"
+              Margin="{StaticResource DockInset}" VerticalAlignment="Bottom"
+              ContextMenu="{StaticResource DockContextMenu}"
+              MouseEnter="DockSurface_MouseEnter" MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave">
+            <Grid.RenderTransform>
                 <TranslateTransform x:Name="DockSurfaceTranslate" Y="0" />
-            </Border.RenderTransform>
-            <Border.Effect>
-                <DropShadowEffect Color="#000000" BlurRadius="{StaticResource DockShadowBlur}" ShadowDepth="{StaticResource DockShadowDepth}"
-                                  Direction="270" Opacity="{StaticResource DockShadowOpacity}" RenderingBias="Performance" />
-            </Border.Effect>
-        <Grid>
-            <views:DockScrollViewer x:Name="DockScrollViewer" Style="{StaticResource DockScrollViewerStyle}"
-                                  HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
-                                  ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
-                <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
-                            VerticalAlignment="Center">
-                    <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
-                            AutomationProperties.Name="{local:Loc Start}" ToolTip="{local:Loc Start}" ToolTipService.InitialShowDelay="650">
-                        <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
-                              RenderTransformOrigin="0.5,0.95">
-                            <Grid.RenderTransform>
-                                <TransformGroup>
-                                    <ScaleTransform ScaleX="1" ScaleY="1" />
-                                    <TranslateTransform Y="0" />
-                                </TransformGroup>
-                            </Grid.RenderTransform>
-                            <Path Width="24" Height="24" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
-                                  MaxWidth="{DynamicResource DockIconSize}" MaxHeight="{DynamicResource DockIconSize}"
-                                  Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
-                        </Grid>
-                    </Button>
-                    <Border Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="3,0,4,0" />
-                    <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-                    <Border x:Name="RunningAppsDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="4,0,4,0" Visibility="Collapsed" />
-                    <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-                    <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" />
-                    <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged"
-                                  widgets:TimedWidgetTile.DetailsRequested="TimedWidget_DetailsRequested">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-                    <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerText}" FontSize="{StaticResource TextSizeCaption}"
-                               MaxWidth="280" VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Style.Triggers>
-                                    <Trigger Property="Text" Value="">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </StackPanel>
-            </views:DockScrollViewer>
+            </Grid.RenderTransform>
+            <Border x:Name="DockFrame" Padding="{StaticResource DockPadding}"
+                    Background="{DynamicResource DockMaterial}" BorderBrush="{DynamicResource DockBorderMaterial}"
+                    BorderThickness="{StaticResource ControlStroke}" CornerRadius="{StaticResource DockRadius}">
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="{StaticResource DockShadowBlur}" ShadowDepth="{StaticResource DockShadowDepth}"
+                                      Direction="270" Opacity="{StaticResource DockShadowOpacity}" RenderingBias="Performance" />
+                </Border.Effect>
+                <views:DockScrollViewer x:Name="DockScrollViewer" Style="{StaticResource DockScrollViewerStyle}"
+                                      HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
+                                      ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
+                    <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
+                                VerticalAlignment="Center">
+                        <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
+                                AutomationProperties.Name="{local:Loc Start}" ToolTip="{local:Loc Start}" ToolTipService.InitialShowDelay="650">
+                            <Grid Width="{StaticResource DockIconSize}" Height="{StaticResource DockIconSize}"
+                                  RenderTransformOrigin="0.5,0.95">
+                                <Grid.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                                        <TranslateTransform Y="0" />
+                                    </TransformGroup>
+                                </Grid.RenderTransform>
+                                <Path Width="24" Height="24" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
+                                      MaxWidth="{StaticResource DockIconSize}" MaxHeight="{StaticResource DockIconSize}"
+                                      Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
+                            </Grid>
+                        </Button>
+                        <Border Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="3,0,4,0" />
+                        <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <Border x:Name="RunningAppsDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="4,0,4,0" Visibility="Collapsed" />
+                        <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" />
+                        <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged"
+                                      widgets:TimedWidgetTile.DetailsRequested="TimedWidget_DetailsRequested">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerText}" FontSize="{StaticResource TextSizeCaption}"
+                                   MaxWidth="280" VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </views:DockScrollViewer>
+            </Border>
             <Thumb x:Name="LeftResizeThumb" HorizontalAlignment="Left" VerticalAlignment="Stretch"
                    Style="{StaticResource DockResizeThumb}" DragStarted="DockResizeThumb_DragStarted"
                    DragDelta="DockResizeThumb_DragDelta" DragCompleted="DockResizeThumb_DragCompleted"
@@ -260,7 +179,6 @@
                    DragDelta="DockResizeThumb_DragDelta" DragCompleted="DockResizeThumb_DragCompleted"
                    AutomationProperties.Name="{local:Loc ResizeDockFromRight}" />
         </Grid>
-    </Border>
     <Border x:Name="DockEdgeTrigger" Grid.Row="1" VerticalAlignment="Bottom" Height="3" Background="#01000000"
             MouseEnter="DockEdgeTrigger_MouseEnter" MouseLeave="DockEdgeTrigger_MouseLeave" />
     </Grid>

@@ -1,5 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using OpenTaskbar.Models;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenTaskbar.Services;
@@ -39,8 +42,8 @@ internal static class DockLayoutChecks
 
         foreach (var width in new[] { 140d, 280d, 500d })
         {
-            var iconSize = (double)app.FindResource("DockMaximumIconSize");
-            var cellSize = (double)app.FindResource("DockMaximumCellSize");
+            var iconSize = (double)app.FindResource("DockIconSize");
+            var cellSize = (double)app.FindResource("DockCellSize");
             var icon = new Border
             {
                 Width = iconSize, Height = iconSize, Background = Brushes.Cyan,
@@ -109,6 +112,93 @@ internal static class DockLayoutChecks
             Layout();
             Check(viewer.HorizontalOffset == 80 && viewer.VerticalOffset == 0,
                 "Hover headroom must preserve native horizontal scrolling without vertical scrolling.");
+        }
+        var cellWidth = (double)app.FindResource("DockCellSize");
+        var iconWidth = (double)app.FindResource("DockIconSize");
+        var padding = (Thickness)app.FindResource("DockPadding");
+        var stroke = (Thickness)app.FindResource("ControlStroke");
+        var inset = (Thickness)app.FindResource("DockScrollContentInset");
+        var chrome = padding.Left + padding.Right + stroke.Left + stroke.Right + inset.Left + inset.Right;
+        var oneCellWidth = cellWidth + chrome;
+        foreach (var width in new[] { oneCellWidth, cellWidth * 2 + chrome, 600d, 1000d })
+        {
+            var icons = Enumerable.Range(0, 10).Select(index => new Border
+            {
+                Width = iconWidth, Height = iconWidth, Background = Brushes.Cyan
+            }).ToArray();
+            var buttons = icons.Select((icon, index) => new Button
+            {
+                Style = (Style)app.FindResource("DockButton"), Content = icon,
+                DataContext = new DockApp($"Test app {index}", $"test-{index}.exe")
+            }).ToArray();
+            var content = new StackPanel { Orientation = Orientation.Horizontal };
+            foreach (var button in buttons) content.Children.Add(button);
+            var viewer = new DockScrollViewer
+            {
+                Style = (Style)app.FindResource("DockScrollViewerStyle"), HoverHeadroom = headroom,
+                ContentInset = inset, Content = content
+            };
+            var frame = new Border { Padding = padding, BorderThickness = stroke, Background = Brushes.Black, Child = viewer };
+            var left = new Thumb { Style = (Style)app.FindResource("DockResizeThumb"), HorizontalAlignment = HorizontalAlignment.Left };
+            var right = new Thumb { Style = (Style)app.FindResource("DockResizeThumb"), HorizontalAlignment = HorizontalAlignment.Right };
+            var surface = new Grid { Width = width, Height = minimum };
+            surface.Children.Add(frame);
+            surface.Children.Add(left);
+            surface.Children.Add(right);
+            void Layout()
+            {
+                surface.Measure(new Size(width, minimum));
+                surface.Arrange(new Rect(0, 0, width, minimum));
+                surface.UpdateLayout();
+            }
+            bool IsWithin(DependencyObject? hit, DependencyObject target)
+            {
+                while (hit is not null)
+                {
+                    if (ReferenceEquals(hit, target)) return true;
+                    hit = VisualTreeHelper.GetParent(hit);
+                }
+                return false;
+            }
+            Layout();
+            Check(buttons.All(button => button.ActualWidth == cellWidth && button.ActualHeight == cellWidth)
+                && icons.All(icon => icon.ActualWidth == iconWidth && icon.ActualHeight == iconWidth),
+                "Narrowing the dock must preserve each application cell and icon size.");
+            Check(viewer.HorizontalScrollBarVisibility == ScrollBarVisibility.Hidden
+                && viewer.Template.FindName("PART_HorizontalScrollBar", viewer) is null,
+                "Overflow must remain scrollable without a visible scrollbar.");
+            Check(IsWithin(VisualTreeHelper.HitTest(surface, new Point(0.5, minimum / 2))?.VisualHit, left)
+                && IsWithin(VisualTreeHelper.HitTest(surface, new Point(width - 0.5, minimum / 2))?.VisualHit, right),
+                "Resize hit targets must cover the actual outside borders rather than the content padding.");
+            if (width == oneCellWidth)
+                Check(viewer.ViewportWidth == cellWidth, "The minimum dock width must expose exactly one complete application cell.");
+            var widget = new ContentControl { Content = new DockWidget("Clock", "Clock") { Value = "14:32" } };
+            var previousExtent = viewer.ExtentWidth;
+            content.Children.Add(widget);
+            Layout();
+            Check(viewer.ExtentWidth > previousExtent
+                && buttons.All(button => button.ActualWidth == cellWidth)
+                && icons.All(icon => icon.ActualWidth == iconWidth),
+                "Adding widgets must extend scrollable content without resizing application icons.");
+            if (viewer.ScrollableWidth > 0)
+            {
+                Check(viewer.ScrollByWheel(-Mouse.MouseWheelDeltaForOneLine, ModifierKeys.Shift), "Shift+wheel must be handled for overflowing content.");
+                Layout();
+                Check(viewer.HorizontalOffset == cellWidth, "One wheel notch must move one application cell.");
+                Check(viewer.ScrollByWheel(-Mouse.MouseWheelDeltaForOneLine / 4, ModifierKeys.Control), "Ctrl+wheel must support high-resolution deltas.");
+                Layout();
+                Check(viewer.HorizontalOffset == Math.Min(cellWidth * 1.25, viewer.ScrollableWidth), "High-resolution wheel deltas must preserve fractional cell movement.");
+                Check(!viewer.ScrollByWheel(-120, ModifierKeys.None) && !viewer.ScrollByWheel(0, ModifierKeys.Shift),
+                    "Plain or zero wheel input must not trigger modifier scrolling.");
+                viewer.ScrollByWheel(int.MinValue, ModifierKeys.Control | ModifierKeys.Shift);
+                Layout();
+                Check(viewer.HorizontalOffset == viewer.ScrollableWidth && viewer.VerticalOffset == 0,
+                    "Forward scrolling must stop at the content end without vertical movement.");
+                viewer.ScrollByWheel(int.MaxValue, ModifierKeys.Shift);
+                Layout();
+                Check(viewer.HorizontalOffset == 0, "Backward scrolling must stop at the content start.");
+            }
+            else Check(!viewer.ScrollByWheel(-120, ModifierKeys.Control), "A dock that already fits must not consume modifier wheel scrolling.");
         }
         return checks;
     }

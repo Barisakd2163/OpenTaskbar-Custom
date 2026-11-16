@@ -13,9 +13,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `DockWindowHeight` | `98 DIP` | Initial and preview window height; replacement mode derives its height from the shelf and headroom |
 | `DockHeadroom` | `24 DIP` | Transparent top headroom included inside the scroll viewport for magnification and launch bounce; excluded from the desktop reservation |
 | `DockMinimumShelfHeight` | `74 DIP` | Minimum shelf shared by the replacement window and dock layout; accommodates icon indicators, widget controls, padding, borders, and scrolling even when Explorer's taskbar is shorter |
-| `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
-| `DockMinimumCellSize` | `24 DIP` | Smallest application cell width while dock contents are being fitted |
-| `DockMaximumCellSize` | `52 DIP` | Largest application cell width while dock contents are being fitted |
+| `DockCellSize` | `52 DIP` | Fixed width of each application cell; never compressed to fit content |
 | `DockCellHeight` | `52 DIP` | Height of an individual dock application item cell |
 | `DockIconSize` | `42 DIP` | Prominent icon display size with balanced cell margins |
 | `DockHoverScale` | `1.28x` | Maximum magnification scale; constrained to fit the current icon cell |
@@ -24,12 +22,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |
 | `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
 | `StatusDotSize` | `4 DIP / 5 DIP` | Running and active application indicator dot diameter |
-| `DockMinimumWidth` | `280 DIP` | Minimum width when resizing the dock from either side |
-| `DockAbsoluteMinimumWidth` | `16 DIP` | Lower bound for window sizing on unusually narrow work areas |
-| `DockContentOverflowAllowance` | `32 DIP` | Breathing room for dock content and edge resize grips before horizontal scrolling is needed |
-| `DockFrameWidthAllowance` | `12 DIP` | Width reserved for the dock frame beyond its padding and monitor insets |
-| `DockScrollBarHeight` | `4 DIP` | Compact horizontal scrollbar height when dock contents overflow |
-| `DockResizeGripWidth` | `8 DIP` | Pointer hit area at each edge of the dock |
+| `DockResizeGripWidth` | `8 DIP` | Invisible pointer target on each outside border; cursor indicates resizing |
 
 ### Typography
 
@@ -50,7 +43,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 - **Translucent Smoked Glass:** High-contrast charcoal and pearl materials keep the dock distinct from the wallpaper while retaining a light surface tint.
 - **Specular Top Highlight:** A bright top border and a softer lower edge define the dock silhouette against varied wallpapers.
-- **Ambient Shadow:** One soft drop shadow (`BlurRadius="16"`, `ShadowDepth="2"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.25"`) separates the dock from the wallpaper. Resize grips remain quiet until hovered or dragged.
+- **Ambient Shadow:** One soft drop shadow (`BlurRadius="16"`, `ShadowDepth="2"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.25"`) separates the dock from the wallpaper. Outside border hit targets remain invisible and show the resize cursor.
 - **Status Indicators:**
   - Running application: Muted 4 DIP circular dot (`#94A3B8`).
   - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
@@ -84,11 +77,11 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 ### Dock sizing and overflow
 
 - Drag either dock edge to resize the visible surface. The opposite edge stays anchored during the drag.
-- Pinned apps remain in the same order when the dock is narrowed. A horizontal scrollbar appears only when the contents exceed the available width.
-- The scrollbar reserves a compact row below the 52 DIP icon cells, keeping the icons and widget values fully visible while scrolling. `Views/DockScrollViewer.cs` expands the viewport upward and offsets its content by the same headroom. `Design/DockControls.xaml` keeps that offset inside the scroll presenter, preserving horizontal clipping at the resize gutters.
+- Application icons remain 42 DIP inside fixed 52 DIP cells when the dock narrows or widgets are added. The minimum visible surface is one cell plus its frame insets, 86 DIP with the default tokens.
+- Overflow uses a hidden horizontal scroll viewport. Shift/Ctrl plus wheel moves horizontally, including high-resolution wheel deltas; middle-button dragging pans the content. No scrollbar row is reserved. `Views/DockScrollViewer.cs` expands the viewport upward and offsets its content by the same headroom. `Design/DockControls.xaml` keeps that offset inside the scroll presenter, preserving horizontal clipping at the resize gutters.
 - Native mode queries the approved AppBar rectangle to measure space already reserved below it, then reserves only the missing shelf height. Hover headroom remains transparent above the shelf and does not reduce the desktop work area. Repeated position notifications do not accumulate another reservation.
-- Both resize edges show a subtle resting grip and a stronger accent while hovered or dragged.
-- The dock width and app cell size respond to the active monitor's available area.
+- Invisible hit targets cover the outside left/right borders. They do not consume content padding or display extra lines. Resizing and middle-button panning lock auto-hide until the gesture ends.
+- The dock width is bounded by the active monitor; cell and icon sizes remain fixed.
 
 ### Launch Bounce
 - Clicking an application icon triggers a 420 ms damped vertical launch bounce animation (-12 DIP peak) on its translate transform to provide tactile feedback while the application opens.

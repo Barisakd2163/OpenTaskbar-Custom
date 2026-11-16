@@ -57,6 +57,7 @@ public sealed class UiText : INotifyPropertyChanged
             ["SystemDataUnavailable"] = ("Kullanılamıyor", "Unavailable"),
             ["ResizeDockFromLeft"] = ("Dock’u sol kenarından yeniden boyutlandır", "Resize dock from left edge"),
             ["ResizeDockFromRight"] = ("Dock’u sağ kenarından yeniden boyutlandır", "Resize dock from right edge"),
+            ["ScrollDockHelp"] = ("Shift veya Ctrl ile fare tekerleğini çevirin ya da orta tuşla sürükleyin.", "Hold Shift or Ctrl while using the mouse wheel, or drag with the middle button."),
             ["Startup"] = ("Windows ile başlat", "Start with Windows"),
             ["StartupDescription"] = ("Oturum açtığında OpenTaskbar otomatik başlasın.", "Launch OpenTaskbar when you sign in."),
             ["Animations"] = ("Animasyonlar", "Animations"),

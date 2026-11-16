@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 - 2026-11-16
+
+- Kept application icons at 42 DIP inside fixed 52 DIP cells when resizing or adding widgets.
+- Allowed the dock to narrow to one visible application cell, deriving its minimum width from the frame insets.
+- Removed the visible horizontal scrollbar; Shift/Ctrl plus wheel and middle-button dragging scroll overflowing content.
+- Replaced decorative resize grips with invisible hit targets at the outside left and right borders.
+- Kept auto-hide locked during resizing and middle-button panning.
+
 ## 0.2.2 - 2026-11-16
 
 - Kept magnified and bouncing icons inside the dock's scroll viewport while preserving horizontal clipping.
