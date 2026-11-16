@@ -18,7 +18,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `DockMaximumCellSize` | `52 DIP` | Largest application cell width while dock contents are being fitted |
 | `DockCellHeight` | `52 DIP` | Height of an individual dock application item cell |
 | `DockIconSize` | `42 DIP` | Prominent icon display size with balanced cell margins |
-| `DockHoverScale` | `1.28x` | Peak magnification scale for the hovered dock item |
+| `DockHoverScale` | `1.28x` | Maximum magnification scale; constrained to fit the current icon cell |
 | `DockRadius` | `18 DIP` | Pill container corner radius (`CornerRadius="18"`) |
 | `ControlRadius` | `12 DIP` | Standard control and button corner radius |
 | `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |

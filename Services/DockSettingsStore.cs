@@ -29,6 +29,9 @@ public sealed class DockSettingsStore
         try
         {
             var settings = JsonSerializer.Deserialize<DockSettings>(File.ReadAllText(_path), JsonOptions);
+            // Normalize the legacy enabled-only format before enforcing the installed subset invariant.
+            if (settings is { InstalledWidgets: null })
+                settings = settings with { InstalledWidgets = settings.Widgets ?? Array.Empty<string>() };
             if (settings is null || !IsValid(settings))
             {
                 return (new DockSettings(), "Dock ayarları geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.");
@@ -85,7 +88,10 @@ public sealed class DockSettingsStore
         && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count
         && settings.Widgets?.Any(widget => !DockWidgetService.SupportedIds.Contains(widget)) != true
-        && settings.Widgets?.Distinct(StringComparer.Ordinal).Count() == settings.Widgets?.Count;
+        && settings.Widgets?.Distinct(StringComparer.Ordinal).Count() == settings.Widgets?.Count
+        && settings.InstalledWidgets?.Any(widget => !DockWidgetService.SupportedIds.Contains(widget)) != true
+        && settings.InstalledWidgets?.Distinct(StringComparer.Ordinal).Count() == settings.InstalledWidgets?.Count
+        && settings.Widgets?.Any(widget => settings.InstalledWidgets?.Contains(widget, StringComparer.Ordinal) != true) != true;
 
     private static JsonSerializerOptions CreateJsonOptions()
     {

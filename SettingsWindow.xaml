@@ -20,10 +20,44 @@
             <DataTemplate x:Key="SettingsWidgetOptionTemplate">
                 <Border Style="{StaticResource SettingsRow}">
                     <DockPanel>
+                        <Button DockPanel.Dock="Right"
+                                Click="WidgetInstallation_Click">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource WidgetActionButton}">
+                                    <Setter Property="Content" Value="{local:Loc WidgetInstall}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                                            <Setter Property="Content" Value="{local:Loc WidgetRemove}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                   IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                  AutomationProperties.Name="{Binding Label}" />
-                        <TextBlock Text="{Binding Label}" Style="{StaticResource SettingsRowLabel}" />
+                                  IsEnabled="{Binding IsInstalled}"
+                                  ToolTip="{local:Loc WidgetShow}"
+                                  AutomationProperties.Name="{Binding Label}"
+                                  AutomationProperties.HelpText="{local:Loc WidgetShow}" />
+                        <StackPanel VerticalAlignment="Center">
+                            <DockPanel>
+                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                <TextBlock Foreground="{DynamicResource TextSecondary}" Margin="{StaticResource WidgetActionInset}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{local:Loc WidgetAvailable}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                                                    <Setter Property="Text" Value="{local:Loc WidgetInstalled}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DockPanel>
+                            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondary}"
+                                       TextWrapping="Wrap" Margin="{StaticResource WidgetDescriptionInset}" />
+                        </StackPanel>
                     </DockPanel>
                 </Border>
             </DataTemplate>
@@ -130,10 +164,15 @@
                 </TabItem>
                 <TabItem Header="{local:Loc Widgets}" Tag="&#xEA86;">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
-                        <StackPanel Margin="{StaticResource SettingsPageInset}">
+                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}" HorizontalAlignment="Left">
                             <TextBlock Text="{local:Loc Widgets}" Style="{StaticResource SettingsHeading}" />
                             <TextBlock Text="{local:Loc WidgetsDescription}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,14" />
+                            <TextBlock Text="{local:Loc WidgetSearch}" />
+                            <TextBox x:Name="WidgetSearch" Style="{StaticResource WidgetSearchBox}"
+                                     AutomationProperties.Name="{local:Loc WidgetSearch}" TextChanged="WidgetSearch_TextChanged" />
                             <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}" />
+                            <TextBlock x:Name="WidgetNoResults" Text="{local:Loc WidgetNoResults}" Visibility="Collapsed"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

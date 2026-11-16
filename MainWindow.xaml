@@ -202,7 +202,8 @@
                             <TranslateTransform Y="0" />
                         </TransformGroup>
                     </Grid.RenderTransform>
-                    <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Image Source="{Binding Icon}" Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
+                           Stretch="Uniform" ClipToBounds="True" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{DynamicResource NotificationBrush}"
                              Stroke="{DynamicResource SurfacePopup}" StrokeThickness="1"
                              HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -217,7 +218,8 @@
                     AutomationProperties.Name="{Binding Label}">
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding Label}" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeWidgetLabel}" />
-                    <TextBlock Text="{Binding Value}" Foreground="{DynamicResource TextPrimary}" FontSize="{StaticResource TextSizeBody}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Value}" Foreground="{DynamicResource TextPrimary}" FontSize="{StaticResource TextSizeWidgetValue}"
+                               Typography.NumeralAlignment="Tabular" FontWeight="SemiBold" />
                 </StackPanel>
             </Border>
         </DataTemplate>

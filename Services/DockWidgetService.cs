@@ -20,24 +20,29 @@ public static class DockWidgetService
     [
         new(ClockId, "WidgetClock", culture => DateTime.Now.ToString("HH:mm", culture)),
         new(DateId, "WidgetDate", culture => DateTime.Now.ToString("ddd, d MMM", culture)),
-        new(BatteryId, "WidgetBattery", _ => ReadBatteryStatus())
+        new(BatteryId, "WidgetBattery", _ => ReadBatteryStatus()),
+        new("Memory", "WidgetMemory", SystemWidgetData.ReadMemory),
+        new("Storage", "WidgetStorage", SystemWidgetData.ReadStorage),
+        new("DayProgress", "WidgetDayProgress", culture =>
+            (DateTime.Now.TimeOfDay.TotalSeconds / TimeSpan.FromDays(1).TotalSeconds).ToString("P0", culture))
     ];
 
-    public static IReadOnlyList<string> DefaultSelection { get; } = Definitions.Select(item => item.Id).ToArray();
     public static IReadOnlyCollection<string> SupportedIds { get; } = Definitions.Select(item => item.Id).ToArray();
     private static readonly IReadOnlyDictionary<string, WidgetDefinition> DefinitionsById =
         Definitions.ToDictionary(item => item.Id, StringComparer.Ordinal);
 
     public static IReadOnlyList<DockWidget> CreateWidgets(IReadOnlyList<string>? selected) =>
-        Definitions.Where(definition => (selected ?? DefaultSelection).Contains(definition.Id, StringComparer.Ordinal))
+        Definitions.Where(definition => selected?.Contains(definition.Id, StringComparer.Ordinal) == true)
             .Select(definition => new DockWidget(definition.Id, UiText.Get(definition.LabelKey)))
             .ToArray();
 
-    public static IReadOnlyList<DockWidgetOption> CreateOptions(IReadOnlyList<string>? selected) =>
+    public static IReadOnlyList<DockWidgetOption> CreateOptions(IReadOnlyList<string>? installed, IReadOnlyList<string>? selected) =>
         Definitions.Select(definition => new DockWidgetOption(
             definition.Id,
             UiText.Get(definition.LabelKey),
-            (selected ?? DefaultSelection).Contains(definition.Id, StringComparer.Ordinal)))
+            UiText.Get(definition.LabelKey + "Description"),
+            installed?.Contains(definition.Id, StringComparer.Ordinal) == true,
+            selected?.Contains(definition.Id, StringComparer.Ordinal) == true))
             .ToArray();
 
     public static void Refresh(IEnumerable<DockWidget> widgets, AppLanguage language)

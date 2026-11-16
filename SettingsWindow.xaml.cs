@@ -30,8 +30,11 @@ public partial class SettingsWindow : Window
         _preferences = preferences;
         _applied = preferences.Current;
         InitializeComponent();
-        foreach (var option in DockWidgetService.CreateOptions(_applied.Widgets)) _widgetOptions.Add(option);
+        foreach (var option in DockWidgetService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets)) _widgetOptions.Add(option);
         WidgetOptionsList.ItemsSource = _widgetOptions;
+        System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions).Filter = item =>
+            item is DockWidgetOption option && (option.Label.Contains(WidgetSearch.Text.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                || option.Description.Contains(WidgetSearch.Text.Trim(), StringComparison.CurrentCultureIgnoreCase));
         _preferences.Changed += Preferences_Changed;
         Closed += (_, _) =>
         {
@@ -142,8 +145,33 @@ public partial class SettingsWindow : Window
         NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
         AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
         SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100,
-        Widgets = _widgetOptions.Where(option => option.IsEnabled).Select(option => option.Id).ToArray()
+        Widgets = _widgetOptions.Where(option => option.IsInstalled && option.IsEnabled).Select(option => option.Id).ToArray(),
+        InstalledWidgets = _widgetOptions.Where(option => option.IsInstalled).Select(option => option.Id).ToArray()
     };
+
+    private void WidgetSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (_initializing) return;
+        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions);
+        view.Refresh();
+        WidgetNoResults.Visibility = view.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void WidgetInstallation_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { DataContext: DockWidgetOption option }) return;
+        if (option.IsInstalled)
+        {
+            option.IsInstalled = false;
+            option.IsEnabled = false;
+        }
+        else
+        {
+            option.IsInstalled = true;
+            option.IsEnabled = true;
+        }
+        PreferenceEdited(sender, e);
+    }
 
     private void Apply_Click(object sender, RoutedEventArgs e)
     {
@@ -187,7 +215,14 @@ public partial class SettingsWindow : Window
     {
         var selected = ReadSelection();
         // Pin order may change behind this window and is not part of its edit buffer.
-        return selected != (_applied with { PinOrder = selected.PinOrder })
+        return selected != (_applied with
+            {
+                PinOrder = selected.PinOrder,
+                Widgets = selected.Widgets,
+                InstalledWidgets = selected.InstalledWidgets
+            })
+            || !(selected.Widgets ?? []).SequenceEqual(_applied.Widgets ?? [], StringComparer.Ordinal)
+            || !(selected.InstalledWidgets ?? []).SequenceEqual(_applied.InstalledWidgets ?? [], StringComparer.Ordinal)
             || (_startupAvailable && StartupToggle.IsChecked != _startupEnabled);
     }
 

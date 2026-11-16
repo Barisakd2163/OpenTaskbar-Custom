@@ -24,6 +24,9 @@
     <sys:Double x:Key="DockMaximumCellSize">52</sys:Double>
     <sys:Double x:Key="DockCellHeight">52</sys:Double>
     <sys:Double x:Key="DockIconSize">42</sys:Double>
+    <sys:Double x:Key="DockMaximumIconSize">42</sys:Double>
+    <sys:Double x:Key="DockIconCellInset">8</sys:Double>
+    <sys:Double x:Key="TextSizeWidgetValue">14</sys:Double>
     <sys:Double x:Key="DockMinimumWidth">280</sys:Double>
     <sys:Double x:Key="DockAbsoluteMinimumWidth">16</sys:Double>
     <sys:Double x:Key="DockContentOverflowAllowance">32</sys:Double>

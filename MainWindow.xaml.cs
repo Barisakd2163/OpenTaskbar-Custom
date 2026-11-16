@@ -724,7 +724,9 @@ public partial class MainWindow : Window
         var mousePos = e.GetPosition(DockContents);
         var mouseX = mousePos.X;
         const double influenceRadius = 90.0;
-        var maxScale = (double)FindResource("DockHoverScale");
+        var availableCellSize = Math.Min((double)FindResource("DockCellSize"), (double)FindResource("DockCellHeight"));
+        var maxScale = Math.Min((double)FindResource("DockHoverScale"),
+            availableCellSize / (double)FindResource("DockIconSize"));
 
         var currentMagnified = new HashSet<FrameworkElement>();
 
@@ -1558,7 +1560,6 @@ public partial class MainWindow : Window
         DockSurface.Margin = new Thickness(12, topGap, 12, bottomGap);
         var availableCellHeight = Math.Min(52, effectiveHeight - bottomGap - topGap - 8);
         Application.Current.Resources["DockCellHeight"] = Math.Max(32, availableCellHeight);
-        Application.Current.Resources["DockIconSize"] = Math.Clamp(availableCellHeight * 0.80, 24, 44);
         ResizeDockToContent();
     }
 
@@ -1624,6 +1625,10 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockCellSize"] = Math.Clamp(
             (dockWidth - frameWidth - statusWidth - widgetWidth) / count,
             (double)FindResource("DockMinimumCellSize"), (double)FindResource("DockMaximumCellSize"));
+        // Reserve room for magnification even when the dock compresses app cells.
+        Application.Current.Resources["DockIconSize"] = Math.Min((double)FindResource("DockMaximumIconSize"),
+            Math.Min((double)FindResource("DockCellSize"), (double)FindResource("DockCellHeight"))
+                - (double)FindResource("DockIconCellInset"));
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         DockSurface.Width = Math.Max(1, dockWidth - DockSurface.Margin.Left - DockSurface.Margin.Right);
         if (_dockArea.Width <= 0)

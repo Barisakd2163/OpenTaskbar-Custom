@@ -21,4 +21,5 @@ public sealed record DockSettings(
     bool NotificationBadgesEnabled = true,
     AutoHideMode AutoHide = AutoHideMode.Disabled,
     double SurfaceOpacity = 0.9,
-    IReadOnlyList<string>? Widgets = null);
+    IReadOnlyList<string>? Widgets = null,
+    IReadOnlyList<string>? InstalledWidgets = null);
