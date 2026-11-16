@@ -5,28 +5,16 @@
              Focusable="False" Foreground="{DynamicResource TextPrimary}"
              Width="{StaticResource WidgetCatalogItemWidth}" Margin="{StaticResource WidgetCatalogItemMargin}"
              FontFamily="{StaticResource InterfaceFont}" FontSize="{StaticResource TextSizeBody}">
-    <StackPanel>
-        <Button x:Name="PreviewButton" Style="{StaticResource WidgetCatalogPreviewButton}" Click="Preview_Click"
-                AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
-            <Grid>
-                <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None" />
-                <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" />
-            </Grid>
-        </Button>
-        <Grid Height="{StaticResource WidgetCatalogManagementHeight}">
-            <Grid.Style>
-                <Style TargetType="Grid">
-                    <Setter Property="Visibility" Value="Collapsed" />
-                    <Style.Triggers><DataTrigger Binding="{Binding IsInstalled}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
-                </Style>
-            </Grid.Style>
-            <CheckBox x:Name="VisibilityToggle" Style="{StaticResource SettingsSwitch}" HorizontalAlignment="Left"
-                      IsChecked="{Binding IsEnabled, Mode=TwoWay}" ToolTip="{local:Loc WidgetShow}"
-                      AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{local:Loc WidgetShow}" />
-            <Button x:Name="RemoveButton" Style="{StaticResource WidgetCatalogRemoveButton}" HorizontalAlignment="Right"
-                    Content="&#xE711;" ToolTip="{local:Loc WidgetRemove}" AutomationProperties.Name="{local:Loc WidgetRemove}"
-                    AutomationProperties.ItemType="{Binding Label}" Click="Remove_Click" />
+    <Button x:Name="PreviewButton" Style="{StaticResource WidgetCatalogPreviewButton}" Click="Preview_Click"
+            AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
+        <Grid>
+            <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None">
+                <ContentControl.LayoutTransform>
+                    <ScaleTransform ScaleX="1.15" ScaleY="1.15" />
+                </ContentControl.LayoutTransform>
+            </ContentControl>
+            <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" />
         </Grid>
-    </StackPanel>
+    </Button>
 </UserControl>

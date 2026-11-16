@@ -217,10 +217,12 @@ public partial class SettingsWindow : Window
             option.IsInstalled = true;
             option.IsEnabled = true;
         }
-        PreferenceEdited(sender, e);
+        SaveSettings();
     }
 
-    private void Apply_Click(object sender, RoutedEventArgs e)
+    private void Apply_Click(object sender, RoutedEventArgs e) => SaveSettings();
+
+    private void SaveSettings()
     {
         var startupChanged = _startupAvailable && StartupToggle.IsChecked != _startupEnabled;
         if (startupChanged && _startup.SetEnabled(StartupToggle.IsChecked == true) is { } startupError)

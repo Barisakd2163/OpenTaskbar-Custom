@@ -185,18 +185,19 @@ internal static class WidgetViewChecks
                     var card = new WidgetCatalogItem { DataContext = option };
                     Layout(card);
                     var install = RequiredName<Button>(card, "PreviewButton");
-                    var remove = RequiredName<Button>(card, "RemoveButton");
-                    var visibility = RequiredName<CheckBox>(card, "VisibilityToggle");
                     var preview = Descendants<ContentControl>(install).Single(control => ReferenceEquals(control.Content, option.Preview));
                     Check(ReferenceEquals(preview.Content, option.Preview) && !preview.IsHitTestVisible
                         && System.Windows.Input.KeyboardNavigation.GetTabNavigation(preview) == System.Windows.Input.KeyboardNavigationMode.None,
                         "Catalog previews must reuse real widget templates without exposing nested interactive targets.");
+                    Check(preview.LayoutTransform is ScaleTransform { ScaleX: > 1, ScaleY: > 1 },
+                        "Catalog previews must scale up to fill their gallery card.");
                     Check(AutomationProperties.GetName(install) == option.Label
                         && AutomationProperties.GetItemStatus(install) == UiText.Get("WidgetAvailable"),
                         "Preview installation must expose its name and available state.");
-                    Check(((FrameworkElement)visibility.Parent).Visibility == Visibility.Collapsed
-                        && !Descendants<TextBlock>(card).Any(text => text.Text == option.Description),
-                        "Available previews must omit descriptions and management controls.");
+                    Check(!Descendants<TextBlock>(card).Any(text => text.Text == option.Description),
+                        "Available previews must omit descriptions.");
+                    Check(!Descendants<CheckBox>(card).Any(),
+                        "The card must omit separate management controls.");
                     var installations = 0;
                     card.InstallationRequested += (_, _) => installations++;
                     install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -206,20 +207,15 @@ internal static class WidgetViewChecks
                     option.IsInstalled = true;
                     option.IsEnabled = true;
                     Layout(card);
-                    Check(((FrameworkElement)visibility.Parent).Visibility == Visibility.Visible
-                        && AutomationProperties.GetItemStatus(install) == UiText.Get("WidgetInstalled"),
-                        "Installed previews must reveal management and expose their installed state.");
+                    Check(AutomationProperties.GetItemStatus(install) == UiText.Get("WidgetInstalled"),
+                        "Installed previews must expose their installed state.");
                     install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(installations == 1, "Tapping an installed preview must never remove it.");
-                    visibility.IsChecked = false;
-                    Check(!option.IsEnabled && option.IsInstalled, "Visibility must change independently of installation.");
-                    remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(installations == 2, "The separate remove action must request an installation change.");
-                    Check(Descendants<FrameworkElement>(card).Where(element => element is Button or CheckBox).All(element =>
+                    Check(installations == 2, "Tapping an installed preview must request uninstallation.");
+                    Check(Descendants<FrameworkElement>(card).Where(element => element is Button).All(element =>
                     {
                         var left = element.TranslatePoint(new Point(), card).X;
                         return left >= 0 && left + element.ActualWidth <= card.ActualWidth;
-                    }), "All preview and management controls must fit inside their gallery item.");
+                    }), "All preview controls must fit inside their gallery item.");
                     option.UpdateText("Localized widget", "Localized description");
                     Check(option.Preview.Label == option.Label, "Preview labels must follow catalog localization.");
                 }
@@ -319,23 +315,19 @@ internal static class WidgetViewChecks
                     var selection = (DockWidgetOption)firstCard.DataContext;
                     RequiredName<Button>(firstCard, "PreviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Check(selection.IsInstalled && selection.IsEnabled, "A preview tap in Settings must install and enable its widget.");
-                    searchBox.Text = "no-matching-widget";
-                    searchBox.Clear();
-                    Check(selection.IsInstalled && selection.IsEnabled, "Filtering the gallery must preserve pending installation edits.");
-                    var apply = RequiredName<Button>(settings, "ApplyButton");
-                    Check(apply.IsEnabled, "A preview installation must enable Apply.");
-                    apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Check(preferences.Current.InstalledWidgets?.Contains(selection.Id) == true
                         && preferences.Current.Widgets?.Contains(selection.Id) == true,
-                        "Apply must save the installed and visible widget selections.");
+                        "A preview tap must auto-save the installed and visible widget selections.");
+                    searchBox.Text = "no-matching-widget";
+                    searchBox.Clear();
+                    Check(selection.IsInstalled && selection.IsEnabled, "Filtering the gallery must preserve installation state.");
                     Layout(page);
                     var currentCard = Descendants<WidgetCatalogItem>(list).Single(card => ReferenceEquals(card.DataContext, selection));
-                    RequiredName<Button>(currentCard, "RemoveButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(!selection.IsInstalled && !selection.IsEnabled, "Remove must clear installation and visibility in Settings.");
-                    apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    RequiredName<Button>(currentCard, "PreviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(!selection.IsInstalled && !selection.IsEnabled, "Tapping an installed preview in Settings must uninstall and disable its widget.");
                     Check(preferences.Current.InstalledWidgets?.Contains(selection.Id) != true
                         && preferences.Current.Widgets?.Contains(selection.Id) != true,
-                        "Apply must persist removal of the previewed widget.");
+                        "Tapping an installed preview must auto-save removal of the widget.");
                 }
                 finally
                 {

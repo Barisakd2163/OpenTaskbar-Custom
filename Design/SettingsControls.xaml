@@ -38,7 +38,7 @@
         <Style.Triggers>
             <DataTrigger Binding="{Binding IsInstalled}" Value="True">
                 <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                <Setter Property="ToolTip" Value="{local:Loc WidgetInstalled}" />
+                <Setter Property="ToolTip" Value="{local:Loc WidgetRemove}" />
                 <Setter Property="AutomationProperties.ItemStatus" Value="{local:Loc WidgetInstalled}" />
             </DataTrigger>
         </Style.Triggers>

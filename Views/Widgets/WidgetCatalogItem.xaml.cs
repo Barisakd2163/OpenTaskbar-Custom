@@ -17,12 +17,7 @@ public partial class WidgetCatalogItem : UserControl
     }
     private void Preview_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is DockWidgetOption { IsInstalled: false }) RequestInstallationChange();
-    }
-
-    private void Remove_Click(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is DockWidgetOption { IsInstalled: true }) RequestInstallationChange();
+        if (DataContext is DockWidgetOption) RequestInstallationChange();
     }
 
     private void RequestInstallationChange() => RaiseEvent(new RoutedEventArgs(InstallationRequestedEvent, this));
