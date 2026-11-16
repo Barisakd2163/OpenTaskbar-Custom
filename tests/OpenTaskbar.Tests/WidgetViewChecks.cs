@@ -2,6 +2,7 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -34,13 +35,22 @@ internal static class WidgetViewChecks
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         try
         {
-            foreach (var resource in new[] { "Theme", "ContextMenus", "WidgetControls" })
+            foreach (var resource in new[] { "Theme", "ContextMenus", "WidgetControls", "SettingsControls" })
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
                     Source = new Uri($"/OpenTaskbar;component/Design/{resource}.xaml", UriKind.Relative)
                 });
             ThemeManager.Apply(AppTheme.Dark);
             UiText.Current.SetLanguage(AppLanguage.Turkish);
+
+            var settingsAction = new Button { Content = UiText.Get("Apply") };
+            var selectedTab = new TabItem { Header = UiText.Get("General"), Content = settingsAction };
+            var settingsTabs = new TabControl { Items = { selectedTab }, SelectedIndex = 0 };
+            Layout(settingsTabs);
+            var tabPeer = UIElementAutomationPeer.CreatePeerForElement(settingsTabs);
+            var selectedPeer = tabPeer?.GetChildren()?.Single();
+            Check(selectedPeer?.GetChildren()?.Any(peer => peer.GetAutomationControlType() == AutomationControlType.Button) == true,
+                "The selected settings page must expose its controls to assistive technology.");
 
             void Check(bool condition, string name)
             {
@@ -142,6 +152,58 @@ internal static class WidgetViewChecks
                 "A narrow panel must retain reachable action controls.");
             frame.MaxWidth = double.PositiveInfinity;
 
+            foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
+            {
+                ThemeManager.Apply(theme);
+                double Luminance(Color color)
+                {
+                    double Linear(byte channel) => channel / 255d <= 0.04045
+                        ? channel / 255d / 12.92 : Math.Pow((channel / 255d + 0.055) / 1.055, 2.4);
+                    return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+                }
+                double Contrast(string foreground, string background)
+                {
+                    var first = Luminance(((SolidColorBrush)app.Resources[foreground]).Color);
+                    var second = Luminance(((SolidColorBrush)app.Resources[background]).Color);
+                    return (Math.Max(first, second) + 0.05) / (Math.Min(first, second) + 0.05);
+                }
+                Check(Contrast("TextPrimary", "SurfacePopup") >= 7, "Panel primary text must retain strong contrast in both themes.");
+                Check(Contrast("TextSecondary", "SurfacePopup") >= 4.5, "Panel supporting text must meet normal-text contrast.");
+                Check(Contrast("AccentText", "AccentBrush") >= 4.5, "Quick action glyphs must contrast with their accent surface.");
+            }
+
+            foreach (var language in new[] { AppLanguage.Turkish, AppLanguage.English })
+            {
+                UiText.Current.SetLanguage(language);
+                foreach (var width in new[] { 292d, 500d })
+                {
+                    var option = DockWidgetService.CreateOptions([], []).Single(item => item.Id == DockWidgetService.CountdownId);
+                    var card = new WidgetCatalogItem { DataContext = option, Width = width };
+                    Layout(card);
+                    var install = Descendants<Button>(card).Single();
+                    var visibility = Descendants<CheckBox>(card).Single();
+                    Check(Descendants<TextBlock>(card).Single(text => text.Text == option.Label).Foreground is SolidColorBrush labelBrush
+                        && labelBrush.Color == ((SolidColorBrush)app.Resources["TextPrimary"]).Color,
+                        "Catalog titles must inherit the semantic foreground instead of a system default.");
+                    var installations = 0;
+                    card.InstallationRequested += (_, _) => installations++;
+                    install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(installations == 1 && !option.IsInstalled, "The catalog view must delegate installation without mutating domain state.");
+                    Check(!visibility.IsEnabled && Equals(install.Content, UiText.Get("WidgetInstall")), "An available catalog item must show Install and a disabled visibility switch.");
+                    option.IsInstalled = true;
+                    Layout(card);
+                    Check(visibility.IsEnabled && Equals(install.Content, UiText.Get("WidgetRemove")), "Installation changes must update catalog controls.");
+                    visibility.IsChecked = true;
+                    Check(option.IsEnabled, "The catalog visibility switch must preserve its two-way binding.");
+                    Check(Descendants<Button>(card).All(button =>
+                    {
+                        var left = button.TranslatePoint(new Point(), card).X;
+                        return left >= 0 && left + button.ActualWidth <= card.ActualWidth;
+                    }), "Catalog actions must fit at both settings widths in both languages.");
+                }
+            }
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+
             timer.Reset();
             timer.Toggle();
             clock.Advance(TimeSpan.FromSeconds(15));
@@ -169,6 +231,12 @@ internal static class WidgetViewChecks
                 var surface = new Border { Background = (Brush)app.Resources["SettingsBackground"], Child = preview };
                 Layout(surface);
                 Render(surface, Path.Combine(directory, $"timed-widgets-{theme.ToString().ToLowerInvariant()}.png"));
+                var catalog = new StackPanel { Width = 420, Margin = new Thickness(20) };
+                foreach (var option in DockWidgetService.CreateOptions([DockWidgetService.StopwatchId], [DockWidgetService.StopwatchId]))
+                    catalog.Children.Add(new WidgetCatalogItem { DataContext = option });
+                var catalogSurface = new Border { Background = (Brush)app.Resources["SettingsBackground"], Child = catalog };
+                Layout(catalogSurface);
+                Render(catalogSurface, Path.Combine(directory, $"widget-catalog-{theme.ToString().ToLowerInvariant()}.png"));
             }
             return checks;
         }

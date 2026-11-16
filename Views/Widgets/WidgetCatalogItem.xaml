@@ -1,0 +1,42 @@
+<UserControl x:Class="OpenTaskbar.Views.Widgets.WidgetCatalogItem"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:OpenTaskbar.Services"
+             Focusable="False" Foreground="{DynamicResource TextPrimary}"
+             FontFamily="{StaticResource InterfaceFont}" FontSize="{StaticResource TextSizeBody}">
+    <Border Style="{StaticResource WidgetCatalogCard}">
+        <StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeCaption}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="{local:Loc WidgetAvailable}" />
+                                <Style.Triggers><DataTrigger Binding="{Binding IsInstalled}" Value="True"><Setter Property="Text" Value="{local:Loc WidgetInstalled}" /></DataTrigger></Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="1" Click="Installation_Click">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource WidgetActionButton}">
+                            <Setter Property="Content" Value="{local:Loc WidgetInstall}" />
+                            <Style.Triggers><DataTrigger Binding="{Binding IsInstalled}" Value="True"><Setter Property="Content" Value="{local:Loc WidgetRemove}" /></DataTrigger></Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                       Margin="{StaticResource WidgetCatalogDescriptionInset}" />
+            <DockPanel Margin="{StaticResource WidgetCatalogDescriptionInset}">
+                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                          IsEnabled="{Binding IsInstalled}" AutomationProperties.Name="{Binding Label}"
+                          AutomationProperties.HelpText="{local:Loc WidgetShow}" />
+                <TextBlock Text="{local:Loc WidgetShow}" VerticalAlignment="Center" FontSize="{StaticResource TextSizeCaption}"
+                           Foreground="{DynamicResource TextSecondary}" />
+            </DockPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

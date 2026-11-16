@@ -20,8 +20,37 @@
     <Thickness x:Key="WidgetPanelFieldMargin">0,6,0,0</Thickness>
     <Thickness x:Key="WidgetPanelFieldPadding">10,6</Thickness>
     <FontFamily x:Key="WidgetActionFont">Segoe MDL2 Assets</FontFamily>
+    <CornerRadius x:Key="WidgetFieldRadius">7</CornerRadius>
+    <Style x:Key="WidgetTextField" TargetType="TextBox">
+        <Setter Property="Padding" Value="{StaticResource WidgetPanelFieldPadding}" />
+        <Setter Property="MinHeight" Value="{StaticResource WidgetPanelActionHeight}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Background" Value="{DynamicResource SettingsControl}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource WidgetFieldRadius}">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource TextSecondary}" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" /></Trigger>
+                        <Trigger Property="IsReadOnly" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceSelected}" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <Style x:Key="DockWidgetFrame" TargetType="Border">
+        <Setter Property="MinWidth" Value="{StaticResource DockWidgetMinimumWidth}" />
+        <Setter Property="MinHeight" Value="{StaticResource DockWidgetMinimumHeight}" />
         <Setter Property="Margin" Value="{StaticResource WidgetTileMargin}" />
         <Setter Property="Padding" Value="{StaticResource DockWidgetPadding}" />
         <Setter Property="CornerRadius" Value="{StaticResource DockWidgetRadius}" />
@@ -59,7 +88,8 @@
         <Setter Property="Width" Value="{StaticResource WidgetQuickActionSize}" />
         <Setter Property="Height" Value="{StaticResource WidgetQuickActionSize}" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentText}" />
         <Setter Property="FontFamily" Value="{StaticResource WidgetActionFont}" />
         <Setter Property="FontSize" Value="{StaticResource WidgetActionGlyphSize}" />
         <Setter Property="Content" Value="&#xE768;" />
@@ -74,8 +104,8 @@
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceHover}" /></Trigger>
-                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" /></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.88" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.72" /></Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" /></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -88,6 +118,9 @@
                 <Setter Property="ToolTip" Value="{local:Loc TimedWidgetPause}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding CanToggle}" Value="False">
+                <Setter Property="Content" Value="&#xE713;" />
+                <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
                 <Setter Property="AutomationProperties.Name" Value="{local:Loc WidgetSetDuration}" />
                 <Setter Property="ToolTip" Value="{local:Loc WidgetSetDuration}" />
             </DataTrigger>
@@ -111,6 +144,7 @@
             <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="{Binding Label}" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeWidgetLabel}" />
                 <TextBlock Text="{Binding Value}" Foreground="{DynamicResource TextPrimary}" FontSize="{StaticResource TextSizeWidgetValue}"
+                           MaxWidth="{StaticResource DockWidgetValueMaxWidth}" TextWrapping="Wrap"
                            Typography.NumeralAlignment="Tabular" FontWeight="SemiBold" />
             </StackPanel>
         </Border>

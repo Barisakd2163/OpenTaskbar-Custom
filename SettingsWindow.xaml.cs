@@ -175,7 +175,7 @@ public partial class SettingsWindow : Window
 
     private void WidgetInstallation_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not System.Windows.Controls.Button { DataContext: DockWidgetOption option }) return;
+        if (e.OriginalSource is not FrameworkElement { DataContext: DockWidgetOption option }) return;
         if (option.IsInstalled)
         {
             option.IsInstalled = false;

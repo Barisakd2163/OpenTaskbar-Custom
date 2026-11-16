@@ -30,7 +30,13 @@
     <sys:Double x:Key="DockIconSize">42</sys:Double>
     <sys:Double x:Key="DockMaximumIconSize">42</sys:Double>
     <sys:Double x:Key="DockIconCellInset">8</sys:Double>
-    <sys:Double x:Key="TextSizeWidgetValue">14</sys:Double>
+    <sys:Double x:Key="TextSizeWidgetValue">18</sys:Double>
+    <sys:Double x:Key="DockWidgetMinimumWidth">104</sys:Double>
+    <sys:Double x:Key="DockWidgetMinimumHeight">52</sys:Double>
+    <sys:Double x:Key="DockWidgetValueMaxWidth">180</sys:Double>
+    <sys:Double x:Key="DockShadowBlur">16</sys:Double>
+    <sys:Double x:Key="DockShadowDepth">2</sys:Double>
+    <sys:Double x:Key="DockShadowOpacity">0.25</sys:Double>
     <sys:Double x:Key="DockMinimumWidth">280</sys:Double>
     <sys:Double x:Key="DockAbsoluteMinimumWidth">16</sys:Double>
     <sys:Double x:Key="DockContentOverflowAllowance">32</sys:Double>

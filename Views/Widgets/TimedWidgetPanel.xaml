@@ -7,13 +7,10 @@
             <StackPanel>
                 <TextBlock Text="{local:Loc CountdownMinutes}" />
                 <TextBox Text="{Binding MinutesText, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="{StaticResource WidgetPanelFieldMargin}" Padding="{StaticResource WidgetPanelFieldPadding}"
-                         MinHeight="{StaticResource WidgetPanelActionHeight}"
-                         Foreground="{DynamicResource TextPrimary}" Background="{DynamicResource SettingsControl}"
-                         CaretBrush="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource StrokeSubtle}"
+                         Margin="{StaticResource WidgetPanelFieldMargin}"
                          AutomationProperties.Name="{local:Loc CountdownMinutes}" AutomationProperties.HelpText="{Binding StatusText}">
                     <TextBox.Style>
-                        <Style TargetType="TextBox">
+                        <Style TargetType="TextBox" BasedOn="{StaticResource WidgetTextField}">
                             <Style.Triggers><DataTrigger Binding="{Binding CanEditDuration}" Value="False"><Setter Property="IsReadOnly" Value="True" /></DataTrigger></Style.Triggers>
                         </Style>
                     </TextBox.Style>

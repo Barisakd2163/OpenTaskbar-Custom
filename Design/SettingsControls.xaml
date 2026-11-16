@@ -7,7 +7,16 @@
     <Thickness x:Key="SettingsRowInset">0,10</Thickness>
     <Thickness x:Key="WidgetDescriptionInset">0,4,12,0</Thickness>
     <Thickness x:Key="WidgetActionInset">12,0,0,0</Thickness>
-    <Style x:Key="WidgetSearchBox" TargetType="TextBox">
+    <Thickness x:Key="WidgetCatalogDescriptionInset">0,10,0,0</Thickness>
+    <Style x:Key="WidgetCatalogCard" TargetType="Border">
+        <Setter Property="Padding" Value="14" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="CornerRadius" Value="{StaticResource DockWidgetRadius}" />
+        <Setter Property="Background" Value="{DynamicResource SettingsControl}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style x:Key="WidgetSearchBox" TargetType="TextBox" BasedOn="{StaticResource WidgetTextField}">
         <Setter Property="Padding" Value="10,8" />
         <Setter Property="Margin" Value="0,6,0,12" />
         <Setter Property="Background" Value="{DynamicResource SettingsControl}" />
@@ -125,9 +134,9 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <Style x:Key="WidgetActionButton" TargetType="Button" BasedOn="{StaticResource SettingsButton}">
+    <Style x:Key="WidgetActionButton" TargetType="Button" BasedOn="{StaticResource WidgetPanelAction}">
         <Setter Property="Margin" Value="{StaticResource WidgetActionInset}" />
-        <Setter Property="MinWidth" Value="86" />
+        <Setter Property="MinWidth" Value="76" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style x:Key="CaptionButton" TargetType="Button">
@@ -251,7 +260,7 @@
                             <StackPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1" KeyboardNavigation.TabNavigation="Once"
                                         KeyboardNavigation.DirectionalNavigation="Contained" />
                         </Border>
-                        <ContentPresenter Grid.Column="1" ContentSource="SelectedContent" KeyboardNavigation.TabIndex="2" />
+                        <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Column="1" ContentSource="SelectedContent" KeyboardNavigation.TabIndex="2" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

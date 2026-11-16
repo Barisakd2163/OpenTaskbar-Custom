@@ -66,7 +66,9 @@ The dependency-free Windows check project uses a controlled `TimeProvider` for d
 dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj
 ```
 
-These checks cover state transitions, duration boundaries, completion, independent widget state, session retention, localization, settings validation, and widget component actions and layout. Native popup focus, outside-click dismissal, screen-edge placement, and taskbar behavior still require desktop inspection.
+These checks cover state transitions, duration boundaries, completion, independent widget state, session retention, localization, settings validation, widget actions, narrow catalog layouts, and text contrast in both themes. Native popup focus, outside-click dismissal, screen-edge placement, and taskbar behavior still require desktop inspection.
+
+See [CHANGELOG.md](CHANGELOG.md) for release changes.
 
 ## Configuration and Storage
 

@@ -38,6 +38,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
   - Body and menu items: `13 DIP`
   - Secondary labels, badges, and Jump List category headers: `12 DIP`
   - Titles and section headings: `15 DIP`
+  - Widget values: `18 DIP`; timed values: `20 DIP`; detailed time: `32 DIP`
 
 ---
 
@@ -49,7 +50,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 - **Translucent Smoked Glass:** High-contrast charcoal and pearl materials keep the dock distinct from the wallpaper while retaining a light surface tint.
 - **Specular Top Highlight:** A bright top border and a softer lower edge define the dock silhouette against varied wallpapers.
-- **Ambient Shadow:** Soft multi-layer drop shadow (`BlurRadius="24"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.45"`) separating the dock from desktop wallpapers.
+- **Ambient Shadow:** One soft drop shadow (`BlurRadius="16"`, `ShadowDepth="2"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.25"`) separates the dock from the wallpaper. Resize grips remain quiet until hovered or dragged.
 - **Status Indicators:**
   - Running application: Muted 4 DIP circular dot (`#94A3B8`).
   - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
