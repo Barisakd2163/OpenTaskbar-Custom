@@ -472,6 +472,12 @@ internal static class DockLayoutChecks
         Check(app.FindResource("MenuMaterial") is Brush, "MenuMaterial brush must be available.");
         Check(app.FindResource("MenuStroke") is Brush, "MenuStroke brush must be available.");
 
+        // Verify refined slender ScrollBar and expanded Settings content metrics
+        var sbStyle = (Style)app.FindResource(typeof(ScrollBar));
+        var widthSetter = sbStyle.Setters.OfType<Setter>().FirstOrDefault(s => s.Property == ScrollBar.WidthProperty);
+        Check(widthSetter is not null && (double)widthSetter.Value <= 8, "ScrollBar width must be refined and slender (<= 8 DIP).");
+        Check((double)app.FindResource("SettingsReadingWidth") >= 960, "SettingsReadingWidth must accommodate wider layout.");
+
         var panelFrame = new OpenTaskbar.Views.Widgets.WidgetPanelFrame { Heading = "Test" };
         Check(panelFrame.Content is Border outerBorder && outerBorder.Child is Border innerBevel && innerBevel.Child is ScrollViewer,
             "WidgetPanelFrame must feature outer glass frame and inner optical bevel border.");

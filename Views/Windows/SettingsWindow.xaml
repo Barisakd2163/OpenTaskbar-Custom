@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:OpenTaskbar.Services"
         xmlns:widgets="clr-namespace:OpenTaskbar.Views.Widgets"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="{local:Loc SettingsTitle}" Width="920" Height="660" MinWidth="560" MinHeight="440" MaxWidth="1280" MaxHeight="920"
+        Title="{local:Loc SettingsTitle}" Width="980" Height="680" MinWidth="580" MinHeight="440" MaxWidth="1280" MaxHeight="920"
         WindowStyle="None" ResizeMode="CanResize" Background="Transparent"
         WindowStartupLocation="CenterScreen" Foreground="{DynamicResource TextPrimary}"
         FontFamily="{StaticResource InterfaceFont}" FontSize="{StaticResource TextSizeBody}"
