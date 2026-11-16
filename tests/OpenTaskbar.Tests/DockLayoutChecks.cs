@@ -414,6 +414,29 @@ internal static class DockLayoutChecks
         Check(WidgetCoordinator.HandlesWidget("Media"), "HandlesWidget must return true for default widget Media.");
         Check(!WidgetCoordinator.HandlesWidget("NonExistentWidget"), "HandlesWidget must return false for unknown widget.");
 
+        // Verify IsInteractiveControl safely handles FrameworkContentElement (e.g. Run) without throwing
+        var textBlock = new TextBlock();
+        var run = new System.Windows.Documents.Run("test");
+        textBlock.Inlines.Add(run);
+        Check(!WidgetCoordinator.IsInteractiveControl(run), "Run inside TextBlock must not be interactive and must not throw.");
+        Check(WidgetCoordinator.IsInteractiveControl(new Slider()), "Slider must be recognized as interactive.");
+
+        // Verify frozen TransformGroup recovery in WidgetCoordinator and MainWindow
+        var frozenGroup = new TransformGroup
+        {
+            Children = { new ScaleTransform(1, 1), new TranslateTransform(0, 0) }
+        };
+        frozenGroup.Freeze();
+        Check(frozenGroup.IsFrozen, "Test fixture TransformGroup must be frozen.");
+        var frozenWidget = new ClockWidget { RenderTransform = frozenGroup };
+        var (widgetScale, widgetTranslate) = WidgetCoordinator.GetWidgetTransforms(frozenWidget);
+        Check(!widgetScale.IsFrozen && !widgetTranslate.IsFrozen, "WidgetCoordinator must replace frozen transforms with mutable ones.");
+        frozenWidget.Dispose();
+
+        var frozenBorder = new Border { RenderTransform = frozenGroup };
+        var (iconScale, iconTranslate) = MainWindow.GetIconTransforms(frozenBorder);
+        Check(!iconScale.IsFrozen && !iconTranslate.IsFrozen, "MainWindow must replace frozen icon transforms with mutable ones.");
+
         // Verify Fullscreen video / window bounds detection (TaskbarReplacementSession.IsFullScreenBounds)
         const long wsCaption = 0x00C00000;
         var normalMon = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);

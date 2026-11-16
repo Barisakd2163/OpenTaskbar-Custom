@@ -91,12 +91,6 @@
                     MouseUp="DockApp_MouseUp" MouseWheel="DockApp_MouseWheel">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
                       RenderTransformOrigin="0.5,0.95">
-                    <Grid.RenderTransform>
-                        <TransformGroup>
-                            <ScaleTransform ScaleX="1" ScaleY="1" />
-                            <TranslateTransform Y="0" />
-                        </TransformGroup>
-                    </Grid.RenderTransform>
                     <Image Source="{Binding Icon}" Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
                            Stretch="Uniform" ClipToBounds="True" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{DynamicResource NotificationBrush}"
@@ -122,12 +116,6 @@
                     DragLeave="StackButton_DragLeave"
                     Drop="StackButton_Drop">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}" RenderTransformOrigin="0.5,0.95">
-                    <Grid.RenderTransform>
-                        <TransformGroup>
-                            <ScaleTransform ScaleX="1" ScaleY="1" />
-                            <TranslateTransform Y="0" />
-                        </TransformGroup>
-                    </Grid.RenderTransform>
                     <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{DynamicResource NotificationBrush}"
                              Stroke="{DynamicResource SurfacePopup}" StrokeThickness="1"

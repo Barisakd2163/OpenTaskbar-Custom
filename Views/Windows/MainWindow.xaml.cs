@@ -522,7 +522,7 @@ public partial class MainWindow : Window
         button.BeginAnimation(UIElement.OpacityProperty, null);
         button.Opacity = 1;
         button.IsHitTestVisible = true;
-        if (button.RenderTransform is ScaleTransform scale)
+        if (button.RenderTransform is ScaleTransform { IsFrozen: false, IsSealed: false } scale)
         {
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
@@ -553,7 +553,7 @@ public partial class MainWindow : Window
         Action afterRemoval)
     {
         var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
-        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform scale)
+        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform { IsFrozen: false, IsSealed: false } scale)
         {
             RemoveDockApp(apps, app);
             afterRemoval();

@@ -8,7 +8,7 @@ namespace OpenTaskbar;
 
 public partial class MainWindow
 {
-    private static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
+    internal static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
     {
         if (icon.RenderTransform is TransformGroup { IsFrozen: false, IsSealed: false } group)
         {
@@ -136,6 +136,8 @@ public partial class MainWindow
             if (!currentMagnified.Contains(icon))
             {
                 var (scale, _) = GetIconTransforms(icon);
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
                 scale.ScaleX = 1.0;
                 scale.ScaleY = 1.0;
             }

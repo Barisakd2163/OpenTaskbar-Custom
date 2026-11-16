@@ -177,13 +177,16 @@ public sealed class WidgetCoordinator : IDisposable
         OrderChanged?.Invoke(newOrder);
     }
 
-    private static (ScaleTransform Scale, TranslateTransform Translate) GetWidgetTransforms(DockWidget widget)
+    internal static (ScaleTransform Scale, TranslateTransform Translate) GetWidgetTransforms(DockWidget widget)
     {
-        if (widget.RenderTransform is TransformGroup group)
+        if (widget.RenderTransform is TransformGroup { IsFrozen: false, IsSealed: false } group)
         {
             var s = group.Children.OfType<ScaleTransform>().FirstOrDefault();
             var t = group.Children.OfType<TranslateTransform>().FirstOrDefault();
-            if (s is not null && t is not null) return (s, t);
+            if (s is { IsFrozen: false, IsSealed: false } && t is { IsFrozen: false, IsSealed: false })
+            {
+                return (s, t);
+            }
         }
 
         var scale = new ScaleTransform();
@@ -288,7 +291,7 @@ public sealed class WidgetCoordinator : IDisposable
         }
     }
 
-    private static bool IsInteractiveControl(DependencyObject dep)
+    internal static bool IsInteractiveControl(DependencyObject dep)
     {
         var current = dep;
         while (current is not null)
@@ -297,7 +300,18 @@ public sealed class WidgetCoordinator : IDisposable
             {
                 return true;
             }
-            current = VisualTreeHelper.GetParent(current);
+            if (current is Visual or System.Windows.Media.Media3D.Visual3D)
+            {
+                current = VisualTreeHelper.GetParent(current);
+            }
+            else if (current is FrameworkContentElement fce)
+            {
+                current = fce.Parent;
+            }
+            else
+            {
+                break;
+            }
         }
         return false;
     }
