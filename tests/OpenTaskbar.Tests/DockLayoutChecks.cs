@@ -401,6 +401,19 @@ internal static class DockLayoutChecks
             System.IO.Directory.Delete(tempFolder, recursive: true);
         }
 
+        // Verify DockWidget RenderTransform initialization for drag-and-drop animation
+        var dummyWidget = new ClockWidget();
+        Check(dummyWidget.RenderTransform is TransformGroup tg && tg.Children.Count >= 2 && tg.Children[0] is ScaleTransform && tg.Children[1] is TranslateTransform,
+            "DockWidget must initialize TransformGroup with ScaleTransform and TranslateTransform for fluid animations.");
+        Check(dummyWidget.RenderTransformOrigin == new Point(0.5, 0.5),
+            "DockWidget RenderTransformOrigin must be centered for balanced scaling.");
+        dummyWidget.Dispose();
+
+        // Verify WidgetCoordinator.HandlesWidget helper
+        Check(WidgetCoordinator.HandlesWidget("Clock"), "HandlesWidget must return true for default widget Clock.");
+        Check(WidgetCoordinator.HandlesWidget("Media"), "HandlesWidget must return true for default widget Media.");
+        Check(!WidgetCoordinator.HandlesWidget("NonExistentWidget"), "HandlesWidget must return false for unknown widget.");
+
         return checks;
     }
 }

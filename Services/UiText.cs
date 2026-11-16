@@ -33,7 +33,7 @@ public sealed class UiText : INotifyPropertyChanged
             ["WidgetCorrectDuration"] = ("Süreyi düzeltin", "Correct duration"),
             ["CountdownEditingHelp"] = ("{0}–{1} dakika girin. Çalışan veya duraklatılmış süreyi değiştirmek için önce sıfırlayın.", "Enter {0}–{1} minutes. Reset a running or paused timer before changing its duration."),
             ["StopwatchSessionHelp"] = ("Paneli kapatsanız da kronometre çalışır. Süre uygulama kapandığında sıfırlanır.", "The stopwatch keeps running when you close this panel. Its time resets when the app closes."),
-            ["WidgetCountdown"] = ("Zamanlayıcı", "Timer"),
+            ["WidgetCountdown"] = ("Geri sayım", "Timer"),
             ["WidgetCountdownDescription"] = ("Dakika olarak süre girin; geri sayımı başlatın, duraklatın veya sıfırlayın.", "Enter a duration in minutes; start, pause, or reset the countdown."),
             ["CountdownChooseDuration"] = ("Dakika girin", "Enter minutes"),
             ["CountdownDurationError"] = ("{0}–{1} dakika girin", "Enter {0}–{1} minutes"),

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Widgets;
@@ -17,6 +18,11 @@ public class DockWidget : UserControl, IDisposable
         Visibility = Visibility.Collapsed;
         SetResourceReference(ForegroundProperty, "TextPrimary");
         Focusable = false;
+        RenderTransform = new TransformGroup
+        {
+            Children = { new ScaleTransform(), new TranslateTransform() }
+        };
+        RenderTransformOrigin = new Point(0.5, 0.5);
     }
 
     public Action<string>? ReportError { get; set; }

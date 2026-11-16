@@ -32,6 +32,7 @@ public partial class SettingsWindow : Window
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private bool _startupEnabled;
     private bool _startupAvailable;
+    private bool _widgetOrderChanged;
     private DockSettings _applied;
     private bool _closingApplication;
     private bool _initializing = true;
@@ -232,7 +233,7 @@ public partial class SettingsWindow : Window
             StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
             StartPlacement = StartLast.IsChecked == true ? StartButtonPlacement.End : StartHidden.IsChecked == true ? StartButtonPlacement.Hidden : StartButtonPlacement.Start,
             WheelVolume = WheelVolumeToggle.IsChecked == true,
-            WidgetOrder = _widgetOrderItems.Select(w => w.Id).ToArray()
+            WidgetOrder = _widgetOrderChanged ? _widgetOrderItems.Select(w => w.Id).ToArray() : _applied.WidgetOrder
         };
     }
 
@@ -259,10 +260,6 @@ public partial class SettingsWindow : Window
     private void LoadWidgetOrder(IReadOnlyList<string>? savedOrder)
     {
         _widgetOrderItems.Clear();
-        var installedRichIds = _widgetOptions
-            .Where(o => o.IsInstalled && WidgetCoordinator.HandlesWidget(o.Id))
-            .Select(o => o.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var order = (savedOrder ?? []).ToList();
         foreach (var def in WidgetCoordinator.DefaultWidgetOrder)
         {
@@ -274,7 +271,6 @@ public partial class SettingsWindow : Window
 
         foreach (var id in order)
         {
-            if (!installedRichIds.Contains(id)) continue;
             var labelKey = WidgetCoordinator.GetLabelKey(id);
             if (labelKey is not null)
             {
@@ -291,6 +287,7 @@ public partial class SettingsWindow : Window
             var index = list.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
             if (index > 0)
             {
+                _widgetOrderChanged = true;
                 _widgetOrderItems.Move(index, index - 1);
                 PreferenceEdited(sender, e);
             }
@@ -305,6 +302,7 @@ public partial class SettingsWindow : Window
             var index = list.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
             if (index >= 0 && index < _widgetOrderItems.Count - 1)
             {
+                _widgetOrderChanged = true;
                 _widgetOrderItems.Move(index, index + 1);
                 PreferenceEdited(sender, e);
             }
@@ -515,6 +513,7 @@ public partial class SettingsWindow : Window
             return;
         }
         _applied = settings;
+        _widgetOrderChanged = false;
         _startupEnabled = StartupToggle.IsChecked == true;
         ShowResult(UiText.Get("SettingsSaved"), error: false);
         UpdateApplyState();
@@ -551,7 +550,7 @@ public partial class SettingsWindow : Window
             })
             || !(selected.Widgets ?? []).SequenceEqual(_applied.Widgets ?? [], StringComparer.Ordinal)
             || !(selected.InstalledWidgets ?? []).SequenceEqual(_applied.InstalledWidgets ?? [], StringComparer.Ordinal)
-            || !(selected.WidgetOrder ?? []).SequenceEqual(_applied.WidgetOrder ?? WidgetCoordinator.DefaultWidgetOrder, StringComparer.OrdinalIgnoreCase)
+            || (_widgetOrderChanged && !(selected.WidgetOrder ?? []).SequenceEqual(_applied.WidgetOrder ?? WidgetCoordinator.DefaultWidgetOrder, StringComparer.OrdinalIgnoreCase))
             || (_startupAvailable && StartupToggle.IsChecked != _startupEnabled);
     }
 

@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
@@ -308,6 +309,40 @@ public partial class MainWindow
         _draggedStack = null;
     }
 
+    private void AnimateStackDrag(Button button, DockStack stack)
+    {
+        var icon = GetButtonIcon(button);
+        var (scale, translate) = icon != null ? GetIconTransforms(icon) : (null, null);
+        var animDuration = TimeSpan.FromMilliseconds(130);
+        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        button.Opacity = 0.55;
+        if (scale is not null && translate is not null && _preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.10, animDuration) { EasingFunction = easeOut });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.10, animDuration) { EasingFunction = easeOut });
+            translate.BeginAnimation(IsVertical ? TranslateTransform.XProperty : TranslateTransform.YProperty,
+                new DoubleAnimation(-4 * BounceDirection, animDuration) { EasingFunction = easeOut });
+        }
+
+        try
+        {
+            DragDrop.DoDragDrop(button, stack, DragDropEffects.Move);
+        }
+        finally
+        {
+            button.Opacity = 1.0;
+            ResetDisplacements();
+            if (scale is not null && translate is not null)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.0, animDuration) { EasingFunction = easeOut });
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.0, animDuration) { EasingFunction = easeOut });
+                translate.BeginAnimation(IsVertical ? TranslateTransform.XProperty : TranslateTransform.YProperty,
+                    new DoubleAnimation(0, animDuration) { EasingFunction = easeOut });
+            }
+        }
+    }
+
     private void StackButton_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _draggedStack is null || sender is not Button button)
@@ -322,7 +357,7 @@ public partial class MainWindow
         {
             var stack = _draggedStack;
             _draggedStack = null;
-            DragDrop.DoDragDrop(button, stack, DragDropEffects.Move);
+            AnimateStackDrag(button, stack);
         }
     }
 
@@ -335,11 +370,24 @@ public partial class MainWindow
         {
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
+
+            if (_preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation)
+            {
+                UpdateDragDisplacements(targetButton, e);
+            }
         }
         else
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
+        }
+    }
+
+    private void StackButton_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is Button button && GetButtonIcon(button) is { } icon)
+        {
+            ResetIconDisplacement(icon);
         }
     }
 
@@ -356,10 +404,13 @@ public partial class MainWindow
             var newIndex = _stacks.IndexOf(targetStack);
             if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
             {
+                ResetDisplacements();
                 _stacks.Move(oldIndex, newIndex);
                 SaveStackFolders(_stacks.Select(s => s.Path).ToList());
+                AnimateDropSettle(targetButton);
             }
         }
+        ResetDisplacements();
         e.Handled = true;
     }
 
