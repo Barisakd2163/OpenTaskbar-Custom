@@ -165,10 +165,6 @@
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
                         <TextBlock Text="{Binding Value}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Right" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-1,0,0">
-                            <TextBlock Text="☀" FontSize="11" Margin="0,0,3,0" VerticalAlignment="Center" Foreground="#F59E0B" />
-                            <TextBlock Text="21°" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
-                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>

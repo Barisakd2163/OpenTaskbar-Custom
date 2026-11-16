@@ -10,6 +10,36 @@
     <sys:Double x:Key="WidgetCatalogManagementHeight">40</sys:Double>
     <Thickness x:Key="WidgetCatalogItemMargin">0,0,12,12</Thickness>
     <Thickness x:Key="WidgetCatalogPreviewPadding">12</Thickness>
+    <Style x:Key="WidgetCatalogHeaderButton" TargetType="Button" BasedOn="{StaticResource WidgetButton}">
+        <Setter Property="MinHeight" Value="{StaticResource WidgetCatalogPreviewHeight}" />
+        <Setter Property="Padding" Value="{StaticResource WidgetCatalogPreviewPadding}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="ToolTip" Value="{local:Loc WidgetInstall}" />
+        <Setter Property="AutomationProperties.ItemStatus" Value="{local:Loc WidgetAvailable}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                            CornerRadius="10,10,0,0" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SettingsControlHover}" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.72" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                <Setter Property="ToolTip" Value="{local:Loc WidgetRemove}" />
+                <Setter Property="AutomationProperties.ItemStatus" Value="{local:Loc WidgetInstalled}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
     <Style x:Key="WidgetCatalogPreviewButton" TargetType="Button" BasedOn="{StaticResource WidgetButton}">
         <Setter Property="MinHeight" Value="{StaticResource WidgetCatalogPreviewHeight}" />
         <Setter Property="Padding" Value="{StaticResource WidgetCatalogPreviewPadding}" />

@@ -358,6 +358,25 @@ internal static class WidgetViewChecks
                     var mediaOption = (DockWidgetOption)mediaCard.DataContext;
                     Check(!mediaOption.HasSettings && RequiredName<Button>(mediaCard, "SettingsExpandButton").Visibility == Visibility.Collapsed,
                         "Widgets without custom settings must hide the settings expand button.");
+
+                    var weatherCard = Descendants<WidgetCatalogItem>(list).Single(card => ((DockWidgetOption)card.DataContext).Id == DockWidgetService.WeatherId);
+                    var weatherOption = (DockWidgetOption)weatherCard.DataContext;
+                    var weatherExpandBtn = RequiredName<Button>(weatherCard, "SettingsExpandButton");
+                    weatherExpandBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(weatherOption.IsSettingsExpanded, "Weather card must expand when settings button is clicked.");
+                    Check(weatherOption.SettingsView != null, "Weather card must host its settings view inside the card.");
+                    var countryBox = RequiredName<ComboBox>(settings, "WeatherCountryBox");
+                    var cityContainer = RequiredName<FrameworkElement>(settings, "WeatherCityContainer");
+                    var cityCombo = RequiredName<ComboBox>(settings, "WeatherCityCombo");
+                    Check(countryBox.Visibility == Visibility.Visible, "Weather country box must be visible.");
+                    countryBox.SelectedItem = "Turkey";
+                    Layout(settings);
+                    Check(cityContainer.Visibility == Visibility.Visible, "Selecting a country must make the city dropdown container visible.");
+                    Check(cityCombo.Items.Count > 0, "Selecting Turkey must populate Turkish cities.");
+                    cityCombo.SelectedItem = "İzmir";
+                    Check(preferences.Current.WeatherCity == "İzmir", "Selecting a city in the dropdown must auto-save WeatherCity.");
+                    weatherExpandBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(!weatherOption.IsSettingsExpanded, "Clicking weather settings button again must collapse it.");
                 }
                 finally
                 {

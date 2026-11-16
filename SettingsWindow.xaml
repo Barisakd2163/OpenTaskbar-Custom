@@ -192,122 +192,144 @@
                             </ItemsControl>
                             <TextBlock x:Name="WidgetNoResults" Text="{local:Loc WidgetNoResults}" Visibility="Collapsed"
                                        TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" AutomationProperties.LiveSetting="Polite" />
-                            <Border x:Name="ClockOptions" Visibility="Collapsed" Style="{StaticResource SettingsChoiceRow}" Margin="0,20,0,0" Padding="16,14">
-                                <StackPanel>
-                                    <DockPanel Margin="0,0,0,12">
-                                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="28" Height="28" Content="&#xE711;"
-                                                Click="CollapseClockOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
-                                        <TextBlock Text="{local:Loc ClockSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
-                                    </DockPanel>
-                                    <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
-                                        <TextBlock Text="{local:Loc ClockFormatLabel}" Style="{StaticResource SettingsChoiceLabel}" />
-                                        <UniformGrid Columns="2" Margin="-3,0">
-                                            <RadioButton x:Name="Clock24HourRadio" GroupName="ClockFormat" Content="{local:Loc ClockFormat24Hour}" Style="{StaticResource SettingsChoice}" />
-                                            <RadioButton x:Name="Clock12HourRadio" GroupName="ClockFormat" Content="{local:Loc ClockFormat12Hour}" Style="{StaticResource SettingsChoice}" />
-                                        </UniformGrid>
-                                    </StackPanel></Border>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="ClockSecondsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc ClockShowSeconds}" />
-                                        <TextBlock Text="{local:Loc ClockShowSeconds}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
-                                        <TextBlock Text="{local:Loc ClockDateStyleLabel}" Style="{StaticResource SettingsChoiceLabel}" />
-                                        <UniformGrid Columns="4" Margin="-3,0">
-                                            <RadioButton x:Name="DateStyleDayShort" GroupName="ClockDateStyle" Content="{local:Loc DateStyleDayShort}" Style="{StaticResource SettingsChoice}" />
-                                            <RadioButton x:Name="DateStyleShort" GroupName="ClockDateStyle" Content="{local:Loc DateStyleShort}" Style="{StaticResource SettingsChoice}" />
-                                            <RadioButton x:Name="DateStyleNumeric" GroupName="ClockDateStyle" Content="{local:Loc DateStyleNumeric}" Style="{StaticResource SettingsChoice}" />
-                                            <RadioButton x:Name="DateStyleHidden" GroupName="ClockDateStyle" Content="{local:Loc DateStyleHidden}" Style="{StaticResource SettingsChoice}" />
-                                        </UniformGrid>
-                                    </StackPanel></Border>
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="WeatherOptions" Visibility="Collapsed" Style="{StaticResource SettingsChoiceRow}" Margin="0,20,0,6" Padding="16,14">
-                                <StackPanel>
-                                    <DockPanel Margin="0,0,0,12">
-                                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="28" Height="28" Content="&#xE711;"
-                                                Click="CollapseWeatherOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
-                                        <TextBlock Text="{local:Loc WeatherSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
-                                    </DockPanel>
-                                    <TextBlock Text="{local:Loc WeatherCity}" FontWeight="SemiBold" Margin="0,0,0,6" />
-                                    <TextBox x:Name="WeatherCityBox" MaxLength="80" Padding="8,6" Background="{DynamicResource SettingsControl}"
-                                             Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
-                                             BorderBrush="{DynamicResource MenuStroke}" TextChanged="WeatherCityBox_TextChanged"
-                                             LostFocus="WeatherCityBox_LostFocus"
-                                             AutomationProperties.Name="{local:Loc WeatherCity}" AutomationProperties.HelpText="{local:Loc WeatherCityHint}" />
-                                    <TextBlock Text="{local:Loc WeatherCityHint}" Foreground="{DynamicResource TextSecondary}" Margin="0,6,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="FocusOptions" Visibility="Collapsed" Style="{StaticResource SettingsChoiceRow}" Margin="0,20,0,0" Padding="16,14">
-                                <StackPanel>
-                                    <DockPanel Margin="0,0,0,12">
-                                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="28" Height="28" Content="&#xE711;"
-                                                Click="CollapseFocusOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
-                                        <TextBlock Text="{local:Loc FocusSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
-                                    </DockPanel>
-                                    <DockPanel Margin="0,0,0,10">
-                                        <TextBlock x:Name="FocusMinutesValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
-                                        <TextBlock Text="{local:Loc FocusDuration}" FontWeight="SemiBold" />
-                                    </DockPanel>
-                                    <Slider x:Name="FocusMinutesSlider" Minimum="1" Maximum="90" TickFrequency="1" IsSnapToTickEnabled="True"
-                                            SmallChange="1" LargeChange="5" Style="{StaticResource SettingsOpacitySlider}"
-                                            AutomationProperties.Name="{local:Loc FocusDuration}" ValueChanged="FocusSlider_ValueChanged" />
-                                    <DockPanel Margin="0,16,0,10">
-                                        <TextBlock x:Name="BreakMinutesValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
-                                        <TextBlock Text="{local:Loc BreakDuration}" FontWeight="SemiBold" />
-                                    </DockPanel>
-                                    <Slider x:Name="BreakMinutesSlider" Minimum="1" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True"
-                                            SmallChange="1" LargeChange="5" Style="{StaticResource SettingsOpacitySlider}"
-                                            AutomationProperties.Name="{local:Loc BreakDuration}" ValueChanged="FocusSlider_ValueChanged" />
-                                    <DockPanel Margin="0,16,0,10">
-                                        <TextBlock x:Name="FocusSessionsValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
-                                        <TextBlock Text="{local:Loc FocusSessionCount}" FontWeight="SemiBold" />
-                                    </DockPanel>
-                                    <Slider x:Name="FocusSessionsSlider" Minimum="1" Maximum="8" TickFrequency="1" IsSnapToTickEnabled="True"
-                                            SmallChange="1" LargeChange="2" Style="{StaticResource SettingsOpacitySlider}"
-                                            AutomationProperties.Name="{local:Loc FocusSessionCount}" ValueChanged="FocusSlider_ValueChanged" />
-                                </StackPanel>
-                            </Border>
-                            <Border x:Name="StatsOptions" Visibility="Collapsed" Style="{StaticResource SettingsChoiceRow}" Margin="0,20,0,0" Padding="16,14">
-                                <StackPanel>
-                                    <DockPanel Margin="0,0,0,12">
-                                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="28" Height="28" Content="&#xE711;"
-                                                Click="CollapseStatsOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
-                                        <TextBlock Text="{local:Loc StatsSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
-                                    </DockPanel>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="StatsCpuToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc Cpu}" />
-                                        <TextBlock Text="{local:Loc Cpu}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="StatsMemoryToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc Memory}" />
-                                        <TextBlock Text="{local:Loc Memory}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="StatsBatteryToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc Battery}" />
-                                        <TextBlock Text="{local:Loc Battery}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="StatsCpuTemperatureToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc CpuTemperature}" />
-                                        <TextBlock Text="{local:Loc CpuTemperature}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="StatsGpuToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc Gpu}" />
-                                        <TextBlock Text="{local:Loc Gpu}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                        <CheckBox x:Name="StatsGpuTemperatureToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                                  AutomationProperties.Name="{local:Loc GpuTemperature}" />
-                                        <TextBlock Text="{local:Loc GpuTemperature}" Style="{StaticResource SettingsRowLabel}" />
-                                    </DockPanel></Border>
-                                    <TextBlock Text="{local:Loc StatsAvailabilityNote}" Foreground="{DynamicResource TextSecondary}" Margin="0,6,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
+                            <Grid x:Name="WidgetPanelsPool" Visibility="Collapsed">
+                                <Border x:Name="ClockOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,10">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="26" Content="&#xE711;"
+                                                    Click="CollapseClockOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
+                                            <TextBlock Text="{local:Loc ClockSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
+                                            <TextBlock Text="{local:Loc ClockFormatLabel}" Style="{StaticResource SettingsChoiceLabel}" />
+                                            <UniformGrid Columns="2" Margin="-3,0">
+                                                <RadioButton x:Name="Clock24HourRadio" GroupName="ClockFormat" Content="{local:Loc ClockFormat24Hour}" Style="{StaticResource SettingsChoice}" />
+                                                <RadioButton x:Name="Clock12HourRadio" GroupName="ClockFormat" Content="{local:Loc ClockFormat12Hour}" Style="{StaticResource SettingsChoice}" />
+                                            </UniformGrid>
+                                        </StackPanel></Border>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="ClockSecondsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc ClockShowSeconds}" />
+                                            <TextBlock Text="{local:Loc ClockShowSeconds}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
+                                            <TextBlock Text="{local:Loc ClockDateStyleLabel}" Style="{StaticResource SettingsChoiceLabel}" />
+                                            <UniformGrid Columns="2" Margin="-3,0">
+                                                <RadioButton x:Name="DateStyleDayShort" GroupName="ClockDateStyle" Content="{local:Loc DateStyleDayShort}" Style="{StaticResource SettingsChoice}" />
+                                                <RadioButton x:Name="DateStyleShort" GroupName="ClockDateStyle" Content="{local:Loc DateStyleShort}" Style="{StaticResource SettingsChoice}" />
+                                                <RadioButton x:Name="DateStyleNumeric" GroupName="ClockDateStyle" Content="{local:Loc DateStyleNumeric}" Style="{StaticResource SettingsChoice}" />
+                                                <RadioButton x:Name="DateStyleHidden" GroupName="ClockDateStyle" Content="{local:Loc DateStyleHidden}" Style="{StaticResource SettingsChoice}" />
+                                            </UniformGrid>
+                                        </StackPanel></Border>
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="WeatherOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,10">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="26" Content="&#xE711;"
+                                                    Click="CollapseWeatherOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
+                                            <TextBlock Text="{local:Loc WeatherSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{local:Loc Country}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                                <ComboBox x:Name="WeatherCountryBox" IsEditable="True"
+                                                          Padding="6,5" Background="{DynamicResource SettingsControl}" Foreground="{DynamicResource TextPrimary}"
+                                                          BorderBrush="{DynamicResource MenuStroke}"
+                                                          AutomationProperties.Name="{local:Loc Country}"
+                                                          SelectionChanged="WeatherCountryBox_SelectionChanged"
+                                                          KeyUp="WeatherCountryBox_KeyUp" />
+                                            </StackPanel>
+                                            <StackPanel x:Name="WeatherCityContainer" Grid.Column="2" Visibility="Collapsed">
+                                                <TextBlock Text="{local:Loc WeatherCity}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                                <ComboBox x:Name="WeatherCityCombo" IsEditable="True"
+                                                          Padding="6,5" Background="{DynamicResource SettingsControl}" Foreground="{DynamicResource TextPrimary}"
+                                                          BorderBrush="{DynamicResource MenuStroke}"
+                                                          AutomationProperties.Name="{local:Loc WeatherCity}"
+                                                          SelectionChanged="WeatherCityCombo_SelectionChanged"
+                                                          KeyUp="WeatherCityCombo_KeyUp" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBox x:Name="WeatherCityBox" Visibility="Collapsed" />
+                                        <TextBlock x:Name="WeatherCityHintBlock" Text="{local:Loc WeatherCityHint}" Foreground="{DynamicResource TextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="FocusOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,10">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="26" Content="&#xE711;"
+                                                    Click="CollapseFocusOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
+                                            <TextBlock Text="{local:Loc FocusSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <DockPanel Margin="0,0,0,6">
+                                            <TextBlock x:Name="FocusMinutesValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
+                                            <TextBlock Text="{local:Loc FocusDuration}" FontWeight="SemiBold" />
+                                        </DockPanel>
+                                        <Slider x:Name="FocusMinutesSlider" Minimum="1" Maximum="90" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                SmallChange="1" LargeChange="5" Style="{StaticResource SettingsOpacitySlider}"
+                                                AutomationProperties.Name="{local:Loc FocusDuration}" ValueChanged="FocusSlider_ValueChanged" />
+                                        <DockPanel Margin="0,10,0,6">
+                                            <TextBlock x:Name="BreakMinutesValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
+                                            <TextBlock Text="{local:Loc BreakDuration}" FontWeight="SemiBold" />
+                                        </DockPanel>
+                                        <Slider x:Name="BreakMinutesSlider" Minimum="1" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                SmallChange="1" LargeChange="5" Style="{StaticResource SettingsOpacitySlider}"
+                                                AutomationProperties.Name="{local:Loc BreakDuration}" ValueChanged="FocusSlider_ValueChanged" />
+                                        <DockPanel Margin="0,10,0,6">
+                                            <TextBlock x:Name="FocusSessionsValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
+                                            <TextBlock Text="{local:Loc FocusSessionCount}" FontWeight="SemiBold" />
+                                        </DockPanel>
+                                        <Slider x:Name="FocusSessionsSlider" Minimum="1" Maximum="8" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                SmallChange="1" LargeChange="2" Style="{StaticResource SettingsOpacitySlider}"
+                                                AutomationProperties.Name="{local:Loc FocusSessionCount}" ValueChanged="FocusSlider_ValueChanged" />
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="StatsOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,10">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="26" Height="26" Content="&#xE711;"
+                                                    Click="CollapseStatsOptions_Click" ToolTip="{local:Loc Close}" AutomationProperties.Name="{local:Loc Close}" />
+                                            <TextBlock Text="{local:Loc StatsSettingsHeading}" Style="{StaticResource SettingsHeading}" Margin="0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="StatsCpuToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc Cpu}" />
+                                            <TextBlock Text="{local:Loc Cpu}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="StatsMemoryToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc Memory}" />
+                                            <TextBlock Text="{local:Loc Memory}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="StatsBatteryToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc Battery}" />
+                                            <TextBlock Text="{local:Loc Battery}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="StatsCpuTemperatureToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc CpuTemperature}" />
+                                            <TextBlock Text="{local:Loc CpuTemperature}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="StatsGpuToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc Gpu}" />
+                                            <TextBlock Text="{local:Loc Gpu}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="StatsGpuTemperatureToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                                      AutomationProperties.Name="{local:Loc GpuTemperature}" />
+                                            <TextBlock Text="{local:Loc GpuTemperature}" Style="{StaticResource SettingsRowLabel}" />
+                                        </DockPanel></Border>
+                                        <TextBlock Text="{local:Loc StatsAvailabilityNote}" Foreground="{DynamicResource TextSecondary}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

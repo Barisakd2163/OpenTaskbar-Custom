@@ -5,34 +5,63 @@
              Focusable="False" Foreground="{DynamicResource TextPrimary}"
              Width="{StaticResource WidgetCatalogItemWidth}" Margin="{StaticResource WidgetCatalogItemMargin}"
              FontFamily="{StaticResource InterfaceFont}" FontSize="{StaticResource TextSizeBody}">
-    <Grid>
-        <Button x:Name="PreviewButton" Style="{StaticResource WidgetCatalogPreviewButton}" Click="Preview_Click"
-                AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
+    <Border x:Name="CardBorder" Background="{DynamicResource SettingsControl}"
+            BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1"
+            CornerRadius="{StaticResource DockWidgetRadius}">
+        <Border.Style>
+            <Style TargetType="Border">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+        <StackPanel>
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None">
-                    <ContentControl.LayoutTransform>
-                        <ScaleTransform ScaleX="1.05" ScaleY="1.05" />
-                    </ContentControl.LayoutTransform>
-                </ContentControl>
-                <TextBlock Grid.Row="1" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,6,0,0"
-                           FontSize="{StaticResource TextSizeCaption}" Foreground="{DynamicResource TextSecondary}"
-                           TextTrimming="CharacterEllipsis" IsHitTestVisible="False" />
+                <Button x:Name="PreviewButton" Style="{StaticResource WidgetCatalogHeaderButton}" Click="Preview_Click"
+                        AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None">
+                            <ContentControl.LayoutTransform>
+                                <ScaleTransform ScaleX="1.05" ScaleY="1.05" />
+                            </ContentControl.LayoutTransform>
+                        </ContentControl>
+                        <TextBlock Grid.Row="1" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,6,0,0"
+                                   FontSize="{StaticResource TextSizeCaption}" Foreground="{DynamicResource TextSecondary}"
+                                   TextTrimming="CharacterEllipsis" IsHitTestVisible="False" />
+                    </Grid>
+                </Button>
+                <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" Margin="10,10,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                <Button x:Name="SettingsExpandButton" Style="{StaticResource WidgetCatalogSettingsButton}"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                        Visibility="{Binding HasSettingsVisibility}"
+                        Click="SettingsExpandButton_Click"
+                        ToolTip="{local:Loc WidgetSettings}"
+                        AutomationProperties.Name="{local:Loc WidgetSettings}">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" Text="{Binding SettingsGlyph}"
+                               VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                </Button>
             </Grid>
-        </Button>
-        <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" Margin="10,10,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" />
-        <Button x:Name="SettingsExpandButton" Style="{StaticResource WidgetCatalogSettingsButton}"
-                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
-                Visibility="{Binding HasSettingsVisibility}"
-                Click="SettingsExpandButton_Click"
-                ToolTip="{local:Loc WidgetSettings}"
-                AutomationProperties.Name="{local:Loc WidgetSettings}">
-            <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" Text="{Binding SettingsGlyph}"
-                       VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False" />
-        </Button>
-    </Grid>
+            <Border x:Name="SettingsDrawer" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource StrokeSubtle}"
+                    Padding="14,12" Background="Transparent">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSettingsExpanded}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <ContentControl Content="{Binding SettingsView}" Focusable="False" />
+            </Border>
+        </StackPanel>
+    </Border>
 </UserControl>

@@ -16,6 +16,7 @@ public sealed class DockWidgetOption(string id, string label, string description
     public string Label => _label;
     public string Description => _description;
     public DockWidget Preview { get; } = preview;
+    public FrameworkElement? SettingsView { get; set; }
 
     public bool HasSettings => string.Equals(Id, "Clock", StringComparison.OrdinalIgnoreCase)
         || string.Equals(Id, "Weather", StringComparison.OrdinalIgnoreCase)

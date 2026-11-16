@@ -263,6 +263,7 @@ public sealed class UiText : INotifyPropertyChanged
             ["ShowRecycleBin"] = ("Geri Dönüşüm Kutusu’nu göster", "Show Recycle Bin"),
             ["WidgetWeather"] = ("Hava durumu", "Weather"),
             ["WidgetWeatherDescription"] = ("Anlık sıcaklık, hava durumu simgesi ve çok günlük tahmin.", "Current temperature, condition icon, and multi-day forecast."),
+            ["Country"] = ("Ülke", "Country"),
             ["WeatherCity"] = ("Hava durumu şehri", "Weather city"),
             ["WeatherCityHint"] = ("Boş bırakılırsa Windows konum hizmeti kullanılır.", "Leave empty to use Windows location services."),
             ["WidgetDesktops"] = ("Sanal masaüstleri", "Virtual desktops"),
