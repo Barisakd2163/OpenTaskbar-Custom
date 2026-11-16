@@ -63,4 +63,5 @@ public sealed record DockSettings(
     IReadOnlyList<string>? StackFolders = null,
     IReadOnlyList<DockProfile>? Profiles = null,
     string? ActiveProfile = null,
-    double DockScale = 1.0);
+    double DockScale = 1.0,
+    IReadOnlyList<string>? WidgetOrder = null);

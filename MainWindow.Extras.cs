@@ -19,6 +19,8 @@ public partial class MainWindow
     private readonly DockFlyout _stackFlyout = new();
     private DispatcherTimer? _recycleBinTimer;
     private bool? _recycleBinFull;
+    private Point _dragStackStartPoint;
+    private DockStack? _draggedStack;
 
     private static string DownloadsFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
@@ -236,6 +238,79 @@ public partial class MainWindow
     {
         var error = _preferences.Save(_preferences.Current with { StackFolders = folders });
         if (error is not null) ShowStatus(error);
+    }
+
+    private void StackButton_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is Button { DataContext: DockStack stack } && _stacks.Contains(stack))
+        {
+            _dragStackStartPoint = e.GetPosition(this);
+            _draggedStack = stack;
+        }
+        else
+        {
+            _draggedStack = null;
+        }
+    }
+
+    private void StackButton_PreviewMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _draggedStack = null;
+    }
+
+    private void StackButton_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _draggedStack is null || sender is not Button button)
+        {
+            return;
+        }
+
+        var currentPoint = e.GetPosition(this);
+        var diff = _dragStackStartPoint - currentPoint;
+        if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+        {
+            var stack = _draggedStack;
+            _draggedStack = null;
+            DragDrop.DoDragDrop(button, stack, DragDropEffects.Move);
+        }
+    }
+
+    private void StackButton_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(typeof(DockStack))
+            && sender is Button targetButton
+            && targetButton.DataContext is DockStack targetStack
+            && _stacks.Contains(targetStack))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+        }
+    }
+
+    private void StackButton_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(DockStack)) is DockStack sourceStack
+            && sender is Button targetButton
+            && targetButton.DataContext is DockStack targetStack
+            && _stacks.Contains(sourceStack)
+            && _stacks.Contains(targetStack)
+            && !ReferenceEquals(sourceStack, targetStack))
+        {
+            var oldIndex = _stacks.IndexOf(sourceStack);
+            var newIndex = _stacks.IndexOf(targetStack);
+            if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+            {
+                _stacks.Move(oldIndex, newIndex);
+                SaveStackFolders(_stacks.Select(s => s.Path).ToList());
+            }
+        }
+        e.Handled = true;
     }
 
     /// <summary>Pins apps from a settings backup that are not pinned yet and exist on this PC; returns how many were added.</summary>

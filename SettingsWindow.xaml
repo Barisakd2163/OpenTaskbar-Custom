@@ -267,6 +267,29 @@
                                         SmallChange="1" LargeChange="2" Style="{StaticResource SettingsOpacitySlider}"
                                         AutomationProperties.Name="{local:Loc FocusSessionCount}" ValueChanged="FocusSlider_ValueChanged" />
                             </StackPanel>
+                            <TextBlock Text="{local:Loc WidgetOrderHeading}" Style="{StaticResource SettingsHeading}" Margin="0,24,0,4" />
+                            <TextBlock Text="{local:Loc WidgetOrderDescription}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12" TextWrapping="Wrap" />
+                            <Border Background="{DynamicResource SurfaceElevated}" BorderBrush="{DynamicResource MenuStroke}" BorderThickness="1" CornerRadius="8" Padding="6">
+                                <ItemsControl x:Name="WidgetOrderList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="0,0,0,1" Padding="8,6">
+                                                <DockPanel>
+                                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                                        <Button Content="▲" ToolTip="{local:Loc MoveUp}" Width="28" Height="28" Margin="0,0,4,0"
+                                                                Style="{StaticResource SettingsSecondaryButton}" Click="WidgetMoveUp_Click" Tag="{Binding Id}"
+                                                                AutomationProperties.Name="{local:Loc MoveUp}" />
+                                                        <Button Content="▼" ToolTip="{local:Loc MoveDown}" Width="28" Height="28"
+                                                                Style="{StaticResource SettingsSecondaryButton}" Click="WidgetMoveDown_Click" Tag="{Binding Id}"
+                                                                AutomationProperties.Name="{local:Loc MoveDown}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

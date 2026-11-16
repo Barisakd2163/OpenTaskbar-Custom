@@ -126,7 +126,10 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(1)
         };
         _timedWidgetRefreshTimer.Tick += TimedWidgetRefreshTimer_Tick;
-        _widgetCoordinator = new WidgetCoordinator(WidgetStrip, Dispatcher, ShowStatus);
+        _widgetCoordinator = new WidgetCoordinator(WidgetStrip, Dispatcher, ShowStatus)
+        {
+            OrderChanged = OnWidgetOrderChanged
+        };
         ApplyWidgets(_preferences.Current.Widgets);
         _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
@@ -1462,6 +1465,12 @@ public partial class MainWindow : Window
     {
         var order = _pinnedApps.Select(app => app.ExecutablePath).ToList();
         var error = _preferences.Save(_preferences.Current with { PinOrder = order });
+        if (error is not null) ShowStatus(error);
+    }
+
+    private void OnWidgetOrderChanged(IReadOnlyList<string> newOrder)
+    {
+        var error = _preferences.Save(_preferences.Current with { WidgetOrder = newOrder });
         if (error is not null) ShowStatus(error);
     }
 

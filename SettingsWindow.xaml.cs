@@ -11,14 +11,22 @@ using System.Windows.Shell;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar;
+
+public sealed class WidgetOrderItem(string id, string label)
+{
+    public string Id { get; } = id;
+    public string Label { get; } = label;
+}
 
 public partial class SettingsWindow : Window
 {
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
+    private readonly ObservableCollection<WidgetOrderItem> _widgetOrderItems = [];
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private bool _startupEnabled;
@@ -36,6 +44,8 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets)) _widgetOptions.Add(option);
         WidgetOptionsList.ItemsSource = _widgetOptions;
+        WidgetOrderList.ItemsSource = _widgetOrderItems;
+        LoadWidgetOrder(_applied.WidgetOrder);
         System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions).Filter = item =>
             item is DockWidgetOption option && option.MatchesSearch(WidgetSearch.Text.Trim(),
                 CultureInfo.GetCultureInfo(_preferences.Current.Language == AppLanguage.Turkish ? "tr-TR" : "en-US"));
@@ -215,8 +225,59 @@ public partial class SettingsWindow : Window
         DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : DockWinAltD.IsChecked == true ? HotkeyChoice.WinAltD : HotkeyChoice.Disabled,
         StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
         StartPlacement = StartLast.IsChecked == true ? StartButtonPlacement.End : StartHidden.IsChecked == true ? StartButtonPlacement.Hidden : StartButtonPlacement.Start,
-        WheelVolume = WheelVolumeToggle.IsChecked == true
+        WheelVolume = WheelVolumeToggle.IsChecked == true,
+        WidgetOrder = _widgetOrderItems.Select(w => w.Id).ToArray()
     };
+
+    private void LoadWidgetOrder(IReadOnlyList<string>? savedOrder)
+    {
+        _widgetOrderItems.Clear();
+        var order = (savedOrder ?? []).ToList();
+        foreach (var def in WidgetCoordinator.DefaultWidgetOrder)
+        {
+            if (!order.Contains(def, StringComparer.OrdinalIgnoreCase))
+            {
+                order.Add(def);
+            }
+        }
+
+        foreach (var id in order)
+        {
+            var labelKey = WidgetCoordinator.GetLabelKey(id);
+            if (labelKey is not null)
+            {
+                _widgetOrderItems.Add(new WidgetOrderItem(id, UiText.Get(labelKey)));
+            }
+        }
+    }
+
+    private void WidgetMoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string id })
+        {
+            var list = _widgetOrderItems.ToList();
+            var index = list.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (index > 0)
+            {
+                _widgetOrderItems.Move(index, index - 1);
+                PreferenceEdited(sender, e);
+            }
+        }
+    }
+
+    private void WidgetMoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string id })
+        {
+            var list = _widgetOrderItems.ToList();
+            var index = list.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0 && index < _widgetOrderItems.Count - 1)
+            {
+                _widgetOrderItems.Move(index, index + 1);
+                PreferenceEdited(sender, e);
+            }
+        }
+    }
 
     private void WidgetSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -379,6 +440,7 @@ public partial class SettingsWindow : Window
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = settings.FocusSessions;
         LoadFeatureSelection(settings);
+        LoadWidgetOrder(settings.WidgetOrder);
     }
 
     private void UpdateWidgetOptionState()
@@ -446,12 +508,14 @@ public partial class SettingsWindow : Window
                 PinOrder = selected.PinOrder,
                 Widgets = selected.Widgets,
                 InstalledWidgets = selected.InstalledWidgets,
+                WidgetOrder = selected.WidgetOrder,
                 StackFolders = selected.StackFolders,
                 Profiles = selected.Profiles,
                 ActiveProfile = selected.ActiveProfile
             })
             || !(selected.Widgets ?? []).SequenceEqual(_applied.Widgets ?? [], StringComparer.Ordinal)
             || !(selected.InstalledWidgets ?? []).SequenceEqual(_applied.InstalledWidgets ?? [], StringComparer.Ordinal)
+            || !(selected.WidgetOrder ?? []).SequenceEqual(_applied.WidgetOrder ?? WidgetCoordinator.DefaultWidgetOrder, StringComparer.OrdinalIgnoreCase)
             || (_startupAvailable && StartupToggle.IsChecked != _startupEnabled);
     }
 

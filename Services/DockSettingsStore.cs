@@ -111,6 +111,8 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
         && settings.WeatherCity is { Length: <= 80 }
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
+        && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
+        && settings.WidgetOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.WidgetOrder?.Count
         && settings.Profiles?.Any(profile => string.IsNullOrWhiteSpace(profile.Name) || profile.HiddenApps is null) != true
         && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count;
 

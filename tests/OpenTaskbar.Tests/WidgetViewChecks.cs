@@ -35,7 +35,7 @@ internal static class WidgetViewChecks
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         try
         {
-            foreach (var resource in new[] { "Theme", "DockControls", "ContextMenus", "WidgetControls", "SettingsControls" })
+            foreach (var resource in new[] { "Theme", "DockControls", "ContextMenus", "WidgetControls", "SettingsControls", "Widgets" })
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
                     Source = new Uri($"/OpenTaskbar;component/Design/{resource}.xaml", UriKind.Relative)

@@ -8,6 +8,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenTaskbar.Services;
 using OpenTaskbar.Views;
+using OpenTaskbar.Widgets;
+using System.Windows.Threading;
 
 internal static class DockLayoutChecks
 {
@@ -176,7 +178,7 @@ internal static class DockLayoutChecks
             Check(grip is not null, "The resize thumb must provide a visual grip indicator.");
             if (width == oneCellWidth)
                 Check(viewer.ViewportWidth == cellWidth, "The minimum dock width must expose exactly one complete application cell.");
-            var widget = new ContentControl { Content = new DockWidget("Clock", "Clock") { Value = "14:32" } };
+            var widget = new ContentControl { Content = new OpenTaskbar.Models.DockWidget("Clock", "Clock") { Value = "14:32" } };
             var previousExtent = viewer.ExtentWidth;
             content.Children.Add(widget);
             Layout();
@@ -331,6 +333,43 @@ internal static class DockLayoutChecks
         Check(darkTheme["DockHighlight"] is LinearGradientBrush, "Dark theme must define surface specular highlight.");
         Check(lightTheme["DockHighlight"] is LinearGradientBrush, "Light theme must define surface specular highlight.");
         Check(app.FindResource("StartDockButton") is Style, "StartDockButton tactile tile style must be defined.");
+
+        // Verify WidgetCoordinator ordering, reordering and validation
+        Check(WidgetCoordinator.DefaultWidgetOrder.Length == 9, "WidgetCoordinator must have 9 default widgets.");
+        Check(WidgetCoordinator.GetLabelKey("Clock") == "WidgetClock", "Clock widget label key must match.");
+        Check(WidgetCoordinator.GetLabelKey("Media") == "WidgetMedia", "Media widget label key must match.");
+
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+        Check(UiText.Get("WidgetOrderHeading") == "Widget Sıralaması", "WidgetOrderHeading must localize to Turkish.");
+        Check(UiText.Get("MoveUp") == "Yukarı taşı", "MoveUp must localize to Turkish.");
+        UiText.Current.SetLanguage(AppLanguage.English);
+        Check(UiText.Get("WidgetOrderHeading") == "Widget Order", "WidgetOrderHeading must localize to English.");
+        Check(UiText.Get("MoveUp") == "Move up", "MoveUp must localize to English.");
+
+        var testStrip = new StackPanel();
+        using var coordinator = new WidgetCoordinator(testStrip, Dispatcher.CurrentDispatcher, _ => { });
+        Check(coordinator.CurrentOrder.SequenceEqual(WidgetCoordinator.DefaultWidgetOrder), "Initial coordinator order must match defaults.");
+
+        coordinator.ApplyOrder(["Clock", "Focus", "Media"]);
+        Check(coordinator.CurrentOrder[0] == "Clock" && coordinator.CurrentOrder[1] == "Focus" && coordinator.CurrentOrder[2] == "Media",
+            "ApplyOrder must reorder widgets per specified order.");
+        Check(testStrip.Children.Count == 9, "Strip children count must remain 9 after reordering.");
+
+        IReadOnlyList<string>? capturedOrder = null;
+        coordinator.OrderChanged = order => capturedOrder = order;
+        coordinator.ReorderWidgets(0, 1);
+        Check(coordinator.CurrentOrder[0] == "Focus" && coordinator.CurrentOrder[1] == "Clock",
+            "ReorderWidgets must swap widget indices.");
+        Check(capturedOrder != null && capturedOrder[0] == "Focus" && capturedOrder[1] == "Clock",
+            "OrderChanged callback must trigger with updated order.");
+
+        // Verify DockSettingsStore validation for WidgetOrder
+        var validSettings = new DockSettings(WidgetOrder: ["Clock", "Weather", "Media"]);
+        Check(DockSettingsStore.Validate(validSettings), "Valid WidgetOrder must pass settings validation.");
+        var duplicateSettings = new DockSettings(WidgetOrder: ["Clock", "Clock"]);
+        Check(!DockSettingsStore.Validate(duplicateSettings), "Duplicate WidgetOrder must fail settings validation.");
+        var whitespaceSettings = new DockSettings(WidgetOrder: ["Clock", "   "]);
+        Check(!DockSettingsStore.Validate(whitespaceSettings), "Whitespace WidgetOrder must fail settings validation.");
 
         return checks;
     }
