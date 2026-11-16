@@ -119,8 +119,8 @@ public partial class QuickSettingsWidget : DockWidget
     private void BluetoothToggle_Click(object sender, RoutedEventArgs e) => ToggleRadio(_bluetooth, "ms-settings:bluetooth");
     private void WifiSettings_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("ms-settings:network-wifi"));
     private void BluetoothSettings_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("ms-settings:bluetooth"));
-    private void Display_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenProjection());
+    private void Display_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenProjection(sender as FrameworkElement ?? this));
     private void Hotspot_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("ms-settings:network-mobilehotspot"));
-    private void QuickSettings_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenQuickSettings());
+    private void QuickSettings_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenQuickSettings(sender as FrameworkElement ?? this));
     private void Notifications_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenNotificationCenter());
 }
