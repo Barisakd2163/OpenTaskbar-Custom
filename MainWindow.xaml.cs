@@ -56,6 +56,8 @@ public partial class MainWindow : Window
     private string? _statusMessage;
     private readonly WidgetCoordinator _widgets;
     private double _dockTopGap;
+    private AudioEndpointMonitor? _wheelAudio;
+    private int _wheelRemainder;
 
     public MainWindow()
     {
@@ -84,6 +86,7 @@ public partial class MainWindow : Window
 
         _widgets = new WidgetCoordinator(WidgetStrip, Dispatcher, ShowStatus);
         _widgets.Apply(_preferences.Current);
+        InitializeExtras();
         ApplySizeProfile();
         ApplyLayoutMode();
         PositionDock();
@@ -129,12 +132,14 @@ public partial class MainWindow : Window
             source.Handle,
             DockSurfaceTranslate,
             DockSurface,
-            () => (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
+            () => (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null
+                || (_settingsWindow?.IsVisible == true) || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
         _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
 
         StartReplacementMode();
+        InitializeFeatures();
 #if DEBUG
         // Verifies crash recovery: the unhandled-exception handlers must restore the Windows taskbar.
         if (Environment.GetCommandLineArgs().Contains("--crash-test"))
@@ -188,6 +193,7 @@ public partial class MainWindow : Window
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = Profile.Shelf;
+        session.Edge = Edge;
         _replacementSession = session;
         try
         {
@@ -217,6 +223,19 @@ public partial class MainWindow : Window
         {
             handled = true;
             return new IntPtr(MaNoActivate);
+        }
+
+        // WM_DISPLAYCHANGE (displays added, removed, resized) or WM_SETTINGCHANGE/SPI_SETWORKAREA (taskbar strips
+        // reserved or released) move the secondary docks.
+        if (message == 0x007E || (message == 0x001A && wParam == 0x002F))
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, ApplySecondaryDocks);
+        }
+
+        if (HandleHotkeyMessage(message, wParam))
+        {
+            handled = true;
+            return IntPtr.Zero;
         }
 
         if (_replacementSession?.HandleMessage(unchecked((uint)message), wParam, lParam) == true)
@@ -266,6 +285,7 @@ public partial class MainWindow : Window
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
+        windows = FilterWindows(windows);
         foreach (var path in _lastSelectedWindows.Keys.Where(path => !windows.Any(window =>
                      string.Equals(window.ExecutablePath, path, StringComparison.OrdinalIgnoreCase))).ToList())
         {
@@ -279,6 +299,7 @@ public partial class MainWindow : Window
             _replacementSession?.RefreshPosition();
         }
 
+        UpdateSecondaryDocks();
         if (_thumbnailPreview.IsVisible)
         {
             var activeHandles = _thumbnailPreview.ActiveHandles;
@@ -307,7 +328,8 @@ public partial class MainWindow : Window
 
     private bool UpdateRunningApps(IReadOnlyList<TrackedWindow> windows)
     {
-        var pinnedPaths = _pinnedApps.Select(app => app.ExecutablePath)
+        // Apps hidden by the active profile still show up among running apps while they have windows.
+        var pinnedPaths = _pinnedApps.Where(app => !IsHiddenByProfile(app)).Select(app => app.ExecutablePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var desiredPaths = windows
             .Where(window => window.ExecutablePath is not null
@@ -630,13 +652,79 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
         AnimateActivationFeedback((Button)sender);
+        var modifiers = System.Windows.Input.Keyboard.Modifiers;
+        if (modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift))
+        {
+            LaunchApp(app, elevated: modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control));
+            return;
+        }
+
         OpenDockApp(app, toggleIfForeground: true, foregroundAtPress);
+    }
+
+    private void DockApp_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != System.Windows.Input.MouseButton.Middle || sender is not Button { DataContext: DockApp app }) return;
+        e.Handled = true;
+        _previewCloseTimer.Stop();
+        _thumbnailPreview.Hide();
+        AnimateActivationFeedback((Button)sender);
+        LaunchApp(app, elevated: false);
+    }
+
+    /// <summary>Wheel over an app cycles through its windows; elsewhere on the dock it changes the volume.</summary>
+    private void DockApp_MouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (sender is not Button { DataContext: DockApp app }) return;
+        e.Handled = true;
+        var windows = VisibleSnapshot
+            .Where(window => string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(window => window.Handle.ToInt64())
+            .ToList();
+        if (windows is not { Count: > 0 }) return;
+        var current = windows.FindIndex(window => window.Handle == _foregroundWindow);
+        if (current < 0 && _lastSelectedWindows.TryGetValue(app.ExecutablePath, out var last))
+            current = windows.FindIndex(window => window.Handle == last);
+        var step = e.Delta < 0 ? 1 : -1;
+        var next = windows[((current < 0 ? (step > 0 ? -1 : 0) : current) + step + windows.Count) % windows.Count];
+        _thumbnailPreview.Hide();
+        if (NativeWindowTracker.Activate(next.Handle)) _lastSelectedWindows[app.ExecutablePath] = next.Handle;
+    }
+
+    private void DockSurface_MouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (e.Handled || !_preferences.Current.WheelVolume) return;
+        e.Handled = true;
+        try
+        {
+            _wheelAudio ??= new AudioEndpointMonitor();
+        }
+        catch (COMException ex)
+        {
+            AppLog.Warning($"Core Audio unavailable for wheel volume: {ex.Message}");
+            return;
+        }
+
+        if (!_wheelAudio.HasDevice) return;
+        // One wheel notch (120) = 2%. Touchpads send many small deltas; accumulate them instead of 2% per event.
+        _wheelRemainder += e.Delta;
+        var notches = _wheelRemainder / 120;
+        if (notches == 0) return;
+        _wheelRemainder -= notches * 120;
+        var level = Math.Clamp(_wheelAudio.Volume + notches * 0.02f, 0f, 1f);
+        if (!_wheelAudio.SetVolume(level)) ShowStatus("Ses düzeyi değiştirilemedi.");
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
     {
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        if (_preferences.Current.StartAction == StartButtonAction.Launcher)
+        {
+            ToggleLauncher();
+            return;
+        }
+
         const uint wmSysCommand = 0x0112;
         const int scTaskList = 0xF130;
         if (_source is null || !PostMessage(_source.Handle, wmSysCommand, scTaskList, 0))
@@ -681,23 +769,26 @@ public partial class MainWindow : Window
     {
         yield return StartButton;
 
-        for (var i = 0; i < _pinnedApps.Count; i++)
+        // Profiles filter the pinned view, so look containers up by item rather than by index.
+        foreach (var app in _pinnedApps)
         {
-            if (PinnedApps.ItemContainerGenerator.ContainerFromIndex(i) is DependencyObject container
+            if (PinnedApps.ItemContainerGenerator.ContainerFromItem(app) is DependencyObject container
                 && FindVisualChild<Button>(container) is { } button)
             {
                 yield return button;
             }
         }
 
-        for (var i = 0; i < _runningApps.Count; i++)
+        foreach (var app in _runningApps)
         {
-            if (RunningApps.ItemContainerGenerator.ContainerFromIndex(i) is DependencyObject container
+            if (RunningApps.ItemContainerGenerator.ContainerFromItem(app) is DependencyObject container
                 && FindVisualChild<Button>(container) is { } button)
             {
                 yield return button;
             }
         }
+
+        foreach (var button in GetExtraDockButtons()) yield return button;
     }
 
     private void AnimateActivationFeedback(Button button)
@@ -714,17 +805,17 @@ public partial class MainWindow : Window
             KeyFrames =
             {
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(-DockMetrics.LaunchBounceHeight, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
+                new EasingDoubleKeyFrame(-DockMetrics.LaunchBounceHeight * BounceDirection, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240)),
                     new CubicEase { EasingMode = EasingMode.EaseIn }),
-                new EasingDoubleKeyFrame(-5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
+                new EasingDoubleKeyFrame(-5 * BounceDirection, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330)),
                     new CubicEase { EasingMode = EasingMode.EaseOut }),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(DockMetrics.LaunchBounceMs)),
                     new CubicEase { EasingMode = EasingMode.EaseIn })
             }
         };
-        translate.BeginAnimation(TranslateTransform.YProperty, bounce);
+        translate.BeginAnimation(IsVertical ? TranslateTransform.XProperty : TranslateTransform.YProperty, bounce);
     }
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -735,7 +826,7 @@ public partial class MainWindow : Window
         }
 
         var mousePos = e.GetPosition(DockContents);
-        var mouseX = mousePos.X;
+        var mouseX = IsVertical ? mousePos.Y : mousePos.X;
         const double influenceRadius = DockMetrics.InfluenceRadius;
         const double maxScale = DockMetrics.HoverScale;
 
@@ -747,8 +838,9 @@ public partial class MainWindow : Window
             if (icon is null) continue;
 
             var (scale, _) = GetIconTransforms(icon);
-            var buttonPos = button.TranslatePoint(new Point(button.ActualWidth / 2, 0), DockContents);
-            var distance = Math.Abs(mouseX - buttonPos.X);
+            icon.RenderTransformOrigin = IconScaleOrigin;
+            var buttonPos = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), DockContents);
+            var distance = Math.Abs(mouseX - (IsVertical ? buttonPos.Y : buttonPos.X));
 
             double targetScale = 1.0;
             if (distance < influenceRadius)
@@ -837,6 +929,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        LaunchApp(app, elevated: false);
+    }
+
+    /// <summary>Starts a new instance even when the app already has windows (Shift/middle click, Ctrl+Shift for admin).</summary>
+    private void LaunchApp(DockApp app, bool elevated)
+    {
+        var executablePath = app.ExecutablePath;
         if (!File.Exists(executablePath))
         {
             ShowStatus("Uygulama dosyası bulunamadı. Windows görev çubuğundaki kısayolu güncelleyin.");
@@ -848,9 +947,14 @@ public partial class MainWindow : Window
             using var _ = Process.Start(new ProcessStartInfo(executablePath)
             {
                 Arguments = app.LaunchArguments ?? string.Empty,
-                UseShellExecute = true
+                UseShellExecute = true,
+                Verb = elevated ? "runas" : string.Empty
             });
             ClearStatus();
+        }
+        catch (Win32Exception ex) when (elevated && ex.NativeErrorCode == 1223)
+        {
+            // The user declined the UAC prompt.
         }
         catch (Win32Exception)
         {
@@ -884,7 +988,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var matchingWindows = _windowTracker?.Snapshot
+        var matchingWindows = VisibleSnapshot
             .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
             .ToList() ?? [];
 
@@ -953,15 +1057,15 @@ public partial class MainWindow : Window
 
     private TrackedWindow? FindWindowForExecutable(string executablePath)
     {
-        return _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == _foregroundWindow
+        return VisibleSnapshot.FirstOrDefault(window => window.Handle == _foregroundWindow
             && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
-            ?? _windowTracker?.Snapshot.FirstOrDefault(window =>
+            ?? VisibleSnapshot.FirstOrDefault(window =>
                 string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
     }
 
     private TrackedWindow? FindNextWindowForExecutable(string executablePath)
     {
-        var matchingWindows = _windowTracker?.Snapshot.Where(window =>
+        var matchingWindows = VisibleSnapshot.Where(window =>
             string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matchingWindows is not { Count: > 0 })
         {
@@ -1018,10 +1122,11 @@ public partial class MainWindow : Window
             _openContextMenu.IsOpen = false;
         }
         _foregroundWindow = windowHandle;
-        UpdateWindowIndicators(_windowTracker?.Snapshot ?? []);
+        UpdateWindowIndicators(VisibleSnapshot);
+        UpdateSecondaryDocks();
         foreach (var app in _runningApps)
         {
-            app.IsForeground = _windowTracker?.Snapshot.Any(window => window.Handle == windowHandle
+            app.IsForeground = VisibleSnapshot.Any(window => window.Handle == windowHandle
                 && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)) == true;
         }
         if (_replacementSession?.IsActive == true)
@@ -1030,8 +1135,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowStatus(string message)
+    private void ShowStatus(string message) => ShowStatus(message, isError: true);
+
+    /// <summary>Errors use the danger color; informational notes (update checks) use the secondary text color.</summary>
+    private void ShowStatus(string message, bool isError)
     {
+        StatusText.SetResourceReference(TextBlock.ForegroundProperty, isError ? "DangerText" : "TextSecondary");
         _statusMessage = message;
         StatusText.Text = UiText.LocalizeError(message);
         ResizeDockToContent();
@@ -1076,6 +1185,14 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "PinDockApp", hasAppTarget && !isPinnedTarget);
         SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
         SetSeparatorVisibility(contextMenu, "RunningCommandsDivider", isRunning);
+        SetMenuItemVisibility(contextMenu, "HideInProfile", isPinnedTarget && ActiveProfile is not null);
+        if (FindMenuItem(contextMenu, "ProfilesMenu") is { } profilesMenu) PopulateProfilesMenu(profilesMenu);
+        if (FindMenuItem(contextMenu, "UpdateMenu") is { } updateMenu)
+        {
+            updateMenu.Header = _availableUpdate is { } update
+                ? UiText.Format("UpdateDownload", update.Tag)
+                : UiText.Get("CheckForUpdates");
+        }
 
         if (pinnedApp is null)
         {
@@ -1099,6 +1216,10 @@ public partial class MainWindow : Window
         if (FindMenuItem(contextMenu, "UnpinDockApp") is { } unpinMenuItem)
         {
             unpinMenuItem.CommandParameter = pinnedApp;
+        }
+        foreach (var tag in new[] { "HideInProfile", "NewInstance", "RunAsAdmin" })
+        {
+            if (FindMenuItem(contextMenu, tag) is { } item) item.CommandParameter = pinnedApp;
         }
         FocusContextMenu(contextMenu);
         await LoadJumpListAsync(contextMenu, targetWindow?.Handle ?? 0, pinnedApp.ShortcutPath);
@@ -1228,6 +1349,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (RevealHiddenPin(app)) return;
         var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
         if (error is not null || shortcutPath is null)
         {
@@ -1282,7 +1404,7 @@ public partial class MainWindow : Window
             SavePinOrder();
             if (_windowTracker is not null)
             {
-                UpdateRunningApps(_windowTracker.Snapshot);
+                UpdateRunningApps(VisibleSnapshot);
             }
 
             ResizeDockToContent();
@@ -1436,6 +1558,8 @@ public partial class MainWindow : Window
         _replacementSession?.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         ApplyBackdropHitTesting();
         _widgets.Apply(_preferences.Current);
+        ApplyExtrasSettings();
+        ApplyFeatureSettings();
         ApplySizeProfile();
         ApplyLayoutMode();
         _thumbnailPreview.Hide();
@@ -1443,8 +1567,8 @@ public partial class MainWindow : Window
         ResetMagnification();
         if (_windowTracker is not null)
         {
-            UpdateNotificationBadges(_pinnedApps, _windowTracker.Snapshot);
-            UpdateNotificationBadges(_runningApps, _windowTracker.Snapshot);
+            UpdateNotificationBadges(_pinnedApps, VisibleSnapshot);
+            UpdateNotificationBadges(_runningApps, VisibleSnapshot);
         }
         if (_replacementSession?.IsActive == true)
         {
@@ -1549,7 +1673,7 @@ public partial class MainWindow : Window
     private void ApplyLayoutMode()
     {
         WidgetColumn.Width = IsFullWidth ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-        WidgetStrip.HorizontalAlignment = IsFullWidth ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        WidgetIsland.HorizontalAlignment = IsFullWidth ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         ApplyDockMargin();
         ApplyDockAlignment();
         ResizeDockToContent();
@@ -1558,7 +1682,12 @@ public partial class MainWindow : Window
     private void ApplyDockMargin()
     {
         var side = IsFullWidth ? DockMetrics.FullWidthSideInset : DockMetrics.SideInset;
-        DockSurface.Margin = new Thickness(side, _dockTopGap, side, Profile.BottomGap);
+        DockSurface.Margin = Edge switch
+        {
+            DockEdge.Left => new Thickness(Profile.BottomGap, side, _dockTopGap, side),
+            DockEdge.Right => new Thickness(_dockTopGap, side, Profile.BottomGap, side),
+            _ => new Thickness(side, _dockTopGap, side, Profile.BottomGap)
+        };
     }
 
     private DockSizeProfile Profile => DockMetrics.For(_preferences.Current.Size);
@@ -1570,6 +1699,9 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         DockSurface.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockSurface.CornerRadius = new CornerRadius(profile.Radius);
+        // The sheen sits exactly on the top border line, inset past the rounded corners.
+        DockSheen.Margin = new Thickness(profile.Radius, -(profile.VerticalPadding + 1), profile.Radius, 0);
+        if (IsVertical) DockSurface.Padding = new Thickness(profile.VerticalPadding, 10, profile.VerticalPadding, 10);
         var scale = profile.WidgetScale;
         WidgetStrip.LayoutTransform = scale < 1 ? new ScaleTransform(scale, scale) : Transform.Identity;
         if (_replacementSession is not null)
@@ -1590,6 +1722,20 @@ public partial class MainWindow : Window
 
     private void ApplyDockAlignment()
     {
+        if (IsVertical)
+        {
+            DockSurface.HorizontalAlignment = Edge == DockEdge.Left ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+            DockSurface.VerticalAlignment = IsFullWidth ? VerticalAlignment.Stretch : _dockPosition switch
+            {
+                DockPosition.Left => VerticalAlignment.Top,
+                DockPosition.Right => VerticalAlignment.Bottom,
+                _ => VerticalAlignment.Center
+            };
+            _replacementSession?.RefreshPosition();
+            return;
+        }
+
+        DockSurface.VerticalAlignment = VerticalAlignment.Bottom;
         if (IsFullWidth)
         {
             DockSurface.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -1620,7 +1766,8 @@ public partial class MainWindow : Window
         _dockArea = area;
         // The session sizes the shelf to the selected profile; any surplus height sits above the surface.
         var profile = Profile;
-        _dockTopGap = Math.Max(0.0, area.Height - profile.SurfaceHeight - profile.BottomGap);
+        var thickness = IsVertical ? area.Width : area.Height;
+        _dockTopGap = Math.Max(0.0, thickness - profile.SurfaceHeight - profile.BottomGap);
         ApplyDockMargin();
         ResizeDockToContent();
     }
@@ -1636,14 +1783,22 @@ public partial class MainWindow : Window
 
     private void ResizeDockToContent()
     {
+        if (IsVertical)
+        {
+            ResizeSideDockToContent();
+            return;
+        }
+
+        DockSurface.Height = double.NaN;
+        StartButton.ToolTip = UiText.Get("Start");
         // Fit cells explicitly; a Viewbox would scale every control after transient layout changes.
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
-        WidgetStrip.Margin = hasWidgets ? new Thickness(6, 0, 0, 0) : default;
-        WidgetStrip.Measure(unbounded);
-        var widgetsWidth = hasWidgets ? WidgetStrip.DesiredSize.Width : 0;
-        var count = Math.Max(1, 1 + _pinnedApps.Count + _runningApps.Count);
+        WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
+        WidgetIsland.Measure(unbounded);
+        var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width : 0;
+        var count = Math.Max(1, (StartButtonShown ? 1 : 0) + VisiblePinnedCount + _runningApps.Count + ExtraButtonCount);
         var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
             + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
         var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
@@ -1757,6 +1912,10 @@ public partial class MainWindow : Window
         _autoHideController = null;
         _widgets.Dispose();
         _jumpLists.Dispose();
+        _wheelAudio?.Dispose();
+        _wheelAudio = null;
+        DisposeExtras();
+        DisposeFeatures();
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

@@ -125,7 +125,7 @@ public partial class FocusWidget : DockWidget
         PlayButton.ToolTip = UiText.Get(IsRunning ? "FocusPause" : "FocusStart");
         System.Windows.Automation.AutomationProperties.SetName(PlayButton, (string)PlayButton.ToolTip);
         Card.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty,
-            IsRunning ? (_phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent") : "WidgetCardStroke");
+            IsRunning ? (_phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent") : "WidgetTrack");
         PhaseText.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,
             _phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent");
     }

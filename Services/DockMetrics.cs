@@ -48,9 +48,9 @@ public static class DockMetrics
     /// </summary>
     public static DockSizeProfile For(Models.DockSize size) => size switch
     {
-        Models.DockSize.Compact => new(Shelf: 48, BottomGap: 3, Cell: 38, VerticalPadding: 2, Icon: 28, Radius: 14),
-        Models.DockSize.Medium => new(Shelf: 58, BottomGap: 5, Cell: 44, VerticalPadding: 3, Icon: 34, Radius: 16),
-        _ => new(Shelf: ShelfHeight, BottomGap: BottomGap, Cell: 50, VerticalPadding: 4, Icon: IconSize, Radius: 18)
+        Models.DockSize.Compact => new(Shelf: 48, BottomGap: 3, Cell: 38, VerticalPadding: 2, Icon: 28, Radius: 16),
+        Models.DockSize.Medium => new(Shelf: 58, BottomGap: 5, Cell: 44, VerticalPadding: 3, Icon: 34, Radius: 19),
+        _ => new(Shelf: ShelfHeight, BottomGap: BottomGap, Cell: 50, VerticalPadding: 4, Icon: IconSize, Radius: 22)
     };
 }
 

@@ -87,7 +87,17 @@ public sealed class DockSettingsStore
         && settings.FocusSessions is >= 1 and <= 8
         && double.IsFinite(settings.SurfaceOpacity) && settings.SurfaceOpacity is >= 0.6 and <= 1
         && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
-        && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count;
+        && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count
+        && Enum.IsDefined(settings.LauncherHotkey) && Enum.IsDefined(settings.DockHotkey)
+        && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
+        && settings.WeatherCity is { Length: <= 80 }
+        && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
+        && settings.Profiles?.Any(profile => string.IsNullOrWhiteSpace(profile.Name) || profile.HiddenApps is null) != true
+        && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count;
+
+    public static bool Validate(DockSettings settings) => IsValid(settings);
+
+    public static JsonSerializerOptions SerializerOptions => JsonOptions;
 
     private static JsonSerializerOptions CreateJsonOptions()
     {

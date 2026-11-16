@@ -22,6 +22,17 @@
     <StreamGeometry x:Key="IconHotspot">M4.93 19.07a10 10 0 0 1 0-14.14 M7.76 16.24a6 6 0 0 1 0-8.49 M16.24 7.76a6 6 0 0 1 0 8.49 M19.07 4.93a10 10 0 0 1 0 14.14 M14 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0z</StreamGeometry>
     <StreamGeometry x:Key="IconBell">M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0</StreamGeometry>
     <StreamGeometry x:Key="IconZap">M13 2L3 14h9l-1 8 10-12h-9l1-8z</StreamGeometry>
+    <StreamGeometry x:Key="IconSun">M12 16a4 4 0 1 0 0-8a4 4 0 0 0 0 8z M12 2v2 M12 20v2 M4.93 4.93l1.41 1.41 M17.66 17.66l1.41 1.41 M2 12h2 M20 12h2 M6.34 17.66l-1.41 1.41 M19.07 4.93l-1.41 1.41</StreamGeometry>
+    <StreamGeometry x:Key="IconCloud">M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z</StreamGeometry>
+    <StreamGeometry x:Key="IconCloudSun">M12 2v2 M4.93 4.93l1.41 1.41 M20 12h2 M19.07 4.93l-1.41 1.41 M15.95 12.65a4 4 0 0 0-5.93-4.61 M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6z</StreamGeometry>
+    <StreamGeometry x:Key="IconCloudRain">M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24 M16 14v6 M8 14v6 M12 16v6</StreamGeometry>
+    <StreamGeometry x:Key="IconCloudFog">M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24 M16 17H7 M17 21H9</StreamGeometry>
+    <StreamGeometry x:Key="IconSnow">M2 12h20 M12 2v20 M20 16l-4-4 4-4 M4 8l4 4-4 4 M16 4l-4 4-4-4 M8 20l4-4 4 4</StreamGeometry>
+    <StreamGeometry x:Key="IconCloudLightning">M6 16.33A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.97 M13 11l-4 6h6l-4 6</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronLeft">M15 18l-6-6 6-6</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronNext">M9 18l6-6-6-6</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronUp">M18 15l-6-6-6 6</StreamGeometry>
+    <StreamGeometry x:Key="IconDesktops">M3 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M20 8h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-1</StreamGeometry>
     <StreamGeometry x:Key="IconMusic">M9 18V5l12-2v13 M9 18a3 3 0 1 1-6 0a3 3 0 0 1 6 0z M21 16a3 3 0 1 1-6 0a3 3 0 0 1 6 0z</StreamGeometry>
 
     <Style x:Key="WidgetIcon" TargetType="ContentControl">
@@ -239,6 +250,40 @@
                             </Track.Thumb>
                         </Track>
                     </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Rows and tiles inside dock flyouts (stacks, calendar, tray, desktops, launcher). -->
+    <Style x:Key="FlyoutButton" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="650" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Surface" Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

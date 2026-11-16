@@ -19,10 +19,13 @@ public sealed class WidgetCoordinator : IDisposable
         _widgets =
         [
             (new MediaWidget(), s => s.ShowMedia),
+            (new DesktopsWidget(), s => s.ShowVirtualDesktops),
             (new SystemStatsWidget(), s => s.ShowSystemStats),
             (new FocusWidget(), s => s.ShowFocus),
+            (new WeatherWidget(), s => s.ShowWeather),
             (new AudioWidget(), s => s.ShowAudio),
             (new QuickSettingsWidget(), s => s.ShowQuickSettings),
+            (new TrayWidget(), s => s.ShowTray),
             (new ClockWidget(), s => s.ShowClock)
         ];
         foreach (var (widget, _) in _widgets)

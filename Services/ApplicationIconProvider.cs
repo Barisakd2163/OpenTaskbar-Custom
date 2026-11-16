@@ -55,6 +55,101 @@ public static class ApplicationIconProvider
         return File.Exists(expanded) ? GetExecutableIcon(expanded, index) : null;
     }
 
+    /// <summary>
+    /// Thumbnail or icon for any Shell parsing name: files, folders, or <c>shell:AppsFolder\{AUMID}</c> entries.
+    /// </summary>
+    public static BitmapSource? GetForShellItem(string parsingName, int size = 64, bool iconOnly = false)
+    {
+        var factoryId = typeof(IShellItemImageFactory).GUID;
+        if (SHCreateItemFromParsingName(parsingName, 0, ref factoryId, out var factoryObject) != 0
+            || factoryObject is not IShellItemImageFactory factory)
+        {
+            return null;
+        }
+
+        nint bitmap = 0;
+        try
+        {
+            // SIIGBF_BIGGERSIZEOK | (ICONONLY) | SIIGBF_SCALEUP
+            var flags = 0x1 | (iconOnly ? 0x4 : 0) | 0x100;
+            if (factory.GetImage(new NativeSize { Width = size, Height = size }, flags, out bitmap) != 0 || bitmap == 0)
+            {
+                return null;
+            }
+
+            // Shell bitmaps are 32bpp DIB sections with premultiplied alpha; Imaging.CreateBitmapSourceFromHBitmap
+            // drops that alpha, so copy the pixels directly.
+            var info = new NativeBitmap();
+            if (GetObject(bitmap, Marshal.SizeOf<NativeBitmap>(), ref info) == 0 || info.Bits == 0 || info.BitsPixel != 32)
+            {
+                var fallback = Imaging.CreateBitmapSourceFromHBitmap(bitmap, 0, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                fallback.Freeze();
+                return fallback;
+            }
+
+            var width = info.Width;
+            var height = Math.Abs(info.Height);
+            var stride = info.WidthBytes;
+            var pixels = new byte[stride * height];
+            for (var row = 0; row < height; row++)
+            {
+                // Positive heights are bottom-up DIBs.
+                var sourceRow = info.Height > 0 ? height - 1 - row : row;
+                Marshal.Copy(info.Bits + sourceRow * stride, pixels, row * stride, stride);
+            }
+
+            var result = BitmapSource.Create(width, height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32, null, pixels, stride);
+            result.Freeze();
+            return result;
+        }
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException)
+        {
+            return null;
+        }
+        finally
+        {
+            if (bitmap != 0) DeleteObject(bitmap);
+            Marshal.ReleaseComObject(factory);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeSize
+    {
+        public int Width;
+        public int Height;
+    }
+
+    [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItemImageFactory
+    {
+        [PreserveSig]
+        int GetImage(NativeSize size, int flags, out nint bitmap);
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+    private static extern int SHCreateItemFromParsingName(string path, nint bindContext, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out object? item);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(nint handle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeBitmap
+    {
+        public int Type;
+        public int Width;
+        public int Height;
+        public int WidthBytes;
+        public ushort Planes;
+        public ushort BitsPixel;
+        public nint Bits;
+    }
+
+    [DllImport("gdi32.dll", EntryPoint = "GetObjectW")]
+    private static extern int GetObject(nint handle, int size, ref NativeBitmap bitmap);
+
     private static BitmapSource? GetExecutableIcon(string path, int index = 0)
     {
         // Primary path: Extract high-resolution icon resource (up to 128x128) for macOS-style large dock display.

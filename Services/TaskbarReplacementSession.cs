@@ -16,6 +16,8 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint AbmQueryPos = 0x00000002;
     private const uint AbmSetPos = 0x00000003;
     private const uint AbeBottom = 3;
+    private const uint AbeLeft = 0;
+    private const uint AbeRight = 2;
     private const uint AbsAutoHide = 0x00000001;
     private const uint AbsAlwaysOnTop = 0x00000002;
     private const uint SupportedTaskbarState = AbsAutoHide | AbsAlwaysOnTop;
@@ -58,8 +60,38 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public bool IsActive => _active || _stateChangeStarted;
 
-    // Explorer's hidden taskbar keeps reserving the work area; auto-hide releases it for the dock's hide modes.
-    private uint ReplacementState => (_previousTaskbarState & AbsAlwaysOnTop) | (_autoHideEnabled ? AbsAutoHide : 0);
+    // Explorer's hidden taskbar keeps reserving the work area; auto-hide releases it for the dock's hide modes and
+    // for side docks, which would otherwise leave an empty strip along the bottom.
+    private uint ReplacementState => (_previousTaskbarState & AbsAlwaysOnTop) | (_autoHideEnabled || IsVertical ? AbsAutoHide : 0);
+
+    private Models.DockEdge _edge = Models.DockEdge.Bottom;
+    private bool IsVertical => _edge != Models.DockEdge.Bottom;
+
+    /// <summary>The screen edge the dock occupies.</summary>
+    public Models.DockEdge Edge
+    {
+        get => _edge;
+        set
+        {
+            if (_edge == value) return;
+            _edge = value;
+            _reservation = null;
+            _lastLayout = default;
+            if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
+            if (_registered)
+            {
+                // Drop the old edge's reservation before claiming the new one.
+                var data = CreateData();
+                SHAppBarMessage(AbmRemove, ref data);
+                data = CreateData();
+                data.uCallbackMessage = CallbackMessage;
+                _registered = SHAppBarMessage(AbmNew, ref data) != 0;
+            }
+
+            SetTaskbarState(ReplacementState, _handle);
+            PositionDockWindow();
+        }
+    }
 
     private static TaskbarReplacementSession? _current;
 
@@ -154,8 +186,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             _stateChangeStarted = true;
             Volatile.Write(ref _current, this);
-            var replacementState = _previousTaskbarState & AbsAlwaysOnTop;
-            if (!SetTaskbarState(replacementState, _handle))
+            if (!SetTaskbarState(ReplacementState, _handle))
             {
                 throw new InvalidOperationException("Windows görev çubuğunun kenar tetiklemesi kapatılamadı.");
             }
@@ -322,6 +353,12 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         var dpi = GetDpiForWindow(_handle);
         if (dpi == 0) return;
+        if (IsVertical)
+        {
+            PositionSideDock(monitorInfo.rcMonitor, dpi);
+            return;
+        }
+
         // Explorer's hidden taskbar keeps reserving its own height unless auto-hide is on. The dock reserves only
         // the part of its shelf that exceeds that strip, so maximized windows never sit underneath it.
         var explorerHeight = _autoHideEnabled ? 0 : (int)Math.Round(_nativeTaskbarHeight * dpi / 96d);
@@ -347,6 +384,51 @@ public sealed class TaskbarReplacementSession : IDisposable
         var top = monitorInfo.rcMonitor.Bottom - totalHeight;
         if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, top,
                 width, totalHeight,
+                SwpNoActivate | SwpNoOwnerZOrder))
+        {
+            throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
+        }
+    }
+
+    /// <summary>
+    /// Left/right dock: a full-height column. The shelf width is reserved as an AppBar unless auto-hide is on;
+    /// the headroom beside it (for magnified icons) overlaps windows like the bottom dock's headroom does.
+    /// </summary>
+    private void PositionSideDock(Rect monitor, uint dpi)
+    {
+        var thickness = Math.Max(1, (int)Math.Round(ShelfHeight * dpi / 96d));
+        var headroom = (int)Math.Round(DockHeadroomDips * dpi / 96d);
+        var total = thickness + headroom;
+        var height = monitor.Bottom - monitor.Top;
+        var edge = _edge == Models.DockEdge.Left ? AbeLeft : AbeRight;
+        var request = (edge == AbeLeft ? monitor.Left : monitor.Right, monitor.Top, (int)edge, _autoHideEnabled ? 0 : thickness);
+        if (_registered && _reservation != request)
+        {
+            _reservation = request;
+            var data = CreateData();
+            data.uEdge = edge;
+            var reserved = _autoHideEnabled ? 0 : thickness;
+            data.rc = edge == AbeLeft
+                ? new Rect(monitor.Left, monitor.Top, monitor.Left + reserved, monitor.Bottom)
+                : new Rect(monitor.Right - reserved, monitor.Top, monitor.Right, monitor.Bottom);
+            SHAppBarMessage(AbmQueryPos, ref data);
+            if (edge == AbeLeft) data.rc.Right = data.rc.Left + reserved;
+            else data.rc.Left = data.rc.Right - reserved;
+            SHAppBarMessage(AbmSetPos, ref data);
+        }
+
+        var layout = new Size(thickness * 96d / dpi, height * 96d / dpi);
+        if (_lastLayout != layout)
+        {
+            _lastLayout = layout;
+            _window.Width = total * 96d / dpi;
+            _window.Height = layout.Height;
+            LayoutChanged?.Invoke(layout);
+        }
+
+        UpdateForeground(GetForegroundWindow());
+        var left = edge == AbeLeft ? monitor.Left : monitor.Right - total;
+        if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, monitor.Top, total, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
