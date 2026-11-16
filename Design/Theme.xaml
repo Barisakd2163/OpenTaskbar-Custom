@@ -11,14 +11,14 @@
     <sys:Double x:Key="TextSizeBody">13</sys:Double>
     <sys:Double x:Key="TextSizeCaption">12</sys:Double>
     <sys:Double x:Key="TextSizeWidgetLabel">11</sys:Double>
-    <sys:Double x:Key="DockScrollBarHeight">8</sys:Double>
+    <sys:Double x:Key="DockScrollBarHeight">6</sys:Double>
     <sys:Double x:Key="DockScrollThumbMinWidth">24</sys:Double>
     <sys:Double x:Key="DockResizeGripWidth">8</sys:Double>
     <Thickness x:Key="DockResizeGripInset">1,10</Thickness>
-    <Thickness x:Key="DockScrollThumbMargin">2,2</Thickness>
+    <Thickness x:Key="DockScrollThumbMargin">3,1</Thickness>
     <Thickness x:Key="DockWidgetPadding">9,5</Thickness>
     <sys:Double x:Key="DockHeadroom">24</sys:Double>
-    <sys:Double x:Key="DockWindowHeight">90</sys:Double>
+    <sys:Double x:Key="DockWindowHeight">98</sys:Double>
     <sys:Double x:Key="DockCellSize">52</sys:Double>
     <sys:Double x:Key="DockCellHeight">52</sys:Double>
     <sys:Double x:Key="DockIconSize">42</sys:Double>

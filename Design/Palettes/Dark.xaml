@@ -16,17 +16,20 @@
     <SolidColorBrush x:Key="SurfaceHover" Color="#22FFFFFF" />
     <SolidColorBrush x:Key="SurfacePressed" Color="#34FFFFFF" />
     <SolidColorBrush x:Key="SurfaceSelected" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="DockWidgetSurface" Color="#332F3742" />
+    <SolidColorBrush x:Key="DockScrollThumb" Color="#A6AEB8C4" />
+    <SolidColorBrush x:Key="DockResizeGrip" Color="#5CFFFFFF" />
     <SolidColorBrush x:Key="SurfaceDanger" Color="#FFC43846" />
     <SolidColorBrush x:Key="NotificationBrush" Color="#FFFF6673" />
     <SolidColorBrush x:Key="IndicatorBrush" Color="#A8E4F3FF" />
     <SolidColorBrush x:Key="IndicatorForegroundBrush" Color="#FFFFFFFF" />
     <LinearGradientBrush x:Key="DockMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#CC1E2530" Offset="0" />
-        <GradientStop Color="#E210141C" Offset="1" />
+        <GradientStop Color="#ED1E2530" Offset="0" />
+        <GradientStop Color="#F212141C" Offset="1" />
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="DockBorderMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#4DFFFFFF" Offset="0" />
-        <GradientStop Color="#16FFFFFF" Offset="1" />
+        <GradientStop Color="#80FFFFFF" Offset="0" />
+        <GradientStop Color="#30FFFFFF" Offset="1" />
     </LinearGradientBrush>
     <SolidColorBrush x:Key="SettingsBackground" Color="#FF181A1E" />
     <SolidColorBrush x:Key="SettingsSidebar" Color="#FF121417" />

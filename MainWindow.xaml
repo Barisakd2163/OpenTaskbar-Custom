@@ -133,14 +133,15 @@
                             </Track.DecreaseRepeatButton>
                             <Track.Thumb>
                                 <Thumb Margin="{StaticResource DockScrollThumbMargin}" MinWidth="{StaticResource DockScrollThumbMinWidth}"
-                                       Background="{DynamicResource MenuDivider}">
+                                       Background="{DynamicResource DockScrollThumb}">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
                                             <Border x:Name="ThumbSurface" Background="{TemplateBinding Background}"
-                                                    CornerRadius="{StaticResource DockScrollThumbRadius}" />
+                                                    CornerRadius="{StaticResource DockScrollThumbRadius}" Opacity="0.62" />
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="ThumbSurface" Property="Background" Value="{DynamicResource TextSecondary}" />
+                                                    <Setter TargetName="ThumbSurface" Property="Background" Value="{DynamicResource DockScrollThumb}" />
+                                                    <Setter TargetName="ThumbSurface" Property="Opacity" Value="1" />
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -163,13 +164,15 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
-                        <Border x:Name="ResizeSurface" Background="Transparent" CornerRadius="{StaticResource DockScrollThumbRadius}"
-                                Margin="{StaticResource DockResizeGripInset}" />
+                        <Border x:Name="ResizeSurface" Width="2" Background="{DynamicResource DockResizeGrip}"
+                                CornerRadius="{StaticResource DockScrollThumbRadius}" Margin="{StaticResource DockResizeGripInset}" />
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ResizeSurface" Property="Background" Value="{DynamicResource StrokeSubtle}" />
+                                <Setter TargetName="ResizeSurface" Property="Width" Value="4" />
+                                <Setter TargetName="ResizeSurface" Property="Background" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                             <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ResizeSurface" Property="Width" Value="4" />
                                 <Setter TargetName="ResizeSurface" Property="Background" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -209,7 +212,7 @@
         </DataTemplate>
         <DataTemplate x:Key="DockWidgetTemplate">
             <Border Margin="3,0" Padding="{StaticResource DockWidgetPadding}" CornerRadius="{StaticResource DockWidgetRadius}"
-                    Background="{DynamicResource SurfaceSelected}"
+                    Background="{DynamicResource DockWidgetSurface}"
                     BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1"
                     AutomationProperties.Name="{Binding Label}">
                 <StackPanel VerticalAlignment="Center">

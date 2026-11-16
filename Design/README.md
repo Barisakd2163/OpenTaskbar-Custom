@@ -10,7 +10,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 | Token | Value | Description |
 | :--- | :--- | :--- |
-| `DockWindowHeight` | `90 DIP` | Total height of the transparent window container |
+| `DockWindowHeight` | `98 DIP` | Total height of the transparent window container, including the scrollbar and icon row |
 | `DockHeadroom` | `24 DIP` | Transparent top headroom allowing unclipped icon magnification |
 | `_nativeTaskbarHeight` | `66 DIP` | Base height of the floating dock container shelf |
 | `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
@@ -23,7 +23,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
 | `StatusDotSize` | `4 DIP / 5 DIP` | Running and active application indicator dot diameter |
 | `DockMinimumWidth` | `280 DIP` | Minimum width when resizing the dock from either side |
-| `DockScrollBarHeight` | `8 DIP` | Horizontal scrollbar height when dock contents overflow |
+| `DockScrollBarHeight` | `6 DIP` | Compact horizontal scrollbar height when dock contents overflow |
 | `DockResizeGripWidth` | `8 DIP` | Pointer hit area at each edge of the dock |
 
 ### Typography
@@ -42,8 +42,8 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - **Compact Settings Layout:** One caption, a 148 DIP navigation column, 52 DIP general rows, and a fixed Apply footer. Remove introductory and persistent save-hint copy. Short auto-hide options form a vertical list. Uniform choice groups share aligned edges. The default 740 × 600 DIP window fits all general settings; smaller sizes scroll to the final option. Custom maximize sizing follows the current monitor work area and DPI.
 - **Preference Feedback:** Enable Apply only for edited preferences or recoverable settings-load errors. Surface-opacity changes preview immediately and revert to saved preferences on close, including after pin reordering. Keep startup permission errors accessible on the disabled switch and show save errors/results in the footer.
 
-- **Translucent Smoked Glass:** Deep translucent charcoal acrylic-style background (`#D916191F` in Dark theme, `#D9F3F4F6` in Light theme).
-- **Specular Top Highlight:** 1 DIP top border highlight (`#4DFFFFFF`) simulating light reflection on glass edges.
+- **Translucent Smoked Glass:** High-contrast charcoal and pearl materials keep the dock distinct from the wallpaper while retaining a light surface tint.
+- **Specular Top Highlight:** A bright top border and a softer lower edge define the dock silhouette against varied wallpapers.
 - **Ambient Shadow:** Soft multi-layer drop shadow (`BlurRadius="24"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.45"`) separating the dock from desktop wallpapers.
 - **Status Indicators:**
   - Running application: Muted 4 DIP circular dot (`#94A3B8`).
@@ -79,6 +79,8 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 - Drag either dock edge to resize the visible surface. The opposite edge stays anchored during the drag.
 - Pinned apps remain in the same order when the dock is narrowed. A horizontal scrollbar appears only when the contents exceed the available width.
+- The scrollbar reserves a compact row below the 52 DIP icon cells, keeping the icons and widget values fully visible while scrolling.
+- Both resize edges show a subtle resting grip and a stronger accent while hovered or dragged.
 - The dock width and app cell size respond to the active monitor's available area.
 
 ### Launch Bounce
