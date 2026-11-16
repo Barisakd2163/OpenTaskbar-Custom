@@ -45,9 +45,6 @@ public partial class SettingsWindow : Window
         WidgetOptionsList.ItemsSource = _widgetOptions;
         WeatherCountryBox.ItemsSource = CountryCityService.GetInitialCountries().Select(c => c.Name).ToList();
         _ = InitializeWeatherLocationsAsync(_applied.WeatherCity);
-        System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions).Filter = item =>
-            item is DockWidgetOption option && option.MatchesSearch(WidgetSearch.Text.Trim(),
-                CultureInfo.GetCultureInfo(_preferences.Current.Language == AppLanguage.Turkish ? "tr-TR" : "en-US"));
         _preferences.Changed += Preferences_Changed;
         _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
         _autoSaveTimer.Tick += (_, _) =>
@@ -154,7 +151,6 @@ public partial class SettingsWindow : Window
                 var localized = localizedOptions[option.Id];
                 option.UpdateText(localized.Label, localized.Description);
             }
-            RefreshWidgetSearch();
             RefreshWidgetPreviews();
         }
         ThemeManager.SetSurfaceOpacity(Math.Round(OpacitySlider.Value) / 100);
@@ -246,19 +242,6 @@ public partial class SettingsWindow : Window
         | (StatsCpuTemperatureToggle.IsChecked == true ? SystemMeters.CpuTemperature : 0)
         | (StatsGpuToggle.IsChecked == true ? SystemMeters.Gpu : 0)
         | (StatsGpuTemperatureToggle.IsChecked == true ? SystemMeters.GpuTemperature : 0);
-
-    private void WidgetSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-    {
-        if (_initializing) return;
-        RefreshWidgetSearch();
-    }
-
-    private void RefreshWidgetSearch()
-    {
-        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions);
-        view.Refresh();
-        WidgetNoResults.Visibility = view.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
-    }
 
     private void RefreshWidgetPreviews() => DockWidgetService.Refresh(
         _widgetOptions.Select(option => option.Preview), _preferences.Current.Language);

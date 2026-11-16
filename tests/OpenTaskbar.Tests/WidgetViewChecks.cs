@@ -299,19 +299,8 @@ internal static class WidgetViewChecks
                             var left = card.TranslatePoint(new Point(), list).X;
                             return left >= 0 && left + card.ActualWidth <= list.ActualWidth;
                         }), "The real settings page must keep all previews inside its viewport at default and minimum width.");
-                        var search = RequiredName<TextBox>(settings, "WidgetSearch");
-                        Check(search.ActualWidth >= list.ActualWidth, "Search must span the gallery width.");
                         Render(page, Path.Combine(directory, $"widget-settings-{theme.ToString().ToLowerInvariant()}-{width:0}.png"));
                     }
-                    var searchBox = RequiredName<TextBox>(settings, "WidgetSearch");
-                    searchBox.Text = "no-matching-widget";
-                    Check(list.Items.Count == 0 && RequiredName<TextBlock>(settings, "WidgetNoResults").Visibility == Visibility.Visible,
-                        "An unmatched gallery search must show the empty state.");
-                    searchBox.Text = selections.Single(option => option.Id == DockWidgetService.CountdownId).Label;
-                    Check(list.Items.Count == 1, "Search must filter preview tiles by their localized name.");
-                    searchBox.Clear();
-                    Layout(page);
-                    Check(list.Items.Count == selections.Length, "Clearing search must restore the full preview gallery.");
                     var firstCard = Descendants<WidgetCatalogItem>(list).First();
                     var selection = (DockWidgetOption)firstCard.DataContext;
                     RequiredName<Button>(firstCard, "PreviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -319,9 +308,6 @@ internal static class WidgetViewChecks
                     Check(preferences.Current.InstalledWidgets?.Contains(selection.Id) == true
                         && preferences.Current.Widgets?.Contains(selection.Id) == true,
                         "A preview tap must auto-save the installed and visible widget selections.");
-                    searchBox.Text = "no-matching-widget";
-                    searchBox.Clear();
-                    Check(selection.IsInstalled && selection.IsEnabled, "Filtering the gallery must preserve installation state.");
                     Layout(page);
                     var currentCard = Descendants<WidgetCatalogItem>(list).Single(card => ReferenceEquals(card.DataContext, selection));
                     RequiredName<Button>(currentCard, "PreviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

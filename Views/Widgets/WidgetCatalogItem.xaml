@@ -32,8 +32,8 @@
                                 <ScaleTransform ScaleX="1.05" ScaleY="1.05" />
                             </ContentControl.LayoutTransform>
                         </ContentControl>
-                        <TextBlock Grid.Row="1" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,6,0,0"
-                                   FontSize="{StaticResource TextSizeCaption}" Foreground="{DynamicResource TextSecondary}"
+                        <TextBlock Grid.Row="1" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,8,0,0"
+                                   FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
                                    TextTrimming="CharacterEllipsis" IsHitTestVisible="False" />
                     </Grid>
                 </Button>
@@ -49,7 +49,7 @@
                 </Button>
             </Grid>
             <Border x:Name="SettingsDrawer" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource StrokeSubtle}"
-                    Padding="14,12" Background="Transparent">
+                    Padding="14,12" Background="{DynamicResource SettingsSidebarOverlay}">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />

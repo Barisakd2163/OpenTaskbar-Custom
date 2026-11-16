@@ -152,6 +152,12 @@
         <Setter Property="BorderThickness" Value="0,0,0,1" />
         <Setter Property="BorderBrush" Value="{DynamicResource MenuDivider}" />
     </Style>
+    <Style x:Key="CompactSettingsRow" TargetType="Border">
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="4,4" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
+    </Style>
     <Style x:Key="SettingsRowLabel" TargetType="TextBlock">
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="TextWrapping" Value="Wrap" />
@@ -166,11 +172,11 @@
     <Style x:Key="SettingsChoice" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="Background" Value="{DynamicResource SettingsControl}" />
-        <Setter Property="Padding" Value="12,9" />
+        <Setter Property="Padding" Value="8,7" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="Margin" Value="3,0" />
+        <Setter Property="Margin" Value="2,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
