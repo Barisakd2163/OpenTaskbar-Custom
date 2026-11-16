@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 - 2026-11-16
 
 - Replaced text-heavy widget catalog rows with a wrapping gallery of real dock widget previews.
 - Install widgets by selecting their preview; keep visibility and removal controls on installed items.
