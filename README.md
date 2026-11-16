@@ -15,7 +15,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Native Windows Jump Lists:** View recent/frequent destinations and published application tasks directly in the context menu via lightweight STA Shell reading.
 - **Crash Recovery & State Journaling:** Automatically restores the native Windows taskbar on exit or unexpected shutdown using a local state journal (`taskbar-state.txt`). Reconnects on Explorer restarts (`TaskbarCreated`).
 - **Dedicated Settings Window:** A compact window with custom title-bar controls. Customize alignment (Left, Center, Right), theme (Dark/Light), auto-hide, animations, previews, and Windows startup. General settings fit at the default size; smaller windows keep all options reachable by scrolling.
-- **Optional Dock Widgets:** Search the Settings catalog and install, hide, or remove widgets. New installations start with no widgets enabled. The catalog includes local time, date, battery status, physical memory use, available system-drive space (GiB), elapsed day percentage, a stopwatch, and a countdown timer. System values refresh every 15 seconds and follow the selected Turkish or English language. Unreadable system data is shown as unavailable. The stopwatch supports start/pause, resume, and reset; while visible and running it refreshes every second. Both time widgets share one refresh clock while any visible time widget is running. Their session state survives visibility changes and resets when the app exits. Enter a timer duration of 1–1440 minutes on the dock; no duration is prefilled. Invalid input displays an error and disables Start. Completion is shown as a live status on the dock.
+- **Optional Dock Widgets:** Search the Settings catalog and install, hide, or remove widgets. New installations start with no widgets enabled. The catalog includes local time, date, battery status, physical memory use, available system-drive space (GiB), elapsed day percentage, a stopwatch, and a countdown timer. System values refresh every 15 seconds and follow the selected Turkish or English language. Unreadable system data is shown as unavailable. The stopwatch supports start/pause, resume, and reset; while visible and running it refreshes every second. Both time widgets share one refresh clock while any visible time widget is running. Their session state survives visibility changes and resets when the app exits. Time widgets show a large value and one start/pause action. Click the title or value to open the shared details panel; an unconfigured timer's quick action opens it too. Enter 1–1440 minutes in the panel; no duration is prefilled. Invalid input displays an error and disables Start. The panel also provides Reset, closes with Escape or an outside click, and keeps auto-hide from dismissing the dock while open. Completion is shown in the tile title and as a live status in the panel.
 - **Resizable Dock With Scrolling:** Drag either dock edge to set its width while the opposite edge stays fixed. When pinned apps and widgets exceed that width, the dock keeps them reachable through its thin horizontal scrollbar. Resize handles have a separate gutter beside the scrollable content.
 - **Glass & Surface Opacity:** Settings use native Desktop Acrylic on Windows 11 build 22621 or later. Adjust background opacity from 60–100% for settings, the dock, and context menus without fading text or icons. Changes preview live, save on Apply, and revert when discarded. Unsupported Windows versions and high-contrast mode use an opaque settings surface.
 - **Vector Icons:** Clean vector outline icons (Lucide icon set, 24x24 coordinate space) for context menus and dock controls.
@@ -60,13 +60,13 @@ The output is written to `dist\OpenTaskbar.exe`.
 
 ## Behavior Checks
 
-The dependency-free Windows check project uses a controlled `TimeProvider` for deterministic timer and stopwatch checks, plus isolated temporary files for settings round trips. Test source files are excluded from the application build.
+The dependency-free Windows check project uses a controlled `TimeProvider` for deterministic timer and stopwatch checks, plus isolated temporary files for settings round trips. WPF component checks measure and render the real widget controls without opening desktop windows. Test source files are excluded from the application build.
 
 ```powershell
 dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj
 ```
 
-These checks cover state transitions, duration boundaries, completion, independent widget state, session retention, localization, and settings validation. Rendered layout and native taskbar behavior require desktop inspection.
+These checks cover state transitions, duration boundaries, completion, independent widget state, session retention, localization, settings validation, and widget component actions and layout. Native popup focus, outside-click dismissal, screen-edge placement, and taskbar behavior still require desktop inspection.
 
 ## Configuration and Storage
 
@@ -88,6 +88,8 @@ These checks cover state transitions, duration boundaries, completion, independe
   - `WindowsTaskbarPinImporter.cs`: Windows shortcut file importer and resolver.
   - `DockSettingsStore.cs` & `ApplicationPreferences.cs`: Settings persistence and state management.
   - `DockWidgetService.cs`: Widget catalog and local system data providers.
+- `Views/Widgets/`: Compact time tiles, shared details panel, and popup lifetime.
+- `Design/WidgetControls.xaml`: Widget templates, control styles, and sizing tokens.
 - `MainWindow.xaml`: Dock UI surface, Start button, application icon items, and context menus.
 - `SettingsWindow.xaml`: Tabbed preferences window.
 

@@ -7,6 +7,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Design/Theme.xaml" />
                 <ResourceDictionary Source="Design/ContextMenus.xaml" />
+                <ResourceDictionary Source="Design/WidgetControls.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

@@ -10,6 +10,7 @@ CatalogChecks();
 LocalizationChecks();
 SettingsChecks();
 InitialLanguageChecks();
+checks += WidgetViewChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)

@@ -12,6 +12,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Views.Widgets;
 
 namespace OpenTaskbar;
 
@@ -32,6 +33,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly ObservableCollection<DockWidget> _widgets = [];
     private readonly DockWidgetService _widgetService = new(TimeProvider.System);
+    private readonly WidgetPanelHost _widgetPanel;
     private readonly DispatcherTimer _timedWidgetRefreshTimer;
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ApplicationPreferences _preferences = ((App)Application.Current).Preferences;
@@ -66,6 +68,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _widgetPanel = new WidgetPanelHost(this);
+        _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
+        _widgetPanel.OperationFailed += ShowStatus;
         ShowInTaskbar = _isPreview || _isInspection;
         if (((App)Application.Current).OpenSettingsOnStartup)
             Loaded += (_, _) => OpenSettings_Click(this, new RoutedEventArgs());
@@ -146,7 +151,7 @@ public partial class MainWindow : Window
             source.Handle,
             DockSurfaceTranslate,
             DockSurface,
-            () => (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
+            () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
         _autoHideController.SetMode(_preferences.Current.AutoHide);
 
         if (!_isPreview) StartReplacementMode();
@@ -880,6 +885,7 @@ public partial class MainWindow : Window
     private void DockApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _previewCloseTimer.Stop();
+        if (_widgetPanel.IsOpen) return;
         if (!_preferences.Current.PreviewsEnabled)
         {
             if (sender is Button button) ToolTipService.SetIsEnabled(button, true);
@@ -1053,6 +1059,7 @@ public partial class MainWindow : Window
 
     private async void DockContextMenu_Opened(object sender, RoutedEventArgs e)
     {
+        _widgetPanel.Close(restoreFocus: false);
         if (sender is not ContextMenu contextMenu)
         {
             return;
@@ -1417,6 +1424,7 @@ public partial class MainWindow : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
+        _widgetPanel.Close(restoreFocus: false);
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow(_preferences);
@@ -1460,6 +1468,7 @@ public partial class MainWindow : Window
 
     private void ApplyWidgets(IReadOnlyList<string>? selected)
     {
+        _widgetPanel.Close(restoreFocus: false);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
         _widgets.Clear();
         foreach (var widget in _widgetService.CreateWidgets(selected)) _widgets.Add(widget);
@@ -1481,20 +1490,24 @@ public partial class MainWindow : Window
         if (e.WidthChanged) ResizeDockToContent();
     }
 
-    private void TimedWidgetToggle_Click(object sender, RoutedEventArgs e)
+    private void TimedWidget_DetailsRequested(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: ITimedDockWidget widget }) widget.Toggle();
+        if (e.OriginalSource is not TimedWidgetTile { DataContext: DockWidget widget } tile) return;
+        e.Handled = true;
+        _widgetPanel.Open(tile, widget is CountdownDockWidget ? UiText.Get("WidgetCountdown") : UiText.Get("WidgetStopwatch"),
+            new TimedWidgetPanel { DataContext = widget });
     }
 
-    private void WidgetDuration_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void WidgetPanel_IsOpenChanged(object? sender, EventArgs e)
     {
-        // App commands preserve the foreground window; editing a duration needs keyboard focus instead.
-        if (!IsActive && !Activate()) ShowStatus(UiText.Get("WidgetInputFocusError"));
-    }
-
-    private void TimedWidgetReset_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: ITimedDockWidget widget }) widget.Reset();
+        if (_widgetPanel.IsOpen)
+        {
+            _previewCloseTimer.Stop();
+            _thumbnailPreview.Hide();
+            if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
+            ResetMagnification();
+        }
+        _autoHideController?.EvaluateState();
     }
 
     private void TimedWidget_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1631,6 +1644,7 @@ public partial class MainWindow : Window
 
     private void DockResizeThumb_DragStarted(object sender, DragStartedEventArgs e)
     {
+        _widgetPanel.Close(restoreFocus: false);
         _resizingFromLeft = ReferenceEquals(sender, LeftResizeThumb);
         var left = DockSurface.TranslatePoint(new Point(), DockHost).X;
         _resizeAnchor = _resizingFromLeft ? left + DockSurface.ActualWidth : left;
@@ -1665,12 +1679,15 @@ public partial class MainWindow : Window
 
     private void DockScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (e.HorizontalChange != 0) ResetMagnification();
+        if (e.HorizontalChange == 0) return;
+        _widgetPanel.Close(restoreFocus: false);
+        ResetMagnification();
     }
 
     private void OnFullScreenChanged(bool suppressed)
     {
         if (!suppressed) return;
+        _widgetPanel.Close(restoreFocus: false);
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
@@ -1769,6 +1786,9 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _widgetPanel.IsOpenChanged -= WidgetPanel_IsOpenChanged;
+        _widgetPanel.OperationFailed -= ShowStatus;
+        _widgetPanel.Dispose();
         _preferences.Changed -= Preferences_Changed;
         _settingsWindow?.CloseForShutdown();
         _jumpListLoad?.Cancel();

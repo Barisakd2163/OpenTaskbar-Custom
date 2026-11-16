@@ -1,0 +1,56 @@
+<UserControl x:Class="OpenTaskbar.Views.Widgets.TimedWidgetPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:OpenTaskbar.Services" Focusable="False">
+    <UserControl.Resources>
+        <DataTemplate DataType="{x:Type local:CountdownDockWidget}">
+            <StackPanel>
+                <TextBlock Text="{local:Loc CountdownMinutes}" />
+                <TextBox Text="{Binding MinutesText, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="{StaticResource WidgetPanelFieldMargin}" Padding="{StaticResource WidgetPanelFieldPadding}"
+                         MinHeight="{StaticResource WidgetPanelActionHeight}"
+                         Foreground="{DynamicResource TextPrimary}" Background="{DynamicResource SettingsControl}"
+                         CaretBrush="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource StrokeSubtle}"
+                         AutomationProperties.Name="{local:Loc CountdownMinutes}" AutomationProperties.HelpText="{Binding StatusText}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Style.Triggers><DataTrigger Binding="{Binding CanEditDuration}" Value="False"><Setter Property="IsReadOnly" Value="True" /></DataTrigger></Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="{StaticResource WidgetPanelFieldMargin}"
+                           AutomationProperties.LiveSetting="Polite">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasValidationError}" Value="True"><Setter Property="Foreground" Value="{DynamicResource DangerText}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding StatusText}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding DurationHelpText}" TextWrapping="Wrap"
+                           Margin="{StaticResource WidgetPanelFieldMargin}" Foreground="{DynamicResource TextSecondary}" />
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type local:StopwatchDockWidget}">
+            <TextBlock Text="{local:Loc StopwatchSessionHelp}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" />
+        </DataTemplate>
+    </UserControl.Resources>
+    <StackPanel>
+        <TextBlock Text="{Binding Value}" FontSize="{StaticResource WidgetPanelValueSize}" FontWeight="SemiBold"
+                   Typography.NumeralAlignment="Tabular" Foreground="{DynamicResource TextPrimary}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Value}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style>
+            </TextBlock.Style>
+        </TextBlock>
+        <ContentControl Content="{Binding}" Margin="{StaticResource WidgetPanelSectionMargin}" />
+        <Grid Margin="{StaticResource WidgetPanelSectionMargin}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Button x:Name="PrimaryActionButton" Style="{StaticResource WidgetPanelPrimaryAction}" IsEnabled="{Binding CanToggle}" Click="Toggle_Click" />
+            <Button Grid.Column="1" Content="{local:Loc TimedWidgetReset}" Style="{StaticResource WidgetPanelAction}"
+                    Margin="{StaticResource DockWidgetActionMargin}" IsEnabled="{Binding CanToggle}" Click="Reset_Click" />
+        </Grid>
+    </StackPanel>
+</UserControl>

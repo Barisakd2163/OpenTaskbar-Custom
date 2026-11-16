@@ -54,8 +54,8 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
   - Running application: Muted 4 DIP circular dot (`#94A3B8`).
   - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
   - Alert / notification: Upper-right red badge (`#EF4444`).
-- **Widgets:** A catalog provides local clock, date, and Windows battery status widgets. Settings persist the selected widget IDs; unselected widgets do not reserve dock space.
-- **Icons:** Vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps) for all context menus, tray items, and dock controls.
+- **Widgets:** The optional catalog includes clock, date, battery, memory, system-drive space, day progress, stopwatch, and countdown widgets. Installed and visible selections are separate. Time widgets use a compact value-first tile with one quick action; duration editing and reset live in a shared details panel. `Design/WidgetControls.xaml` owns widget styles and tokens, while `Views/Widgets/` separates tiles, timed details, the panel frame, and popup lifetime. Popup placement uses WPF's screen-edge adjustment, and an open panel locks dock auto-hide. Native popup focus, dismissal, and placement still require desktop verification.
+- **Icons:** Context menus use vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps). Compact time actions and window captions use built-in Segoe MDL2 Assets glyphs, available on supported Windows 10 and 11 versions.
 
 ---
 

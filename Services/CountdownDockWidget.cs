@@ -18,6 +18,7 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidget(
     public bool CanToggle => State != CountdownState.NotConfigured;
     public bool CanEditDuration => State is CountdownState.NotConfigured or CountdownState.Ready or CountdownState.Finished;
     public bool HasValidationError => State == CountdownState.NotConfigured && !string.IsNullOrWhiteSpace(MinutesText);
+    public string DurationHelpText => UiText.Format("CountdownEditingHelp", MinimumMinutes, MaximumMinutes);
     public TimeSpan Remaining => IsRunning
         ? TimeSpan.FromTicks(Math.Max(0, (_remaining - timeProvider.GetElapsedTime(_startedAt)).Ticks))
         : _remaining;
