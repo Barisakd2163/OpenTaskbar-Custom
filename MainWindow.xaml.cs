@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
+    private readonly ObservableCollection<DockWidget> _widgets = [];
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ApplicationPreferences _preferences = ((App)Application.Current).Preferences;
     private SettingsWindow? _settingsWindow;
@@ -36,6 +38,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _jumpListLoad;
     private long? _jumpListSession;
     private readonly DispatcherTimer _previewCloseTimer;
+    private readonly DispatcherTimer _widgetRefreshTimer;
     private readonly WindowThumbnailPreview _thumbnailPreview;
     private readonly Dictionary<string, nint> _lastSelectedWindows = new(StringComparer.OrdinalIgnoreCase);
     private DockPosition _dockPosition = DockPosition.Left;
@@ -52,18 +55,28 @@ public partial class MainWindow : Window
     private Point _dragStartPoint;
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
+    private double? _dockWidthOverride;
+    private bool _resizingFromLeft;
 
     public MainWindow()
     {
         InitializeComponent();
         PinnedApps.ItemsSource = _pinnedApps;
         RunningApps.ItemsSource = _runningApps;
+        DockWidgets.ItemsSource = _widgets;
         _thumbnailPreview = new WindowThumbnailPreview((Style)FindResource("PreviewCloseButton"));
         _previewCloseTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(500)
         };
         _previewCloseTimer.Tick += PreviewCloseTimer_Tick;
+        _widgetRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(15)
+        };
+        _widgetRefreshTimer.Tick += WidgetRefreshTimer_Tick;
+        ApplyWidgets(_preferences.Current.Widgets);
+        _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
@@ -702,7 +715,8 @@ public partial class MainWindow : Window
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        if (_dockWidthOverride is not null && e.LeftButton == System.Windows.Input.MouseButtonState.Pressed
+            || !_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             return;
         }
@@ -1395,6 +1409,7 @@ public partial class MainWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        ApplyWidgets(_preferences.Current.Widgets);
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController?.SetMode(_preferences.Current.AutoHide);
@@ -1416,6 +1431,21 @@ public partial class MainWindow : Window
             PositionDock();
         }
 
+    }
+
+    private void ApplyWidgets(IReadOnlyList<string>? selected)
+    {
+        _widgets.Clear();
+        foreach (var widget in DockWidgetService.CreateWidgets(selected)) _widgets.Add(widget);
+        WidgetDivider.Visibility = _widgets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+        ResizeDockToContent();
+    }
+
+    private void WidgetRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+        ResizeDockToContent();
     }
 
     private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
@@ -1532,6 +1562,37 @@ public partial class MainWindow : Window
         ResizeDockToContent();
     }
 
+    private void DockResizeThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        _resizingFromLeft = ReferenceEquals(sender, LeftResizeThumb);
+        DockSurface.HorizontalAlignment = _resizingFromLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        ResetMagnification();
+    }
+
+    private void DockResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
+        var margin = DockSurface.Margin;
+        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
+        var minimumSurfaceWidth = Math.Min((double)FindResource("DockMinimumWidth"), maximumSurfaceWidth);
+        var delta = _resizingFromLeft ? -e.HorizontalChange : e.HorizontalChange;
+        var nextWidth = Math.Clamp(DockSurface.ActualWidth + delta, minimumSurfaceWidth, maximumSurfaceWidth);
+        _dockWidthOverride = nextWidth + margin.Left + margin.Right;
+        DockSurface.Width = nextWidth;
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
+    }
+
+    private void DockResizeThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (_replacementSession?.IsActive != true) PositionDock();
+    }
+
+    private void DockScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.HorizontalChange != 0) ResetMagnification();
+    }
+
     private void OnFullScreenChanged(bool suppressed)
     {
         if (!suppressed) return;
@@ -1543,24 +1604,26 @@ public partial class MainWindow : Window
 
     private void ResizeDockToContent()
     {
-        // Fit cells explicitly; a Viewbox would scale every control after transient layout changes.
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
         var count = Math.Max(1, 1 + _pinnedApps.Count + _runningApps.Count);
+        DockWidgets.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
             + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
         var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
-        Application.Current.Resources["DockCellSize"] = Math.Min(52,
-            Math.Max(24, (availableWidth - frameWidth - statusWidth) / count));
+        var widgetWidth = DockWidgets.DesiredSize.Width + (_widgets.Count > 0 ? WidgetDivider.ActualWidth + WidgetDivider.Margin.Left + WidgetDivider.Margin.Right : 0);
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var padding = DockSurface.Padding;
-        var margin = DockSurface.Margin;
-        var border = DockSurface.BorderThickness;
-        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + padding.Left + padding.Right
-            + margin.Left + margin.Right + border.Left + border.Right);
+        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + frameWidth + DockSurface.BorderThickness.Left + DockSurface.BorderThickness.Right);
         var maximumWidth = Math.Max(16, availableWidth);
-        var dockWidth = Math.Clamp(desiredWidth, 16, maximumWidth);
-        DockSurface.Width = Math.Max(16, dockWidth - margin.Left - margin.Right);
-        if (_dockArea.Width <= 0) Width = dockWidth;
+        var dockWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
+            Math.Min((double)FindResource("DockMinimumWidth"), maximumWidth), maximumWidth);
+        Application.Current.Resources["DockCellSize"] = Math.Clamp(
+            (dockWidth - frameWidth - statusWidth - widgetWidth) / count, 24, 52);
+        DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        DockSurface.Width = Math.Max(1, dockWidth - DockSurface.Margin.Left - DockSurface.Margin.Right);
+        if (_dockArea.Width <= 0)
+        {
+            Width = dockWidth;
+        }
     }
 
     private static bool ExcludeFromTaskSwitcher(nint windowHandle)
@@ -1641,6 +1704,8 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
+        _widgetRefreshTimer.Stop();
+        _widgetRefreshTimer.Tick -= WidgetRefreshTimer_Tick;
         _thumbnailPreview.PointerEntered -= ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft -= ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;

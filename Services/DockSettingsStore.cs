@@ -83,7 +83,9 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.AutoHide)
         && double.IsFinite(settings.SurfaceOpacity) && settings.SurfaceOpacity is >= 0.6 and <= 1
         && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
-        && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count;
+        && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count
+        && settings.Widgets?.Any(widget => !DockWidgetService.SupportedIds.Contains(widget)) != true
+        && settings.Widgets?.Distinct(StringComparer.Ordinal).Count() == settings.Widgets?.Count;
 
     private static JsonSerializerOptions CreateJsonOptions()
     {

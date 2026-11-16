@@ -15,6 +15,8 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Native Windows Jump Lists:** View recent/frequent destinations and published application tasks directly in the context menu via lightweight STA Shell reading.
 - **Crash Recovery & State Journaling:** Automatically restores the native Windows taskbar on exit or unexpected shutdown using a local state journal (`taskbar-state.txt`). Reconnects on Explorer restarts (`TaskbarCreated`).
 - **Dedicated Settings Window:** A compact window with custom title-bar controls. Customize alignment (Left, Center, Right), theme (Dark/Light), auto-hide, animations, previews, and Windows startup. General settings fit at the default size; smaller windows keep all options reachable by scrolling.
+- **Dock Widgets:** Show the local time, date, and Windows battery status beside app icons. Choose which widgets appear in Settings; values refresh from system data and follow the selected Turkish or English language.
+- **Resizable Dock With Scrolling:** Drag either dock edge to set its width. When pinned apps and widgets exceed that width, the dock keeps them reachable through its horizontal scrollbar.
 - **Glass & Surface Opacity:** Settings use native Desktop Acrylic on Windows 11 build 22621 or later. Adjust background opacity from 60–100% for settings, the dock, and context menus without fading text or icons. Changes preview live, save on Apply, and revert when discarded. Unsupported Windows versions and high-contrast mode use an opaque settings surface.
 - **Vector Icons:** Clean vector outline icons (Lucide icon set, 24x24 coordinate space) for context menus and dock controls.
 
@@ -48,7 +50,7 @@ The output is written to `dist\OpenTaskbar.exe`.
 
 ## Configuration and Storage
 
-- `%LOCALAPPDATA%\OpenTaskbar\settings.json`: Preferences, alignment, theme, auto-hide, pin order, and `SurfaceOpacity` (0.6–1.0, default 0.9). Existing settings files receive the default opacity.
+- `%LOCALAPPDATA%\OpenTaskbar\settings.json`: Preferences, alignment, theme, auto-hide, pin order, widget selection, and `SurfaceOpacity` (0.6–1.0, default 0.9). Existing settings files receive defaults for newer preferences.
 - `%LOCALAPPDATA%\OpenTaskbar\taskbar-state.txt`: Safety journal that preserves the original Windows taskbar state for crash recovery.
 - `Software\Microsoft\Windows\CurrentVersion\Run\OpenTaskbar`: Current-user Windows registry key used when "Start with Windows" is enabled.
 
@@ -64,6 +66,7 @@ The output is written to `dist\OpenTaskbar.exe`.
   - `ApplicationJumpListService.cs`: Background Jump List reader and task invocation.
   - `WindowsTaskbarPinImporter.cs`: Windows shortcut file importer and resolver.
   - `DockSettingsStore.cs` & `ApplicationPreferences.cs`: Settings persistence and state management.
+  - `DockWidgetService.cs`: Widget catalog and local system data providers.
 - `MainWindow.xaml`: Dock UI surface, Start button, application icon items, and context menus.
 - `SettingsWindow.xaml`: Tabbed preferences window.
 

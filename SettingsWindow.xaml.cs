@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -15,6 +16,7 @@ public partial class SettingsWindow : Window
 {
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
+    private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
     private bool _startupEnabled;
     private bool _startupAvailable;
     private DockSettings _applied;
@@ -28,6 +30,8 @@ public partial class SettingsWindow : Window
         _preferences = preferences;
         _applied = preferences.Current;
         InitializeComponent();
+        foreach (var option in DockWidgetService.CreateOptions(_applied.Widgets)) _widgetOptions.Add(option);
+        WidgetOptionsList.ItemsSource = _widgetOptions;
         _preferences.Changed += Preferences_Changed;
         Closed += (_, _) =>
         {
@@ -137,7 +141,8 @@ public partial class SettingsWindow : Window
         PreviewsEnabled = PreviewsToggle.IsChecked == true,
         NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
         AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
-        SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100
+        SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100,
+        Widgets = _widgetOptions.Where(option => option.IsEnabled).Select(option => option.Id).ToArray()
     };
 
     private void Apply_Click(object sender, RoutedEventArgs e)

@@ -22,6 +22,9 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |
 | `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
 | `StatusDotSize` | `4 DIP / 5 DIP` | Running and active application indicator dot diameter |
+| `DockMinimumWidth` | `280 DIP` | Minimum width when resizing the dock from either side |
+| `DockScrollBarHeight` | `8 DIP` | Horizontal scrollbar height when dock contents overflow |
+| `DockResizeGripWidth` | `8 DIP` | Pointer hit area at each edge of the dock |
 
 ### Typography
 
@@ -46,6 +49,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
   - Running application: Muted 4 DIP circular dot (`#94A3B8`).
   - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
   - Alert / notification: Upper-right red badge (`#EF4444`).
+- **Widgets:** A catalog provides local clock, date, and Windows battery status widgets. Settings persist the selected widget IDs; unselected widgets do not reserve dock space.
 - **Icons:** Vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps) for all context menus, tray items, and dock controls.
 
 ---
@@ -70,6 +74,12 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - **Smart:** Dock stays visible on the desktop and behind non-overlapping windows. When an active or maximized window overlaps the bottom dock region, the dock smoothly translates down off-screen.
 - **Always:** Dock remains hidden below the screen edge by default.
 - **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease transition.
+
+### Dock sizing and overflow
+
+- Drag either dock edge to resize the visible surface. The opposite edge stays anchored during the drag.
+- Pinned apps remain in the same order when the dock is narrowed. A horizontal scrollbar appears only when the contents exceed the available width.
+- The dock width and app cell size respond to the active monitor's available area.
 
 ### Launch Bounce
 - Clicking an application icon triggers a 420 ms damped vertical launch bounce animation (-12 DIP peak) on its translate transform to provide tactile feedback while the application opens.
