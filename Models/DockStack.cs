@@ -28,12 +28,24 @@ public sealed class DockStack : INotifyPropertyChanged, IDisposable
             {
                 // Browsers create temporary download files first; ignore those until they are renamed.
                 if (IsTemporary(args.Name)) return;
-                dispatcher.BeginInvoke(() => HasNewItems = true);
+                dispatcher.BeginInvoke(() =>
+                {
+                    HasNewItems = true;
+                    ContentsChanged?.Invoke();
+                });
             };
             _watcher.Renamed += (_, args) =>
             {
-                if (!IsTemporary(args.Name)) dispatcher.BeginInvoke(() => HasNewItems = true);
+                if (!IsTemporary(args.Name))
+                {
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        HasNewItems = true;
+                        ContentsChanged?.Invoke();
+                    });
+                }
             };
+            _watcher.Deleted += (_, _) => dispatcher.BeginInvoke(() => ContentsChanged?.Invoke());
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
@@ -43,8 +55,20 @@ public sealed class DockStack : INotifyPropertyChanged, IDisposable
 
     public string Path { get; }
     public string Name { get; }
-    public BitmapSource? Icon { get; set; }
+    public event Action? ContentsChanged;
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    private BitmapSource? _icon;
+    public BitmapSource? Icon
+    {
+        get => _icon;
+        set
+        {
+            if (ReferenceEquals(_icon, value)) return;
+            _icon = value;
+            OnPropertyChanged();
+        }
+    }
 
     public bool HasNewItems
     {

@@ -371,6 +371,36 @@ internal static class DockLayoutChecks
         var whitespaceSettings = new DockSettings(WidgetOrder: ["Clock", "   "]);
         Check(!DockSettingsStore.Validate(whitespaceSettings), "Whitespace WidgetOrder must fail settings validation.");
 
+        // Verify unified ClockWidget day, date, time and weather capsule
+        var clockWidget = new ClockWidget();
+        clockWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, ShowWeather: true));
+        clockWidget.Activate();
+        clockWidget.Tick(new DateTime(2026, 11, 16, 20, 16, 0));
+        var dayText = clockWidget.FindName("DayOfWeekText") as TextBlock;
+        var dateText = clockWidget.FindName("DateText") as TextBlock;
+        var timeText = clockWidget.FindName("TimeText") as TextBlock;
+        Check(dayText?.Text == "MONDAY", "ClockWidget must display uppercase day of week.");
+        Check(dateText?.Text == "Nov 16", "ClockWidget must display date format.");
+        Check(timeText?.Text.Contains("20") == true || timeText?.Text.Contains("8") == true, "ClockWidget must display time.");
+
+        // Verify DockStack icon property and notifications
+        var tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "OpenTaskbarStackTest_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tempFolder);
+        try
+        {
+            var stack = new DockStack(tempFolder, Dispatcher.CurrentDispatcher);
+            var iconNotified = false;
+            stack.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(DockStack.Icon)) iconNotified = true; };
+            stack.Icon = new RenderTargetBitmap(16, 16, 96, 96, PixelFormats.Pbgra32);
+            Check(iconNotified, "DockStack.Icon property change must raise PropertyChanged event.");
+            Check(stack.Icon != null, "DockStack.Icon must hold assigned BitmapSource.");
+            stack.Dispose();
+        }
+        finally
+        {
+            System.IO.Directory.Delete(tempFolder, recursive: true);
+        }
+
         return checks;
     }
 }

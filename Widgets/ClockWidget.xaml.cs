@@ -16,11 +16,16 @@ public partial class ClockWidget : DockWidget
     public ClockWidget()
     {
         InitializeComponent();
+        WeatherService.ReportUpdated += _ => Dispatcher.BeginInvoke(UpdateWeatherDisplay);
     }
 
     private CultureInfo Culture => CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
 
-    protected override void OnSettingsChanged() => _lastMinute = string.Empty;
+    protected override void OnSettingsChanged()
+    {
+        _lastMinute = string.Empty;
+        UpdateWeatherDisplay();
+    }
 
     protected override void OnDeactivated() => _calendar.Close();
 
@@ -28,12 +33,43 @@ public partial class ClockWidget : DockWidget
     {
         var culture = Culture;
         var minute = now.ToString("g", culture);
-        if (minute == _lastMinute) return;
-        _lastMinute = minute;
-        TimeText.Text = now.ToString("t", culture);
-        DateText.Text = now.ToString("ddd d MMM", culture);
-        ClockButton.ToolTip = now.ToString("D", culture);
+        if (minute != _lastMinute)
+        {
+            _lastMinute = minute;
+            TimeText.Text = now.ToString("t", culture);
+            DayOfWeekText.Text = now.ToString("dddd", culture).ToUpper(culture);
+            DateText.Text = now.ToString(Settings.Language == AppLanguage.English ? "MMM d" : "d MMM", culture);
+            ClockButton.ToolTip = now.ToString("D", culture);
+        }
+
+        UpdateWeatherDisplay();
     }
+
+    private void UpdateWeatherDisplay()
+    {
+        if (Settings.ShowWeather && WeatherService.LastReport is { } report)
+        {
+            WeatherIcon.Text = DescribeWeatherGlyph(report.Code);
+            WeatherTemp.Text = $"{Math.Round(report.Temperature)}°";
+            WeatherPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            WeatherPanel.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private static string DescribeWeatherGlyph(int code) => code switch
+    {
+        0 => "☀",
+        1 or 2 => "⛅",
+        3 => "☁",
+        45 or 48 => "🌫",
+        >= 51 and <= 67 or >= 80 and <= 82 => "🌧",
+        >= 71 and <= 77 or 85 or 86 => "❄",
+        >= 95 => "⛈",
+        _ => "☁"
+    };
 
     private void ClockButton_Click(object sender, RoutedEventArgs e)
     {

@@ -16,6 +16,9 @@ public static class WeatherService
 {
     private static readonly HttpClient Client = CreateClient();
 
+    public static WeatherReport? LastReport { get; private set; }
+    public static event Action<WeatherReport?>? ReportUpdated;
+
     public static async Task<(WeatherReport? Report, string? Error)> LoadAsync(string city, bool english, CancellationToken cancellation)
     {
         try
@@ -43,11 +46,14 @@ public static class WeatherService
             var maxima = daily.GetProperty("temperature_2m_max").EnumerateArray().Select(value => value.GetDouble()).ToList();
             var minima = daily.GetProperty("temperature_2m_min").EnumerateArray().Select(value => value.GetDouble()).ToList();
             var days = dates.Select((date, index) => new WeatherDay(date, codes[index], minima[index], maxima[index])).ToList();
-            return (new WeatherReport(place.Name,
+            var report = new WeatherReport(place.Name,
                 current.GetProperty("temperature_2m").GetDouble(),
                 current.GetProperty("weather_code").GetInt32(),
                 current.GetProperty("apparent_temperature").GetDouble(),
-                days), null);
+                days);
+            LastReport = report;
+            ReportUpdated?.Invoke(report);
+            return (report, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
             or TimeoutException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)

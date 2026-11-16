@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -54,10 +55,10 @@ public partial class MainWindow
             _stacks.Clear();
             foreach (var folder in folders.Where(Directory.Exists))
             {
-                _stacks.Add(new DockStack(folder, Dispatcher)
-                {
-                    Icon = ApplicationIconProvider.GetForShellItem(folder, 128, iconOnly: true)
-                });
+                var stack = new DockStack(folder, Dispatcher);
+                stack.Icon = CreateStackIcon(stack);
+                stack.ContentsChanged += () => stack.Icon = CreateStackIcon(stack);
+                _stacks.Add(stack);
             }
         }
 
@@ -75,6 +76,55 @@ public partial class MainWindow
     private IReadOnlyList<string> ConfiguredStackFolders() => _preferences.Current.StackFolders ?? [DownloadsFolder];
 
     private int ExtraButtonCount => _stacks.Count + (RecycleBinButton.Visibility == Visibility.Visible ? 1 : 0);
+
+    private static BitmapSource? CreateStackIcon(DockStack stack)
+    {
+        var entries = stack.RecentEntries(4);
+        if (entries.Count == 0)
+        {
+            return ApplicationIconProvider.GetForShellItem(stack.Path, 128, iconOnly: true);
+        }
+
+        const int size = 128;
+        const int padding = 6;
+        const int itemSize = 48;
+        const int x0 = 13;
+        const int x1 = 67;
+        const int y0 = 13;
+        const int y1 = 67;
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            var tileBrush = new SolidColorBrush(Color.FromArgb(0x35, 0xFF, 0xFF, 0xFF));
+            var tilePen = new Pen(new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)), 1.5);
+            tileBrush.Freeze();
+            tilePen.Freeze();
+            dc.DrawRoundedRectangle(tileBrush, tilePen, new Rect(padding, padding, size - padding * 2, size - padding * 2), 22, 22);
+
+            var positions = new[]
+            {
+                new Rect(x0, y0, itemSize, itemSize),
+                new Rect(x1, y0, itemSize, itemSize),
+                new Rect(x0, y1, itemSize, itemSize),
+                new Rect(x1, y1, itemSize, itemSize)
+            };
+
+            for (var i = 0; i < entries.Count && i < positions.Length; i++)
+            {
+                var icon = ApplicationIconProvider.GetForShellItem(entries[i].FullName, 64, iconOnly: true);
+                if (icon is not null)
+                {
+                    dc.DrawImage(icon, positions[i]);
+                }
+            }
+        }
+
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(visual);
+        rtb.Freeze();
+        return rtb;
+    }
 
     private IEnumerable<Button> GetExtraDockButtons()
     {
