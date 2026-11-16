@@ -65,6 +65,8 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
+    private bool _resizingDock;
+    private bool _resizePending;
     private bool _resizingFromLeft;
     private readonly bool _isPreview = ((App)Application.Current).IsPreview;
     private readonly bool _isInspection = ((App)Application.Current).IsInspection;
@@ -1737,6 +1739,33 @@ public partial class MainWindow : Window
 
     private void ResizeDockToContent()
     {
+        // Measuring runs pending layout, whose SizeChanged handlers call back here. Those calls are coalesced into
+        // one more fit by the outer call, which is capped so layout feedback cannot loop.
+        if (_resizingDock)
+        {
+            _resizePending = true;
+            return;
+        }
+
+        _resizingDock = true;
+        try
+        {
+            var passes = 0;
+            do
+            {
+                _resizePending = false;
+                FitDockToContent();
+            } while (_resizePending && ++passes < 2);
+        }
+        finally
+        {
+            _resizingDock = false;
+            _resizePending = false;
+        }
+    }
+
+    private void FitDockToContent()
+    {
         if (IsVertical)
         {
             ResizeSideDockToContent();
@@ -1745,13 +1774,14 @@ public partial class MainWindow : Window
 
         DockSurface.Height = double.NaN;
         StartButton.ToolTip = UiText.Get("Start");
-        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
-        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
         WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
+        // Measure first: the layout pass it runs can move the dock area, which is read below.
+        var contentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
+        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
+        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         if (!WidgetIsland.IsMeasureValid) WidgetIsland.Measure(unbounded);
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
-        if (!DockContents.IsMeasureValid) DockContents.Measure(unbounded);
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         if (IsFullWidth)
@@ -1763,7 +1793,7 @@ public partial class MainWindow : Window
         }
 
         DockLayoutRoot.MinWidth = 0;
-        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + widgetsWidth + DockHorizontalChrome);
+        var desiredWidth = Math.Ceiling(contentWidth + widgetsWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
         if (!double.IsNaN(DockSurface.Width)
