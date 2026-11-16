@@ -308,12 +308,12 @@ internal static class DockLayoutChecks
         DockWidgetService.Refresh(testWidgets, AppLanguage.Turkish);
         var clockTr = testWidgets.First(w => w.Id == DockWidgetService.ClockId);
         var stopwatchTr = testWidgets.First(w => w.Id == DockWidgetService.StopwatchId);
-        Check(clockTr.Label == "Saat", "Clock widget label must localize to Turkish.");
+        Check(clockTr.Label == "Tarih ve saat", "Clock widget label must localize to Turkish.");
         Check(stopwatchTr.Label == "Kronometre", "Stopwatch widget label must localize to Turkish.");
 
         UiText.Current.SetLanguage(AppLanguage.English);
         DockWidgetService.Refresh(testWidgets, AppLanguage.English);
-        Check(clockTr.Label == "Clock", "Clock widget label must localize to English.");
+        Check(clockTr.Label == "Date and time", "Clock widget label must localize to English.");
         Check(stopwatchTr.Label == "Stopwatch", "Stopwatch widget label must localize to English.");
 
         // Verify TaskbarReplacement error keys localization
