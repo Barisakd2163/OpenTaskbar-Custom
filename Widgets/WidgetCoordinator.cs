@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 
@@ -10,7 +11,7 @@ namespace OpenTaskbar.Widgets;
 
 /// <summary>
 /// Owns the dock widgets: builds them into the strip, applies order and visibility from settings,
-/// supports drag-and-drop reordering directly on the dock, and drives a shared 1 s tick.
+/// supports drag-and-drop reordering with fluid animations directly on the dock, and drives a shared 1 s tick.
 /// </summary>
 public sealed class WidgetCoordinator : IDisposable
 {
@@ -43,11 +44,15 @@ public sealed class WidgetCoordinator : IDisposable
         _ => null
     };
 
+    public static bool HandlesWidget(string id) =>
+        DefaultWidgetOrder.Contains(id, StringComparer.OrdinalIgnoreCase);
+
     private sealed record WidgetDragPayload(string WidgetId);
 
     private readonly Panel _strip;
     private readonly List<WidgetItem> _widgets;
     private readonly DispatcherTimer _timer;
+    private readonly HashSet<DockWidget> _displacedWidgets = [];
     private Point _dragStartPoint;
     private DockWidget? _draggedWidget;
     private bool _disposed;
@@ -55,26 +60,20 @@ public sealed class WidgetCoordinator : IDisposable
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
-    public static bool HandlesWidget(string id) =>
-        DefaultWidgetOrder.Contains(id, StringComparer.OrdinalIgnoreCase);
-
-    private static bool IsCatalogEnabled(DockSettings settings, string id) =>
-        settings.Widgets?.Contains(id, StringComparer.OrdinalIgnoreCase) == true;
-
     public WidgetCoordinator(Panel strip, Dispatcher dispatcher, Action<string> reportError)
     {
         _strip = strip;
         _widgets =
         [
-            new("Media", "WidgetMedia", new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
-            new("Desktops", "WidgetDesktops", new DesktopsWidget(), s => IsCatalogEnabled(s, "Desktops")),
-            new("SystemStats", "WidgetSystemStats", new SystemStatsWidget(), s => IsCatalogEnabled(s, "SystemStats")),
-            new("Focus", "WidgetFocus", new FocusWidget(), s => IsCatalogEnabled(s, "Focus")),
-            new("Weather", "WidgetWeather", new WeatherWidget(), s => IsCatalogEnabled(s, "Weather")),
-            new("Audio", "WidgetAudio", new AudioWidget(), s => IsCatalogEnabled(s, "Audio")),
-            new("QuickSettings", "WidgetQuickSettings", new QuickSettingsWidget(), s => IsCatalogEnabled(s, "QuickSettings")),
-            new("Tray", "WidgetTray", new TrayWidget(), s => IsCatalogEnabled(s, "Tray")),
-            new("Clock", "WidgetClock", new ClockWidget(), s => IsCatalogEnabled(s, "Clock"))
+            new("Media", "WidgetMedia", new MediaWidget(), s => s.ShowMedia),
+            new("Desktops", "WidgetDesktops", new DesktopsWidget(), s => s.ShowVirtualDesktops),
+            new("SystemStats", "WidgetSystemStats", new SystemStatsWidget(), s => s.ShowSystemStats),
+            new("Focus", "WidgetFocus", new FocusWidget(), s => s.ShowFocus),
+            new("Weather", "WidgetWeather", new WeatherWidget(), s => s.ShowWeather),
+            new("Audio", "WidgetAudio", new AudioWidget(), s => s.ShowAudio),
+            new("QuickSettings", "WidgetQuickSettings", new QuickSettingsWidget(), s => s.ShowQuickSettings),
+            new("Tray", "WidgetTray", new TrayWidget(), s => s.ShowTray),
+            new("Clock", "WidgetClock", new ClockWidget(), s => s.ShowClock)
         ];
 
         foreach (var item in _widgets)
@@ -85,6 +84,7 @@ public sealed class WidgetCoordinator : IDisposable
             item.Widget.PreviewMouseLeftButtonUp += Widget_PreviewMouseLeftButtonUp;
             item.Widget.PreviewMouseMove += Widget_PreviewMouseMove;
             item.Widget.DragOver += Widget_DragOver;
+            item.Widget.DragLeave += Widget_DragLeave;
             item.Widget.Drop += Widget_Drop;
 
             _strip.Children.Add(item.Widget);
@@ -169,6 +169,102 @@ public sealed class WidgetCoordinator : IDisposable
         OrderChanged?.Invoke(newOrder);
     }
 
+    private static (ScaleTransform Scale, TranslateTransform Translate) GetWidgetTransforms(DockWidget widget)
+    {
+        if (widget.RenderTransform is TransformGroup group)
+        {
+            var s = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+            var t = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            if (s is not null && t is not null) return (s, t);
+        }
+
+        var scale = new ScaleTransform();
+        var translate = new TranslateTransform();
+        widget.RenderTransform = new TransformGroup { Children = { scale, translate } };
+        widget.RenderTransformOrigin = new Point(0.5, 0.5);
+        return (scale, translate);
+    }
+
+    private void AnimateWidgetDrag(DockWidget widget, string widgetId)
+    {
+        widget.Opacity = 0.55;
+        var (scale, translate) = GetWidgetTransforms(widget);
+        var animDuration = TimeSpan.FromMilliseconds(130);
+        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.05, animDuration) { EasingFunction = easeOut });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.05, animDuration) { EasingFunction = easeOut });
+        translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-4, animDuration) { EasingFunction = easeOut });
+
+        try
+        {
+            DragDrop.DoDragDrop(widget, new WidgetDragPayload(widgetId), DragDropEffects.Move);
+        }
+        finally
+        {
+            widget.Opacity = 1.0;
+            ResetWidgetDisplacements();
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.0, animDuration) { EasingFunction = easeOut });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.0, animDuration) { EasingFunction = easeOut });
+            translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, animDuration) { EasingFunction = easeOut });
+        }
+    }
+
+    private void UpdateWidgetDisplacement(DockWidget targetWidget, DragEventArgs e)
+    {
+        var pos = e.GetPosition(targetWidget);
+        var isRightHalf = pos.X > targetWidget.ActualWidth / 2;
+        var shift = isRightHalf ? -10.0 : 10.0;
+
+        var (_, translate) = GetWidgetTransforms(targetWidget);
+        var anim = new DoubleAnimation(shift, TimeSpan.FromMilliseconds(130))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        translate.BeginAnimation(TranslateTransform.XProperty, anim);
+        _displacedWidgets.Add(targetWidget);
+    }
+
+    private void ResetWidgetDisplacement(DockWidget widget)
+    {
+        if (!_displacedWidgets.Remove(widget)) return;
+        var (_, translate) = GetWidgetTransforms(widget);
+        var anim = new DoubleAnimation(0, TimeSpan.FromMilliseconds(130))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        translate.BeginAnimation(TranslateTransform.XProperty, anim);
+    }
+
+    private void ResetWidgetDisplacements()
+    {
+        foreach (var widget in _displacedWidgets)
+        {
+            var (_, translate) = GetWidgetTransforms(widget);
+            translate.BeginAnimation(TranslateTransform.XProperty, null);
+            translate.X = 0;
+        }
+        _displacedWidgets.Clear();
+    }
+
+    private static void AnimateWidgetDropSettle(DockWidget widget)
+    {
+        var (scale, _) = GetWidgetTransforms(widget);
+        var settleScale = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(200),
+            KeyFrames =
+            {
+                new EasingDoubleKeyFrame(1.06, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                new EasingDoubleKeyFrame(0.98, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), new CubicEase { EasingMode = EasingMode.EaseOut }),
+                new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200)), new CubicEase { EasingMode = EasingMode.EaseOut })
+            }
+        };
+
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, settleScale);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, settleScale);
+    }
+
     private void Widget_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is DependencyObject dep && IsInteractiveControl(dep))
@@ -189,7 +285,7 @@ public sealed class WidgetCoordinator : IDisposable
         var current = dep;
         while (current is not null)
         {
-            if (current is ButtonBase or Slider or Thumb or TextBoxBase)
+            if (current is Slider or Thumb or TextBoxBase)
             {
                 return true;
             }
@@ -220,29 +316,35 @@ public sealed class WidgetCoordinator : IDisposable
             var widgetId = _widgets.FirstOrDefault(w => ReferenceEquals(w.Widget, targetWidget))?.Id;
             if (widgetId is null) return;
 
-            targetWidget.Opacity = 0.5;
-            try
+            if (Mouse.Captured is UIElement captured)
             {
-                DragDrop.DoDragDrop(targetWidget, new WidgetDragPayload(widgetId), DragDropEffects.Move);
+                captured.ReleaseMouseCapture();
             }
-            finally
-            {
-                targetWidget.Opacity = 1.0;
-            }
+            e.Handled = true;
+            AnimateWidgetDrag(targetWidget, widgetId);
         }
     }
 
     private void Widget_DragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(typeof(WidgetDragPayload)) && sender is DockWidget)
+        if (e.Data.GetDataPresent(typeof(WidgetDragPayload)) && sender is DockWidget targetWidget)
         {
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
+            UpdateWidgetDisplacement(targetWidget, e);
         }
         else
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
+        }
+    }
+
+    private void Widget_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is DockWidget widget)
+        {
+            ResetWidgetDisplacement(widget);
         }
     }
 
@@ -256,9 +358,12 @@ public sealed class WidgetCoordinator : IDisposable
 
             if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
             {
+                ResetWidgetDisplacements();
                 ReorderWidgets(oldIndex, newIndex);
+                AnimateWidgetDropSettle(targetWidget);
             }
         }
+        ResetWidgetDisplacements();
         e.Handled = true;
     }
 
@@ -280,6 +385,7 @@ public sealed class WidgetCoordinator : IDisposable
             item.Widget.PreviewMouseLeftButtonUp -= Widget_PreviewMouseLeftButtonUp;
             item.Widget.PreviewMouseMove -= Widget_PreviewMouseMove;
             item.Widget.DragOver -= Widget_DragOver;
+            item.Widget.DragLeave -= Widget_DragLeave;
             item.Widget.Drop -= Widget_Drop;
             item.Widget.Dispose();
         }
