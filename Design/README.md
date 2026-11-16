@@ -14,6 +14,8 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `DockHeadroom` | `24 DIP` | Transparent top headroom allowing unclipped icon magnification |
 | `_nativeTaskbarHeight` | `66 DIP` | Base height of the floating dock container shelf |
 | `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
+| `DockMinimumCellSize` | `24 DIP` | Smallest application cell width while dock contents are being fitted |
+| `DockMaximumCellSize` | `52 DIP` | Largest application cell width while dock contents are being fitted |
 | `DockCellHeight` | `52 DIP` | Height of an individual dock application item cell |
 | `DockIconSize` | `42 DIP` | Prominent icon display size with balanced cell margins |
 | `DockHoverScale` | `1.28x` | Peak magnification scale for the hovered dock item |
@@ -23,7 +25,10 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
 | `StatusDotSize` | `4 DIP / 5 DIP` | Running and active application indicator dot diameter |
 | `DockMinimumWidth` | `280 DIP` | Minimum width when resizing the dock from either side |
-| `DockScrollBarHeight` | `6 DIP` | Compact horizontal scrollbar height when dock contents overflow |
+| `DockAbsoluteMinimumWidth` | `16 DIP` | Lower bound for window sizing on unusually narrow work areas |
+| `DockContentOverflowAllowance` | `32 DIP` | Breathing room for dock content and edge resize grips before horizontal scrolling is needed |
+| `DockFrameWidthAllowance` | `12 DIP` | Width reserved for the dock frame beyond its padding and monitor insets |
+| `DockScrollBarHeight` | `4 DIP` | Compact horizontal scrollbar height when dock contents overflow |
 | `DockResizeGripWidth` | `8 DIP` | Pointer hit area at each edge of the dock |
 
 ### Typography

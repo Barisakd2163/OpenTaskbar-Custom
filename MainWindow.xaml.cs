@@ -1608,16 +1608,22 @@ public partial class MainWindow : Window
         var count = Math.Max(1, 1 + _pinnedApps.Count + _runningApps.Count);
         DockWidgets.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         var frameWidth = DockSurface.Padding.Left + DockSurface.Padding.Right
-            + DockSurface.Margin.Left + DockSurface.Margin.Right + 12;
-        var statusWidth = string.IsNullOrEmpty(StatusText.Text) ? 0 : 296;
+            + DockSurface.Margin.Left + DockSurface.Margin.Right + (double)FindResource("DockFrameWidthAllowance");
+        StatusText.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var statusWidth = StatusText.DesiredSize.Width;
         var widgetWidth = DockWidgets.DesiredSize.Width + (_widgets.Count > 0 ? WidgetDivider.ActualWidth + WidgetDivider.Margin.Left + WidgetDivider.Margin.Right : 0);
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + frameWidth + DockSurface.BorderThickness.Left + DockSurface.BorderThickness.Right);
-        var maximumWidth = Math.Max(16, availableWidth);
+        var overflowAllowance = (double)FindResource("DockContentOverflowAllowance");
+        var desiredContentWidth = DockContents.DesiredSize.Width;
+        var borderWidth = DockSurface.BorderThickness.Left + DockSurface.BorderThickness.Right;
+        var desiredWidth = Math.Ceiling(desiredContentWidth + frameWidth + borderWidth + overflowAllowance);
+        var absoluteMinimumWidth = (double)FindResource("DockAbsoluteMinimumWidth");
+        var maximumWidth = Math.Max(absoluteMinimumWidth, availableWidth);
         var dockWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min((double)FindResource("DockMinimumWidth"), maximumWidth), maximumWidth);
         Application.Current.Resources["DockCellSize"] = Math.Clamp(
-            (dockWidth - frameWidth - statusWidth - widgetWidth) / count, 24, 52);
+            (dockWidth - frameWidth - statusWidth - widgetWidth) / count,
+            (double)FindResource("DockMinimumCellSize"), (double)FindResource("DockMaximumCellSize"));
         DockContents.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         DockSurface.Width = Math.Max(1, dockWidth - DockSurface.Margin.Left - DockSurface.Margin.Right);
         if (_dockArea.Width <= 0)
