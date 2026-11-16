@@ -473,7 +473,6 @@ public partial class SettingsWindow : Window
             })
             || !(selected.Widgets ?? []).SequenceEqual(_applied.Widgets ?? [], StringComparer.Ordinal)
             || !(selected.InstalledWidgets ?? []).SequenceEqual(_applied.InstalledWidgets ?? [], StringComparer.Ordinal)
-            || (_widgetOrderChanged && !(selected.WidgetOrder ?? []).SequenceEqual(_applied.WidgetOrder ?? WidgetCoordinator.DefaultWidgetOrder, StringComparer.OrdinalIgnoreCase))
             || (_startupAvailable && StartupToggle.IsChecked != _startupEnabled);
     }
 
