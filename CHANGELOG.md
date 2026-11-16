@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.6 - 2026-11-17
+
+- Added automated in-place update downloader and restarter; updates download silently in the background and replace the executable without browser redirects.
+- Replaced intrusive dock status messages with native Windows Action Center toast notifications for update alerts and system feedback.
+- Added Task Manager launch command to the dock context menu with system path resolution and dedicated vector icon.
+- Added full support for Microsoft Store and packaged application icons in running dock entries and `ApplicationFrameHost` instances.
+- Fixed dock layout delay so closed applications immediately shrink the dock without leaving blank placeholder cells.
+
 ## 0.2.5 - 2026-11-17
 
 - Added custom, theme-integrated `ComboBox` and `ComboBoxItem` styles matching OpenTaskbar's acrylic glass design tokens.
