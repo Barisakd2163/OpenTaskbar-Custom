@@ -9,6 +9,7 @@ StopwatchChecks();
 CatalogChecks();
 LocalizationChecks();
 SettingsChecks();
+InitialLanguageChecks();
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)
@@ -159,6 +160,38 @@ void SettingsChecks()
         var hidden = store.Load();
         Check(hidden.Error is null && hidden.Settings.Widgets?.Count == 0
             && hidden.Settings.InstalledWidgets?.Contains("Countdown") == true, "Hidden installation must survive reload.");
+    }
+    finally
+    {
+        File.Delete(path);
+        File.Delete(path + ".tmp");
+    }
+}
+
+void InitialLanguageChecks()
+{
+    var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    var turkish = new DockSettingsStore(path, CultureInfo.GetCultureInfo("tr-TR"));
+    var english = new DockSettingsStore(path, CultureInfo.GetCultureInfo("en-US"));
+    var german = new DockSettingsStore(path, CultureInfo.GetCultureInfo("de-DE"));
+    try
+    {
+        Check(turkish.Load() is { Error: null, Settings.Language: AppLanguage.Turkish }, "First launch must follow Turkish system UI language.");
+        Check(english.Load() is { Error: null, Settings.Language: AppLanguage.English }, "First launch must follow English system UI language.");
+        Check(german.Load() is { Error: null, Settings.Language: AppLanguage.English }, "Unsupported system languages must use the documented English default.");
+        File.WriteAllText(path, "{}");
+        Check(turkish.Load() is { Error: null, Settings.Language: AppLanguage.Turkish }, "A legacy file without a language must follow Turkish system UI language.");
+        Check(english.Load() is { Error: null, Settings.Language: AppLanguage.English }, "A legacy file without a language must follow English system UI language.");
+        Check(english.Save(new DockSettings(Language: AppLanguage.Turkish)) is null, "An explicit Turkish preference must save.");
+        Check(english.Load() is { Error: null, Settings.Language: AppLanguage.Turkish }, "An explicit Turkish preference must survive an English system language.");
+        Check(turkish.Save(new DockSettings(Language: AppLanguage.English)) is null, "An explicit English preference must save.");
+        Check(turkish.Load() is { Error: null, Settings.Language: AppLanguage.English }, "An explicit English preference must survive a Turkish system language.");
+        File.WriteAllText(path, "{\"Language\":\"Unknown\"}");
+        Check(english.Load() is { Error: not null, Settings.Language: AppLanguage.English }, "An invalid stored language must report an error in system-default settings.");
+        File.WriteAllText(path, "{\"Language\":42}");
+        Check(turkish.Load() is { Error: not null, Settings.Language: AppLanguage.Turkish }, "An undefined language value must report an error.");
+        File.WriteAllText(path, "null");
+        Check(english.Load() is { Error: not null }, "Null settings must remain an explicit error.");
     }
     finally
     {

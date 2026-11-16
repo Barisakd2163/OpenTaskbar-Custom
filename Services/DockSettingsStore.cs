@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,9 +11,12 @@ public sealed class DockSettingsStore
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly string _path;
+    private readonly AppLanguage _defaultLanguage;
 
-    public DockSettingsStore(string? path = null)
+    public DockSettingsStore(string? path = null, CultureInfo? defaultCulture = null)
     {
+        _defaultLanguage = (defaultCulture ?? CultureInfo.CurrentUICulture).TwoLetterISOLanguageName
+            .Equals("tr", StringComparison.OrdinalIgnoreCase) ? AppLanguage.Turkish : AppLanguage.English;
         _path = path ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenTaskbar",
@@ -23,35 +27,41 @@ public sealed class DockSettingsStore
     {
         if (!File.Exists(_path))
         {
-            return (new DockSettings(), null);
+            return (CreateDefaultSettings(), null);
         }
 
         try
         {
-            var settings = JsonSerializer.Deserialize<DockSettings>(File.ReadAllText(_path), JsonOptions);
+            using var document = JsonDocument.Parse(File.ReadAllText(_path));
+            var settings = document.RootElement.Deserialize<DockSettings>(JsonOptions);
+            // Older files without a language follow the same system-language rule as a first launch.
+            if (settings is not null && !document.RootElement.TryGetProperty(nameof(DockSettings.Language), out _))
+                settings = settings with { Language = _defaultLanguage };
             // Normalize the legacy enabled-only format before enforcing the installed subset invariant.
             if (settings is { InstalledWidgets: null })
                 settings = settings with { InstalledWidgets = settings.Widgets ?? Array.Empty<string>() };
             if (settings is null || !IsValid(settings))
             {
-                return (new DockSettings(), "Dock ayarları geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.");
+                return (CreateDefaultSettings(), "Dock ayarları geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.");
             }
 
             return (settings, null);
         }
         catch (JsonException)
         {
-            return (new DockSettings(), "Dock ayarları okunamadı. JSON biçimini düzeltin veya dosyayı silip yeniden başlatın.");
+            return (CreateDefaultSettings(), "Dock ayarları okunamadı. JSON biçimini düzeltin veya dosyayı silip yeniden başlatın.");
         }
         catch (IOException)
         {
-            return (new DockSettings(), "Dock ayarları diskten okunamadı.");
+            return (CreateDefaultSettings(), "Dock ayarları diskten okunamadı.");
         }
         catch (UnauthorizedAccessException)
         {
-            return (new DockSettings(), "Dock ayarlarına erişim izni yok.");
+            return (CreateDefaultSettings(), "Dock ayarlarına erişim izni yok.");
         }
     }
+
+    private DockSettings CreateDefaultSettings() => new(Language: _defaultLanguage);
 
     public string? Save(DockSettings settings)
     {

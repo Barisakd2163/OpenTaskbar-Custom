@@ -71,6 +71,7 @@ These checks cover state transitions, duration boundaries, completion, independe
 ## Configuration and Storage
 
 - `%LOCALAPPDATA%\OpenTaskbar\settings.json`: Preferences, alignment, theme, auto-hide, pin order, enabled widgets (`Widgets`), installed widgets (`InstalledWidgets`), and `SurfaceOpacity` (0.6–1.0, default 0.9). Legacy explicit widget selections migrate to installed and enabled widgets. Enabled widgets must be a subset of installed widgets. Apply saves catalog changes; closing with pending changes asks whether to discard them.
+- The first launch uses the Windows UI language: Turkish for Turkish system cultures, otherwise English, the other supported language. This also applies to older settings files without a `Language` property. An explicitly saved language always takes precedence; change it in Settings to override the initial selection. An invalid stored language remains a settings error.
 - `%LOCALAPPDATA%\OpenTaskbar\taskbar-state.txt`: Safety journal that preserves the original Windows taskbar state for crash recovery.
 - `Software\Microsoft\Windows\CurrentVersion\Run\OpenTaskbar`: Current-user Windows registry key used when "Start with Windows" is enabled.
 
