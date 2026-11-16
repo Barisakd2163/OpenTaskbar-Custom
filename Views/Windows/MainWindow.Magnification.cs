@@ -8,13 +8,16 @@ namespace OpenTaskbar;
 
 public partial class MainWindow
 {
-    private (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
+    private static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
     {
-        if (icon.RenderTransform is TransformGroup group)
+        if (icon.RenderTransform is TransformGroup { IsFrozen: false, IsSealed: false } group)
         {
-            var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
-            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
-            if (scale != null && translate != null) return (scale, translate);
+            var s = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+            var t = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            if (s is { IsFrozen: false, IsSealed: false } && t is { IsFrozen: false, IsSealed: false })
+            {
+                return (s, t);
+            }
         }
 
         var newScale = new ScaleTransform();
