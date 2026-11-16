@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Highlighted the foreground application independently of keyboard focus, clearing its background when it is minimized or another app becomes active.
+- Added normal close and confirmed process termination to background tray apps, including a visible end-process action for apps without an open window.
+
 ## 0.2.3 - 2026-11-16
 
 - Kept application icons at 42 DIP inside fixed 52 DIP cells when resizing or adding widgets.

@@ -131,6 +131,8 @@ public partial class MainWindow : Window
         {
             OrderChanged = OnWidgetOrderChanged
         };
+        _widgetCoordinator.CloseApplicationRequested += CloseApplication;
+        _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
         ApplyWidgets(_preferences.Current.Widgets);
         _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
@@ -1633,6 +1635,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        CloseApplication(executablePath);
+    }
+
+    private void CloseApplication(string executablePath)
+    {
         var (processes, inaccessibleCount) = FindProcessesForExecutable(executablePath);
         var closedCount = 0;
         var failedCount = inaccessibleCount;
@@ -1684,6 +1691,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        TerminateApplication(executablePath);
+    }
+
+    private void TerminateApplication(string executablePath)
+    {
         var (processes, inaccessibleCount) = FindProcessesForExecutable(executablePath);
         if (processes.Count == 0)
         {

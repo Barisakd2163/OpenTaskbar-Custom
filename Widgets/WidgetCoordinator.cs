@@ -58,6 +58,8 @@ public sealed class WidgetCoordinator : IDisposable
     private bool _disposed;
 
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
+    public event Action<string>? CloseApplicationRequested;
+    public event Action<string>? TerminateApplicationRequested;
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
     private static bool IsCatalogEnabled(DockSettings settings, string id) =>
@@ -66,6 +68,9 @@ public sealed class WidgetCoordinator : IDisposable
     public WidgetCoordinator(Panel strip, Dispatcher dispatcher, Action<string> reportError)
     {
         _strip = strip;
+        var tray = new TrayWidget();
+        tray.CloseApplicationRequested += path => CloseApplicationRequested?.Invoke(path);
+        tray.TerminateApplicationRequested += path => TerminateApplicationRequested?.Invoke(path);
         _widgets =
         [
             new("Media", "WidgetMedia", new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
@@ -75,7 +80,7 @@ public sealed class WidgetCoordinator : IDisposable
             new("Weather", "WidgetWeather", new WeatherWidget(), s => IsCatalogEnabled(s, "Weather")),
             new("Audio", "WidgetAudio", new AudioWidget(), s => IsCatalogEnabled(s, "Audio")),
             new("QuickSettings", "WidgetQuickSettings", new QuickSettingsWidget(), s => IsCatalogEnabled(s, "QuickSettings")),
-            new("Tray", "WidgetTray", new TrayWidget(), s => IsCatalogEnabled(s, "Tray")),
+            new("Tray", "WidgetTray", tray, s => IsCatalogEnabled(s, "Tray")),
             new("Clock", "WidgetClock", new ClockWidget(), s => IsCatalogEnabled(s, "Clock") || IsCatalogEnabled(s, "Date"))
         ];
 

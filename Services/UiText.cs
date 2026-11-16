@@ -240,7 +240,7 @@ public sealed class UiText : INotifyPropertyChanged
             ["TrayApps"] = ("Arka plan uygulamaları", "Background apps"),
             ["TrayEmpty"] = ("Bildirim alanı simgesi olan çalışan uygulama yok.", "No running apps with a notification area icon."),
             ["TraySettings"] = ("Bildirim alanı ayarları", "Notification area settings"),
-            ["TrayNote"] = ("Tıklayınca uygulama yeniden açılır; çoğu uygulama kendi penceresini gösterir.", "Clicking reopens the app; most apps then show their window."),
+            ["TrayNote"] = ("Uygulamayı açmak için adına tıklayın. Sağdaki düğme onayınızla süreci sonlandırır. Normal kapatma için sağ tıklayın.", "Click an app to open it. The button on the right ends its processes after confirmation. Right-click for a normal close."),
             ["Shortcuts"] = ("Kısayollar", "Shortcuts"),
             ["LauncherHotkey"] = ("Başlatıcı kısayolu", "Launcher shortcut"),
             ["DockHotkey"] = ("Dock’a klavyeyle geç", "Keyboard focus to dock"),

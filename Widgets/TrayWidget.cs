@@ -11,6 +11,9 @@ public sealed class TrayWidget : DockWidget
     private readonly Button _button;
     private readonly DockFlyout _flyout = new();
 
+    public event Action<string>? CloseApplicationRequested;
+    public event Action<string>? TerminateApplicationRequested;
+
     public TrayWidget()
     {
         var glyph = new ContentControl { Content = FindResource("IconChevronUp"), Width = 16, Height = 16 };
@@ -45,7 +48,7 @@ public sealed class TrayWidget : DockWidget
         _flyout.Show(_button, BuildContent(apps));
     }
 
-    private UIElement BuildContent(IReadOnlyList<TrayApp> apps)
+    internal UIElement BuildContent(IReadOnlyList<TrayApp> apps)
     {
         var root = new StackPanel { Width = 280 };
         root.Children.Add(DockFlyout.Heading(UiText.Get("TrayApps")));
@@ -57,11 +60,46 @@ public sealed class TrayWidget : DockWidget
             var row = new DockPanel();
             row.Children.Add(image);
             row.Children.Add(new TextBlock { Text = app.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
-            root.Children.Add(DockFlyout.FlatButton(row, (_, _) =>
+            var open = DockFlyout.FlatButton(row, (_, _) =>
             {
                 _flyout.Close();
                 Report(TrayIcons.Open(app));
-            }, app.Name));
+            }, app.Name);
+            var menu = new ContextMenu();
+            var closeItem = new MenuItem { Header = UiText.Get("CloseApplication"), Icon = FindResource("IconClose") };
+            closeItem.Click += (_, _) =>
+            {
+                _flyout.Close();
+                CloseApplicationRequested?.Invoke(app.ExecutablePath);
+            };
+            var terminateItem = new MenuItem { Header = UiText.Get("Terminate"), Icon = FindResource("IconTerminate") };
+            terminateItem.SetResourceReference(StyleProperty, "DestructiveMenuItem");
+            terminateItem.Click += (_, _) =>
+            {
+                _flyout.Close();
+                TerminateApplicationRequested?.Invoke(app.ExecutablePath);
+            };
+            menu.Items.Add(closeItem);
+            menu.Items.Add(terminateItem);
+            open.ContextMenu = menu;
+
+            // Tray apps may keep running after WM_CLOSE; force quit uses the dock's existing confirmation flow.
+            var quitIcon = new ContentControl
+            {
+                Content = FindResource("IconTerminate"), Width = 16, Height = 16
+            };
+            quitIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+            quitIcon.SetResourceReference(ForegroundProperty, "TextPrimary");
+            var quit = DockFlyout.FlatButton(quitIcon, (_, _) =>
+            {
+                _flyout.Close();
+                TerminateApplicationRequested?.Invoke(app.ExecutablePath);
+            }, $"{app.Name}: {UiText.Get("Terminate")}");
+            var appRow = new DockPanel();
+            DockPanel.SetDock(quit, Dock.Right);
+            appRow.Children.Add(quit);
+            appRow.Children.Add(open);
+            root.Children.Add(appRow);
         }
 
         var settings = DockFlyout.FlatButton(new TextBlock { Text = UiText.Get("TraySettings"), FontWeight = FontWeights.SemiBold }, (_, _) =>
