@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
+    <InternalsVisibleTo Include="OpenTaskbar.Tests" />
   </ItemGroup>
 
 </Project>

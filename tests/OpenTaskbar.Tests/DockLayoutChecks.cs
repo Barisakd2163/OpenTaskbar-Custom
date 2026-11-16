@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using OpenTaskbar;
 using OpenTaskbar.Models;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -170,6 +171,9 @@ internal static class DockLayoutChecks
             Check(IsWithin(VisualTreeHelper.HitTest(surface, new Point(0.5, minimum / 2))?.VisualHit, left)
                 && IsWithin(VisualTreeHelper.HitTest(surface, new Point(width - 0.5, minimum / 2))?.VisualHit, right),
                 "Resize hit targets must cover the actual outside borders rather than the content padding.");
+            left.ApplyTemplate();
+            var grip = left.Template.FindName("GripIndicator", left) as FrameworkElement;
+            Check(grip is not null, "The resize thumb must provide a visual grip indicator.");
             if (width == oneCellWidth)
                 Check(viewer.ViewportWidth == cellWidth, "The minimum dock width must expose exactly one complete application cell.");
             var widget = new ContentControl { Content = new DockWidget("Clock", "Clock") { Value = "14:32" } };
@@ -200,6 +204,16 @@ internal static class DockLayoutChecks
             }
             else Check(!viewer.ScrollByWheel(-120, ModifierKeys.Control), "A dock that already fits must not consume modifier wheel scrolling.");
         }
+
+        var testWindow = new Window { ShowActivated = false, ShowInTaskbar = false, Width = 10, Height = 10, WindowStyle = WindowStyle.None };
+        var helper = new System.Windows.Interop.WindowInteropHelper(testWindow);
+        helper.EnsureHandle();
+        Check(MainWindow.ExcludeFromTaskSwitcher(helper.Handle), "Task switcher exclusion must successfully apply to windows.");
+        var exStyle = MainWindow.GetWindowLongPtr(helper.Handle, -20);
+        Check((exStyle & 0x00000080) != 0, "Task switcher exclusion must enforce WS_EX_TOOLWINDOW.");
+        Check((exStyle & 0x00040000) == 0, "Task switcher exclusion must clear WS_EX_APPWINDOW.");
+        testWindow.Close();
+
         return checks;
     }
 }

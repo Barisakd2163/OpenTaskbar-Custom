@@ -1150,7 +1150,7 @@ public partial class MainWindow : Window
         GetWindowThreadProcessId(windowHandle, out var processId);
         // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
         if (processId == Environment.ProcessId) return;
-        if (_openContextMenu is not null)
+        if (_openContextMenu is not null && _foregroundWindow != windowHandle)
         {
             _openContextMenu.IsOpen = false;
         }
@@ -1346,10 +1346,6 @@ public partial class MainWindow : Window
 
     private static void FocusContextMenu(ContextMenu menu)
     {
-        if (PresentationSource.FromVisual(menu) is HwndSource source)
-        {
-            SetForegroundWindow(source.Handle);
-        }
         menu.Focus();
     }
 
@@ -2129,7 +2125,7 @@ public partial class MainWindow : Window
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-    private static extern nint GetWindowLongPtr(nint windowHandle, int index);
+    internal static extern nint GetWindowLongPtr(nint windowHandle, int index);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
