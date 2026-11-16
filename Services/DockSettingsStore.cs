@@ -93,7 +93,11 @@ public sealed class DockSettingsStore
 
     private static bool IsValid(DockSettings settings) => Enum.IsDefined(settings.Position)
         && Enum.IsDefined(settings.Theme) && Enum.IsDefined(settings.Language)
-        && Enum.IsDefined(settings.AutoHide)
+        && Enum.IsDefined(settings.AutoHide) && Enum.IsDefined(settings.Layout) && Enum.IsDefined(settings.Size)
+        // Keep these ranges identical to the Widgets tab sliders.
+        && settings.FocusMinutes is >= 1 and <= 90
+        && settings.FocusBreakMinutes is >= 1 and <= 30
+        && settings.FocusSessions is >= 1 and <= 8
         && double.IsFinite(settings.SurfaceOpacity) && settings.SurfaceOpacity is >= 0.6 and <= 1
         && settings.PinOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.PinOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.PinOrder?.Count
@@ -101,7 +105,17 @@ public sealed class DockSettingsStore
         && settings.Widgets?.Distinct(StringComparer.Ordinal).Count() == settings.Widgets?.Count
         && settings.InstalledWidgets?.Any(widget => !DockWidgetService.SupportedIds.Contains(widget)) != true
         && settings.InstalledWidgets?.Distinct(StringComparer.Ordinal).Count() == settings.InstalledWidgets?.Count
-        && settings.Widgets?.Any(widget => settings.InstalledWidgets?.Contains(widget, StringComparer.Ordinal) != true) != true;
+        && settings.Widgets?.Any(widget => settings.InstalledWidgets?.Contains(widget, StringComparer.Ordinal) != true) != true
+        && Enum.IsDefined(settings.LauncherHotkey) && Enum.IsDefined(settings.DockHotkey)
+        && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
+        && settings.WeatherCity is { Length: <= 80 }
+        && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
+        && settings.Profiles?.Any(profile => string.IsNullOrWhiteSpace(profile.Name) || profile.HiddenApps is null) != true
+        && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count;
+
+    public static bool Validate(DockSettings settings) => IsValid(settings);
+
+    public static JsonSerializerOptions SerializerOptions => JsonOptions;
 
     private static JsonSerializerOptions CreateJsonOptions()
     {

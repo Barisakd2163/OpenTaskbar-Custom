@@ -22,6 +22,13 @@ public sealed class DockAutoHideController : IDisposable
     private bool _disposed;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
+
+    /// <summary>The screen edge the dock slides towards when it hides.</summary>
+    public Models.DockEdge Edge { get; set; } = Models.DockEdge.Bottom;
+    public bool AnimationsEnabled { get; set; } = true;
+
+    private TimeSpan MotionDuration(double milliseconds) => AnimationsEnabled && SystemParameters.ClientAreaAnimation
+        ? TimeSpan.FromMilliseconds(milliseconds) : TimeSpan.Zero;
     public bool IsHidden { get; private set; }
     public bool IsMouseOverDock { get; private set; }
     public bool IsMouseAtEdge { get; private set; }
@@ -44,7 +51,7 @@ public sealed class DockAutoHideController : IDisposable
 
         _hideTimer = new DispatcherTimer(DispatcherPriority.Normal)
         {
-            Interval = TimeSpan.FromMilliseconds(400)
+            Interval = TimeSpan.FromMilliseconds(DockMetrics.AutoHideDelayMs)
         };
         _hideTimer.Tick += HideTimer_Tick;
     }
@@ -150,24 +157,27 @@ public sealed class DockAutoHideController : IDisposable
         var anim = new DoubleAnimation
         {
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(220),
+            Duration = MotionDuration(DockMetrics.RevealMs),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
-        _dockTranslate.BeginAnimation(TranslateTransform.YProperty, anim);
+        _dockTranslate.BeginAnimation(TranslateTransform.XProperty, Edge == Models.DockEdge.Bottom ? null : anim.Clone());
+        _dockTranslate.BeginAnimation(TranslateTransform.YProperty, Edge == Models.DockEdge.Bottom ? anim : null);
         VisibilityChanged?.Invoke(true);
     }
 
     public void AnimateHide()
     {
         IsHidden = true;
-        double hideOffset = Math.Max(72, _dockSurface.ActualHeight + 16);
+        var vertical = Edge != Models.DockEdge.Bottom;
+        double hideOffset = Math.Max(DockMetrics.HideMinimumOffset, (vertical ? _dockSurface.ActualWidth : _dockSurface.ActualHeight) + 16);
+        if (Edge == Models.DockEdge.Left) hideOffset = -hideOffset;
         var anim = new DoubleAnimation
         {
             To = hideOffset,
-            Duration = TimeSpan.FromMilliseconds(200),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            Duration = MotionDuration(DockMetrics.HideMs),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
-        _dockTranslate.BeginAnimation(TranslateTransform.YProperty, anim);
+        _dockTranslate.BeginAnimation(vertical ? TranslateTransform.XProperty : TranslateTransform.YProperty, anim);
         VisibilityChanged?.Invoke(false);
     }
 

@@ -144,11 +144,6 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     public IReadOnlyList<nint> ActiveHandles => _activeThumbnails.Select(t => t.Source).ToList();
 
-    public bool ShowFor(nint sourceHandle, FrameworkElement anchor, string windowTitle, BitmapSource? icon)
-    {
-        return ShowForWindows([new TrackedWindow(sourceHandle, windowTitle, null)], anchor, icon);
-    }
-
     public bool ShowForWindows(IReadOnlyList<TrackedWindow> windows, FrameworkElement anchor, BitmapSource? defaultIcon)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -501,10 +496,23 @@ public sealed class WindowThumbnailPreview : IDisposable
         width = Math.Min(width, monitorInfo.Monitor.Right - monitorInfo.Monitor.Left);
         height = Math.Min(height, monitorInfo.Monitor.Bottom - monitorInfo.Monitor.Top);
 
+        var gapDips = DockMetrics.PreviewGap;
+        var gap = (int)Math.Round(gapDips * dpi / 96d);
+        if (DockFlyout.Edge != Models.DockEdge.Bottom)
+        {
+            // Side docks: open beside the icon, vertically centred on it.
+            var anchorLeft = anchor.PointToScreen(new Point(0, anchor.ActualHeight / 2));
+            var anchorWidth = (int)Math.Ceiling(anchor.ActualWidth * dpi / 96d);
+            var sideLeft = DockFlyout.Edge == Models.DockEdge.Left
+                ? (int)Math.Round(anchorLeft.X) + anchorWidth + gap
+                : (int)Math.Round(anchorLeft.X) - width - gap;
+            var sideTop = Math.Clamp((int)Math.Round(anchorLeft.Y) - height / 2, monitorInfo.Monitor.Top, monitorInfo.Monitor.Bottom - height);
+            sideLeft = Math.Clamp(sideLeft, monitorInfo.Monitor.Left, monitorInfo.Monitor.Right - width);
+            return SetWindowPos(_destinationHandle, HwndTopmost, sideLeft, sideTop, width, height, SwpNoActivate);
+        }
+
         var left = (int)Math.Round(anchorTop.X) - width / 2;
         left = Math.Clamp(left, monitorInfo.Monitor.Left, monitorInfo.Monitor.Right - width);
-        var gapDips = Application.Current?.Resources["PreviewGap"] is double g ? g : 18.0;
-        var gap = (int)Math.Round(gapDips * dpi / 96d);
         var top = (int)Math.Round(anchorTop.Y) - height - gap;
         if (top < monitorInfo.Monitor.Top)
         {
@@ -590,6 +598,7 @@ public sealed class WindowThumbnailPreview : IDisposable
     {
         if (sender is Window window && PresentationSource.FromVisual(window) is HwndSource source)
         {
+            MainWindow.ExcludeFromTaskSwitcher(source.Handle);
             source.AddHook(PreviewWindowProc);
         }
     }

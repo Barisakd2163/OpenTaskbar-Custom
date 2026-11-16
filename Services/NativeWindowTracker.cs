@@ -67,6 +67,7 @@ public sealed class NativeWindowTracker : IDisposable
     public void Start(nint excludedWindow)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_windowHook != 0) return;
         _excludedWindow = excludedWindow;
         _windowHook = SetWinEventHook(EventObjectCreate, EventObjectHide, 0, _eventCallback, 0, 0, WineventOutOfContext);
         if (_windowHook == 0)

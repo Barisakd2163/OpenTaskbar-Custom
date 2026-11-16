@@ -3,7 +3,24 @@
     <!-- Neutral materials preserve application icon colors and wallpaper visibility. -->
     <SolidColorBrush x:Key="TextPrimary" Color="#FFF1F3F5" />
     <SolidColorBrush x:Key="TextSecondary" Color="#FFADB5BF" />
-    <SolidColorBrush x:Key="WindowsLogoBrush" Color="#FF54B6F5" />
+    <!-- "Aurora" accents: one teal-to-sky gradient carries every active state across the dock. -->
+    <LinearGradientBrush x:Key="WindowsLogoBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FF5EEAD4" Offset="0" />
+        <GradientStop Color="#FF38BDF8" Offset="0.55" />
+        <GradientStop Color="#FF818CF8" Offset="1" />
+    </LinearGradientBrush>
+    <RadialGradientBrush x:Key="IconHoverGlow" GradientOrigin="0.5,0.8" Center="0.5,0.75" RadiusX="0.6" RadiusY="0.6">
+        <GradientStop Color="#3A7DD3FC" Offset="0" />
+        <GradientStop Color="#00000000" Offset="1" />
+    </RadialGradientBrush>
+    <LinearGradientBrush x:Key="DockHighlight" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#00FFFFFF" Offset="0" />
+        <GradientStop Color="#55FFFFFF" Offset="0.3" />
+        <GradientStop Color="#40A5F3FC" Offset="0.7" />
+        <GradientStop Color="#00FFFFFF" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="WidgetIsland" Color="#10FFFFFF" />
+    <SolidColorBrush x:Key="WidgetIslandStroke" Color="#14FFFFFF" />
     <SolidColorBrush x:Key="SurfaceKeyboardFocus" Color="#FF354652" />
     <SolidColorBrush x:Key="MenuStroke" Color="#30FFFFFF" />
     <LinearGradientBrush x:Key="MenuMaterial" StartPoint="0,0" EndPoint="0,1">
@@ -17,20 +34,26 @@
     <SolidColorBrush x:Key="SurfacePressed" Color="#34FFFFFF" />
     <SolidColorBrush x:Key="SurfaceSelected" Color="#12FFFFFF" />
     <SolidColorBrush x:Key="DockWidgetSurface" Color="#66252B34" />
+    <SolidColorBrush x:Key="SurfaceSelectedStrong" Color="#2A7CC4FF" />
     <SolidColorBrush x:Key="SurfaceDanger" Color="#FFC43846" />
     <SolidColorBrush x:Key="NotificationBrush" Color="#FFFF6673" />
-    <SolidColorBrush x:Key="IndicatorBrush" Color="#A8E4F3FF" />
-    <SolidColorBrush x:Key="IndicatorForegroundBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="IndicatorBrush" Color="#8CCBD5E1" />
+    <LinearGradientBrush x:Key="IndicatorForegroundBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#FF5EEAD4" Offset="0" />
+        <GradientStop Color="#FF38BDF8" Offset="1" />
+    </LinearGradientBrush>
+    <!-- Graphite glass with a faint cool sheen at the top. -->
     <LinearGradientBrush x:Key="DockMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#ED1B2028" Offset="0" />
-        <GradientStop Color="#F2161A21" Offset="1" />
+        <GradientStop Color="#CC222833" Offset="0" />
+        <GradientStop Color="#D9161A22" Offset="0.45" />
+        <GradientStop Color="#E60F1218" Offset="1" />
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="DockBorderMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#4DFFFFFF" Offset="0" />
+        <GradientStop Color="#38FFFFFF" Offset="0" />
+        <GradientStop Color="#0FFFFFFF" Offset="0.6" />
         <GradientStop Color="#1AFFFFFF" Offset="1" />
     </LinearGradientBrush>
     <SolidColorBrush x:Key="SettingsBackground" Color="#FF181A1E" />
-    <SolidColorBrush x:Key="SettingsSidebar" Color="#FF121417" />
     <SolidColorBrush x:Key="SettingsControl" Color="#FF22252A" />
     <SolidColorBrush x:Key="SettingsControlHover" Color="#FF2B2F35" />
     <SolidColorBrush x:Key="AccentBrush" Color="#FFB9D7EF" />
@@ -39,4 +62,18 @@
     <SolidColorBrush x:Key="MenuDivider" Color="#20FFFFFF" />
     <SolidColorBrush x:Key="SettingsSidebarOverlay" Color="#2410141A" />
     <SolidColorBrush x:Key="CaptionCloseForeground" Color="#FFFFFFFF" />
+    <!-- Dock widgets -->
+    <SolidColorBrush x:Key="WidgetCard" Color="#00FFFFFF" />
+    <SolidColorBrush x:Key="WidgetCardHover" Color="#1CFFFFFF" />
+    <SolidColorBrush x:Key="WidgetCardStroke" Color="#00FFFFFF" />
+    <SolidColorBrush x:Key="WidgetTrack" Color="#2EFFFFFF" />
+    <SolidColorBrush x:Key="WidgetAccent" Color="#FF2DD4BF" />
+    <SolidColorBrush x:Key="WidgetAccentText" Color="#FFFFFFFF" />
+    <LinearGradientBrush x:Key="WidgetAccentFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FF2DD4BF" Offset="0" />
+        <GradientStop Color="#FF0EA5E9" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="WidgetFocusAccent" Color="#FFEF4444" />
+    <SolidColorBrush x:Key="WidgetOnStroke" Color="#FF4F8EF7" />
+    <SolidColorBrush x:Key="WidgetWarning" Color="#FFFBBF24" />
 </ResourceDictionary>

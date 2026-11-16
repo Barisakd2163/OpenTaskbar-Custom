@@ -7,7 +7,32 @@
         <Setter Property="Cursor" Value="SizeWE" />
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Template">
-            <Setter.Value><ControlTemplate TargetType="Thumb"><Border Background="Transparent" /></ControlTemplate></Setter.Value>
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="Transparent" Width="{TemplateBinding Width}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <Border x:Name="GripIndicator" Width="3" Height="14" CornerRadius="1.5"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Background="{DynamicResource IndicatorBrush}" Opacity="0"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="GripScale" ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="GripIndicator" Property="Opacity" Value="0.65" />
+                            <Setter TargetName="GripIndicator" Property="Height" Value="20" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="GripIndicator" Property="Opacity" Value="1.0" />
+                            <Setter TargetName="GripIndicator" Property="Height" Value="28" />
+                            <Setter TargetName="GripIndicator" Property="Width" Value="4" />
+                            <Setter TargetName="GripIndicator" Property="Background" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
         </Setter>
     </Style>
     <Style x:Key="DockButton" TargetType="Button">

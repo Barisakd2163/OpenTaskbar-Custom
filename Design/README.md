@@ -13,11 +13,12 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | `DockWindowHeight` | `98 DIP` | Initial and preview window height; replacement mode derives its height from the shelf and headroom |
 | `DockHeadroom` | `24 DIP` | Transparent top headroom included inside the scroll viewport for magnification and launch bounce; excluded from the desktop reservation |
 | `DockMinimumShelfHeight` | `74 DIP` | Minimum shelf shared by the replacement window and dock layout; accommodates icon indicators, widget controls, padding, borders, and scrolling even when Explorer's taskbar is shorter |
+| Shelf | 48 / 58 / 66 DIP | Dock shelf height for Compact / Medium / Large (`DockMetrics.For`) |
 | `DockCellSize` | `52 DIP` | Fixed width of each application cell; never compressed to fit content |
 | `DockCellHeight` | `52 DIP` | Height of an individual dock application item cell |
-| `DockIconSize` | `42 DIP` | Prominent icon display size with balanced cell margins |
+| `DockIconSize` | 28 / 34 / 42 DIP | Icon display size per dock size (`42 DIP` base) |
 | `DockHoverScale` | `1.28x` | Maximum magnification scale; constrained to fit the current icon cell |
-| `DockRadius` | `18 DIP` | Pill container corner radius (`CornerRadius="18"`) |
+| `DockRadius` | 16 / 19 / 22 DIP | Surface corner radius per dock size (`18 DIP` default token) |
 | `ControlRadius` | `12 DIP` | Standard control and button corner radius |
 | `PopupRadius` | `10 DIP` | Context menu and window preview corner radius |
 | `PreviewGap` | `18 DIP` | Vertical elevation gap between dock icons and thumbnail preview cards |
@@ -41,15 +42,21 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - **Compact Settings Layout:** One caption, a 148 DIP navigation column, 52 DIP general rows, and a fixed Apply footer. Remove introductory and persistent save-hint copy. Short auto-hide options form a vertical list. Uniform choice groups share aligned edges. The default 740 × 600 DIP window fits all general settings; smaller sizes scroll to the final option. Custom maximize sizing follows the current monitor work area and DPI.
 - **Preference Feedback:** Enable Apply only for edited preferences or recoverable settings-load errors. Surface-opacity changes preview immediately and revert to saved preferences on close, including after pin reordering. Keep startup permission errors accessible on the disabled switch and show save errors/results in the footer.
 
-- **Translucent Smoked Glass:** High-contrast charcoal and pearl materials keep the dock distinct from the wallpaper while retaining a light surface tint.
-- **Specular Top Highlight:** A bright top border and a softer lower edge define the dock silhouette against varied wallpapers.
-- **Ambient Shadow:** One soft drop shadow (`BlurRadius="16"`, `ShadowDepth="2"`, `Direction="270"`, `Color="#000000"`, `Opacity="0.25"`) separates the dock from the wallpaper. Outside border hit targets remain invisible and show the resize cursor.
+### "Aurora" visual language
+
+One accent gradient, teal `#5EEAD4` → sky `#38BDF8` (→ indigo `#818CF8` on the Start mark), carries every active state. Surfaces stay neutral so application icons keep their own colors.
+
+- **Graphite Glass:** Three-stop dock material (`#CC222833` → `#D9161A22` → `#E60F1218` in Dark), its alpha set by the surface opacity. Corner radius 16 / 19 / 22 DIP per size.
+- **Sheen:** A 1 DIP `DockHighlight` line on the top border, fading out before the rounded corners (`DockSheen`, bottom dock only).
+- **Ambient Shadow:** `BlurRadius="30"`, `ShadowDepth="5"`, `Color="#05070B"`, `Opacity="0.5"`. Outside border hit targets remain invisible and show the resize cursor.
+- **Hover Light:** A radial `IconHoverGlow` pool under the hovered icon instead of a hover box.
 - **Status Indicators:**
-  - Running application: Muted 4 DIP circular dot (`#94A3B8`).
-  - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`).
+  - Running application: Muted 4 DIP circular dot (`#94A3B8`) or 8 × 3 DIP capsule (`IndicatorBrush`).
+  - Active (foreground) application: Bright illuminated 4 DIP dot (`#38BDF8`) or 16 × 3 DIP capsule in the accent gradient.
   - Alert / notification: Upper-right red badge (`#EF4444`).
-- **Widgets:** The optional catalog includes clock, date, battery, memory, system-drive space, day progress, stopwatch, and countdown widgets. The settings gallery renders the same widget templates as the dock, using local data. Selecting an available preview installs and enables it in the edit buffer; Apply persists the selection. Installed previews expose a visibility switch and a separate remove action. Preview content does not receive pointer or keyboard actions, so browsing never starts a timer. The gallery wraps with the available width and omits descriptive paragraphs. Installed and visible selections are separate. Time widgets use a compact value-first tile with one quick action; duration editing and reset live in a shared details panel. `Design/WidgetControls.xaml` owns widget styles and tokens, while `Views/Widgets/` separates tiles, timed details, the panel frame, and popup lifetime. Popup placement uses WPF's screen-edge adjustment, and an open panel locks dock auto-hide. Native popup focus, dismissal, and placement still require desktop verification.
-- **Icons:** Context menus use vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps). Compact time actions and window captions use built-in Segoe MDL2 Assets glyphs, available on supported Windows 10 and 11 versions.
+- **Control Island & Widgets:** The optional catalog includes clock, date, battery, memory, system-drive space, day progress, stopwatch, and countdown widgets, plus the control island (`WidgetIsland`, radius 14) with media, system meters, focus timer, audio, quick settings, virtual desktops, tray apps, weather, and calendar widgets. `Design/WidgetControls.xaml` and `Design/Widgets.xaml` own widget styles and tokens, while `Views/Widgets/` and `Widgets/` implement widget views and coordinators.
+- **Flyouts:** Stacks, calendar, weather, background apps and the launcher share the menu glass (`MenuMaterial`, radius 14–18) and the `FlyoutButton` row style. They open away from the docked edge.
+- **Icons:** Vector outline paths based on the Lucide icon set (24x24 coordinate box, 1.6 DIP stroke width, rounded caps) for context menus, widgets, and dock controls. Compact time actions and window captions use built-in Segoe MDL2 Assets glyphs.
 
 ---
 
@@ -72,7 +79,8 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - **Disabled:** Dock remains persistently visible.
 - **Smart:** Dock stays visible on the desktop and behind non-overlapping windows. When an active or maximized window overlaps the bottom dock region, the dock smoothly translates down off-screen.
 - **Always:** Dock remains hidden below the screen edge by default.
-- **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease transition.
+- **Edge Reveal:** Moving the mouse into the bottom 3 DIP trigger area instantly reveals the dock. Mouse leave triggers a 400 ms debounce before sliding down with a 220 ms cubic ease-in-out transition; reveal uses 220 ms cubic ease-out. With animations off both are instant. While hidden, only the edge strip receives input; the reserved-area backdrop is collapsed so windows below stay clickable.
+- **Full-screen detection:** Captionless windows that cover the monitor (games, video, F11 browsers) hide the dock. Maximized windows with a caption do not, because with auto-hide they also cover the whole monitor.
 
 ### Dock sizing and overflow
 
@@ -88,6 +96,24 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 ---
 
+## Layouts and Widgets
+
+- **Floating:** The dock hugs its content and follows the Left/Center/Right alignment. Widgets sit after the applications inside the same surface.
+- **Full width:** The surface spans the monitor with a 6 DIP side inset. Applications stay left and widgets are pinned to the right edge. Alignment is disabled.
+- **Sizing:** Widgets keep their natural width.
+- **Widget card** (`WidgetCardBorder` / `WidgetCardButton`): 46 DIP high, 12 DIP radius, a `WidgetCard` fill with a 1 DIP `WidgetCardStroke`, and 3 DIP horizontal spacing.
+- **Colors:**
+  - `WidgetAccent` (sky blue): meter values and the on state.
+  - `WidgetAccentFill` (blue gradient): the battery tile and the volume track.
+  - `WidgetWarning`: meters at 75% and above.
+  - `WidgetFocusAccent` (red): meters at 90% and above, the focus phase, and low battery.
+  - `WidgetOnStroke`: the outline of active Wi-Fi/Bluetooth pills.
+- **Meters:** `RingMeter` draws a 3 DIP ring clockwise from 12 o'clock with a small caption (CPU/RAM) above the value.
+- **Focus timer:** The card outline turns red while focusing and blue during a break. A finished phase plays the system sound and pulses the card three times (skipped when animations are off).
+- **Typography:** Widget titles are 12 DIP semibold, captions 11 DIP, the clock 15 DIP, and the focus countdown 20 DIP with tabular numerals.
+
+---
+
 ## Project Structure
 
 - `Theme.xaml`: Core design system definitions, standard sizing tokens, brushes, and base control templates.
@@ -95,10 +121,11 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 - `Palettes/Light.xaml`: Light theme color palette and material brushes.
 - `ContextMenus.xaml`: Vector outline icon styles, Jump List headers, and menu item templates.
 - `SettingsControls.xaml`: Segmented controls, toggles, radio buttons, and preferences layout.
+- `WidgetControls.xaml` & `Widgets.xaml`: Widget tokens, card/button/pill/slider styles, and widget icon geometries.
 
 ### Settings navigation
 
-The 160 DIP sidebar uses 44 DIP minimum-height tabs with a consistent 16 DIP Segoe MDL2 icon column. Selection is marked by a slim accent bar and a subtle neutral surface; hover and keyboard focus have separate treatments. Disabled Widgets retains its label and icon without hover emphasis. Native TabControl keyboard/selection behavior is retained. Decorative navigation glyphs are non-focusable template children; the actual tab header supplies its accessible name.
+The 160 DIP sidebar uses 44 DIP minimum-height tabs with a consistent 16 DIP Segoe MDL2 icon column. Selection is marked by a slim accent bar and a subtle neutral surface; hover and keyboard focus have separate treatments. Native TabControl keyboard/selection behavior is retained. Decorative navigation glyphs are non-focusable template children; the actual tab header supplies its accessible name.
 
 ## Settings verification
 

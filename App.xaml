@@ -10,6 +10,7 @@
                 <ResourceDictionary Source="Design/ContextMenus.xaml" />
                 <ResourceDictionary Source="Design/WidgetControls.xaml" />
                 <ResourceDictionary Source="Design/SettingsControls.xaml" />
+                <ResourceDictionary Source="Design/Widgets.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
