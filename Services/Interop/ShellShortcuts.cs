@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -29,6 +30,7 @@ public static class ShellShortcuts
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
+    private const int ErrorCancelled = 1223;
 
     private static bool IsExtended(ushort key) => key is VkLeft or VkRight or VkLeftWindows;
 
@@ -115,17 +117,31 @@ public static class ShellShortcuts
         }
     }
 
-    public static string? OpenUri(string uri)
+    public static string? OpenUri(string uri) => Start(uri, "ErrorSettingsPageOpen");
+
+    /// <summary>
+    /// Task Manager by its full path, so a program named taskmgr elsewhere on the search path is never started.
+    /// The Shell handles its elevation request.
+    /// </summary>
+    public static string? OpenTaskManager() => Start(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "Taskmgr.exe"), "ErrorTaskManagerOpen");
+
+    private static string? Start(string target, string failureKey)
     {
         try
         {
-            using var _ = Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+            using var _ = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            return null;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
+        {
+            // The user declined the elevation prompt; that is a choice, not a failure.
             return null;
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            AppLog.Warning($"Cannot open {uri}: {ex.Message}");
-            return UiText.Get("ErrorSettingsPageOpen");
+            AppLog.Warning($"Cannot open {target}: {ex.Message}");
+            return UiText.Get(failureKey);
         }
     }
 

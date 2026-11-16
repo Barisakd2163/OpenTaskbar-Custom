@@ -8,6 +8,7 @@ CountdownChecks();
 StopwatchChecks();
 CatalogChecks();
 LocalizationChecks();
+TaskManagerTextChecks();
 SettingsChecks();
 InitialLanguageChecks();
 checks += WidgetViewChecks.Run();
@@ -147,6 +148,26 @@ void LocalizationChecks()
     UiText.Current.SetLanguage(AppLanguage.Turkish);
     Check(!UiText.Current.IsEnglish && UiText.Current.Language == AppLanguage.Turkish, "UiText must reflect Turkish language selection.");
     Check(UiText.LocalizeError("ErrorDockAttach") == "Dock penceresi Windows'a bağlanamadı.", "Key-based error lookup must resolve to Turkish.");
+}
+
+void TaskManagerTextChecks()
+{
+    try
+    {
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+        Check(UiText.Get("TaskManager") == "Görev Yöneticisi", "The Task Manager menu item must have a Turkish label.");
+        Check(UiText.Get("ErrorTaskManagerOpen") == "Görev Yöneticisi açılamadı.", "The Task Manager failure must have Turkish text.");
+        UiText.Current.SetLanguage(AppLanguage.English);
+        Check(UiText.Get("TaskManager") == "Task Manager", "The Task Manager menu item must have an English label.");
+        Check(UiText.LocalizeError("ErrorTaskManagerOpen") == "Cannot open Task Manager.",
+            "Key-based Task Manager failure lookup must resolve to English.");
+        Check(UiText.LocalizeError("Görev Yöneticisi açılamadı.") == "Cannot open Task Manager.",
+            "A Task Manager failure shown in Turkish must be translated after switching to English.");
+    }
+    finally
+    {
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+    }
 }
 
 void SettingsChecks()
