@@ -170,6 +170,10 @@ void SettingsChecks()
         var hidden = store.Load();
         Check(hidden.Error is null && hidden.Settings.Widgets?.Count == 0
             && hidden.Settings.InstalledWidgets?.Contains("Countdown") == true, "Hidden installation must survive reload.");
+        Check(store.Save(new DockSettings(DockScale: 1.25)) is null && store.Load().Settings.DockScale == 1.25,
+            "A valid dock scale must persist and reload.");
+        Check(store.Save(new DockSettings(DockScale: 0.5)) is not null && store.Save(new DockSettings(DockScale: 2.0)) is not null,
+            "Out-of-range dock scale values must be rejected.");
     }
     finally
     {

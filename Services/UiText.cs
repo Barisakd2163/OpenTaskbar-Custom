@@ -123,6 +123,8 @@ public sealed class UiText : INotifyPropertyChanged
             ["Layout"] = ("Yerleşim", "Layout"),
             ["DockSize"] = ("Dock boyutu", "Dock size"),
             ["DockSizeDescription"] = ("Kompakt, Windows görev çubuğu yüksekliğine oturur. Orta ve Büyük ek ekran alanı ayırır.", "Compact matches the Windows taskbar height. Medium and Large reserve extra screen space."),
+            ["DockScale"] = ("Görev çubuğu büyüklüğü (ölçek)", "Taskbar size (scale)"),
+            ["DockScaleHelp"] = ("Simgeleri, görev çubuğu yüksekliğini ve widget’ları seçilen boyuta göre %75 ile %150 arasında ölçekler.", "Scales icons, taskbar height, and widgets between 75% and 150% relative to the selected size."),
             ["SizeCompact"] = ("Kompakt", "Compact"),
             ["SizeMedium"] = ("Orta", "Medium"),
             ["SizeLarge"] = ("Büyük", "Large"),

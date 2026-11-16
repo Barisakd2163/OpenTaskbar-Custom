@@ -138,6 +138,14 @@
                                     <RadioButton x:Name="MediumSize" GroupName="DockSize" Content="{local:Loc SizeMedium}" Style="{StaticResource SettingsChoice}" />
                                     <RadioButton x:Name="LargeSize" GroupName="DockSize" Content="{local:Loc SizeLarge}" Style="{StaticResource SettingsChoice}" />
                                 </UniformGrid>
+                                <DockPanel Margin="0,14,0,10">
+                                    <TextBlock x:Name="DockScaleValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
+                                    <TextBlock Text="{local:Loc DockScale}" FontWeight="SemiBold" />
+                                </DockPanel>
+                                <Slider x:Name="DockScaleSlider" Minimum="75" Maximum="150" Value="100" TickFrequency="5"
+                                        IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10" Style="{StaticResource SettingsOpacitySlider}"
+                                        AutomationProperties.Name="{local:Loc DockScale}" AutomationProperties.HelpText="{local:Loc DockScaleHelp}"
+                                        ValueChanged="DockScaleSlider_ValueChanged" />
                             </StackPanel></Border>
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc DockEdge}" Style="{StaticResource SettingsChoiceLabel}" />

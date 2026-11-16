@@ -236,10 +236,11 @@ internal static class DockLayoutChecks
         DockFlyout.Edge = DockEdge.Bottom;
 
         foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
+        foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
         {
-            var profile = DockMetrics.For(size);
+            var profile = DockMetrics.For(size, scale);
             Check(Math.Round(DockMetrics.WidgetDesignHeight * profile.WidgetScale) + 4 <= profile.Cell,
-                $"Widget strip scale for {size} must fit inside the dock cell height including island border and padding.");
+                $"Widget strip scale for {size}@{scale} must fit inside the dock cell height including island border and padding.");
             app.Resources["DockCellSize"] = profile.Cell;
             app.Resources["DockCellHeight"] = profile.Cell;
             app.Resources["DockIconSize"] = profile.Icon;
@@ -248,11 +249,55 @@ internal static class DockLayoutChecks
             button.Arrange(new Rect(0, 0, profile.Cell, profile.Cell));
             button.UpdateLayout();
             Check(button.ActualWidth == profile.Cell && button.ActualHeight == profile.Cell,
-                $"DockButton must dynamically resize to {profile.Cell} DIP for {size}.");
+                $"DockButton must dynamically resize to {profile.Cell} DIP for {size}@{scale}.");
         }
         app.Resources["DockCellSize"] = DockMetrics.CellSize;
         app.Resources["DockCellHeight"] = DockMetrics.CellSize;
         app.Resources["DockIconSize"] = DockMetrics.IconSize;
+
+        // Verify that narrowing the dock with both applications and WidgetIsland inside DockScrollViewer keeps the first application visible.
+        {
+            var firstButton = new Button
+            {
+                Style = (Style)app.FindResource("DockButton"),
+                Content = new Border { Width = iconWidth, Height = iconWidth, Background = Brushes.Cyan },
+                DataContext = new DockApp("First App", "first.exe")
+            };
+            var secondButton = new Button
+            {
+                Style = (Style)app.FindResource("DockButton"),
+                Content = new Border { Width = iconWidth, Height = iconWidth, Background = Brushes.Cyan },
+                DataContext = new DockApp("Second App", "second.exe")
+            };
+            var dockContents = new StackPanel { Orientation = Orientation.Horizontal };
+            dockContents.Children.Add(firstButton);
+            dockContents.Children.Add(secondButton);
+            var widgetIsland = new Border { Width = 600, Height = 38, Margin = new Thickness(6, 0, 0, 0), Background = Brushes.Orange };
+            var layoutRoot = new Grid();
+            layoutRoot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            layoutRoot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(dockContents, 0);
+            Grid.SetColumn(widgetIsland, 1);
+            layoutRoot.Children.Add(dockContents);
+            layoutRoot.Children.Add(widgetIsland);
+            var viewer = new DockScrollViewer
+            {
+                Style = (Style)app.FindResource("DockScrollViewerStyle"),
+                HoverHeadroom = headroom,
+                ContentInset = inset,
+                Content = layoutRoot
+            };
+            var frame = new Border { Padding = padding, BorderThickness = stroke, Child = viewer };
+            var surface = new Grid { Width = oneCellWidth, Height = minimum };
+            surface.Children.Add(frame);
+            surface.Measure(new Size(oneCellWidth, minimum));
+            surface.Arrange(new Rect(0, 0, oneCellWidth, minimum));
+            surface.UpdateLayout();
+            var firstBounds = firstButton.TransformToAncestor(surface).TransformBounds(new Rect(0, 0, firstButton.ActualWidth, firstButton.ActualHeight));
+            Check(firstBounds.Left >= 0 && firstBounds.Right <= oneCellWidth + 0.5 && firstButton.ActualWidth == cellWidth,
+                "Narrowing the dock to one cell must keep the first application visible instead of hiding it behind widgets.");
+            Check(viewer.ScrollableWidth > 500, "Overflowing widgets must remain reachable by scrolling to the right.");
+        }
 
         // Verify dynamic widget label localization
         var widgetService = new DockWidgetService(TimeProvider.System);

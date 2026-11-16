@@ -62,4 +62,5 @@ public sealed record DockSettings(
     // Changed from the dock itself, not the Settings edit buffer. Null stacks means "Downloads only".
     IReadOnlyList<string>? StackFolders = null,
     IReadOnlyList<DockProfile>? Profiles = null,
-    string? ActiveProfile = null);
+    string? ActiveProfile = null,
+    double DockScale = 1.0);

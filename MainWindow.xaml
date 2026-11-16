@@ -37,6 +37,9 @@
         <ContextMenu x:Key="DockContextMenu" x:Shared="False" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
             <MenuItem Header="{local:Loc OpenLauncher}" Icon="{StaticResource IconSearch}" Click="OpenLauncher_Click" />
             <MenuItem Header="{local:Loc AddStack}" Icon="{StaticResource IconFolderPlus}" Click="AddStack_Click" />
+            <MenuItem Header="{local:Loc DockSize}" Icon="{StaticResource IconLayers}" Tag="DockSizeMenu">
+                <MenuItem Header="…" />
+            </MenuItem>
             <MenuItem Header="{local:Loc Profiles}" Icon="{StaticResource IconLayers}" Tag="ProfilesMenu">
                 <MenuItem Header="…" />
             </MenuItem>
@@ -151,16 +154,17 @@
                 <Border.Effect>
                     <DropShadowEffect Color="#05070B" BlurRadius="30" ShadowDepth="5" Direction="270" Opacity="0.5" RenderingBias="Performance" />
                 </Border.Effect>
-                <Grid x:Name="DockLayoutRoot">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition x:Name="WidgetColumn" Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                <Grid x:Name="DockFrameRoot">
                     <views:DockScrollViewer x:Name="DockScrollViewer" Style="{StaticResource DockScrollViewerStyle}"
                                           HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
                                           ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
-                        <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
-                                    VerticalAlignment="Center">
+                        <Grid x:Name="DockLayoutRoot">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition x:Name="WidgetColumn" Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
                             <Button x:Name="StartButton" Style="{StaticResource DockButton}" Click="StartButton_Click"
                                     AutomationProperties.Name="{local:Loc Start}" ToolTip="{local:Loc Start}" ToolTipService.InitialShowDelay="650">
                                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
@@ -234,17 +238,17 @@
                                 </TextBlock.Style>
                             </TextBlock>
                         </StackPanel>
+                            <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
+                            <Border x:Name="WidgetIsland" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="6,0,0,0"
+                                    Padding="3,1" CornerRadius="14" BorderThickness="1"
+                                    Background="{DynamicResource WidgetIsland}" BorderBrush="{DynamicResource WidgetIslandStroke}">
+                                <StackPanel x:Name="WidgetStrip" Orientation="Horizontal" VerticalAlignment="Center"
+                                            SizeChanged="WidgetStrip_SizeChanged" />
+                            </Border>
+                        </Grid>
                     </views:DockScrollViewer>
-                    <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
-                    <!-- Widgets share one borderless "control island" instead of separate outlined cards. -->
-                    <Border x:Name="WidgetIsland" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="6,0,0,0"
-                            Padding="3,1" CornerRadius="14" BorderThickness="1"
-                            Background="{DynamicResource WidgetIsland}" BorderBrush="{DynamicResource WidgetIslandStroke}">
-                        <StackPanel x:Name="WidgetStrip" Orientation="Horizontal" VerticalAlignment="Center"
-                                    SizeChanged="WidgetStrip_SizeChanged" />
-                    </Border>
                     <!-- Specular line along the top edge of the glass. -->
-                    <Border Grid.ColumnSpan="2" Height="1" VerticalAlignment="Top" Margin="18,-5,18,0" IsHitTestVisible="False"
+                    <Border Height="1" VerticalAlignment="Top" Margin="18,-5,18,0" IsHitTestVisible="False"
                             Background="{DynamicResource DockHighlight}" x:Name="DockSheen" />
                 </Grid>
             </Border>

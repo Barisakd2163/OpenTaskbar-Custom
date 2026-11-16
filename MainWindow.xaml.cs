@@ -68,6 +68,7 @@ public partial class MainWindow : Window
     private string? _statusMessage;
     private readonly WidgetCoordinator _widgetCoordinator;
     private double _dockTopGap;
+    private (DockSize Size, double Scale)? _sizePreviewOverride;
     private AudioEndpointMonitor? _wheelAudio;
     private int _wheelRemainder;
 
@@ -1242,6 +1243,7 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
         SetSeparatorVisibility(contextMenu, "RunningCommandsDivider", isRunning);
         SetMenuItemVisibility(contextMenu, "HideInProfile", isPinnedTarget && ActiveProfile is not null);
+        if (FindMenuItem(contextMenu, "DockSizeMenu") is { } sizeMenu) PopulateDockSizeMenu(sizeMenu);
         if (FindMenuItem(contextMenu, "ProfilesMenu") is { } profilesMenu) PopulateProfilesMenu(profilesMenu);
         if (FindMenuItem(contextMenu, "UpdateMenu") is { } updateMenu)
         {
@@ -1608,6 +1610,7 @@ public partial class MainWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        _sizePreviewOverride = null;
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
         _dockPosition = _preferences.Current.Position;
@@ -1812,7 +1815,63 @@ public partial class MainWindow : Window
         };
     }
 
-    private DockSizeProfile Profile => DockMetrics.For(_preferences.Current.Size);
+    private DockSizeProfile Profile => _sizePreviewOverride is { } preview
+        ? DockMetrics.For(preview.Size, preview.Scale)
+        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale);
+
+    internal void SetSizePreview(DockSize? size, double? scale)
+    {
+        _sizePreviewOverride = size is { } s && scale is { } sc ? (s, sc) : null;
+        ApplySizeProfile();
+        if (_replacementSession?.IsActive == true)
+        {
+            var thickness = IsVertical ? _dockArea.Width : _dockArea.Height;
+            if (thickness > 0) _dockTopGap = Math.Max(0.0, thickness - Profile.SurfaceHeight - Profile.BottomGap);
+        }
+        ApplyDockMargin();
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
+    }
+
+    private void PopulateDockSizeMenu(MenuItem menu)
+    {
+        menu.Items.Clear();
+        var currentSize = _preferences.Current.Size;
+        var currentScale = _preferences.Current.DockScale;
+        foreach (var (size, key) in new[] { (DockSize.Compact, "SizeCompact"), (DockSize.Medium, "SizeMedium"), (DockSize.Large, "SizeLarge") })
+        {
+            var item = new MenuItem
+            {
+                Header = UiText.Get(key),
+                IsCheckable = true,
+                IsChecked = currentSize == size
+            };
+            item.Click += (_, _) =>
+            {
+                var err = _preferences.Save(_preferences.Current with { Size = size });
+                if (err is not null) ShowStatus(err);
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+        foreach (var scale in new[] { 0.85, 1.0, 1.15, 1.30, 1.50 })
+        {
+            var percent = (int)Math.Round(scale * 100);
+            var item = new MenuItem
+            {
+                Header = UiText.Format("OpacityPercent", percent),
+                IsCheckable = true,
+                IsChecked = Math.Abs(currentScale - scale) < 0.03
+            };
+            item.Click += (_, _) =>
+            {
+                var err = _preferences.Save(_preferences.Current with { DockScale = scale });
+                if (err is not null) ShowStatus(err);
+            };
+            menu.Items.Add(item);
+        }
+    }
 
     private void ApplySizeProfile()
     {
@@ -1827,7 +1886,7 @@ public partial class MainWindow : Window
         DockSheen.Margin = new Thickness(sheenHorizontal, -profile.VerticalPadding, sheenHorizontal, 0);
         if (IsVertical) DockFrame.Padding = new Thickness(profile.VerticalPadding, 10, profile.VerticalPadding, 10);
         var scale = profile.WidgetScale;
-        var widgetTransform = scale < 1 ? new ScaleTransform(scale, scale) : Transform.Identity;
+        var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;
         WidgetStrip.LayoutTransform = widgetTransform;
         DockWidgets.LayoutTransform = widgetTransform;
         if (_replacementSession is not null)
@@ -2040,11 +2099,13 @@ public partial class MainWindow : Window
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         if (IsFullWidth)
         {
+            DockLayoutRoot.MinWidth = Math.Max(0, maximumSurfaceWidth - DockHorizontalChrome);
             DockSurface.Width = double.NaN;
             if (_dockArea.Width <= 0) Width = Math.Max(16, availableWidth);
             return;
         }
 
+        DockLayoutRoot.MinWidth = 0;
         var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + widgetsWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);

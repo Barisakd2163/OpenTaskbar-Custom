@@ -50,6 +50,7 @@ public partial class SettingsWindow : Window
             _preferences.Changed -= Preferences_Changed;
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             ThemeManager.SetSurfaceOpacity(_preferences.Current.SurfaceOpacity);
+            (Application.Current.MainWindow as MainWindow)?.SetSizePreview(null, null);
         };
         DarkTheme.IsChecked = _applied.Theme == AppTheme.Dark;
         LightTheme.IsChecked = _applied.Theme == AppTheme.Light;
@@ -68,6 +69,8 @@ public partial class SettingsWindow : Window
         CompactSize.IsChecked = _applied.Size == DockSize.Compact;
         MediumSize.IsChecked = _applied.Size == DockSize.Medium;
         LargeSize.IsChecked = _applied.Size == DockSize.Large;
+        DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
+        UpdateDockScaleLabel();
         ClockToggle.IsChecked = _applied.ShowClock;
         MediaToggle.IsChecked = _applied.ShowMedia;
         SystemStatsToggle.IsChecked = _applied.ShowSystemStats;
@@ -148,6 +151,7 @@ public partial class SettingsWindow : Window
         }
         ThemeManager.SetSurfaceOpacity(Math.Round(OpacitySlider.Value) / 100);
         UpdateOpacityLabel();
+        UpdateDockScaleLabel();
         UpdateWidgetOptionState();
         UpdateBackdrop();
     }
@@ -186,6 +190,7 @@ public partial class SettingsWindow : Window
         MagnificationEnabled = MagnificationToggle.IsChecked == true,
         Layout = FullWidthLayout.IsChecked == true ? DockLayout.FullWidth : DockLayout.Floating,
         Size = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact,
+        DockScale = Math.Round(DockScaleSlider.Value) / 100,
         ShowClock = ClockToggle.IsChecked == true,
         ShowMedia = MediaToggle.IsChecked == true,
         ShowSystemStats = SystemStatsToggle.IsChecked == true,
@@ -362,6 +367,8 @@ public partial class SettingsWindow : Window
         CompactSize.IsChecked = settings.Size == DockSize.Compact;
         MediumSize.IsChecked = settings.Size == DockSize.Medium;
         LargeSize.IsChecked = settings.Size == DockSize.Large;
+        DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
+        UpdateDockScaleLabel();
         ClockToggle.IsChecked = settings.ShowClock;
         MediaToggle.IsChecked = settings.ShowMedia;
         SystemStatsToggle.IsChecked = settings.ShowSystemStats;
@@ -452,6 +459,8 @@ public partial class SettingsWindow : Window
     {
         if (_initializing) return;
         SaveStatus.Visibility = Visibility.Collapsed;
+        var selectedSize = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact;
+        (Application.Current.MainWindow as MainWindow)?.SetSizePreview(selectedSize, Math.Round(DockScaleSlider.Value) / 100);
         UpdateWidgetOptionState();
         UpdateApplyState();
     }
@@ -459,6 +468,15 @@ public partial class SettingsWindow : Window
     private void UpdateApplyState() => ApplyButton.IsEnabled = HasEdits() || _preferences.LoadError is not null;
 
     private void UpdateOpacityLabel() => OpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(OpacitySlider.Value));
+
+    private void UpdateDockScaleLabel() => DockScaleValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(DockScaleSlider.Value));
+
+    private void DockScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_initializing) return;
+        UpdateDockScaleLabel();
+        PreferenceEdited(sender, e);
+    }
 
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
