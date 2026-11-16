@@ -142,7 +142,7 @@
     </Style>
     <DataTemplate DataType="{x:Type models:DockWidget}">
         <Grid AutomationProperties.Name="{Binding Label}">
-            <!-- Default tile preview (Battery, Memory, Storage, DayProgress) -->
+            <!-- Default tile preview (Battery, Storage, DayProgress) -->
             <Border x:Name="DefaultTile" Style="{StaticResource DockWidgetFrame}">
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding Label}" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeWidgetLabel}" />

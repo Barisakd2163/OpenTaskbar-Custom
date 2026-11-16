@@ -46,7 +46,7 @@
     <Style x:Key="WidgetCatalogInstallMark" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource WidgetActionFont}" />
         <Setter Property="FontSize" Value="{StaticResource WidgetActionGlyphSize}" />
-        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="VerticalAlignment" Value="Top" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="Text" Value="&#xE710;" />
@@ -54,6 +54,42 @@
         <Style.Triggers>
             <DataTrigger Binding="{Binding IsInstalled}" Value="True">
                 <Setter Property="Text" Value="&#xE73E;" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="WidgetCatalogSettingsButton" TargetType="Button">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="14"
+                            BorderBrush="Transparent" BorderThickness="1">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Surface" Property="Opacity" Value="0.75" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsSettingsExpanded}" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
                 <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
             </DataTrigger>
         </Style.Triggers>

@@ -11,11 +11,13 @@ namespace OpenTaskbar.Widgets;
 public sealed class WeatherWidget : DockWidget
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan RetryInterval = TimeSpan.FromMinutes(2);
     private readonly ContentControl _icon;
     private readonly TextBlock _temperature;
     private readonly Button _card;
     private readonly DockFlyout _flyout = new();
     private WeatherReport? _report;
+    private string? _error;
     private DateTime _loadedAt = DateTime.MinValue;
     private string? _loadedFor;
     private CancellationTokenSource? _loading;
@@ -55,7 +57,7 @@ public sealed class WeatherWidget : DockWidget
 
     protected override void OnTick(DateTime now)
     {
-        if (now - _loadedAt > RefreshInterval && _loading is null) _ = LoadAsync();
+        if (now - _loadedAt > (_report is null ? RetryInterval : RefreshInterval) && _loading is null) _ = LoadAsync();
     }
 
     private async Task LoadAsync()
@@ -73,14 +75,23 @@ public sealed class WeatherWidget : DockWidget
         if (report is not null || _loadedFor != key) _report = report;
         // Without a city, missing location access just hides the widget instead of raising an error.
         if (error is not null && _loadedFor != key && !string.IsNullOrWhiteSpace(Settings.WeatherCity)) Report(error);
+        _error = _report is null ? error : null;
         _loadedFor = key;
         Render();
     }
 
     private void Render()
     {
-        HasData = _report is not null;
-        if (_report is not { } report) return;
+        // A failed load stays visible with its cause instead of silently hiding the widget.
+        HasData = _report is not null || _error is not null;
+        if (_report is not { } report)
+        {
+            _icon.Content = null;
+            _temperature.Text = UiText.Get("WeatherUnavailable");
+            _card.ToolTip = _error;
+            System.Windows.Automation.AutomationProperties.SetName(_card, $"{UiText.Get("Weather")}: {_error}");
+            return;
+        }
         var (icon, text) = WeatherService.Describe(report.Code);
         _icon.Content = FindResource(icon);
         _temperature.Text = FormatDegrees(report.Temperature);
@@ -93,7 +104,12 @@ public sealed class WeatherWidget : DockWidget
     private UIElement BuildFlyout()
     {
         var root = new StackPanel { Width = 280 };
-        if (_report is not { } report) return root;
+        if (_report is not { } report)
+        {
+            root.Children.Add(DockFlyout.Heading(UiText.Get("Weather")));
+            root.Children.Add(DockFlyout.Caption(_error ?? UiText.Get("WeatherUnavailable")));
+            return root;
+        }
         var (icon, text) = WeatherService.Describe(report.Code);
         root.Children.Add(DockFlyout.Heading(string.IsNullOrEmpty(report.Place) ? UiText.Get("Weather") : report.Place));
         var now = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 10) };

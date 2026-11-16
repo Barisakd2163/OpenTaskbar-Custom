@@ -8,7 +8,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Window Management:** Live DWM multi-window thumbnail previews, native Jump Lists, notification badges, drag-and-drop pinning/reordering, and multi-monitor secondary docks.
 - **Smart Auto-Hide & Crash Recovery:** Optional auto-hide when windows overlap or when the pointer leaves. Automatically restores the native Windows taskbar on exit or crash via state journaling.
 - **Built-in Launcher & Extras:** Quick app/file/settings/calculator launcher (`Alt + Space`), folder stacks with a 2x2 icon preview, Recycle Bin integration, and app profiles.
-- **Optional Installable Widgets:** Install, toggle, and reorder widgets from **Settings → Widgets** (Clock & Calendar, Weather, Media Controls with progress and volume, Audio, Quick Settings, System Meters, Pomodoro Focus Timer, Virtual Desktops, Background Tray Apps, Stopwatch, Countdown Timer, Battery, Memory, Storage, and Day Progress).
+- **Optional Installable Widgets:** Install, toggle, and reorder widgets from **Settings → Widgets** (Clock & Calendar, Weather, Media Controls with progress and volume, Audio, Quick Settings, System Meters (CPU, memory, battery, GPU and temperatures, each switchable), Pomodoro Focus Timer, Virtual Desktops, Background Tray Apps, Stopwatch, Countdown Timer, Battery, Storage, and Day Progress).
 
 ## Requirements
 

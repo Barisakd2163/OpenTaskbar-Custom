@@ -40,7 +40,6 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new(DesktopsId, "WidgetDesktops", _ => "1 / 2"),
         new(TrayId, "WidgetTray", _ => "▲"),
         new(BatteryId, "WidgetBattery", _ => ReadBatteryStatus()),
-        new("Memory", "WidgetMemory", SystemWidgetData.ReadMemory),
         new("Storage", "WidgetStorage", SystemWidgetData.ReadStorage),
         new("DayProgress", "WidgetDayProgress", culture =>
             (DateTime.Now.TimeOfDay.TotalSeconds / TimeSpan.FromDays(1).TotalSeconds).ToString("P0", culture)),

@@ -16,8 +16,6 @@ public static class WeatherService
 {
     private static readonly HttpClient Client = CreateClient();
 
-    public static WeatherReport? LastReport { get; private set; }
-    public static event Action<WeatherReport?>? ReportUpdated;
 
     public static async Task<(WeatherReport? Report, string? Error)> LoadAsync(string city, bool english, CancellationToken cancellation)
     {
@@ -51,8 +49,6 @@ public static class WeatherService
                 current.GetProperty("weather_code").GetInt32(),
                 current.GetProperty("apparent_temperature").GetDouble(),
                 days);
-            LastReport = report;
-            ReportUpdated?.Invoke(report);
             return (report, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added downward-pointing chevron buttons on configurable widget cards in Settings to expand and collapse widget-specific configuration drawers with automatic scrolling.
+- Replaced the manual Apply footer with a full real-time auto-save system across all preferences and widget settings.
+- Added graphics card usage, graphics card temperature and processor temperature meters to System meters, each with its own on/off setting. Meters appear only when the computer reports the value (GPU temperature needs an NVIDIA driver; processor temperature needs a Windows ACPI thermal zone).
+- Removed the inline weather icon from the clock widget so it no longer duplicates the Weather widget.
+- Kept the weather widget visible with the failure reason when automatic location or loading fails, and retry every 2 minutes until it succeeds.
+- Removed the standalone RAM widget because System Meters already shows memory usage; stored settings that reference it are cleaned on load.
 - Highlighted the foreground application independently of keyboard focus, clearing its background when it is minimized or another app becomes active.
 - Added normal close and confirmed process termination to background tray apps, including a visible end-process action for apps without an open window.
 

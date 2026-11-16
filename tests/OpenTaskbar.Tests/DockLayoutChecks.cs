@@ -445,6 +445,22 @@ internal static class DockLayoutChecks
         Check(TaskbarReplacementSession.IsFullScreenBounds(autoHideVideoWin, 0, isZoomed: false, autoHideMon, autoHideWork),
             "Fullscreen video in auto-hide mode must be detected as full screen.");
 
+        // Verify optical glass styling resources and panel structures
+        Check(app.FindResource("MenuMaterial") is Brush, "MenuMaterial brush must be available.");
+        Check(app.FindResource("MenuStroke") is Brush, "MenuStroke brush must be available.");
+
+        var panelFrame = new OpenTaskbar.Views.Widgets.WidgetPanelFrame { Heading = "Test" };
+        Check(panelFrame.Content is Border outerBorder && outerBorder.Child is Border innerBevel && innerBevel.Child is ScrollViewer,
+            "WidgetPanelFrame must feature outer glass frame and inner optical bevel border.");
+
+        var flyout = new DockFlyout();
+        var flyoutAnchor = new Button();
+        var flyoutContent = new TextBlock { Text = "FlyoutTest" };
+        flyout.Show(flyoutAnchor, flyoutContent, animate: false);
+        Check(flyout.IsOpen, "DockFlyout must open correctly.");
+        flyout.Close();
+        Check(!flyout.IsOpen, "DockFlyout must close correctly.");
+
         return checks;
     }
 }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -22,6 +23,7 @@ public partial class SettingsWindow : Window
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
+    private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private bool _startupEnabled;
     private bool _startupAvailable;
     private DockSettings _applied;
@@ -45,9 +47,15 @@ public partial class SettingsWindow : Window
                 CultureInfo.GetCultureInfo(_preferences.Current.Language == AppLanguage.Turkish ? "tr-TR" : "en-US"));
         _preferences.Changed += Preferences_Changed;
         _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
+        _autoSaveTimer.Tick += (_, _) =>
+        {
+            _autoSaveTimer.Stop();
+            SaveSettings();
+        };
         IsVisibleChanged += Settings_IsVisibleChanged;
         Closed += (_, _) =>
         {
+            _autoSaveTimer.Stop();
             _widgetPreviewTimer.Stop();
             _widgetPreviewTimer.Tick -= WidgetPreviewTimer_Tick;
             IsVisibleChanged -= Settings_IsVisibleChanged;
@@ -92,7 +100,7 @@ public partial class SettingsWindow : Window
         StartupToggle.IsChecked = _startupEnabled;
         var errors = new[] { preferences.LoadError, startup.Error }.OfType<string>();
         var message = string.Join(" ", errors.Select(UiText.LocalizeError));
-        if (message.Length > 0) ShowResult(message, error: true);
+        if (message.Length > 0) Trace.TraceWarning("Settings initialization warning: {0}", message);
         var workArea = SystemParameters.WorkArea;
         MinHeight = Math.Min(MinHeight, workArea.Height);
         MinWidth = Math.Min(MinWidth, workArea.Width);
@@ -101,7 +109,6 @@ public partial class SettingsWindow : Window
         AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(PreferenceEdited));
         AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler(PreferenceEdited));
         _initializing = false;
-        UpdateApplyState();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -225,9 +232,17 @@ public partial class SettingsWindow : Window
                 : DateStyleNumeric.IsChecked == true ? ClockDateStyle.NumericDate
                 : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
                 : ClockDateStyle.DayAndShortDate,
-            ClockShowWeather = ClockWeatherToggle.IsChecked == true
+            StatsMeters = ReadStatsMeters()
         };
     }
+
+    private SystemMeters ReadStatsMeters() =>
+        (StatsCpuToggle.IsChecked == true ? SystemMeters.Cpu : 0)
+        | (StatsMemoryToggle.IsChecked == true ? SystemMeters.Memory : 0)
+        | (StatsBatteryToggle.IsChecked == true ? SystemMeters.Battery : 0)
+        | (StatsCpuTemperatureToggle.IsChecked == true ? SystemMeters.CpuTemperature : 0)
+        | (StatsGpuToggle.IsChecked == true ? SystemMeters.Gpu : 0)
+        | (StatsGpuTemperatureToggle.IsChecked == true ? SystemMeters.GpuTemperature : 0);
 
     private void WidgetSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -272,6 +287,7 @@ public partial class SettingsWindow : Window
         {
             option.IsInstalled = false;
             option.IsEnabled = false;
+            option.IsSettingsExpanded = false;
         }
         else
         {
@@ -281,6 +297,65 @@ public partial class SettingsWindow : Window
         _initializing = false;
         UpdateWidgetOptionState();
         SaveSettings();
+    }
+
+    private void WidgetSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is not FrameworkElement { DataContext: DockWidgetOption option }) return;
+        if (!option.HasSettings) return;
+
+        if (!option.IsInstalled)
+        {
+            _initializing = true;
+            option.IsInstalled = true;
+            option.IsEnabled = true;
+            _initializing = false;
+            SaveSettings();
+        }
+
+        option.IsSettingsExpanded = !option.IsSettingsExpanded;
+        UpdateWidgetOptionState();
+
+        if (option.IsSettingsExpanded)
+        {
+            FrameworkElement? target = option.Id switch
+            {
+                "Clock" => ClockOptions,
+                "Weather" => WeatherOptions,
+                "Focus" => FocusOptions,
+                "SystemStats" => StatsOptions,
+                _ => null
+            };
+            target?.BringIntoView();
+        }
+    }
+
+    private void CollapseClockOptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } option)
+            option.IsSettingsExpanded = false;
+        UpdateWidgetOptionState();
+    }
+
+    private void CollapseWeatherOptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } option)
+            option.IsSettingsExpanded = false;
+        UpdateWidgetOptionState();
+    }
+
+    private void CollapseFocusOptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } option)
+            option.IsSettingsExpanded = false;
+        UpdateWidgetOptionState();
+    }
+
+    private void CollapseStatsOptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "SystemStats") is { } option)
+            option.IsSettingsExpanded = false;
+        UpdateWidgetOptionState();
     }
 
     private void SelectAlignment(DockSettings settings)
@@ -308,8 +383,13 @@ public partial class SettingsWindow : Window
         DateStyleShort.IsChecked = settings.DateStyle == ClockDateStyle.ShortDateOnly;
         DateStyleNumeric.IsChecked = settings.DateStyle == ClockDateStyle.NumericDate;
         DateStyleHidden.IsChecked = settings.DateStyle == ClockDateStyle.Hidden;
-        ClockWeatherToggle.IsChecked = settings.ClockShowWeather;
         WeatherCityBox.Text = settings.WeatherCity;
+        StatsCpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Cpu);
+        StatsMemoryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Memory);
+        StatsBatteryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Battery);
+        StatsCpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.CpuTemperature);
+        StatsGpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Gpu);
+        StatsGpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.GpuTemperature);
         LauncherAltSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.AltSpace;
         LauncherCtrlSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.CtrlSpace;
         LauncherCtrlAltSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.CtrlAltSpace;
@@ -327,6 +407,15 @@ public partial class SettingsWindow : Window
 
     private void WeatherCityBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) => PreferenceEdited(sender, e);
 
+    private void WeatherCityBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_autoSaveTimer.IsEnabled)
+        {
+            _autoSaveTimer.Stop();
+            SaveSettings();
+        }
+    }
+
     private void ExportSettings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog
@@ -337,7 +426,8 @@ public partial class SettingsWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
         var error = SettingsBackup.Export(dialog.FileName, _preferences.Current);
-        ShowResult(error ?? UiText.Get("ExportDone"), error is not null);
+        MessageBox.Show(this, error ?? UiText.Get("ExportDone"), "OpenTaskbar", MessageBoxButton.OK,
+            error is not null ? MessageBoxImage.Warning : MessageBoxImage.Information);
     }
 
     private void ImportSettings_Click(object sender, RoutedEventArgs e)
@@ -347,14 +437,14 @@ public partial class SettingsWindow : Window
         var (settings, pins, error) = SettingsBackup.Read(dialog.FileName);
         if (settings is null)
         {
-            ShowResult(error ?? UiText.Get("ErrorSettingsFileInvalid"), error: true);
+            MessageBox.Show(this, error ?? UiText.Get("ErrorSettingsFileInvalid"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         if (_preferences.Save(settings with { PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder }) is { } saveError)
         {
-            ShowResult(saveError, error: true);
+            MessageBox.Show(this, saveError, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -363,8 +453,7 @@ public partial class SettingsWindow : Window
         LoadAllSelections(_applied);
         _initializing = false;
         UpdateWidgetOptionState();
-        UpdateApplyState();
-        ShowResult(UiText.Format("ImportDone", added), error: false);
+        MessageBox.Show(this, UiText.Format("ImportDone", added), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void LoadAllSelections(DockSettings settings)
@@ -401,11 +490,11 @@ public partial class SettingsWindow : Window
 
     private void UpdateWidgetOptionState()
     {
-        bool IsInstalled(string id) => _widgetOptions.Any(o => string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase) && o.IsInstalled);
-        ClockOptions.Visibility = IsInstalled("Clock") ? Visibility.Visible : Visibility.Collapsed;
-        FocusOptions.Visibility = IsInstalled("Focus") ? Visibility.Visible : Visibility.Collapsed;
-        WeatherOptions.Visibility = IsInstalled("Weather") || (IsInstalled("Clock") && ClockWeatherToggle.IsChecked == true)
-            ? Visibility.Visible : Visibility.Collapsed;
+        bool IsExpanded(string id) => _widgetOptions.Any(o => string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase) && o.IsSettingsExpanded);
+        ClockOptions.Visibility = IsExpanded("Clock") ? Visibility.Visible : Visibility.Collapsed;
+        FocusOptions.Visibility = IsExpanded("Focus") ? Visibility.Visible : Visibility.Collapsed;
+        StatsOptions.Visibility = IsExpanded("SystemStats") ? Visibility.Visible : Visibility.Collapsed;
+        WeatherOptions.Visibility = IsExpanded("Weather") ? Visibility.Visible : Visibility.Collapsed;
         FocusMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(FocusMinutesSlider.Value));
         BreakMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(BreakMinutesSlider.Value));
         FocusSessionsValue.Text = ((int)Math.Round(FocusSessionsSlider.Value)).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -417,76 +506,57 @@ public partial class SettingsWindow : Window
         PreferenceEdited(sender, e);
     }
 
-    private void Apply_Click(object sender, RoutedEventArgs e) => SaveSettings();
-
     private void SaveSettings()
     {
         var startupChanged = _startupAvailable && StartupToggle.IsChecked != _startupEnabled;
         if (startupChanged && _startup.SetEnabled(StartupToggle.IsChecked == true) is { } startupError)
         {
-            ShowResult(startupError, error: true);
+            Trace.TraceWarning("Startup error: {0}", startupError);
             return;
         }
         var settings = ReadSelection();
         if (_preferences.Save(settings) is { } error)
         {
-            error = UiText.LocalizeError(error);
-            if (startupChanged && _startup.SetEnabled(_startupEnabled) is not null)
-                error += " " + UiText.Get("StartupRestoreError");
-            ShowResult(error, error: true);
+            Trace.TraceWarning("Save settings error: {0}", error);
             return;
         }
         _applied = settings;
         _startupEnabled = StartupToggle.IsChecked == true;
-        ShowResult(UiText.Get("SettingsSaved"), error: false);
-        UpdateApplyState();
-    }
-
-    private void ShowResult(string message, bool error)
-    {
-        SaveStatus.Text = UiText.LocalizeError(message);
-        SaveStatus.Visibility = Visibility.Visible;
-        SaveStatus.SetResourceReference(ForegroundProperty, error ? "DangerText" : "TextSecondary");
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (_closingApplication || Application.Current.Dispatcher.HasShutdownStarted) return;
-        if (!HasEdits()) return;
-        e.Cancel = MessageBox.Show(this, UiText.Get("DiscardChanges"), UiText.Get("DiscardTitle"),
-            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes;
-    }
-
-    private bool HasEdits()
-    {
-        var selected = ReadSelection();
-        // Pin order, stacks and profiles change from the dock behind this window and are not part of its edit buffer.
-        return selected != (_applied with
-            {
-                PinOrder = selected.PinOrder,
-                Widgets = selected.Widgets,
-                InstalledWidgets = selected.InstalledWidgets,
-                WidgetOrder = selected.WidgetOrder,
-                StackFolders = selected.StackFolders,
-                Profiles = selected.Profiles,
-                ActiveProfile = selected.ActiveProfile
-            })
-            || !(selected.Widgets ?? []).SequenceEqual(_applied.Widgets ?? [], StringComparer.Ordinal)
-            || !(selected.InstalledWidgets ?? []).SequenceEqual(_applied.InstalledWidgets ?? [], StringComparer.Ordinal)
-            || (_startupAvailable && StartupToggle.IsChecked != _startupEnabled);
+        if (_autoSaveTimer.IsEnabled)
+        {
+            _autoSaveTimer.Stop();
+            SaveSettings();
+        }
     }
 
     private void PreferenceEdited(object sender, RoutedEventArgs e)
     {
         if (_initializing) return;
-        SaveStatus.Visibility = Visibility.Collapsed;
         var selectedSize = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact;
         (Application.Current.MainWindow as MainWindow)?.SetSizePreview(selectedSize, Math.Round(DockScaleSlider.Value) / 100);
         UpdateWidgetOptionState();
-        UpdateApplyState();
+        TriggerAutoSave(immediate: sender is not (Slider or TextBox));
     }
 
-    private void UpdateApplyState() => ApplyButton.IsEnabled = HasEdits() || _preferences.LoadError is not null;
+    private void TriggerAutoSave(bool immediate)
+    {
+        if (_initializing) return;
+        if (immediate)
+        {
+            _autoSaveTimer.Stop();
+            SaveSettings();
+        }
+        else
+        {
+            _autoSaveTimer.Stop();
+            _autoSaveTimer.Start();
+        }
+    }
 
     private void UpdateOpacityLabel() => OpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(OpacitySlider.Value));
 

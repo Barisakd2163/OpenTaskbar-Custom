@@ -2255,8 +2255,31 @@ public partial class MainWindow : Window
         var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + widgetsWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
-        if (double.IsNaN(DockSurface.Width) || Math.Abs(DockSurface.Width - targetWidth) >= 0.5)
+        if (!double.IsNaN(DockSurface.Width)
+            && DockSurface.ActualWidth > 0
+            && _dockWidthOverride is null
+            && LeftResizeThumb.IsDragging == false && RightResizeThumb.IsDragging == false
+            && _preferences.Current.AnimationsEnabled
+            && SystemParameters.ClientAreaAnimation
+            && Math.Abs(DockSurface.ActualWidth - targetWidth) >= 1.0)
         {
+            var anim = new DoubleAnimation
+            {
+                From = DockSurface.ActualWidth,
+                To = targetWidth,
+                Duration = TimeSpan.FromMilliseconds(160),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            anim.Completed += (_, _) =>
+            {
+                DockSurface.BeginAnimation(WidthProperty, null);
+                DockSurface.Width = targetWidth;
+            };
+            DockSurface.BeginAnimation(WidthProperty, anim);
+        }
+        else if (double.IsNaN(DockSurface.Width) || Math.Abs(DockSurface.Width - targetWidth) >= 0.5)
+        {
+            DockSurface.BeginAnimation(WidthProperty, null);
             DockSurface.Width = targetWidth;
         }
         if (_dockArea.Width <= 0)

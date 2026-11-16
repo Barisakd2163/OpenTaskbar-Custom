@@ -5,22 +5,25 @@
              Width="{StaticResource WidgetPanelWidth}" FontFamily="{StaticResource InterfaceFont}"
              FontSize="{StaticResource TextSizeBody}" Foreground="{DynamicResource TextPrimary}"
              KeyboardNavigation.TabNavigation="Cycle">
-    <Border Background="{DynamicResource SurfacePopup}" BorderBrush="{DynamicResource MenuStroke}" BorderThickness="1"
-            CornerRadius="{StaticResource PopupRadius}" Padding="{StaticResource WidgetPanelPadding}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="&#xE8BB;" Style="{StaticResource WidgetButton}"
-                            Width="{StaticResource WidgetQuickActionSize}" Height="{StaticResource WidgetQuickActionSize}"
-                            FontFamily="{StaticResource WidgetActionFont}" HorizontalContentAlignment="Center"
-                            Click="Close_Click" AutomationProperties.Name="{local:Loc Close}" ToolTip="{local:Loc Close}" />
-                    <TextBlock Text="{Binding Heading, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                               FontSize="{StaticResource WidgetPanelHeadingSize}" FontWeight="SemiBold"
-                               VerticalAlignment="Center" TextWrapping="Wrap" />
-                </DockPanel>
-                <ContentPresenter x:Name="BodyPresenter" Content="{Binding Body, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Margin="{StaticResource WidgetPanelFieldMargin}" />
-            </StackPanel>
-        </ScrollViewer>
+    <Border Background="{DynamicResource MenuMaterial}" BorderBrush="{DynamicResource MenuStroke}" BorderThickness="1"
+            CornerRadius="{StaticResource PopupRadius}">
+        <Border BorderBrush="{DynamicResource DockInnerBevelMaterial}" BorderThickness="1"
+                CornerRadius="9" Padding="{StaticResource WidgetPanelPadding}" Background="Transparent">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="&#xE8BB;" Style="{StaticResource WidgetButton}"
+                                Width="{StaticResource WidgetQuickActionSize}" Height="{StaticResource WidgetQuickActionSize}"
+                                FontFamily="{StaticResource WidgetActionFont}" HorizontalContentAlignment="Center"
+                                Click="Close_Click" AutomationProperties.Name="{local:Loc Close}" ToolTip="{local:Loc Close}" />
+                        <TextBlock Text="{Binding Heading, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   FontSize="{StaticResource WidgetPanelHeadingSize}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                    <ContentPresenter x:Name="BodyPresenter" Content="{Binding Body, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      Margin="{StaticResource WidgetPanelFieldMargin}" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
     </Border>
 </UserControl>

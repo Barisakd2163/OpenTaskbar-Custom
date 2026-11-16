@@ -30,12 +30,18 @@
     <SolidColorBrush x:Key="WidgetIsland" Color="#0A000000" />
     <SolidColorBrush x:Key="WidgetIslandStroke" Color="#12000000" />
     <SolidColorBrush x:Key="SurfaceKeyboardFocus" Color="#FFCFDFEC" />
-    <SolidColorBrush x:Key="MenuStroke" Color="#26000000" />
-    <LinearGradientBrush x:Key="MenuMaterial" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#F9FCFCFD" Offset="0" />
-        <GradientStop Color="#FAF2F3F5" Offset="1" />
+    <LinearGradientBrush x:Key="MenuStroke" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#85FFFFFF" Offset="0" />
+        <GradientStop Color="#30000000" Offset="0.35" />
+        <GradientStop Color="#20000000" Offset="0.75" />
+        <GradientStop Color="#40000000" Offset="1" />
     </LinearGradientBrush>
-    <SolidColorBrush x:Key="SurfacePopup" Color="#FFF8F9FB" />
+    <LinearGradientBrush x:Key="MenuMaterial" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#F0FFFFFF" Offset="0" />
+        <GradientStop Color="#F8F3F4F7" Offset="0.5" />
+        <GradientStop Color="#FCE8ECF2" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="SurfacePopup" Color="#F2F8F9FB" />
     <SolidColorBrush x:Key="StrokeSubtle" Color="#20000000" />
     <SolidColorBrush x:Key="StrokeFocus" Color="#FF457DA8" />
     <SolidColorBrush x:Key="SurfaceHover" Color="#12000000" />

@@ -49,8 +49,11 @@
                                    Placement="Right" PopupAnimation="None"
                                    IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
                                 <Border Background="{DynamicResource MenuMaterial}" BorderBrush="{DynamicResource MenuStroke}"
-                                        BorderThickness="1" CornerRadius="{StaticResource PopupRadius}" Padding="5">
-                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                        BorderThickness="1" CornerRadius="{StaticResource PopupRadius}">
+                                    <Border BorderBrush="{DynamicResource DockInnerBevelMaterial}" BorderThickness="1"
+                                            CornerRadius="9" Padding="5" Background="Transparent">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                    </Border>
                                 </Border>
                             </Popup>
                         </Grid>
@@ -116,12 +119,14 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ContextMenu">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource PopupRadius}"
-                                Padding="{TemplateBinding Padding}">
-                            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
-                                          CanContentScroll="True" Focusable="False">
-                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
-                            </ScrollViewer>
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource PopupRadius}">
+                            <Border BorderBrush="{DynamicResource DockInnerBevelMaterial}" BorderThickness="1"
+                                    CornerRadius="9" Padding="{TemplateBinding Padding}" Background="Transparent">
+                                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                                              CanContentScroll="True" Focusable="False">
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </ScrollViewer>
+                            </Border>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>

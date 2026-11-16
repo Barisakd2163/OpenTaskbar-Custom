@@ -21,18 +21,29 @@ public sealed class DockFlyout
     private long _closedAt;
     private readonly Popup _popup;
     private readonly Border _frame;
+    private readonly Border _innerBevel;
 
     public DockFlyout()
     {
+        _innerBevel = new Border
+        {
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(13),
+            Padding = new Thickness(12),
+            Background = System.Windows.Media.Brushes.Transparent
+        };
+        _innerBevel.SetResourceReference(Border.BorderBrushProperty, "DockInnerBevelMaterial");
+
         _frame = new Border
         {
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12),
+            Padding = new Thickness(0),
             Margin = new Thickness(0, 0, 0, 8),
+            Child = _innerBevel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                BlurRadius = 18, ShadowDepth = 3, Direction = 270, Opacity = 0.35, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
+                BlurRadius = 24, ShadowDepth = 5, Direction = 270, Opacity = 0.45, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
             }
         };
         _frame.SetResourceReference(Border.BackgroundProperty, "MenuMaterial");
@@ -101,7 +112,7 @@ public sealed class DockFlyout
             DockEdge.Right => new Thickness(0, 0, 8, 0),
             _ => new Thickness(0, 0, 0, 8)
         };
-        _frame.Child = content;
+        _innerBevel.Child = content;
         _popup.PopupAnimation = animate && SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
         foreach (var other in OpenFlyouts.Where(flyout => !ReferenceEquals(flyout, this)).ToArray()) other.Close();
         _popup.PlacementTarget = target;

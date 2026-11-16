@@ -159,6 +159,11 @@ void SettingsChecks()
         var legacy = store.Load();
         Check(legacy.Error is null && legacy.Settings.InstalledWidgets?.SequenceEqual(["Clock", "Date"]) == true,
             "Legacy selections must migrate before validation.");
+        File.WriteAllText(path, "{\"Widgets\":[\"Clock\",\"Memory\"],\"InstalledWidgets\":[\"Clock\",\"Memory\",\"Storage\"]}");
+        var removedMemory = store.Load();
+        Check(removedMemory.Error is null && removedMemory.Settings.Widgets?.SequenceEqual(["Clock"]) == true
+            && removedMemory.Settings.InstalledWidgets?.SequenceEqual(["Clock", "Storage"]) == true,
+            "The removed memory widget must be dropped from stored settings without resetting them.");
         Check(store.Save(new DockSettings(Widgets: ["Countdown"], InstalledWidgets: [])) is not null,
             "Enabled widgets must be installed.");
         Check(store.Save(new DockSettings(Widgets: ["Unknown"], InstalledWidgets: ["Unknown"])) is not null,

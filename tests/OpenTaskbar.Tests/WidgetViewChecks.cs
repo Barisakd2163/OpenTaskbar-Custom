@@ -329,6 +329,35 @@ internal static class WidgetViewChecks
                     Check(preferences.Current.InstalledWidgets?.Contains(selection.Id) != true
                         && preferences.Current.Widgets?.Contains(selection.Id) != true,
                         "Tapping an installed preview must auto-save removal of the widget.");
+
+                    var clockCard = Descendants<WidgetCatalogItem>(list).Single(card => ((DockWidgetOption)card.DataContext).Id == DockWidgetService.ClockId);
+                    var clockOption = (DockWidgetOption)clockCard.DataContext;
+                    Check(clockOption.HasSettings && clockOption.HasSettingsVisibility == Visibility.Visible,
+                        "Clock widget option must report having settings and show settings expand visibility.");
+                    Check(clockOption.SettingsGlyph == "\uE70D", "Initial settings glyph must be downward chevron.");
+                    var clockExpandBtn = RequiredName<Button>(clockCard, "SettingsExpandButton");
+                    Check(clockExpandBtn.Visibility == Visibility.Visible, "Clock card must show settings expand button.");
+                    clockExpandBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(clockOption.IsSettingsExpanded && clockOption.SettingsGlyph == "\uE70E",
+                        "Clicking expand button must set IsSettingsExpanded and change glyph to upward chevron.");
+                    Check(RequiredName<FrameworkElement>(settings, "ClockOptions").Visibility == Visibility.Visible,
+                        "Clicking settings expand button must make ClockOptions visible.");
+
+                    var secondsToggle = RequiredName<CheckBox>(settings, "ClockSecondsToggle");
+                    secondsToggle.IsChecked = true;
+                    Check(preferences.Current.ClockShowSeconds,
+                        "Checking ClockSecondsToggle must auto-save preferences immediately without a manual apply button.");
+
+                    clockExpandBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(!clockOption.IsSettingsExpanded && clockOption.SettingsGlyph == "\uE70D",
+                        "Clicking settings expand button again must collapse settings and restore downward chevron.");
+                    Check(RequiredName<FrameworkElement>(settings, "ClockOptions").Visibility == Visibility.Collapsed,
+                        "Collapsing settings must set ClockOptions visibility to Collapsed.");
+
+                    var mediaCard = Descendants<WidgetCatalogItem>(list).Single(card => ((DockWidgetOption)card.DataContext).Id == DockWidgetService.MediaId);
+                    var mediaOption = (DockWidgetOption)mediaCard.DataContext;
+                    Check(!mediaOption.HasSettings && RequiredName<Button>(mediaCard, "SettingsExpandButton").Visibility == Visibility.Collapsed,
+                        "Widgets without custom settings must hide the settings expand button.");
                 }
                 finally
                 {
@@ -360,7 +389,6 @@ internal static class WidgetViewChecks
                 DockWidgetService.DesktopsId => "1 / 2",
                 DockWidgetService.TrayId => "▲",
                 DockWidgetService.BatteryId => UiText.Get("SystemDataUnavailable"),
-                "Memory" => "64%",
                 "Storage" => "128,5 GiB",
                 "DayProgress" => "61%",
                 DockWidgetService.StopwatchId => "00:00:00",

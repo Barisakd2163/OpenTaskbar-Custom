@@ -8,6 +8,7 @@ namespace OpenTaskbar.Services;
 
 public sealed class DockSettingsStore
 {
+    private const string RemovedMemoryWidgetId = "Memory";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly string _path;
@@ -40,6 +41,13 @@ public sealed class DockSettingsStore
             // Normalize the legacy enabled-only format before enforcing the installed subset invariant.
             if (settings is { InstalledWidgets: null })
                 settings = settings with { InstalledWidgets = settings.Widgets ?? Array.Empty<string>() };
+            // The standalone memory widget was removed in favor of System Meters; drop stale identifiers.
+            if (settings is not null)
+                settings = settings with
+                {
+                    Widgets = settings.Widgets?.Where(id => id != RemovedMemoryWidgetId).ToArray(),
+                    InstalledWidgets = settings.InstalledWidgets?.Where(id => id != RemovedMemoryWidgetId).ToArray()
+                };
             if (settings is null || !IsValid(settings))
             {
                 return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsInvalid"));
@@ -110,6 +118,7 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.LauncherHotkey) && Enum.IsDefined(settings.DockHotkey)
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
         && Enum.IsDefined(settings.DateStyle)
+        && (settings.StatsMeters & ~SystemMeters.All) == 0
         && settings.WeatherCity is { Length: <= 80 }
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true

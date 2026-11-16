@@ -12,13 +12,8 @@ public partial class ClockWidget : DockWidget
     private readonly DockFlyout _calendar = new();
     private string _lastRenderKey = string.Empty;
     private DateOnly _shownMonth;
-    private DateTime _lastWeatherFetchUtc = DateTime.MinValue;
 
-    public ClockWidget()
-    {
-        InitializeComponent();
-        WeatherService.ReportUpdated += _ => Dispatcher.BeginInvoke(UpdateWeatherDisplay);
-    }
+    public ClockWidget() => InitializeComponent();
 
     private CultureInfo Culture => CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
 
@@ -26,17 +21,12 @@ public partial class ClockWidget : DockWidget
     {
         _lastRenderKey = string.Empty;
         OnTick(DateTime.Now);
-        EnsureWeatherLoaded();
     }
 
     protected override void OnSettingsChanged()
     {
         _lastRenderKey = string.Empty;
-        if (IsActive)
-        {
-            OnTick(DateTime.Now);
-            EnsureWeatherLoaded();
-        }
+        if (IsActive) OnTick(DateTime.Now);
     }
 
     protected override void OnDeactivated() => _calendar.Close();
@@ -77,46 +67,7 @@ public partial class ClockWidget : DockWidget
             }
             ClockButton.ToolTip = now.ToString("D", culture);
         }
-
-        if (Settings.ClockShowWeather && (DateTime.UtcNow - _lastWeatherFetchUtc).TotalMinutes >= 30)
-        {
-            EnsureWeatherLoaded();
-        }
-        UpdateWeatherDisplay();
     }
-
-    private void EnsureWeatherLoaded()
-    {
-        if (!Settings.ClockShowWeather) return;
-        _lastWeatherFetchUtc = DateTime.UtcNow;
-        _ = WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language == AppLanguage.English, CancellationToken.None);
-    }
-
-    private void UpdateWeatherDisplay()
-    {
-        if (Settings.ClockShowWeather && WeatherService.LastReport is { } report)
-        {
-            WeatherIcon.Text = DescribeWeatherGlyph(report.Code);
-            WeatherTemp.Text = $"{Math.Round(report.Temperature)}°";
-            WeatherPanel.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            WeatherPanel.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private static string DescribeWeatherGlyph(int code) => code switch
-    {
-        0 => "☀",
-        1 or 2 => "⛅",
-        3 => "☁",
-        45 or 48 => "🌫",
-        >= 51 and <= 67 or >= 80 and <= 82 => "🌧",
-        >= 71 and <= 77 or 85 or 86 => "❄",
-        >= 95 => "⛈",
-        _ => "☁"
-    };
 
     private void ClockButton_Click(object sender, RoutedEventArgs e)
     {

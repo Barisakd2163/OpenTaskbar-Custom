@@ -18,6 +18,20 @@ public enum StartButtonAction { WindowsStart, Launcher }
 public enum StartButtonPlacement { Start, End, Hidden }
 public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
 
+/// <summary>The individual meters of the System meters widget; a cleared flag hides that meter.</summary>
+[Flags]
+public enum SystemMeters
+{
+    None = 0,
+    Cpu = 1,
+    Memory = 2,
+    Battery = 4,
+    CpuTemperature = 8,
+    Gpu = 16,
+    GpuTemperature = 32,
+    All = Cpu | Memory | Battery | CpuTemperature | Gpu | GpuTemperature
+}
+
 /// <summary>A named view of the dock that hides some pinned apps; pins themselves are never removed.</summary>
 public sealed record DockProfile(string Name, IReadOnlyList<string> HiddenApps);
 
@@ -69,4 +83,4 @@ public sealed record DockSettings(
     bool Clock24Hour = true,
     bool ClockShowSeconds = false,
     ClockDateStyle DateStyle = ClockDateStyle.DayAndShortDate,
-    bool ClockShowWeather = true);
+    SystemMeters StatsMeters = SystemMeters.All);

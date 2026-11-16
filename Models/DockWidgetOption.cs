@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Windows;
 
 namespace OpenTaskbar.Models;
 
@@ -9,11 +10,33 @@ public sealed class DockWidgetOption(string id, string label, string description
     private bool _isEnabled = isEnabled;
     private string _label = label;
     private string _description = description;
+    private bool _isSettingsExpanded;
 
     public string Id { get; } = id;
     public string Label => _label;
     public string Description => _description;
     public DockWidget Preview { get; } = preview;
+
+    public bool HasSettings => string.Equals(Id, "Clock", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "Weather", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "Focus", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "SystemStats", StringComparison.OrdinalIgnoreCase);
+
+    public Visibility HasSettingsVisibility => HasSettings ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool IsSettingsExpanded
+    {
+        get => _isSettingsExpanded;
+        set
+        {
+            if (_isSettingsExpanded == value) return;
+            _isSettingsExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSettingsExpanded)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SettingsGlyph)));
+        }
+    }
+
+    public string SettingsGlyph => _isSettingsExpanded ? "\uE70E" : "\uE70D";
 
     public bool MatchesSearch(string query, CultureInfo culture) =>
         culture.CompareInfo.IndexOf(Label, query, CompareOptions.IgnoreCase) >= 0
