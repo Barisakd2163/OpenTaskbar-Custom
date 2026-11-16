@@ -5,16 +5,67 @@
     <sys:Double x:Key="SettingsReadingWidth">760</sys:Double>
     <Thickness x:Key="SettingsPageInset">24,18</Thickness>
     <Thickness x:Key="SettingsRowInset">0,10</Thickness>
-    <Thickness x:Key="WidgetDescriptionInset">0,4,12,0</Thickness>
-    <Thickness x:Key="WidgetActionInset">12,0,0,0</Thickness>
-    <Thickness x:Key="WidgetCatalogDescriptionInset">0,10,0,0</Thickness>
-    <Style x:Key="WidgetCatalogCard" TargetType="Border">
-        <Setter Property="Padding" Value="14" />
-        <Setter Property="Margin" Value="0,0,0,10" />
-        <Setter Property="CornerRadius" Value="{StaticResource DockWidgetRadius}" />
+    <sys:Double x:Key="WidgetCatalogItemWidth">232</sys:Double>
+    <sys:Double x:Key="WidgetCatalogPreviewHeight">116</sys:Double>
+    <sys:Double x:Key="WidgetCatalogManagementHeight">40</sys:Double>
+    <Thickness x:Key="WidgetCatalogItemMargin">0,0,12,12</Thickness>
+    <Thickness x:Key="WidgetCatalogPreviewPadding">12</Thickness>
+    <Style x:Key="WidgetCatalogPreviewButton" TargetType="Button" BasedOn="{StaticResource WidgetButton}">
+        <Setter Property="MinHeight" Value="{StaticResource WidgetCatalogPreviewHeight}" />
+        <Setter Property="Padding" Value="{StaticResource WidgetCatalogPreviewPadding}" />
         <Setter Property="Background" Value="{DynamicResource SettingsControl}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="ToolTip" Value="{local:Loc WidgetInstall}" />
+        <Setter Property="AutomationProperties.ItemStatus" Value="{local:Loc WidgetAvailable}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource DockWidgetRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SettingsControlHover}" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.72" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="ToolTip" Value="{local:Loc WidgetInstalled}" />
+                <Setter Property="AutomationProperties.ItemStatus" Value="{local:Loc WidgetInstalled}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="WidgetCatalogInstallMark" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource WidgetActionFont}" />
+        <Setter Property="FontSize" Value="{StaticResource WidgetActionGlyphSize}" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Text" Value="&#xE710;" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                <Setter Property="Text" Value="&#xE73E;" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="WidgetCatalogRemoveButton" TargetType="Button" BasedOn="{StaticResource WidgetButton}">
+        <Setter Property="Width" Value="{StaticResource WidgetQuickActionSize}" />
+        <Setter Property="Height" Value="{StaticResource WidgetQuickActionSize}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="FontFamily" Value="{StaticResource WidgetActionFont}" />
+        <Setter Property="FontSize" Value="{StaticResource WidgetActionGlyphSize}" />
     </Style>
     <Style x:Key="WidgetSearchBox" TargetType="TextBox" BasedOn="{StaticResource WidgetTextField}">
         <Setter Property="Padding" Value="10,8" />
@@ -133,11 +184,6 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
-    </Style>
-    <Style x:Key="WidgetActionButton" TargetType="Button" BasedOn="{StaticResource WidgetPanelAction}">
-        <Setter Property="Margin" Value="{StaticResource WidgetActionInset}" />
-        <Setter Property="MinWidth" Value="76" />
-        <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style x:Key="CaptionButton" TargetType="Button">
         <Setter Property="IsTabStop" Value="False" />

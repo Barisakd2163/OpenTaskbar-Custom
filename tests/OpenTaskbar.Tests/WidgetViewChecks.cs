@@ -172,34 +172,71 @@ internal static class WidgetViewChecks
                 Check(Contrast("AccentText", "AccentBrush") >= 4.5, "Quick action glyphs must contrast with their accent surface.");
             }
 
+            foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
             foreach (var language in new[] { AppLanguage.Turkish, AppLanguage.English })
             {
+                ThemeManager.Apply(theme);
                 UiText.Current.SetLanguage(language);
-                foreach (var width in new[] { 292d, 500d })
+                var options = new DockWidgetService(clock).CreateOptions([], []);
+                foreach (var option in options)
                 {
-                    var option = DockWidgetService.CreateOptions([], []).Single(item => item.Id == DockWidgetService.CountdownId);
-                    var card = new WidgetCatalogItem { DataContext = option, Width = width };
+                    option.Preview.Value = option.Preview is CountdownDockWidget ? string.Empty : "00:00:00";
+                    var card = new WidgetCatalogItem { DataContext = option };
                     Layout(card);
-                    var install = Descendants<Button>(card).Single();
-                    var visibility = Descendants<CheckBox>(card).Single();
-                    Check(Descendants<TextBlock>(card).Single(text => text.Text == option.Label).Foreground is SolidColorBrush labelBrush
-                        && labelBrush.Color == ((SolidColorBrush)app.Resources["TextPrimary"]).Color,
-                        "Catalog titles must inherit the semantic foreground instead of a system default.");
+                    var install = RequiredName<Button>(card, "PreviewButton");
+                    var remove = RequiredName<Button>(card, "RemoveButton");
+                    var visibility = RequiredName<CheckBox>(card, "VisibilityToggle");
+                    var preview = Descendants<ContentControl>(install).Single(control => ReferenceEquals(control.Content, option.Preview));
+                    Check(ReferenceEquals(preview.Content, option.Preview) && !preview.IsHitTestVisible
+                        && System.Windows.Input.KeyboardNavigation.GetTabNavigation(preview) == System.Windows.Input.KeyboardNavigationMode.None,
+                        "Catalog previews must reuse real widget templates without exposing nested interactive targets.");
+                    Check(AutomationProperties.GetName(install) == option.Label
+                        && AutomationProperties.GetItemStatus(install) == UiText.Get("WidgetAvailable"),
+                        "Preview installation must expose its name and available state.");
+                    Check(((FrameworkElement)visibility.Parent).Visibility == Visibility.Collapsed
+                        && !Descendants<TextBlock>(card).Any(text => text.Text == option.Description),
+                        "Available previews must omit descriptions and management controls.");
                     var installations = 0;
                     card.InstallationRequested += (_, _) => installations++;
                     install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(installations == 1 && !option.IsInstalled, "The catalog view must delegate installation without mutating domain state.");
-                    Check(!visibility.IsEnabled && Equals(install.Content, UiText.Get("WidgetInstall")), "An available catalog item must show Install and a disabled visibility switch.");
+                    Check(installations == 1 && !option.IsInstalled
+                        && (option.Preview is not ITimedDockWidget timedPreview || !timedPreview.IsRunning),
+                        "Tapping a preview must request installation without starting its time widget.");
                     option.IsInstalled = true;
+                    option.IsEnabled = true;
                     Layout(card);
-                    Check(visibility.IsEnabled && Equals(install.Content, UiText.Get("WidgetRemove")), "Installation changes must update catalog controls.");
-                    visibility.IsChecked = true;
-                    Check(option.IsEnabled, "The catalog visibility switch must preserve its two-way binding.");
-                    Check(Descendants<Button>(card).All(button =>
+                    Check(((FrameworkElement)visibility.Parent).Visibility == Visibility.Visible
+                        && AutomationProperties.GetItemStatus(install) == UiText.Get("WidgetInstalled"),
+                        "Installed previews must reveal management and expose their installed state.");
+                    install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(installations == 1, "Tapping an installed preview must never remove it.");
+                    visibility.IsChecked = false;
+                    Check(!option.IsEnabled && option.IsInstalled, "Visibility must change independently of installation.");
+                    remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(installations == 2, "The separate remove action must request an installation change.");
+                    Check(Descendants<FrameworkElement>(card).Where(element => element is Button or CheckBox).All(element =>
                     {
-                        var left = button.TranslatePoint(new Point(), card).X;
-                        return left >= 0 && left + button.ActualWidth <= card.ActualWidth;
-                    }), "Catalog actions must fit at both settings widths in both languages.");
+                        var left = element.TranslatePoint(new Point(), card).X;
+                        return left >= 0 && left + element.ActualWidth <= card.ActualWidth;
+                    }), "All preview and management controls must fit inside their gallery item.");
+                    option.UpdateText("Localized widget", "Localized description");
+                    Check(option.Preview.Label == option.Label, "Preview labels must follow catalog localization.");
+                }
+
+                foreach (var width in new[] { 292d, 500d, 720d })
+                {
+                    var gallery = new WrapPanel { Width = width };
+                    foreach (var option in options) gallery.Children.Add(new WidgetCatalogItem { DataContext = option });
+                    Layout(gallery);
+                    Check(gallery.Children.Cast<FrameworkElement>().All(item =>
+                    {
+                        var point = item.TranslatePoint(new Point(), gallery);
+                        return point.X >= 0 && point.X + item.ActualWidth <= width;
+                    }), "The gallery must wrap without horizontal overflow at narrow and wide settings sizes.");
+                    var second = (FrameworkElement)gallery.Children[1];
+                    Check(width < 488 ? second.TranslatePoint(new Point(), gallery).Y > 0
+                        : second.TranslatePoint(new Point(), gallery).Y == 0,
+                        "The gallery must adapt its column count to the available width.");
                 }
             }
             UiText.Current.SetLanguage(AppLanguage.Turkish);
@@ -231,12 +268,79 @@ internal static class WidgetViewChecks
                 var surface = new Border { Background = (Brush)app.Resources["SettingsBackground"], Child = preview };
                 Layout(surface);
                 Render(surface, Path.Combine(directory, $"timed-widgets-{theme.ToString().ToLowerInvariant()}.png"));
-                var catalog = new StackPanel { Width = 420, Margin = new Thickness(20) };
-                foreach (var option in DockWidgetService.CreateOptions([DockWidgetService.StopwatchId], [DockWidgetService.StopwatchId]))
+                var catalog = new WrapPanel { Width = 500, Margin = new Thickness(20) };
+                var previewOptions = new DockWidgetService(clock).CreateOptions([DockWidgetService.StopwatchId], [DockWidgetService.StopwatchId]);
+                SetPreviewFixtures(previewOptions);
+                foreach (var option in previewOptions)
+                {
                     catalog.Children.Add(new WidgetCatalogItem { DataContext = option });
+                }
                 var catalogSurface = new Border { Background = (Brush)app.Resources["SettingsBackground"], Child = catalog };
                 Layout(catalogSurface);
                 Render(catalogSurface, Path.Combine(directory, $"widget-catalog-{theme.ToString().ToLowerInvariant()}.png"));
+                var settingsPath = Path.Combine(Path.GetTempPath(), $"OpenTaskbarGallery-{Guid.NewGuid():N}.json");
+                var preferences = new ApplicationPreferences(new DockSettingsStore(settingsPath));
+                Check(preferences.Save(preferences.Current with { Theme = theme, Language = AppLanguage.Turkish }) is null,
+                    "The isolated settings fixture must save successfully.");
+                var settings = new OpenTaskbar.SettingsWindow(preferences);
+                try
+                {
+                    RequiredName<TabControl>(settings, "SettingsTabs").SelectedItem = RequiredName<TabItem>(settings, "WidgetsTab");
+                    var list = RequiredName<ItemsControl>(settings, "WidgetOptionsList");
+                    var selections = ((IEnumerable<DockWidgetOption>)list.ItemsSource).ToArray();
+                    SetPreviewFixtures(selections);
+                    var page = (FrameworkElement)settings.Content;
+                    foreach (var width in new[] { 560d, 740d })
+                    {
+                        page.Width = width;
+                        page.Height = 598;
+                        Layout(page);
+                        var cards = Descendants<WidgetCatalogItem>(list).ToArray();
+                        Check(cards.Length == selections.Length && cards.All(card =>
+                        {
+                            var left = card.TranslatePoint(new Point(), list).X;
+                            return left >= 0 && left + card.ActualWidth <= list.ActualWidth;
+                        }), "The real settings page must keep all previews inside its viewport at default and minimum width.");
+                        var search = RequiredName<TextBox>(settings, "WidgetSearch");
+                        Check(search.ActualWidth >= list.ActualWidth, "Search must span the gallery width.");
+                        Render(page, Path.Combine(directory, $"widget-settings-{theme.ToString().ToLowerInvariant()}-{width:0}.png"));
+                    }
+                    var searchBox = RequiredName<TextBox>(settings, "WidgetSearch");
+                    searchBox.Text = "no-matching-widget";
+                    Check(list.Items.Count == 0 && RequiredName<TextBlock>(settings, "WidgetNoResults").Visibility == Visibility.Visible,
+                        "An unmatched gallery search must show the empty state.");
+                    searchBox.Text = selections.Single(option => option.Id == DockWidgetService.CountdownId).Label;
+                    Check(list.Items.Count == 1, "Search must filter preview tiles by their localized name.");
+                    searchBox.Clear();
+                    Layout(page);
+                    Check(list.Items.Count == selections.Length, "Clearing search must restore the full preview gallery.");
+                    var firstCard = Descendants<WidgetCatalogItem>(list).First();
+                    var selection = (DockWidgetOption)firstCard.DataContext;
+                    RequiredName<Button>(firstCard, "PreviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(selection.IsInstalled && selection.IsEnabled, "A preview tap in Settings must install and enable its widget.");
+                    searchBox.Text = "no-matching-widget";
+                    searchBox.Clear();
+                    Check(selection.IsInstalled && selection.IsEnabled, "Filtering the gallery must preserve pending installation edits.");
+                    var apply = RequiredName<Button>(settings, "ApplyButton");
+                    Check(apply.IsEnabled, "A preview installation must enable Apply.");
+                    apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(preferences.Current.InstalledWidgets?.Contains(selection.Id) == true
+                        && preferences.Current.Widgets?.Contains(selection.Id) == true,
+                        "Apply must save the installed and visible widget selections.");
+                    Layout(page);
+                    var currentCard = Descendants<WidgetCatalogItem>(list).Single(card => ReferenceEquals(card.DataContext, selection));
+                    RequiredName<Button>(currentCard, "RemoveButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(!selection.IsInstalled && !selection.IsEnabled, "Remove must clear installation and visibility in Settings.");
+                    apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(preferences.Current.InstalledWidgets?.Contains(selection.Id) != true
+                        && preferences.Current.Widgets?.Contains(selection.Id) != true,
+                        "Apply must persist removal of the previewed widget.");
+                }
+                finally
+                {
+                    settings.Close();
+                    if (File.Exists(settingsPath)) File.Delete(settingsPath);
+                }
             }
             return checks;
         }
@@ -244,6 +348,23 @@ internal static class WidgetViewChecks
         {
             app.Shutdown();
         }
+    }
+
+    private static void SetPreviewFixtures(IEnumerable<DockWidgetOption> options)
+    {
+        foreach (var option in options)
+            option.Preview.Value = option.Id switch
+            {
+                DockWidgetService.ClockId => "14:32",
+                DockWidgetService.DateId => "Pzt, 16 Kas",
+                DockWidgetService.BatteryId => UiText.Get("SystemDataUnavailable"),
+                "Memory" => "64%",
+                "Storage" => "128,5 GiB",
+                "DayProgress" => "61%",
+                DockWidgetService.StopwatchId => "00:00:00",
+                DockWidgetService.CountdownId => string.Empty,
+                _ => throw new InvalidOperationException("Add a render fixture for the new widget.")
+            };
     }
 
     private static void Layout(FrameworkElement element)

@@ -8,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Shell;
+using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -18,6 +19,8 @@ public partial class SettingsWindow : Window
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
+    private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
+    private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private bool _startupEnabled;
     private bool _startupAvailable;
     private DockSettings _applied;
@@ -31,14 +34,19 @@ public partial class SettingsWindow : Window
         _preferences = preferences;
         _applied = preferences.Current;
         InitializeComponent();
-        foreach (var option in DockWidgetService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets)) _widgetOptions.Add(option);
+        foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets)) _widgetOptions.Add(option);
         WidgetOptionsList.ItemsSource = _widgetOptions;
         System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions).Filter = item =>
             item is DockWidgetOption option && option.MatchesSearch(WidgetSearch.Text.Trim(),
                 CultureInfo.GetCultureInfo(_preferences.Current.Language == AppLanguage.Turkish ? "tr-TR" : "en-US"));
         _preferences.Changed += Preferences_Changed;
+        _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
+        IsVisibleChanged += Settings_IsVisibleChanged;
         Closed += (_, _) =>
         {
+            _widgetPreviewTimer.Stop();
+            _widgetPreviewTimer.Tick -= WidgetPreviewTimer_Tick;
+            IsVisibleChanged -= Settings_IsVisibleChanged;
             _preferences.Changed -= Preferences_Changed;
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             ThemeManager.SetSurfaceOpacity(_preferences.Current.SurfaceOpacity);
@@ -116,13 +124,14 @@ public partial class SettingsWindow : Window
     {
         if (_applied.Language != _preferences.Current.Language)
         {
-            var localizedOptions = DockWidgetService.CreateOptions([], []).ToDictionary(option => option.Id, StringComparer.Ordinal);
+            var localizedOptions = _widgetPreviewService.CreateOptions([], []).ToDictionary(option => option.Id, StringComparer.Ordinal);
             foreach (var option in _widgetOptions)
             {
                 var localized = localizedOptions[option.Id];
                 option.UpdateText(localized.Label, localized.Description);
             }
             RefreshWidgetSearch();
+            RefreshWidgetPreviews();
         }
         ThemeManager.SetSurfaceOpacity(Math.Round(OpacitySlider.Value) / 100);
         UpdateOpacityLabel();
@@ -171,6 +180,28 @@ public partial class SettingsWindow : Window
         var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_widgetOptions);
         view.Refresh();
         WidgetNoResults.Visibility = view.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RefreshWidgetPreviews() => DockWidgetService.Refresh(
+        _widgetOptions.Select(option => option.Preview), _preferences.Current.Language);
+
+    private void WidgetPreviewTimer_Tick(object? sender, EventArgs e) => RefreshWidgetPreviews();
+
+    private void Settings_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateWidgetPreviewRefresh();
+
+    private void SettingsTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_initializing && ReferenceEquals(e.Source, SettingsTabs)) UpdateWidgetPreviewRefresh();
+    }
+
+    private void UpdateWidgetPreviewRefresh()
+    {
+        if (IsVisible && WidgetsTab.IsSelected)
+        {
+            RefreshWidgetPreviews();
+            _widgetPreviewTimer.Start();
+        }
+        else _widgetPreviewTimer.Stop();
     }
 
     private void WidgetInstallation_Click(object sender, RoutedEventArgs e)

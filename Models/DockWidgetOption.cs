@@ -3,7 +3,7 @@ using System.Globalization;
 
 namespace OpenTaskbar.Models;
 
-public sealed class DockWidgetOption(string id, string label, string description, bool isInstalled, bool isEnabled) : INotifyPropertyChanged
+public sealed class DockWidgetOption(string id, string label, string description, bool isInstalled, bool isEnabled, DockWidget preview) : INotifyPropertyChanged
 {
     private bool _isInstalled = isInstalled;
     private bool _isEnabled = isEnabled;
@@ -13,6 +13,7 @@ public sealed class DockWidgetOption(string id, string label, string description
     public string Id { get; } = id;
     public string Label => _label;
     public string Description => _description;
+    public DockWidget Preview { get; } = preview;
 
     public bool MatchesSearch(string query, CultureInfo culture) =>
         culture.CompareInfo.IndexOf(Label, query, CompareOptions.IgnoreCase) >= 0
@@ -23,6 +24,7 @@ public sealed class DockWidgetOption(string id, string label, string description
         if (_label != label)
         {
             _label = label;
+            Preview.Label = label;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
         }
         if (_description != description)

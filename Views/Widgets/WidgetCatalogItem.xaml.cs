@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Views.Widgets;
 
@@ -14,6 +15,15 @@ public partial class WidgetCatalogItem : UserControl
         add => AddHandler(InstallationRequestedEvent, value);
         remove => RemoveHandler(InstallationRequestedEvent, value);
     }
-    private void Installation_Click(object sender, RoutedEventArgs e) =>
-        RaiseEvent(new RoutedEventArgs(InstallationRequestedEvent, this));
+    private void Preview_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is DockWidgetOption { IsInstalled: false }) RequestInstallationChange();
+    }
+
+    private void Remove_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is DockWidgetOption { IsInstalled: true }) RequestInstallationChange();
+    }
+
+    private void RequestInstallationChange() => RaiseEvent(new RoutedEventArgs(InstallationRequestedEvent, this));
 }

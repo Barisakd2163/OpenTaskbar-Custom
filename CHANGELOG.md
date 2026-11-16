@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Replaced text-heavy widget catalog rows with a wrapping gallery of real dock widget previews.
+- Install widgets by selecting their preview; keep visibility and removal controls on installed items.
+- Refresh local preview data while the widget settings page is visible, without running timer actions.
+
 ## 0.2.0 - 2026-11-16
 
 - Refined dark and light dock surfaces, quieter resize handles, and softer shadows.

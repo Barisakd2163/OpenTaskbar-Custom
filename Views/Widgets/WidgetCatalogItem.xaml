@@ -3,40 +3,30 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:OpenTaskbar.Services"
              Focusable="False" Foreground="{DynamicResource TextPrimary}"
+             Width="{StaticResource WidgetCatalogItemWidth}" Margin="{StaticResource WidgetCatalogItemMargin}"
              FontFamily="{StaticResource InterfaceFont}" FontSize="{StaticResource TextSizeBody}">
-    <Border Style="{StaticResource WidgetCatalogCard}">
-        <StackPanel>
+    <StackPanel>
+        <Button x:Name="PreviewButton" Style="{StaticResource WidgetCatalogPreviewButton}" Click="Preview_Click"
+                AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
             <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                    <TextBlock Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeCaption}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Text" Value="{local:Loc WidgetAvailable}" />
-                                <Style.Triggers><DataTrigger Binding="{Binding IsInstalled}" Value="True"><Setter Property="Text" Value="{local:Loc WidgetInstalled}" /></DataTrigger></Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </StackPanel>
-                <Button Grid.Column="1" Click="Installation_Click">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource WidgetActionButton}">
-                            <Setter Property="Content" Value="{local:Loc WidgetInstall}" />
-                            <Style.Triggers><DataTrigger Binding="{Binding IsInstalled}" Value="True"><Setter Property="Content" Value="{local:Loc WidgetRemove}" /></DataTrigger></Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None" />
+                <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" />
             </Grid>
-            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
-                       Margin="{StaticResource WidgetCatalogDescriptionInset}" />
-            <DockPanel Margin="{StaticResource WidgetCatalogDescriptionInset}">
-                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                          IsEnabled="{Binding IsInstalled}" AutomationProperties.Name="{Binding Label}"
-                          AutomationProperties.HelpText="{local:Loc WidgetShow}" />
-                <TextBlock Text="{local:Loc WidgetShow}" VerticalAlignment="Center" FontSize="{StaticResource TextSizeCaption}"
-                           Foreground="{DynamicResource TextSecondary}" />
-            </DockPanel>
-        </StackPanel>
-    </Border>
+        </Button>
+        <Grid Height="{StaticResource WidgetCatalogManagementHeight}">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers><DataTrigger Binding="{Binding IsInstalled}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <CheckBox x:Name="VisibilityToggle" Style="{StaticResource SettingsSwitch}" HorizontalAlignment="Left"
+                      IsChecked="{Binding IsEnabled, Mode=TwoWay}" ToolTip="{local:Loc WidgetShow}"
+                      AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{local:Loc WidgetShow}" />
+            <Button x:Name="RemoveButton" Style="{StaticResource WidgetCatalogRemoveButton}" HorizontalAlignment="Right"
+                    Content="&#xE711;" ToolTip="{local:Loc WidgetRemove}" AutomationProperties.Name="{local:Loc WidgetRemove}"
+                    AutomationProperties.ItemType="{Binding Label}" Click="Remove_Click" />
+        </Grid>
+    </StackPanel>
 </UserControl>

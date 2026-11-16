@@ -105,7 +105,7 @@ void CatalogChecks()
     var clock = new TestClock();
     var catalog = new DockWidgetService(clock);
     Check(catalog.CreateWidgets(null).Count == 0, "New settings must not install widgets implicitly.");
-    Check(DockWidgetService.CreateOptions([], []).All(option => !option.IsInstalled && !option.IsEnabled),
+    Check(catalog.CreateOptions([], []).All(option => !option.IsInstalled && !option.IsEnabled),
         "The available catalog must be optional.");
     var first = catalog.CreateWidgets([DockWidgetService.StopwatchId, DockWidgetService.CountdownId]);
     Check(first.Count == 2 && first.OfType<ITimedDockWidget>().Count() == 2, "Both time widgets must be available.");
@@ -125,7 +125,7 @@ void CatalogChecks()
 
 void LocalizationChecks()
 {
-    var option = new DockWidgetOption("Clock", "Saat", "Yerel saat", true, false);
+    var option = new DockWidgetOption("Clock", "Saat", "Yerel saat", true, false, new DockWidget("Clock", "Saat"));
     var changes = new List<string?>();
     option.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
     option.UpdateText("Clock", "Local time");

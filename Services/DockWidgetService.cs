@@ -39,21 +39,24 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
 
     public IReadOnlyList<DockWidget> CreateWidgets(IReadOnlyList<string>? selected) =>
         Definitions.Where(definition => selected?.Contains(definition.Id, StringComparer.Ordinal) == true)
-            .Select(definition => definition.Id switch
-            {
-                StopwatchId => _stopwatch,
-                CountdownId => _countdown,
-                _ => new DockWidget(definition.Id, UiText.Get(definition.LabelKey))
-            })
+            .Select(CreateWidget)
             .ToArray();
 
-    public static IReadOnlyList<DockWidgetOption> CreateOptions(IReadOnlyList<string>? installed, IReadOnlyList<string>? selected) =>
+    private DockWidget CreateWidget(WidgetDefinition definition) => definition.Id switch
+    {
+        StopwatchId => _stopwatch,
+        CountdownId => _countdown,
+        _ => new DockWidget(definition.Id, UiText.Get(definition.LabelKey))
+    };
+
+    public IReadOnlyList<DockWidgetOption> CreateOptions(IReadOnlyList<string>? installed, IReadOnlyList<string>? selected) =>
         Definitions.Select(definition => new DockWidgetOption(
             definition.Id,
             UiText.Get(definition.LabelKey),
             UiText.Get(definition.LabelKey + "Description"),
             installed?.Contains(definition.Id, StringComparer.Ordinal) == true,
-            selected?.Contains(definition.Id, StringComparer.Ordinal) == true))
+            selected?.Contains(definition.Id, StringComparer.Ordinal) == true,
+            CreateWidget(definition)))
             .ToArray();
 
     public static void Refresh(IEnumerable<DockWidget> widgets, AppLanguage language)
