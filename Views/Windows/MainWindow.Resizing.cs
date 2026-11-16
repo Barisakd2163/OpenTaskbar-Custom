@@ -77,14 +77,13 @@ public partial class MainWindow
     {
         e.Handled = true;
         _dockWidthOverride = null;
+        var contentWidth = DockScrollViewer.MeasureContentWidth(DockContents);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
-        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
-        DockContents.Measure(unbounded);
-        var desiredWidth = Math.Clamp(Math.Ceiling(DockContents.DesiredSize.Width + widgetsWidth + DockHorizontalChrome),
+        var desiredWidth = Math.Clamp(Math.Ceiling(contentWidth + widgetsWidth + DockHorizontalChrome),
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
 
         DockSurfaceTranslate.X = 0;

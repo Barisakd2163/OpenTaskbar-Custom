@@ -18,6 +18,16 @@ public sealed class DockScrollViewer : ScrollViewer
     public Thickness ContentInset { get => (Thickness)GetValue(ContentInsetProperty); set => SetValue(ContentInsetProperty, value); }
     public bool IsPanning => _panStart is not null;
 
+    /// <summary>Returns the width a part of the content needs to be shown without scrolling.</summary>
+    public double MeasureContentWidth(UIElement part)
+    {
+        // Adding or removing an item only invalidates the items panel; its ancestors keep their old desired size
+        // and stay valid until a layout pass reaches them, so the pending layout runs before the size is read.
+        UpdateLayout();
+        if (!part.IsMeasureValid) part.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return part.DesiredSize.Width;
+    }
+
     public bool ScrollByWheel(int delta, ModifierKeys modifiers)
     {
         if (delta == 0 || (modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) == 0 || ScrollableWidth <= 0) return false;

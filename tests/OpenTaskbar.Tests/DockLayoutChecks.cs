@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -205,6 +206,65 @@ internal static class DockLayoutChecks
                 Check(viewer.HorizontalOffset == 0, "Backward scrolling must stop at the content start.");
             }
             else Check(!viewer.ScrollByWheel(-120, ModifierKeys.Control), "A dock that already fits must not consume modifier wheel scrolling.");
+        }
+
+        {
+            var apps = new ObservableCollection<DockApp>(Enumerable.Range(0, 4)
+                .Select(index => new DockApp($"Running app {index}", $"running-{index}.exe")));
+            var appButton = new FrameworkElementFactory(typeof(Button));
+            appButton.SetValue(FrameworkElement.StyleProperty, app.FindResource("DockButton"));
+            var appPanel = new FrameworkElementFactory(typeof(StackPanel));
+            appPanel.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            var dockContents = new StackPanel { Orientation = Orientation.Horizontal };
+            dockContents.Children.Add(new Button { Style = (Style)app.FindResource("DockButton") });
+            dockContents.Children.Add(new ItemsControl
+            {
+                ItemsSource = apps, ItemTemplate = new DataTemplate { VisualTree = appButton },
+                ItemsPanel = new ItemsPanelTemplate(appPanel)
+            });
+            var widgetIsland = new Border { Width = 120, Height = iconWidth, Margin = new Thickness(4, 0, 0, 0) };
+            var widgetsWidth = widgetIsland.Width + widgetIsland.Margin.Left + widgetIsland.Margin.Right;
+            var dockLayoutRoot = new Grid();
+            dockLayoutRoot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            dockLayoutRoot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(widgetIsland, 1);
+            dockLayoutRoot.Children.Add(dockContents);
+            dockLayoutRoot.Children.Add(widgetIsland);
+            var dockViewer = new DockScrollViewer
+            {
+                Style = (Style)app.FindResource("DockScrollViewerStyle"), HoverHeadroom = headroom,
+                ContentInset = inset, Content = dockLayoutRoot
+            };
+            var dockSurface = new Border
+            {
+                Padding = padding, BorderThickness = stroke, HorizontalAlignment = HorizontalAlignment.Left, Child = dockViewer
+            };
+            var dockRoot = new Grid { Width = 1000, Height = minimum };
+            dockRoot.Children.Add(dockSurface);
+            void LayoutDock()
+            {
+                dockRoot.Measure(new Size(1000, minimum));
+                dockRoot.Arrange(new Rect(0, 0, 1000, minimum));
+                dockRoot.UpdateLayout();
+            }
+            // Mirrors the main window, which sizes the dock synchronously after its app collections change.
+            void FitDock() => dockSurface.Width = Math.Ceiling(dockViewer.MeasureContentWidth(dockContents) + widgetsWidth + chrome);
+            LayoutDock();
+            FitDock();
+            var initialWidth = dockSurface.Width;
+            LayoutDock();
+            Check(dockViewer.ScrollableWidth == 0 && dockViewer.ViewportWidth == dockViewer.ExtentWidth,
+                "The fitted dock must show its applications and widgets without empty space.");
+            apps.RemoveAt(1);
+            FitDock();
+            Check(dockSurface.Width == initialWidth - cellWidth,
+                "Removing an application must shrink the dock immediately instead of leaving an empty cell.");
+            LayoutDock();
+            Check(dockViewer.ScrollableWidth == 0 && dockViewer.ViewportWidth == dockViewer.ExtentWidth,
+                "The shrunken dock must show all remaining applications without empty space.");
+            apps.Add(new DockApp("Opened app", "opened.exe"));
+            FitDock();
+            Check(dockSurface.Width == initialWidth, "Opening an application must grow the dock immediately.");
         }
 
         var testWindow = new Window { ShowActivated = false, ShowInTaskbar = false, Width = 10, Height = 10, WindowStyle = WindowStyle.None };
