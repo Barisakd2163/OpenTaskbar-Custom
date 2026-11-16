@@ -154,6 +154,19 @@ public partial class MainWindow : Window
         ApplySizeProfile();
         ApplyLayoutMode();
         PositionDock();
+        NotificationService.UpdateRequested += OnUpdateNotificationRequested;
+        Closed += (_, _) => NotificationService.UpdateRequested -= OnUpdateNotificationRequested;
+    }
+
+    private void OnUpdateNotificationRequested()
+    {
+        Dispatcher.InvokeAsync(async () =>
+        {
+            if (_availableUpdate is { } release)
+            {
+                await StartUpdateAsync(release);
+            }
+        });
     }
 
     private void Window_SourceInitialized(object? sender, EventArgs e)

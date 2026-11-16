@@ -519,6 +519,52 @@ internal static class DockLayoutChecks
         NotificationService.EnsureRegistered();
         Check(UiText.Format("UpdateToastBody", "v0.2.5").Contains("v0.2.5"), "UpdateToastBody must format version tag.");
         Check(!string.IsNullOrWhiteSpace(UiText.Get("UpdateAvailableTitle")), "UpdateAvailableTitle must not be empty.");
+        Check(UiText.Format("UpdateDownloading", "v0.2.5").Contains("v0.2.5"), "UpdateDownloading must format version tag.");
+        Check(!string.IsNullOrWhiteSpace(UiText.Get("UpdateFailed")), "UpdateFailed must not be empty.");
+        Check(!string.IsNullOrWhiteSpace(UiText.Get("UpdateInProgress")), "UpdateInProgress must not be empty.");
+
+        // Verify UpdateChecker release parser and asset URL extraction
+        var testReleaseJson = """
+        {
+            "tag_name": "v0.3.0",
+            "html_url": "https://github.com/alztrk/opentaskbar/releases/tag/v0.3.0",
+            "assets": [
+                {
+                    "name": "OpenTaskbar.exe",
+                    "browser_download_url": "https://github.com/alztrk/opentaskbar/releases/download/v0.3.0/OpenTaskbar.exe",
+                    "size": 71373244
+                }
+            ]
+        }
+        """;
+        var parsedNewer = UpdateChecker.ParseRelease(testReleaseJson, new Version(0, 2, 5));
+        Check(parsedNewer is not null, "Newer version in release JSON must be recognized.");
+        Check(parsedNewer!.Tag == "v0.3.0", "Parsed tag must match release tag.");
+        Check(parsedNewer.DownloadUrl == "https://github.com/alztrk/opentaskbar/releases/download/v0.3.0/OpenTaskbar.exe",
+            "Parsed download URL must extract OpenTaskbar.exe asset.");
+        Check(parsedNewer.Size == 71373244, "Parsed asset size must match.");
+
+        var parsedOlder = UpdateChecker.ParseRelease(testReleaseJson, new Version(0, 3, 5));
+        Check(parsedOlder is null, "Older version in release JSON must return null.");
+
+        var noAssetJson = """
+        {
+            "tag_name": "v0.4.0",
+            "html_url": "https://github.com/alztrk/opentaskbar/releases/tag/v0.4.0",
+            "assets": []
+        }
+        """;
+        var parsedNoAsset = UpdateChecker.ParseRelease(noAssetJson, new Version(0, 2, 5));
+        Check(parsedNoAsset is not null && parsedNoAsset.DownloadUrl is null,
+            "Release without binary asset must have null DownloadUrl.");
+
+        // Verify in-place update script generation
+        var script = UpdateChecker.GenerateUpdaterScript(@"C:\temp\OpenTaskbar.exe", @"C:\app\OpenTaskbar.exe");
+        Check(script.Contains(@"set ""SRC=C:\temp\OpenTaskbar.exe"""), "Script must set source path.");
+        Check(script.Contains(@"set ""DST=C:\app\OpenTaskbar.exe"""), "Script must set destination path.");
+        Check(script.Contains("copy /y"), "Script must perform copy /y.");
+        Check(script.Contains("start \"\" \"%DST%\""), "Script must start updated executable.");
+        Check(script.Contains("del /f /q \"%~f0\""), "Script must clean itself up.");
 
         return checks;
     }

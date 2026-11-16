@@ -15,6 +15,12 @@ public static class NotificationService
 {
     public const string AppId = "OpenTaskbar";
     private static bool _registered;
+    private static readonly List<ToastNotification> _activeToasts = [];
+
+    /// <summary>
+    /// Raised when an update toast is clicked or its update action is triggered.
+    /// </summary>
+    public static event Action? UpdateRequested;
 
     public static void EnsureRegistered()
     {
@@ -47,13 +53,12 @@ public static class NotificationService
             var body = UiText.Format("UpdateToastBody", versionTag);
             var actionText = UiText.Format("UpdateDownload", versionTag);
 
-            var escapedUrl = SecurityElement.Escape(releaseUrl);
             var escapedTitle = SecurityElement.Escape(title);
             var escapedBody = SecurityElement.Escape(body);
             var escapedAction = SecurityElement.Escape(actionText);
 
             var xmlString = $"""
-            <toast activationType="protocol" launch="{escapedUrl}">
+            <toast launch="action=update">
                 <visual>
                     <binding template="ToastGeneric">
                         <text>{escapedTitle}</text>
@@ -61,7 +66,7 @@ public static class NotificationService
                     </binding>
                 </visual>
                 <actions>
-                    <action content="{escapedAction}" activationType="protocol" arguments="{escapedUrl}" />
+                    <action content="{escapedAction}" arguments="action=update" />
                 </actions>
             </toast>
             """;
@@ -72,8 +77,19 @@ public static class NotificationService
             var toast = new ToastNotification(xml);
             toast.Activated += (_, _) =>
             {
-                ShellShortcuts.OpenUri(releaseUrl);
+                AppLog.Info("Update toast activated.");
+                UpdateRequested?.Invoke();
             };
+            toast.Dismissed += (s, _) =>
+            {
+                lock (_activeToasts) _activeToasts.Remove(s);
+            };
+            toast.Failed += (s, _) =>
+            {
+                lock (_activeToasts) _activeToasts.Remove(s);
+            };
+
+            lock (_activeToasts) _activeToasts.Add(toast);
 
             var notifier = ToastNotificationManager.CreateToastNotifier(AppId);
             notifier.Show(toast);
@@ -109,6 +125,17 @@ public static class NotificationService
             xml.LoadXml(xmlString);
 
             var toast = new ToastNotification(xml);
+            toast.Dismissed += (s, _) =>
+            {
+                lock (_activeToasts) _activeToasts.Remove(s);
+            };
+            toast.Failed += (s, _) =>
+            {
+                lock (_activeToasts) _activeToasts.Remove(s);
+            };
+
+            lock (_activeToasts) _activeToasts.Add(toast);
+
             var notifier = ToastNotificationManager.CreateToastNotifier(AppId);
             notifier.Show(toast);
         }

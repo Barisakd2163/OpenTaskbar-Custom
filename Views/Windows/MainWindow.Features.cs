@@ -343,6 +343,8 @@ public partial class MainWindow
 
     // ---- Update checks (#15) ----
 
+    private bool _isUpdating;
+
     private async Task CheckForUpdatesAsync(bool userInitiated)
     {
         _updateCheck?.Cancel();
@@ -368,11 +370,45 @@ public partial class MainWindow
         }
     }
 
+    private async Task StartUpdateAsync(UpdateChecker.Release release)
+    {
+        if (_isUpdating)
+        {
+            NotificationService.ShowInfoToast(UiText.Get("UpdateInProgress"));
+            return;
+        }
+
+        if (string.IsNullOrEmpty(release.DownloadUrl))
+        {
+            ReportResult(ShellShortcuts.OpenUri(release.Url));
+            return;
+        }
+
+        _isUpdating = true;
+        NotificationService.ShowInfoToast(UiText.Format("UpdateDownloading", release.Tag));
+
+        try
+        {
+            var (success, error) = await Task.Run(() => UpdateChecker.DownloadAndApplyAsync(release));
+            if (!success)
+            {
+                _isUpdating = false;
+                NotificationService.ShowInfoToast(error ?? UiText.Get("UpdateFailed"));
+            }
+        }
+        catch (Exception ex)
+        {
+            _isUpdating = false;
+            AppLog.Error($"Update failed: {ex.Message}");
+            NotificationService.ShowInfoToast(UiText.Get("UpdateFailed"));
+        }
+    }
+
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
     {
         if (_availableUpdate is { } release)
         {
-            ReportResult(ShellShortcuts.OpenUri(release.Url));
+            await StartUpdateAsync(release);
             return;
         }
 
