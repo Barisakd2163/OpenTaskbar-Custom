@@ -96,5 +96,5 @@ public static class DockMetrics
 public readonly record struct DockSizeProfile(double Shelf, double BottomGap, double Cell, double VerticalPadding, double Icon, double Radius)
 {
     public double SurfaceHeight => Cell + VerticalPadding * 2 + 2;
-    public double WidgetScale => Math.Clamp((Cell - 4) / DockMetrics.WidgetDesignHeight, 0.45, 1.35);
+    public double WidgetScale => Math.Clamp((Cell - 2) / DockMetrics.WidgetDesignHeight, 0.45, 1.35);
 }

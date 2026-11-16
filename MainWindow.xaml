@@ -239,9 +239,8 @@
                             </TextBlock>
                         </StackPanel>
                             <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
-                            <Border x:Name="WidgetIsland" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="6,0,0,0"
-                                    Padding="3,1" CornerRadius="14" BorderThickness="1"
-                                    Background="{DynamicResource WidgetIsland}" BorderBrush="{DynamicResource WidgetIslandStroke}">
+                            <Border x:Name="WidgetIsland" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
+                                    Padding="0" BorderThickness="0" Background="Transparent" BorderBrush="Transparent">
                                 <StackPanel x:Name="WidgetStrip" Orientation="Horizontal" VerticalAlignment="Center"
                                             SizeChanged="WidgetStrip_SizeChanged" />
                             </Border>

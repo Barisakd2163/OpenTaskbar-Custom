@@ -239,8 +239,8 @@ internal static class DockLayoutChecks
         foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
         {
             var profile = DockMetrics.For(size, scale);
-            Check(Math.Round(DockMetrics.WidgetDesignHeight * profile.WidgetScale) + 4 <= profile.Cell,
-                $"Widget strip scale for {size}@{scale} must fit inside the dock cell height including island border and padding.");
+            Check(Math.Round(DockMetrics.WidgetDesignHeight * profile.WidgetScale) + 2 <= profile.Cell,
+                $"Widget strip scale for {size}@{scale} must fit inside the dock cell height.");
             app.Resources["DockCellSize"] = profile.Cell;
             app.Resources["DockCellHeight"] = profile.Cell;
             app.Resources["DockIconSize"] = profile.Icon;

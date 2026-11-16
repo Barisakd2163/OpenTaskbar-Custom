@@ -40,6 +40,7 @@ public sealed class NativeWindowTracker : IDisposable
     private nint _nameChangeHook;
     private nint _systemEventHook;
     private nint _excludedWindow;
+    private nint _lastForegroundWindow;
     private int _refreshQueued;
     private int _urgentRefresh;
     private bool _disposed;
@@ -116,6 +117,7 @@ public sealed class NativeWindowTracker : IDisposable
         if (eventType == EventSystemForeground && windowHandle != 0)
         {
             _notificationWindows.Remove(windowHandle);
+            _lastForegroundWindow = windowHandle;
             QueueRefresh(urgent: true);
             ForegroundWindowChanged?.Invoke(windowHandle);
             return;
@@ -166,7 +168,12 @@ public sealed class NativeWindowTracker : IDisposable
     {
         _refreshTimer.Stop();
         RefreshWindows();
-        ForegroundWindowChanged?.Invoke(GetForegroundWindow());
+        var currentForeground = GetForegroundWindow();
+        if (currentForeground != 0 && currentForeground != _lastForegroundWindow)
+        {
+            _lastForegroundWindow = currentForeground;
+            ForegroundWindowChanged?.Invoke(currentForeground);
+        }
     }
 
     private void RefreshWindows()

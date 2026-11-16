@@ -55,6 +55,8 @@ public partial class MainWindow : Window
     private readonly List<FrameworkElement> _magnifiedIcons = [];
     private ContextMenu? _openContextMenu;
     private bool _contextTargetWasForeground;
+    private nint _foregroundAtMenuOpen;
+    private DateTime _contextMenuOpenedAtUtc;
     private Size _dockArea;
     private nint? _foregroundAtAppPress;
     private uint _taskbarCreatedMessage;
@@ -279,11 +281,21 @@ public partial class MainWindow : Window
             return IntPtr.Zero;
         }
 
-        // Keep the application's foreground state intact until the dock command runs.
+        // Keep the application's foreground state intact on left/middle clicks until the dock command runs.
+        // Right-clicks open a ContextMenu, which needs window activation so WPF Popup mouse capture and focus stay open.
         if (message == WmMouseActivate)
         {
-            handled = true;
-            return new IntPtr(MaNoActivate);
+            var mouseMessage = (int)((lParam.ToInt64() >> 16) & 0xFFFF);
+            const int wmRButtonDown = 0x0204;
+            const int wmRButtonUp = 0x0205;
+            if (mouseMessage != wmRButtonDown && mouseMessage != wmRButtonUp)
+            {
+                handled = true;
+                return new IntPtr(MaNoActivate);
+            }
+
+            var currentFg = NativeWindowTracker.GetForegroundApplicationWindow();
+            if (currentFg != 0) _foregroundWindow = currentFg;
         }
 
         // WM_DISPLAYCHANGE (displays added, removed, resized) or WM_SETTINGCHANGE/SPI_SETWORKAREA (taskbar strips
@@ -1176,7 +1188,11 @@ public partial class MainWindow : Window
         GetWindowThreadProcessId(windowHandle, out var processId);
         // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
         if (processId == Environment.ProcessId) return;
-        if (_openContextMenu is not null && _foregroundWindow != windowHandle)
+        if (_openContextMenu is not null
+            && windowHandle != 0
+            && windowHandle != _foregroundWindow
+            && windowHandle != _foregroundAtMenuOpen
+            && (DateTime.UtcNow - _contextMenuOpenedAtUtc).TotalMilliseconds > 250)
         {
             _openContextMenu.IsOpen = false;
         }
@@ -1230,6 +1246,12 @@ public partial class MainWindow : Window
         if (_openContextMenu is not null && !ReferenceEquals(_openContextMenu, contextMenu))
             _openContextMenu.IsOpen = false;
         _openContextMenu = contextMenu;
+        _foregroundAtMenuOpen = _foregroundWindow;
+        _contextMenuOpenedAtUtc = DateTime.UtcNow;
+        if (_source is not null && _source.Handle != 0)
+        {
+            SetForegroundWindow(_source.Handle);
+        }
 
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
         _contextTargetWasForeground = pinnedApp?.IsForeground == true;
@@ -1291,7 +1313,7 @@ public partial class MainWindow : Window
         _jumpListLoad?.Dispose();
         var load = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         _jumpListLoad = load;
-        ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = UiText.Get("TasksLoading"), IsEnabled = false }]);
+        ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = UiText.Get("TasksLoading"), IsEnabled = false, Focusable = false }]);
         try
         {
             var result = await _jumpLists.ReadAsync(window, shortcut, load.Token);
@@ -1363,9 +1385,14 @@ public partial class MainWindow : Window
         foreach (var item in items)
         {
             item.Tag = "JumpListEntry";
+            if (!item.IsEnabled) item.Focusable = false;
             menu.Items.Insert(index++, item);
         }
         boundary.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (menu.IsOpen && !menu.IsKeyboardFocusWithin)
+        {
+            menu.Focus();
+        }
     }
 
     private static void FocusContextMenu(ContextMenu menu)
