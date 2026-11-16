@@ -42,22 +42,22 @@ public sealed class DockSettingsStore
                 settings = settings with { InstalledWidgets = settings.Widgets ?? Array.Empty<string>() };
             if (settings is null || !IsValid(settings))
             {
-                return (CreateDefaultSettings(), "Dock ayarları geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.");
+                return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsInvalid"));
             }
 
             return (settings, null);
         }
         catch (JsonException)
         {
-            return (CreateDefaultSettings(), "Dock ayarları okunamadı. JSON biçimini düzeltin veya dosyayı silip yeniden başlatın.");
+            return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsRead"));
         }
         catch (IOException)
         {
-            return (CreateDefaultSettings(), "Dock ayarları diskten okunamadı.");
+            return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsDisk"));
         }
         catch (UnauthorizedAccessException)
         {
-            return (CreateDefaultSettings(), "Dock ayarlarına erişim izni yok.");
+            return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsAccess"));
         }
     }
 
@@ -66,13 +66,13 @@ public sealed class DockSettingsStore
     public string? Save(DockSettings settings)
     {
         if (!IsValid(settings))
-            return "Ayar değerleri geçersiz.";
+            return UiText.Get("ErrorSettingsValuesInvalid");
         try
         {
             var directory = Path.GetDirectoryName(_path);
             if (directory is null)
             {
-                return "Dock ayarları için kayıt yolu oluşturulamadı.";
+                return UiText.Get("ErrorDockSettingsPath");
             }
 
             Directory.CreateDirectory(directory);
@@ -83,11 +83,11 @@ public sealed class DockSettingsStore
         }
         catch (IOException)
         {
-            return "Dock ayarları diske kaydedilemedi.";
+            return UiText.Get("ErrorDockSettingsSave");
         }
         catch (UnauthorizedAccessException)
         {
-            return "Dock ayarlarına yazma izni yok.";
+            return UiText.Get("ErrorDockSettingsWriteAccess");
         }
     }
 

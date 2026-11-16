@@ -323,7 +323,7 @@ public partial class SettingsWindow : Window
         var (settings, pins, error) = SettingsBackup.Read(dialog.FileName);
         if (settings is null)
         {
-            ShowResult(error ?? "Ayar dosyası okunamadı veya geçersiz.", error: true);
+            ShowResult(error ?? UiText.Get("ErrorSettingsFileInvalid"), error: true);
             return;
         }
 

@@ -224,7 +224,7 @@ public sealed class LauncherCatalog
             {
                 // Another app holds the clipboard open.
                 AppLog.Warning($"Clipboard unavailable: {ex.Message}");
-                return "Sonuç panoya kopyalanamadı.";
+                return UiText.Get("ErrorClipboardCopy");
             }
         }
 
@@ -236,7 +236,7 @@ public sealed class LauncherCatalog
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
         {
             AppLog.Warning($"Launcher could not open {entry.Target}: {ex.Message}");
-            return "Seçilen öğe açılamadı.";
+            return UiText.Get("ErrorOpenItem");
         }
     }
 }

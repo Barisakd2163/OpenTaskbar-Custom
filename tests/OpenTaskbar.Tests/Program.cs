@@ -138,6 +138,15 @@ void LocalizationChecks()
     Check(!option.MatchesSearch("missing", CultureInfo.GetCultureInfo("en-US")), "An unmatched query must stay empty.");
     option.UpdateText("Pil", "Şarj durumu");
     Check(option.MatchesSearch("PİL", CultureInfo.GetCultureInfo("tr-TR")), "Turkish search must match dotted capital I.");
+
+    UiText.Current.SetLanguage(AppLanguage.English);
+    Check(UiText.Current.IsEnglish && UiText.Current.Language == AppLanguage.English, "UiText must reflect English language selection.");
+    Check(UiText.LocalizeError("ErrorDockAttach") == "Cannot connect the dock window to Windows.", "Key-based error lookup must resolve to English.");
+    Check(UiText.LocalizeError("Dock penceresi Windows'a bağlanamadı.") == "Cannot connect the dock window to Windows.", "Legacy Turkish error string lookup must resolve to English.");
+
+    UiText.Current.SetLanguage(AppLanguage.Turkish);
+    Check(!UiText.Current.IsEnglish && UiText.Current.Language == AppLanguage.Turkish, "UiText must reflect Turkish language selection.");
+    Check(UiText.LocalizeError("ErrorDockAttach") == "Dock penceresi Windows'a bağlanamadı.", "Key-based error lookup must resolve to Turkish.");
 }
 
 void SettingsChecks()

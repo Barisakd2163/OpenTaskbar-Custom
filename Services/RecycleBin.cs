@@ -38,7 +38,7 @@ public static class RecycleBin
         var result = SHFileOperation(ref operation);
         if (result == 0 || operation.Aborted) return null;
         AppLog.Warning($"SHFileOperation delete failed: 0x{result:X}");
-        return "Dosyalar Geri Dönüşüm Kutusu'na taşınamadı.";
+        return UiText.Get("ErrorRecycleBinDelete");
     }
 
     /// <summary>Empties the bin; Windows asks the user for confirmation first.</summary>
@@ -48,7 +48,7 @@ public static class RecycleBin
         // S_OK, or E_UNEXPECTED / cancelled when the bin is already empty or the user declines.
         if (result is 0 or unchecked((int)0x8000FFFF) or unchecked((int)0x800704C7)) return null;
         AppLog.Warning($"SHEmptyRecycleBin failed: 0x{result:X8}");
-        return "Geri Dönüşüm Kutusu boşaltılamadı.";
+        return UiText.Get("ErrorRecycleBinEmpty");
     }
 
     // shellapi.h packs these structs to 1 byte only on 32-bit builds; this app is x64-only.

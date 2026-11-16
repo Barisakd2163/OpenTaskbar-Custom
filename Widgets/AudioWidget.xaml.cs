@@ -81,12 +81,12 @@ public partial class AudioWidget : DockWidget
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_updating || _monitor is null) return;
-        if (!_monitor.SetVolume((float)(e.NewValue / 100))) Report("Ses düzeyi değiştirilemedi.");
+        if (!_monitor.SetVolume((float)(e.NewValue / 100))) Report(UiText.Get("ErrorVolumeChange"));
     }
 
     private void MuteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_monitor is not null && !_monitor.ToggleMute()) Report("Ses düzeyi değiştirilemedi.");
+        if (_monitor is not null && !_monitor.ToggleMute()) Report(UiText.Get("ErrorVolumeChange"));
     }
 
     private void Card_MouseWheel(object sender, MouseWheelEventArgs e)

@@ -24,7 +24,7 @@ public static class SettingsBackup
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             AppLog.Warning($"Settings export failed: {ex.Message}");
-            return "Ayar dosyası yazılamadı.";
+            return UiText.Get("ErrorSettingsFileWrite");
         }
     }
 
@@ -33,14 +33,14 @@ public static class SettingsBackup
         try
         {
             var backup = JsonSerializer.Deserialize<BackupFile>(File.ReadAllText(path), DockSettingsStore.SerializerOptions);
-            if (backup?.Settings is null || !DockSettingsStore.Validate(backup.Settings)) return (null, [], "Ayar dosyası okunamadı veya geçersiz.");
+            if (backup?.Settings is null || !DockSettingsStore.Validate(backup.Settings)) return (null, [], UiText.Get("ErrorSettingsFileInvalid"));
             var pins = (backup.Pins ?? []).Where(pin => !string.IsNullOrWhiteSpace(pin.ExecutablePath)).ToList();
             return (backup.Settings, pins, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {
             AppLog.Warning($"Settings import failed: {ex.Message}");
-            return (null, [], "Ayar dosyası okunamadı veya geçersiz.");
+            return (null, [], UiText.Get("ErrorSettingsFileInvalid"));
         }
     }
 }

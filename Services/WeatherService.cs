@@ -26,8 +26,8 @@ public static class WeatherService
             if (location is not { } place)
             {
                 return (null, string.IsNullOrWhiteSpace(city)
-                    ? "Konum alınamadı. Ayarlar'dan hava durumu için bir şehir yazın."
-                    : "Hava durumu için şehir bulunamadı.");
+                    ? UiText.Get("ErrorWeatherLocation")
+                    : UiText.Get("ErrorWeatherCityNotFound"));
             }
 
             var invariant = CultureInfo.InvariantCulture;
@@ -53,7 +53,7 @@ public static class WeatherService
             or InvalidOperationException or FormatException)
         {
             AppLog.Info($"Weather unavailable: {ex.Message}");
-            return (null, "Hava durumu alınamadı.");
+            return (null, UiText.Get("ErrorWeatherLoad"));
         }
     }
 

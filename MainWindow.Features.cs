@@ -122,7 +122,7 @@ public partial class MainWindow
             }
         }
 
-        if (failed) ShowStatus("Kısayol tuşu kaydedilemedi; başka bir uygulama kullanıyor olabilir. Ayarlardan farklı bir kısayol seçin.");
+        if (failed) ShowStatus(UiText.Get("ErrorHotkeyRegister"));
     }
 
     private void UnregisterHotkeys()
@@ -296,7 +296,7 @@ public partial class MainWindow
         var profiles = (_preferences.Current.Profiles ?? []).ToList();
         if (profiles.Any(profile => string.Equals(profile.Name, name, StringComparison.CurrentCultureIgnoreCase)))
         {
-            ShowStatus("Bu adla bir profil zaten var.");
+            ShowStatus(UiText.Get("ErrorProfileExists"));
             return;
         }
 
@@ -353,7 +353,7 @@ public partial class MainWindow
         if (!succeeded)
         {
             // Background checks stay quiet when offline; a manual check says it could not reach GitHub.
-            if (userInitiated) ShowStatus("Güncellemeler denetlenemedi. İnternet bağlantısını denetleyip yeniden deneyin.");
+            if (userInitiated) ShowStatus(UiText.Get("ErrorUpdateCheck"));
             return;
         }
 

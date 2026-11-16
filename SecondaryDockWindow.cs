@@ -31,7 +31,7 @@ public sealed class SecondaryDockWindow : Window
     {
         _monitor = monitor;
         _icons = iconCache;
-        Title = "OpenTaskbar Secondary";
+        Title = UiText.Get("SecondaryDockTitle");
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;

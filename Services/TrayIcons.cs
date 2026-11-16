@@ -59,7 +59,7 @@ public static class TrayIcons
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             AppLog.Warning($"Cannot open tray app {app.ExecutablePath}: {ex.Message}");
-            return "Arka plan uygulaması açılamadı.";
+            return UiText.Get("ErrorOpenBackgroundApp");
         }
     }
 

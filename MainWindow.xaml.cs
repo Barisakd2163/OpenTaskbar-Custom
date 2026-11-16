@@ -128,7 +128,7 @@ public partial class MainWindow : Window
         var source = (HwndSource?)PresentationSource.FromVisual(this);
         if (source is null)
         {
-            ShowStatus("Dock penceresi Windows'a bağlanamadı.");
+            ShowStatus(UiText.Get("ErrorDockAttach"));
             return;
         }
 
@@ -137,7 +137,7 @@ public partial class MainWindow : Window
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
         if (!_isPreview && !_isInspection && !ExcludeFromTaskSwitcher(source.Handle))
         {
-            ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
+            ShowStatus(UiText.Get("ErrorAltTabExclude"));
         }
 
         _windowTracker = new NativeWindowTracker(Dispatcher);
@@ -148,7 +148,7 @@ public partial class MainWindow : Window
             _windowTracker.Start(source.Handle);
             if (!_windowTracker.NotificationsAvailable)
             {
-                ShowStatus("Windows uygulama bildirimlerini dinleyemedi; bildirim rozeti kullanılamıyor.");
+                ShowStatus(UiText.Get("ErrorNotificationBadge"));
             }
         }
         catch (InvalidOperationException ex)
@@ -219,7 +219,7 @@ public partial class MainWindow : Window
         var source = _source;
         if (source is null)
         {
-            ShowStatus("Dock penceresi hazır olmadan görev çubuğu modu açılamaz.");
+            ShowStatus(UiText.Get("ErrorDockNotReady"));
             return;
         }
 
@@ -748,7 +748,7 @@ public partial class MainWindow : Window
         if (notches == 0) return;
         _wheelRemainder -= notches * 120;
         var level = Math.Clamp(_wheelAudio.Volume + notches * 0.02f, 0f, 1f);
-        if (!_wheelAudio.SetVolume(level)) ShowStatus("Ses düzeyi değiştirilemedi.");
+        if (!_wheelAudio.SetVolume(level)) ShowStatus(UiText.Get("ErrorVolumeChange"));
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
@@ -765,7 +765,7 @@ public partial class MainWindow : Window
         const int scTaskList = 0xF130;
         if (_source is null || !PostMessage(_source.Handle, wmSysCommand, scTaskList, 0))
         {
-            ShowStatus("Windows Başlat menüsüne açılma isteği gönderilemedi.");
+            ShowStatus(UiText.Get("ErrorStartMenuOpen"));
         }
     }
 
@@ -952,7 +952,7 @@ public partial class MainWindow : Window
                 : NativeWindowTracker.Activate(existingWindow.Handle);
             if (!activated)
             {
-                ShowStatus("Pencereyi öne getirme veya küçültme isteği tamamlanamadı. Windows odağı engellemiş olabilir.");
+                ShowStatus(UiText.Get("ErrorWindowActivate"));
                 return;
             }
 
@@ -970,7 +970,7 @@ public partial class MainWindow : Window
         var executablePath = app.ExecutablePath;
         if (!File.Exists(executablePath))
         {
-            ShowStatus("Uygulama dosyası bulunamadı. Windows görev çubuğundaki kısayolu güncelleyin.");
+            ShowStatus(UiText.Get("ErrorAppFileNotFound"));
             return;
         }
 
@@ -990,19 +990,19 @@ public partial class MainWindow : Window
         }
         catch (Win32Exception)
         {
-            ShowStatus("Uygulama Windows tarafından başlatılamadı.");
+            ShowStatus(UiText.Get("ErrorAppLaunchWin32"));
         }
         catch (InvalidOperationException)
         {
-            ShowStatus("Uygulama başlatma isteği tamamlanamadı.");
+            ShowStatus(UiText.Get("ErrorAppLaunchFailed"));
         }
         catch (UnauthorizedAccessException)
         {
-            ShowStatus("Uygulamayı başlatmak için erişim izni yok.");
+            ShowStatus(UiText.Get("ErrorAppLaunchDenied"));
         }
         catch (IOException)
         {
-            ShowStatus("Uygulama dosyasına erişilemedi.");
+            ShowStatus(UiText.Get("ErrorAppFileInaccessible"));
         }
     }
 
@@ -1067,7 +1067,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.Hide();
         if (sourceHandle == 0 || !NativeWindowTracker.Activate(sourceHandle))
         {
-            ShowStatus("Önizleme penceresi etkinleştirilemedi. Windows odağı engellemiş olabilir.");
+            ShowStatus(UiText.Get("ErrorPreviewActivate"));
             return;
         }
 
@@ -1081,7 +1081,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.Hide();
         if (sourceHandle == 0 || !NativeWindowTracker.RequestClose(sourceHandle))
         {
-            ShowStatus("Önizlenen pencereye kapatma isteği gönderilemedi.");
+            ShowStatus(UiText.Get("ErrorPreviewClose"));
             return;
         }
 
@@ -1296,7 +1296,7 @@ public partial class MainWindow : Window
                         var invocation = _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
                         menu.IsOpen = false;
                         if (!await invocation && IsLoaded)
-                            ShowStatus("Uygulama görevi çalıştırılamadı. Menüyü yeniden açıp deneyin.");
+                            ShowStatus(UiText.Get("ErrorAppTaskRun"));
                     };
                     items.Add(item);
                 }
@@ -1383,7 +1383,7 @@ public partial class MainWindow : Window
         var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
         if (error is not null || shortcutPath is null)
         {
-            ShowStatus(error ?? "Uygulama sabitlenemedi.");
+            ShowStatus(error ?? UiText.Get("ErrorAppPinFailed"));
             return;
         }
 
@@ -1485,11 +1485,11 @@ public partial class MainWindow : Window
         }
         else if (closedCount == 0)
         {
-            ShowStatus("Uygulamaya normal kapanma isteği gönderilemedi. Zorla kapatmak için süreç sonlandırma seçeneğini kullanın.");
+            ShowStatus(UiText.Get("ErrorAppGracefulClose"));
         }
         else
         {
-            ShowStatus("Bazı uygulama süreçlerine normal kapanma isteği gönderilemedi.");
+            ShowStatus(UiText.Get("ErrorAppPartialGracefulClose"));
         }
     }
 
@@ -1504,8 +1504,8 @@ public partial class MainWindow : Window
         if (processes.Count == 0)
         {
             ShowStatus(inaccessibleCount == 0
-                ? "Uygulamanın çalışan süreci bulunamadı."
-                : "Uygulama süreçlerine erişilemiyor; uygulama yöneticisi iznini denetleyin.");
+                ? UiText.Get("ErrorAppNoProcesses")
+                : UiText.Get("ErrorAppProcessesInaccessible"));
             return;
         }
 
@@ -1559,11 +1559,11 @@ public partial class MainWindow : Window
         }
         else if (terminatedCount == 0)
         {
-            ShowStatus("Uygulama süreçleri sonlandırılamadı. Yetkiyi ve uygulamanın tekrar başlamadığını denetleyin.");
+            ShowStatus(UiText.Get("ErrorAppTerminateFailed"));
         }
         else
         {
-            ShowStatus("Bazı uygulama süreçleri sonlandırılamadı.");
+            ShowStatus(UiText.Get("ErrorAppPartialTerminate"));
         }
     }
 
@@ -2071,7 +2071,7 @@ public partial class MainWindow : Window
         if (_replacementSession?.IsActive == true)
         {
             e.Cancel = true;
-            ShowStatus(error ?? "Windows görev çubuğu geri yüklenemedi. Uygulama açık bırakıldı.");
+            ShowStatus(error ?? UiText.Get("ErrorTaskbarRestoreFailed"));
             return;
         }
 

@@ -43,7 +43,7 @@ public static class ShellShortcuts
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
             AppLog.Warning($"Cannot open {uri}: {ex.Message}");
-            return "Windows ayar sayfası açılamadı.";
+            return UiText.Get("ErrorSettingsPageOpen");
         }
     }
 
@@ -58,7 +58,7 @@ public static class ShellShortcuts
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
         if (sent == inputs.Length) return null;
         AppLog.Warning($"SendInput sent {sent}/{inputs.Length} events: {Marshal.GetLastPInvokeError()}");
-        return "Windows kısayolu gönderilemedi.";
+        return UiText.Get("ErrorShortcutSend");
     }
 
     private static Input KeyInput(ushort key, uint flags) => new()

@@ -252,7 +252,56 @@ public sealed class UiText : INotifyPropertyChanged
             ["ImportSettings"] = ("Ayarları içe aktar…", "Import settings…"),
             ["BackupDescription"] = ("Ayarlar ve sabitlenmiş uygulamalar tek bir dosyaya kaydedilir.", "Settings and pinned apps are saved to a single file."),
             ["ExportDone"] = ("Ayarlar dışa aktarıldı.", "Settings exported."),
-            ["ImportDone"] = ("Ayarlar içe aktarıldı; {0} uygulama sabitlendi.", "Settings imported; {0} apps pinned.")
+            ["ImportDone"] = ("Ayarlar içe aktarıldı; {0} uygulama sabitlendi.", "Settings imported; {0} apps pinned."),
+            ["LauncherTitle"] = ("OpenTaskbar Başlatıcı", "OpenTaskbar Launcher"),
+            ["SecondaryDockTitle"] = ("OpenTaskbar İkincil Dock", "OpenTaskbar Secondary Dock"),
+            ["ErrorDockAttach"] = ("Dock penceresi Windows'a bağlanamadı.", "Cannot connect the dock window to Windows."),
+            ["ErrorAltTabExclude"] = ("OpenTaskbar Alt+Tab listesinden çıkarılamadı.", "Cannot exclude OpenTaskbar from Alt+Tab."),
+            ["ErrorNotificationBadge"] = ("Windows uygulama bildirimlerini dinleyemedi; bildirim rozeti kullanılamıyor.", "Cannot listen for Windows application alerts; notification indicators are unavailable."),
+            ["ErrorDockNotReady"] = ("Dock penceresi hazır olmadan görev çubuğu modu açılamaz.", "The dock window must be ready before taskbar replacement can start."),
+            ["ErrorVolumeChange"] = ("Ses düzeyi değiştirilemedi.", "Cannot change the volume."),
+            ["ErrorStartMenuOpen"] = ("Windows Başlat menüsüne açılma isteği gönderilemedi.", "Cannot request the Windows Start menu."),
+            ["ErrorWindowActivate"] = ("Pencereyi öne getirme veya küçültme isteği tamamlanamadı. Windows odağı engellemiş olabilir.", "Cannot activate or minimize the window. Windows may have blocked focus."),
+            ["ErrorAppFileNotFound"] = ("Uygulama dosyası bulunamadı. Windows görev çubuğundaki kısayolu güncelleyin.", "Application file not found. Update its Windows taskbar shortcut."),
+            ["ErrorAppLaunchWin32"] = ("Uygulama Windows tarafından başlatılamadı.", "Windows could not start the application."),
+            ["ErrorAppLaunchFailed"] = ("Uygulama başlatma isteği tamamlanamadı.", "The application launch request could not be completed."),
+            ["ErrorAppLaunchDenied"] = ("Uygulamayı başlatmak için erişim izni yok.", "Permission to start the application was denied."),
+            ["ErrorAppFileInaccessible"] = ("Uygulama dosyasına erişilemedi.", "Cannot access the application file."),
+            ["ErrorPreviewActivate"] = ("Önizleme penceresi etkinleştirilemedi. Windows odağı engellemiş olabilir.", "Cannot activate the previewed window. Windows may have blocked focus."),
+            ["ErrorPreviewClose"] = ("Önizlenen pencereye kapatma isteği gönderilemedi.", "Cannot send a close request to the previewed window."),
+            ["ErrorAppTaskRun"] = ("Uygulama görevi çalıştırılamadı. Menüyü yeniden açıp deneyin.", "Cannot run the application task. Reopen the menu and try again."),
+            ["ErrorAppPinFailed"] = ("Uygulama sabitlenemedi.", "Cannot pin the application."),
+            ["ErrorAppGracefulClose"] = ("Uygulamaya normal kapanma isteği gönderilemedi. Zorla kapatmak için süreç sonlandırma seçeneğini kullanın.", "Cannot request a normal application close. Use End process to force quit."),
+            ["ErrorAppPartialGracefulClose"] = ("Bazı uygulama süreçlerine normal kapanma isteği gönderilemedi.", "Cannot send a normal close request to some application processes."),
+            ["ErrorAppNoProcesses"] = ("Uygulamanın çalışan süreci bulunamadı.", "No running application process was found."),
+            ["ErrorAppProcessesInaccessible"] = ("Uygulama süreçlerine erişilemiyor; uygulama yöneticisi iznini denetleyin.", "Cannot access the application processes; check administrator permissions."),
+            ["ErrorAppTerminateFailed"] = ("Uygulama süreçleri sonlandırılamadı. Yetkiyi ve uygulamanın tekrar başlamadığını denetleyin.", "Cannot end the application processes. Check permissions and whether the application restarted."),
+            ["ErrorAppPartialTerminate"] = ("Bazı uygulama süreçleri sonlandırılamadı.", "Some application processes could not be ended."),
+            ["ErrorTaskbarRestoreFailed"] = ("Windows görev çubuğu geri yüklenemedi. Uygulama açık bırakıldı.", "Cannot restore the Windows taskbar. OpenTaskbar remains open."),
+            ["ErrorOpenFileOrFolder"] = ("Dosya veya klasör açılamadı.", "Cannot open the file or folder."),
+            ["ErrorHotkeyRegister"] = ("Kısayol tuşu kaydedilemedi; başka bir uygulama kullanıyor olabilir. Ayarlardan farklı bir kısayol seçin.", "Cannot register the shortcut; another app may be using it. Choose a different shortcut in Settings."),
+            ["ErrorProfileExists"] = ("Bu adla bir profil zaten var.", "A profile with this name already exists."),
+            ["ErrorUpdateCheck"] = ("Güncellemeler denetlenemedi. İnternet bağlantısını denetleyip yeniden deneyin.", "Cannot check for updates. Check your internet connection and try again."),
+            ["ErrorSettingsFileInvalid"] = ("Ayar dosyası okunamadı veya geçersiz.", "The settings file cannot be read or is invalid."),
+            ["ErrorSettingsFileWrite"] = ("Ayar dosyası yazılamadı.", "Cannot write the settings file."),
+            ["ErrorRecycleBinDelete"] = ("Dosyalar Geri Dönüşüm Kutusu'na taşınamadı.", "Cannot move the files to the Recycle Bin."),
+            ["ErrorRecycleBinEmpty"] = ("Geri Dönüşüm Kutusu boşaltılamadı.", "Cannot empty the Recycle Bin."),
+            ["ErrorClipboardCopy"] = ("Sonuç panoya kopyalanamadı.", "Cannot copy the result to the clipboard."),
+            ["ErrorOpenItem"] = ("Seçilen öğe açılamadı.", "Cannot open the selected item."),
+            ["ErrorOpenBackgroundApp"] = ("Arka plan uygulaması açılamadı.", "Cannot open the background app."),
+            ["ErrorWeatherLocation"] = ("Konum alınamadı. Ayarlar'dan hava durumu için bir şehir yazın.", "Cannot get your location. Enter a city for weather in Settings."),
+            ["ErrorWeatherCityNotFound"] = ("Hava durumu için şehir bulunamadı.", "The weather city could not be found."),
+            ["ErrorWeatherLoad"] = ("Hava durumu alınamadı.", "Cannot load the weather."),
+            ["ErrorSettingsPageOpen"] = ("Windows ayar sayfası açılamadı.", "Cannot open the Windows settings page."),
+            ["ErrorShortcutSend"] = ("Windows kısayolu gönderilemedi.", "Cannot send the Windows shortcut."),
+            ["ErrorDockSettingsInvalid"] = ("Dock ayarları geçersiz. Dosyayı düzeltin veya silip uygulamayı yeniden başlatın.", "Dock settings are invalid. Correct or delete the settings file and restart."),
+            ["ErrorDockSettingsRead"] = ("Dock ayarları okunamadı. JSON biçimini düzeltin veya dosyayı silip yeniden başlatın.", "Cannot read dock settings. Correct the JSON or delete the settings file and restart."),
+            ["ErrorDockSettingsDisk"] = ("Dock ayarları diskten okunamadı.", "Cannot read dock settings from disk."),
+            ["ErrorDockSettingsAccess"] = ("Dock ayarlarına erişim izni yok.", "Permission to read dock settings was denied."),
+            ["ErrorSettingsValuesInvalid"] = ("Ayar değerleri geçersiz.", "Settings contain invalid values."),
+            ["ErrorDockSettingsPath"] = ("Dock ayarları için kayıt yolu oluşturulamadı.", "Cannot create a location for dock settings."),
+            ["ErrorDockSettingsSave"] = ("Dock ayarları diske kaydedilemedi.", "Cannot save dock settings to disk."),
+            ["ErrorDockSettingsWriteAccess"] = ("Dock ayarlarına yazma izni yok.", "Permission to write dock settings was denied.")
         };
 
     private static readonly IReadOnlyDictionary<string, string> ErrorTranslations = new Dictionary<string, string>
@@ -342,6 +391,8 @@ public sealed class UiText : INotifyPropertyChanged
     };
 
     private volatile AppLanguage _language;
+    public AppLanguage Language => _language;
+    public bool IsEnglish => _language == AppLanguage.English;
     public static UiText Current { get; } = new();
     public event PropertyChangedEventHandler? PropertyChanged;
     public string this[string key]
@@ -356,9 +407,17 @@ public sealed class UiText : INotifyPropertyChanged
     public static string Format(string key, params object[] values) => string.Format(
         System.Globalization.CultureInfo.GetCultureInfo(Current._language == AppLanguage.English ? "en-US" : "tr-TR"), Get(key), values);
 
-    // Preserve externally supplied errors when they are not one of our own localized messages.
-    public static string LocalizeError(string message) => Current._language == AppLanguage.English
-        && ErrorTranslations.TryGetValue(message, out var translated) ? translated : message;
+    // Look up translated message from Entries or preserve externally supplied errors using ErrorTranslations fallback.
+    public static string LocalizeError(string message)
+    {
+        if (Entries.TryGetValue(message, out var entry))
+        {
+            return Current._language == AppLanguage.English ? entry.English : entry.Turkish;
+        }
+
+        return Current._language == AppLanguage.English
+            && ErrorTranslations.TryGetValue(message, out var translated) ? translated : message;
+    }
     public void SetLanguage(AppLanguage language)
     {
         if (_language == language) return;

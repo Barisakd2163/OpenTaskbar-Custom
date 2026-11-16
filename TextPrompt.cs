@@ -57,6 +57,11 @@ public static class TextPrompt
             if (args.ButtonState == MouseButtonState.Pressed) window.DragMove();
         };
         window.Content = frame;
+        window.SourceInitialized += (_, _) =>
+        {
+            var helper = new System.Windows.Interop.WindowInteropHelper(window);
+            MainWindow.ExcludeFromTaskSwitcher(helper.Handle);
+        };
         window.Loaded += (_, _) =>
         {
             input.Focus();

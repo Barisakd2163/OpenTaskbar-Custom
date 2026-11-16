@@ -28,7 +28,7 @@ public sealed class LauncherWindow : Window
     public LauncherWindow(Action<string> reportError)
     {
         _reportError = reportError;
-        Title = "OpenTaskbar Launcher";
+        Title = UiText.Get("LauncherTitle");
         Width = 640;
         SizeToContent = SizeToContent.Height;
         WindowStyle = WindowStyle.None;
@@ -149,7 +149,7 @@ public sealed class LauncherWindow : Window
     private void UpdateResults()
     {
         _hint.Visibility = _query.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        var english = UiText.Get("Start") == "Start";
+        var english = UiText.Current.IsEnglish;
         var results = Catalog.Search(_query.Text, english, ResultLimit);
         _results.ItemsSource = results.Select(entry => new ListBoxItem { Content = BuildRow(entry), Tag = entry }).ToList();
         _results.SelectedIndex = results.Count > 0 ? 0 : -1;
