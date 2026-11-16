@@ -464,10 +464,11 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         // Explorer can notify us about our own update; an identical state must not publish another one.
         if ((GetTaskbarState() & SupportedTaskbarState) == (state & SupportedTaskbarState)) return true;
+        var taskbarHandle = FindWindow("Shell_TrayWnd", null);
         var data = new AppBarData
         {
             cbSize = (uint)Marshal.SizeOf<AppBarData>(),
-            hWnd = windowHandle,
+            hWnd = taskbarHandle != 0 ? taskbarHandle : windowHandle,
             lParam = unchecked((nint)state)
         };
         SHAppBarMessage(AbmSetState, ref data);
