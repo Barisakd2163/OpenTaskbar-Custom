@@ -35,13 +35,14 @@ internal static class WidgetViewChecks
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         try
         {
-            foreach (var resource in new[] { "Theme", "ContextMenus", "WidgetControls", "SettingsControls" })
+            foreach (var resource in new[] { "Theme", "DockControls", "ContextMenus", "WidgetControls", "SettingsControls" })
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
                     Source = new Uri($"/OpenTaskbar;component/Design/{resource}.xaml", UriKind.Relative)
                 });
             ThemeManager.Apply(AppTheme.Dark);
             UiText.Current.SetLanguage(AppLanguage.Turkish);
+            checks += DockLayoutChecks.Run(app);
 
             var settingsAction = new Button { Content = UiText.Get("Apply") };
             var selectedTab = new TabItem { Header = UiText.Get("General"), Content = settingsAction };

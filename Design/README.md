@@ -11,7 +11,7 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 | Token | Value | Description |
 | :--- | :--- | :--- |
 | `DockWindowHeight` | `98 DIP` | Initial and preview window height; replacement mode derives its height from the shelf and headroom |
-| `DockHeadroom` | `24 DIP` | Transparent top headroom allowing unclipped icon magnification |
+| `DockHeadroom` | `24 DIP` | Transparent top headroom included inside the scroll viewport for magnification and launch bounce; excluded from the desktop reservation |
 | `DockMinimumShelfHeight` | `74 DIP` | Minimum shelf shared by the replacement window and dock layout; accommodates icon indicators, widget controls, padding, borders, and scrolling even when Explorer's taskbar is shorter |
 | `DockCellSize` | `52 DIP` | Width of an individual dock application item cell (square proportion) |
 | `DockMinimumCellSize` | `24 DIP` | Smallest application cell width while dock contents are being fitted |
@@ -85,7 +85,8 @@ OpenTaskbar uses a lightweight, vector-driven design system implemented in pure 
 
 - Drag either dock edge to resize the visible surface. The opposite edge stays anchored during the drag.
 - Pinned apps remain in the same order when the dock is narrowed. A horizontal scrollbar appears only when the contents exceed the available width.
-- The scrollbar reserves a compact row below the 52 DIP icon cells, keeping the icons and widget values fully visible while scrolling.
+- The scrollbar reserves a compact row below the 52 DIP icon cells, keeping the icons and widget values fully visible while scrolling. `Views/DockScrollViewer.cs` expands the viewport upward and offsets its content by the same headroom. `Design/DockControls.xaml` keeps that offset inside the scroll presenter, preserving horizontal clipping at the resize gutters.
+- Native mode queries the approved AppBar rectangle to measure space already reserved below it, then reserves only the missing shelf height. Hover headroom remains transparent above the shelf and does not reduce the desktop work area. Repeated position notifications do not accumulate another reservation.
 - Both resize edges show a subtle resting grip and a stronger accent while hovered or dragged.
 - The dock width and app cell size respond to the active monitor's available area.
 

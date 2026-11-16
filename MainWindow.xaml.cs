@@ -153,6 +153,7 @@ public partial class MainWindow : Window
             DockSurface,
             () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
         _autoHideController.SetMode(_preferences.Current.AutoHide);
+        ApplyBackdropHitTesting();
 
         if (!_isPreview) StartReplacementMode();
     }
@@ -193,7 +194,7 @@ public partial class MainWindow : Window
 
         ResizeDockToContent();
         ApplyDockAlignment();
-        var session = new TaskbarReplacementSession(this, source.Handle);
+        var session = new TaskbarReplacementSession(this, source.Handle, _preferences.Current.AutoHide != AutoHideMode.Disabled);
         session.OperationFailed += ShowStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
@@ -201,7 +202,6 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
-            session.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         }
         catch (InvalidOperationException ex)
         {
@@ -1446,6 +1446,7 @@ public partial class MainWindow : Window
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController?.SetMode(_preferences.Current.AutoHide);
+        ApplyBackdropHitTesting();
         _replacementSession?.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
@@ -1626,6 +1627,9 @@ public partial class MainWindow : Window
         DockSurface.HorizontalAlignment = alignment;
         _replacementSession?.RefreshPosition();
     }
+
+    private void ApplyBackdropHitTesting() => DockBackdrop.Visibility = !_isPreview
+        && _preferences.Current.AutoHide == AutoHideMode.Disabled ? Visibility.Visible : Visibility.Collapsed;
 
     private void ApplyTaskbarLayout(Size area)
     {

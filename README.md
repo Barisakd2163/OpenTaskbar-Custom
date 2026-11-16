@@ -10,6 +10,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Continuous Fisheye Magnification:** Smooth parabolic wave scaling across hovered and adjacent icons (up to 1.28x, bounded by the current cell dimensions) without layout jitter. All app icons share the same square display size and shrink together when cells compress.
 - **Multi-Window Live Thumbnail Previews:** Interactive live DWM window preview cards for open applications with one-click window activation and individual window close controls.
 - **Smart Auto-Hide (IntelliHide):** Automatically slides down off-screen when an active or maximized window overlaps the dock, and stays visible on the desktop. Smoothly reveals when the mouse touches the bottom screen edge.
+- **Reserved Desktop Space:** With auto-hide disabled, the dock queries Windows for the existing bottom reservation and adds only the missing shelf height. Maximized windows stop above the shelf. The separate hover headroom does not enlarge this reservation. Auto-hide releases the additional reservation and keeps the hidden shelf transparent to pointer input outside its edge trigger. Closing the dock unregisters its reservation and restores the original Windows taskbar state.
 - **Drag-and-Drop Reordering:** Reorder dock icons interactively with persistent order saved automatically.
 - **Dock Pinning:** Pin running applications or unpin shortcuts directly from the context menu. Classic taskbar shortcuts are imported from the user's Windows pin folder.
 - **Native Windows Jump Lists:** View recent/frequent destinations and published application tasks directly in the context menu via lightweight STA Shell reading.
@@ -66,7 +67,7 @@ The dependency-free Windows check project uses a controlled `TimeProvider` for d
 dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj
 ```
 
-These checks cover state transitions, duration boundaries, completion, independent widget state, session retention, localization, settings validation, widget actions, narrow catalog layouts, and text contrast in both themes. Native popup focus, outside-click dismissal, screen-edge placement, and taskbar behavior still require desktop inspection.
+These checks cover state transitions, duration boundaries, completion, independent widget state, session retention, localization, settings validation, widget actions, narrow catalog layouts, and text contrast in both themes. Dock checks exercise rendered hover/bounce clipping, horizontal scrolling, and reservation calculations at 100–200% DPI. Native popup focus, outside-click dismissal, screen-edge placement, and taskbar behavior still require desktop inspection.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes.
 
