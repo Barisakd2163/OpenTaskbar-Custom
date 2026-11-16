@@ -52,7 +52,27 @@
         <Setter Property="FontFamily" Value="{StaticResource InterfaceFont}" />
         <Setter Property="FontSize" Value="{DynamicResource TextSizeCaption}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
-        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Placement" Value="Custom" />
+        <Setter Property="CustomPopupPlacementCallback" Value="{x:Static svc:DockMetrics.TooltipPlacementCallback}" />
+        <Setter Property="HasDropShadow" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource PopupRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.35" RenderingBias="Performance" />
+                        </Border.Effect>
+                        <ContentPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style TargetType="ScrollBar">

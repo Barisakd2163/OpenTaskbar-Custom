@@ -130,7 +130,7 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Grid x:Name="DockHost">
+    <Grid x:Name="DockHost" ToolTipService.Placement="Custom">
         <Grid.RowDefinitions>
             <RowDefinition Height="{Binding Source={StaticResource DockHeadroom}}" />
             <RowDefinition Height="*" />

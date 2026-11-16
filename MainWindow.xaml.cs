@@ -71,6 +71,30 @@ public partial class MainWindow : Window
     private AudioEndpointMonitor? _wheelAudio;
     private int _wheelRemainder;
 
+    static MainWindow()
+    {
+        EventManager.RegisterClassHandler(
+            typeof(System.Windows.Controls.ToolTip),
+            System.Windows.Controls.ToolTip.OpenedEvent,
+            new RoutedEventHandler(OnToolTipOpened));
+    }
+
+    private static void OnToolTipOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ToolTip tooltip) return;
+
+        void Elevate()
+        {
+            if (PresentationSource.FromVisual(tooltip) is HwndSource source && source.Handle != nint.Zero)
+            {
+                SetWindowPos(source.Handle, new nint(-1), 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate);
+            }
+        }
+
+        Elevate();
+        tooltip.Dispatcher.BeginInvoke((Action)Elevate, DispatcherPriority.Loaded);
+    }
+
     public MainWindow()
     {
         InitializeComponent();

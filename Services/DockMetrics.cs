@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls.Primitives;
+using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
@@ -38,6 +40,30 @@ public static class DockMetrics
 
     public static Thickness Inset { get; } = new(SideInset, 0, SideInset, BottomGap);
     public static Thickness Padding { get; } = new(10, 4, 10, 4);
+
+    public static CustomPopupPlacementCallback TooltipPlacementCallback { get; } = PlaceDockTooltip;
+
+    public static CustomPopupPlacement[] PlaceDockTooltip(Size popupSize, Size targetSize, Point offset)
+    {
+        return DockFlyout.Edge switch
+        {
+            DockEdge.Left =>
+            [
+                new CustomPopupPlacement(new Point(targetSize.Width + 8, (targetSize.Height - popupSize.Height) / 2), PopupPrimaryAxis.None),
+                new CustomPopupPlacement(new Point(-popupSize.Width - 8, (targetSize.Height - popupSize.Height) / 2), PopupPrimaryAxis.None)
+            ],
+            DockEdge.Right =>
+            [
+                new CustomPopupPlacement(new Point(-popupSize.Width - 8, (targetSize.Height - popupSize.Height) / 2), PopupPrimaryAxis.None),
+                new CustomPopupPlacement(new Point(targetSize.Width + 8, (targetSize.Height - popupSize.Height) / 2), PopupPrimaryAxis.None)
+            ],
+            _ =>
+            [
+                new CustomPopupPlacement(new Point((targetSize.Width - popupSize.Width) / 2, -popupSize.Height - 8), PopupPrimaryAxis.None),
+                new CustomPopupPlacement(new Point((targetSize.Width - popupSize.Width) / 2, targetSize.Height + 8), PopupPrimaryAxis.None)
+            ]
+        };
+    }
 
     /// <summary>Natural widget card height; smaller dock sizes scale the widget strip down from it.</summary>
     public const double WidgetDesignHeight = 46;

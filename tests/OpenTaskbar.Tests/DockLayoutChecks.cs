@@ -214,6 +214,27 @@ internal static class DockLayoutChecks
         Check((exStyle & 0x00040000) == 0, "Task switcher exclusion must clear WS_EX_APPWINDOW.");
         testWindow.Close();
 
+        var targetSize = new Size(48, 48);
+        var popupSize = new Size(120, 26);
+        DockFlyout.Edge = DockEdge.Bottom;
+        var bottomPlacements = DockMetrics.PlaceDockTooltip(popupSize, targetSize, new Point(0, 0));
+        Check(bottomPlacements.Length == 2, "Bottom dock tooltip must provide primary and fallback placements.");
+        Check(bottomPlacements[0].Point.X == (targetSize.Width - popupSize.Width) / 2, "Bottom dock tooltip primary placement must be horizontally centered.");
+        Check(bottomPlacements[0].Point.Y == -popupSize.Height - 8, "Bottom dock tooltip primary placement must sit 8 DIPs above the button.");
+        Check(bottomPlacements[1].Point.X == (targetSize.Width - popupSize.Width) / 2, "Bottom dock tooltip fallback placement must be horizontally centered.");
+        Check(bottomPlacements[1].Point.Y == targetSize.Height + 8, "Bottom dock tooltip fallback placement must sit 8 DIPs below the button.");
+
+        DockFlyout.Edge = DockEdge.Left;
+        var leftPlacements = DockMetrics.PlaceDockTooltip(popupSize, targetSize, new Point(0, 0));
+        Check(leftPlacements[0].Point.X == targetSize.Width + 8, "Left edge primary placement must be to the right of the dock.");
+        Check(leftPlacements[0].Point.Y == (targetSize.Height - popupSize.Height) / 2, "Left edge primary placement must be vertically centered.");
+
+        DockFlyout.Edge = DockEdge.Right;
+        var rightPlacements = DockMetrics.PlaceDockTooltip(popupSize, targetSize, new Point(0, 0));
+        Check(rightPlacements[0].Point.X == -popupSize.Width - 8, "Right edge primary placement must be to the left of the dock.");
+        Check(rightPlacements[0].Point.Y == (targetSize.Height - popupSize.Height) / 2, "Right edge primary placement must be vertically centered.");
+        DockFlyout.Edge = DockEdge.Bottom;
+
         return checks;
     }
 }
