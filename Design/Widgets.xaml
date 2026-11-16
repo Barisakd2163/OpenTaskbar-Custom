@@ -175,8 +175,8 @@
         <Setter Property="Height" Value="32" />
         <Setter Property="MinWidth" Value="32" />
         <Setter Property="Padding" Value="9,0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="{DynamicResource WidgetCardStroke}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="BorderThickness" Value="1.5" />
         <Setter Property="Cursor" Value="Hand" />
@@ -200,6 +200,7 @@
                             <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource StrokeFocus}" />
                         </Trigger>
                         <Trigger Property="ToggleButton.IsChecked" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceSelectedStrong}" />
                             <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource WidgetOnStroke}" />
                             <Setter Property="Foreground" Value="{DynamicResource WidgetAccent}" />
                         </Trigger>

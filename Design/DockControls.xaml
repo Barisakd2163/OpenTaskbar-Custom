@@ -39,8 +39,8 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Width" Value="{StaticResource DockCellSize}" />
-        <Setter Property="Height" Value="{StaticResource DockCellHeight}" />
+        <Setter Property="Width" Value="{DynamicResource DockCellSize}" />
+        <Setter Property="Height" Value="{DynamicResource DockCellHeight}" />
         <Setter Property="Margin" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Cursor" Value="Hand" />
@@ -56,15 +56,20 @@
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="6" />
                             </Grid.RowDefinitions>
+                            <!-- Aurora hover: a soft light pool under the icon instead of a hover box. -->
+                            <Ellipse x:Name="HoverGlow" Grid.RowSpan="2" Margin="-6,0,-6,-4" Fill="{DynamicResource IconHoverGlow}"
+                                     Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <Ellipse x:Name="ActiveIndicator" Grid.Row="1" Height="4" Width="4"
-                                     Fill="{DynamicResource IndicatorBrush}" VerticalAlignment="Center"
-                                     HorizontalAlignment="Center" Visibility="Collapsed" />
+                            <!-- Running apps get a short capsule; the foreground app a longer glowing one. -->
+                            <Rectangle x:Name="ActiveIndicator" Grid.Row="1" Height="3" Width="8" RadiusX="1.5" RadiusY="1.5"
+                                       Fill="{DynamicResource IndicatorBrush}" VerticalAlignment="Center"
+                                       HorizontalAlignment="Center" Visibility="Collapsed" />
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Surface" Property="Background" Value="Transparent" />
+                            <Setter TargetName="HoverGlow" Property="Opacity" Value="1" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
@@ -82,9 +87,13 @@
                         <DataTrigger Binding="{Binding IsForeground}" Value="True">
                             <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
                             <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1.0" />
-                            <Setter TargetName="ActiveIndicator" Property="Width" Value="5" />
-                            <Setter TargetName="ActiveIndicator" Property="Height" Value="5" />
+                            <Setter TargetName="ActiveIndicator" Property="Width" Value="16" />
                             <Setter TargetName="ActiveIndicator" Property="Fill" Value="{DynamicResource IndicatorForegroundBrush}" />
+                            <Setter TargetName="ActiveIndicator" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect Color="#38BDF8" BlurRadius="8" ShadowDepth="0" Opacity="0.85" />
+                                </Setter.Value>
+                            </Setter>
                         </DataTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

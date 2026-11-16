@@ -477,7 +477,8 @@ public partial class MainWindow : Window
             AnimateRunningAppRemoval(_runningApps[index]);
         }
 
-        RunningAppsDivider.Visibility = desiredApps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RunningAppsDivider.Visibility = desiredApps.Count > 0 && VisiblePinnedCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateExtrasDividerVisibility();
         return layoutChanged;
     }
 
@@ -1178,6 +1179,7 @@ public partial class MainWindow : Window
         {
             _openContextMenu.IsOpen = false;
         }
+        if (_foregroundWindow == windowHandle) return;
         _foregroundWindow = windowHandle;
         UpdateWindowIndicators(VisibleSnapshot);
         UpdateSecondaryDocks();
@@ -1185,10 +1187,6 @@ public partial class MainWindow : Window
         {
             app.IsForeground = VisibleSnapshot.Any(window => window.Handle == windowHandle
                 && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)) == true;
-        }
-        if (_replacementSession?.IsActive == true)
-        {
-            _replacementSession.RefreshPosition();
         }
     }
 
@@ -1646,7 +1644,11 @@ public partial class MainWindow : Window
         _widgetPanel.Close(restoreFocus: false);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
         _widgets.Clear();
-        foreach (var widget in _widgetService.CreateWidgets(selected)) _widgets.Add(widget);
+        var filtered = selected?.Where(id =>
+            (!_preferences.Current.ShowClock || (id != DockWidgetService.ClockId && id != DockWidgetService.DateId))
+            && (!_preferences.Current.ShowSystemStats || (id != DockWidgetService.BatteryId && id != "Memory")))
+            .ToArray();
+        foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
         WidgetDivider.Visibility = _widgets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
@@ -1820,11 +1822,14 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(profile.Radius);
-        // The sheen sits exactly on the top border line, inset past the rounded corners.
-        DockSheen.Margin = new Thickness(profile.Radius, -(profile.VerticalPadding + 1), profile.Radius, 0);
+        // The sheen sits on the inner top edge of the glass frame, inset past the rounded corners.
+        var sheenHorizontal = Math.Max(4, profile.Radius - 8);
+        DockSheen.Margin = new Thickness(sheenHorizontal, -profile.VerticalPadding, sheenHorizontal, 0);
         if (IsVertical) DockFrame.Padding = new Thickness(profile.VerticalPadding, 10, profile.VerticalPadding, 10);
         var scale = profile.WidgetScale;
-        WidgetStrip.LayoutTransform = scale < 1 ? new ScaleTransform(scale, scale) : Transform.Identity;
+        var widgetTransform = scale < 1 ? new ScaleTransform(scale, scale) : Transform.Identity;
+        WidgetStrip.LayoutTransform = widgetTransform;
+        DockWidgets.LayoutTransform = widgetTransform;
         if (_replacementSession is not null)
         {
             _replacementSession.ShelfHeight = profile.Shelf;
@@ -1837,6 +1842,7 @@ public partial class MainWindow : Window
 
     private void WidgetStrip_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        if (!e.WidthChanged) return;
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
@@ -2027,9 +2033,9 @@ public partial class MainWindow : Window
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
         WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
-        WidgetIsland.Measure(unbounded);
+        if (!WidgetIsland.IsMeasureValid) WidgetIsland.Measure(unbounded);
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
-        DockContents.Measure(unbounded);
+        if (!DockContents.IsMeasureValid) DockContents.Measure(unbounded);
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         if (IsFullWidth)
@@ -2040,10 +2046,14 @@ public partial class MainWindow : Window
         }
 
         var desiredWidth = Math.Ceiling(DockContents.DesiredSize.Width + widgetsWidth + DockHorizontalChrome);
-        DockSurface.Width = Math.Clamp(_dockWidthOverride ?? desiredWidth,
+        var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
+        if (double.IsNaN(DockSurface.Width) || Math.Abs(DockSurface.Width - targetWidth) >= 0.5)
+        {
+            DockSurface.Width = targetWidth;
+        }
         if (_dockArea.Width <= 0)
-            Width = DockSurface.Width + margin.Left + margin.Right;
+            Width = targetWidth + margin.Left + margin.Right;
     }
 
     internal static bool ExcludeFromTaskSwitcher(nint windowHandle)

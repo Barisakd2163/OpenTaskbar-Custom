@@ -58,9 +58,9 @@
     <SolidColorBrush x:Key="SettingsSidebarOverlay" Color="#24FFFFFF" />
     <SolidColorBrush x:Key="CaptionCloseForeground" Color="#FFFFFFFF" />
     <!-- Dock widgets -->
-    <SolidColorBrush x:Key="WidgetCard" Color="#00000000" />
-    <SolidColorBrush x:Key="WidgetCardHover" Color="#12000000" />
-    <SolidColorBrush x:Key="WidgetCardStroke" Color="#00000000" />
+    <SolidColorBrush x:Key="WidgetCard" Color="#0D000000" />
+    <SolidColorBrush x:Key="WidgetCardHover" Color="#18000000" />
+    <SolidColorBrush x:Key="WidgetCardStroke" Color="#16000000" />
     <SolidColorBrush x:Key="WidgetTrack" Color="#1F000000" />
     <SolidColorBrush x:Key="WidgetAccent" Color="#FF0D9488" />
     <SolidColorBrush x:Key="WidgetAccentText" Color="#FFFFFFFF" />

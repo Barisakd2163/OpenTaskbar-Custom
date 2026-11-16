@@ -235,6 +235,25 @@ internal static class DockLayoutChecks
         Check(rightPlacements[0].Point.Y == (targetSize.Height - popupSize.Height) / 2, "Right edge primary placement must be vertically centered.");
         DockFlyout.Edge = DockEdge.Bottom;
 
+        foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
+        {
+            var profile = DockMetrics.For(size);
+            Check(Math.Round(DockMetrics.WidgetDesignHeight * profile.WidgetScale) + 4 <= profile.Cell,
+                $"Widget strip scale for {size} must fit inside the dock cell height including island border and padding.");
+            app.Resources["DockCellSize"] = profile.Cell;
+            app.Resources["DockCellHeight"] = profile.Cell;
+            app.Resources["DockIconSize"] = profile.Icon;
+            var button = new Button { Style = (Style)app.FindResource("DockButton"), DataContext = new DockApp("App", "app.exe") { WindowCount = 1, IsForeground = true } };
+            button.Measure(new Size(profile.Cell, profile.Cell));
+            button.Arrange(new Rect(0, 0, profile.Cell, profile.Cell));
+            button.UpdateLayout();
+            Check(button.ActualWidth == profile.Cell && button.ActualHeight == profile.Cell,
+                $"DockButton must dynamically resize to {profile.Cell} DIP for {size}.");
+        }
+        app.Resources["DockCellSize"] = DockMetrics.CellSize;
+        app.Resources["DockCellHeight"] = DockMetrics.CellSize;
+        app.Resources["DockIconSize"] = DockMetrics.IconSize;
+
         return checks;
     }
 }

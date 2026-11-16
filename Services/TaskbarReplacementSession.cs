@@ -52,7 +52,8 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const double DockHeadroomDips = DockMetrics.Headroom;
     private bool _autoHideEnabled;
     private bool _positioning;
-    private Rect? _reservation;
+    private (int Left, int Bottom, int NativePixels, int ExtraHeight)? _reservation;
+    private (int Left, int Top, int Width, int Height, bool FullScreenSuppressed)? _lastWindowPos;
     private Size _lastLayout;
     private int _stopInProgress;
 
@@ -83,6 +84,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             _edge = value;
             _reservation = null;
             _sideReservation = null;
+            _lastWindowPos = null;
             _lastLayout = default;
             if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
             if (_registered)
@@ -209,6 +211,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
             _registered = true;
             _reservation = null;
+            _lastWindowPos = null;
             _active = true;
             PositionDockWindow();
         }
@@ -229,6 +232,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         _registered = false;
         _reservation = null;
         _sideReservation = null;
+        _lastWindowPos = null;
         try
         {
             ReadNativeTaskbarHeight();
@@ -269,6 +273,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             switch (unchecked((uint)wParam.ToInt64()))
             {
                 case AbnPosChanged:
+                    _lastWindowPos = null;
                     EnforceNativeTaskbarHidden();
                     PositionDockWindow();
                     return true;
@@ -386,9 +391,9 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         var metrics = DockLayoutMetrics.Calculate(
-            Math.Max((double)_window.FindResource("DockMinimumShelfHeight"), ShelfHeight),
+            ShelfHeight,
             _nativeBottomTaskbarHeight, (double)_window.FindResource("DockHeadroom"), dpi);
-        ReserveShelf(monitorInfo.rcMonitor, metrics);
+        ReserveShelf(monitorInfo.rcMonitor, metrics, dpi);
         var height = metrics.ShelfPixels;
         var totalHeight = metrics.WindowPixels;
         var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,
@@ -407,10 +412,14 @@ public sealed class TaskbarReplacementSession : IDisposable
         var left = monitorLeft;
         UpdateForeground(GetForegroundWindow());
         var top = monitorInfo.rcMonitor.Bottom - totalHeight;
+        var desiredPos = (left, top, width, totalHeight, _fullScreenSuppressed);
+        if (_lastWindowPos == desiredPos) return;
+        _lastWindowPos = desiredPos;
         if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, top,
                 width, totalHeight,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
+            _lastWindowPos = null;
             throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
         }
     }
@@ -427,21 +436,21 @@ public sealed class TaskbarReplacementSession : IDisposable
         _nativeBottomTaskbarHeight = data.uEdge == AbeBottom ? (data.rc.Bottom - data.rc.Top) * 96d / dpi : 0;
     }
 
-    private void ReserveShelf(Rect monitor, DockLayoutMetrics metrics)
+    private void ReserveShelf(Rect monitor, DockLayoutMetrics metrics, uint dpi)
     {
         if (!_registered) return;
+        var nativePixels = _autoHideEnabled ? 0 : (int)Math.Ceiling(_nativeBottomTaskbarHeight * dpi / 96d);
+        var extraHeight = metrics.AdditionalReservation(nativePixels, _autoHideEnabled);
+        var request = (monitor.Left, monitor.Bottom, nativePixels, extraHeight);
+        if (_reservation == request) return;
+        _reservation = request;
         var data = CreateData();
         data.uEdge = AbeBottom;
-        data.rc = new Rect(monitor.Left, monitor.Bottom - metrics.ShelfPixels, monitor.Right, monitor.Bottom);
+        var bottom = monitor.Bottom - nativePixels;
+        data.rc = new Rect(monitor.Left, bottom - extraHeight, monitor.Right, bottom);
         SHAppBarMessage(AbmQueryPos, ref data);
-        // Query excludes this appbar; deriving the baseline from rcWork would accumulate our own reservation.
-        var existingHeight = Math.Max(0, monitor.Bottom - data.rc.Bottom);
-        var extraHeight = metrics.AdditionalReservation(existingHeight, _autoHideEnabled);
         data.rc.Top = data.rc.Bottom - extraHeight;
-        if (_reservation is { } current && current.Equals(data.rc)) return;
-        _reservation = data.rc;
         SHAppBarMessage(AbmSetPos, ref data);
-        _reservation = data.rc;
     }
 
     /// <summary>

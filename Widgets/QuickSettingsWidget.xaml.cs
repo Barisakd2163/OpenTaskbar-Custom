@@ -76,7 +76,8 @@ public partial class QuickSettingsWidget : DockWidget
         pill.Visibility = _radioAccess && radio is null && IsActive ? Visibility.Collapsed : Visibility.Visible;
         var on = radio?.State == RadioState.On;
         toggle.IsChecked = on;
-        pill.SetResourceReference(Border.BorderBrushProperty, on ? "WidgetOnStroke" : "WidgetCardStroke");
+        pill.SetResourceReference(Border.BackgroundProperty, on ? "SurfaceSelectedStrong" : "SurfaceSelected");
+        pill.SetResourceReference(Border.BorderBrushProperty, on ? "WidgetOnStroke" : "StrokeSubtle");
         toggle.SetResourceReference(ForegroundProperty, on ? "WidgetAccent" : "TextPrimary");
         var toggleLabel = radio is null ? UiText.Format("RadioSettings", name) : UiText.Format("RadioToggle", name);
         toggle.ToolTip = toggleLabel;

@@ -6,7 +6,7 @@
     <Border Style="{StaticResource WidgetCardBorder}" Padding="7,0">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <!-- Split pills: the icon toggles the radio, the chevron opens its settings page. -->
-            <Border x:Name="WifiPill" CornerRadius="16" BorderThickness="1.5" BorderBrush="{DynamicResource WidgetCardStroke}" Margin="2,0">
+            <Border x:Name="WifiPill" CornerRadius="16" BorderThickness="1.5" Background="{DynamicResource SurfaceSelected}" BorderBrush="{DynamicResource StrokeSubtle}" Margin="2,0">
                 <StackPanel Orientation="Horizontal">
                     <ToggleButton x:Name="WifiToggle" Style="{StaticResource WidgetIconButton}" Width="32" Height="29" Click="WifiToggle_Click">
                         <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconWifi}" />
@@ -21,7 +21,7 @@
                     ToolTip="{local:Loc Display}" AutomationProperties.Name="{local:Loc Display}">
                 <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconCast}" />
             </Button>
-            <Border x:Name="BluetoothPill" CornerRadius="16" BorderThickness="1.5" BorderBrush="{DynamicResource WidgetCardStroke}" Margin="2,0">
+            <Border x:Name="BluetoothPill" CornerRadius="16" BorderThickness="1.5" Background="{DynamicResource SurfaceSelected}" BorderBrush="{DynamicResource StrokeSubtle}" Margin="2,0">
                 <StackPanel Orientation="Horizontal">
                     <ToggleButton x:Name="BluetoothToggle" Style="{StaticResource WidgetIconButton}" Width="32" Height="29" Click="BluetoothToggle_Click">
                         <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconBluetooth}" />

@@ -59,7 +59,15 @@ public partial class MainWindow
             }
         }
 
-        ExtrasDivider.Visibility = showBin || _stacks.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ExtrasDivider.Visibility = (showBin || _stacks.Count > 0) && (VisiblePinnedCount > 0 || _runningApps.Count > 0)
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateExtrasDividerVisibility()
+    {
+        ExtrasDivider.Visibility = (RecycleBinButton.Visibility == Visibility.Visible || _stacks.Count > 0)
+            && (VisiblePinnedCount > 0 || _runningApps.Count > 0)
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private IReadOnlyList<string> ConfiguredStackFolders() => _preferences.Current.StackFolders ?? [DownloadsFolder];
