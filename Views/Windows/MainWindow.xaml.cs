@@ -45,6 +45,8 @@ public partial class MainWindow : Window
     private long? _jumpListSession;
     private readonly DispatcherTimer _previewCloseTimer;
     private readonly DispatcherTimer _widgetRefreshTimer;
+    private readonly DispatcherTimer _iconRetryTimer;
+    private readonly RunningAppIconCache _runningAppIcons = new();
     private readonly WindowThumbnailPreview _thumbnailPreview;
     private readonly Dictionary<string, nint> _lastSelectedWindows = new(StringComparer.OrdinalIgnoreCase);
     private DockPosition _dockPosition = DockPosition.Left;
@@ -124,6 +126,11 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(15)
         };
         _widgetRefreshTimer.Tick += WidgetRefreshTimer_Tick;
+        _iconRetryTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = RunningAppIconCache.RetryDelay
+        };
+        _iconRetryTimer.Tick += IconRetryTimer_Tick;
         _timedWidgetRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromSeconds(1)
@@ -379,6 +386,7 @@ public partial class MainWindow : Window
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
+        _runningAppIcons.Retain(windows);
         windows = FilterWindows(windows);
         var foreground = NativeWindowTracker.GetForegroundApplicationWindow();
         if (foreground != 0)
@@ -400,6 +408,12 @@ public partial class MainWindow : Window
         }
 
         UpdateSecondaryDocks();
+        // Store app windows often publish their identity shortly after they appear, without another window event.
+        if (_runningAppIcons.HasPendingLookups && !_iconRetryTimer.IsEnabled)
+        {
+            _iconRetryTimer.Start();
+        }
+
         if (_thumbnailPreview.IsVisible)
         {
             var activeHandles = _thumbnailPreview.ActiveHandles;
@@ -407,6 +421,15 @@ public partial class MainWindow : Window
             {
                 _thumbnailPreview.Hide();
             }
+        }
+    }
+
+    private void IconRetryTimer_Tick(object? sender, EventArgs e)
+    {
+        _iconRetryTimer.Stop();
+        if (_windowTracker is not null)
+        {
+            WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
         }
     }
 
@@ -452,8 +475,11 @@ public partial class MainWindow : Window
             {
                 var executablePath = group.Key;
                 var hasNotification = _preferences.Current.NotificationBadgesEnabled && group.Any(window => window.HasNotification);
+                // The topmost window decides identity icons, as ApplicationFrameHost hosts several Store apps.
+                var icon = _runningAppIcons.Get(executablePath, group.First().Handle);
                 if (currentApps.TryGetValue(executablePath, out var existingApp))
                 {
+                    existingApp.Icon = icon;
                     existingApp.HasNotification = hasNotification;
                     existingApp.IsForeground = group.Any(window => window.Handle == _foregroundWindow);
                     existingApp.WindowCount = group.Count();
@@ -462,7 +488,7 @@ public partial class MainWindow : Window
 
                 return new DockApp(GetApplicationName(executablePath), executablePath)
                 {
-                    Icon = ApplicationIconProvider.GetForFile(executablePath),
+                    Icon = icon,
                     HasNotification = hasNotification,
                     IsForeground = group.Any(window => window.Handle == _foregroundWindow),
                     WindowCount = group.Count()
@@ -1924,6 +1950,8 @@ public partial class MainWindow : Window
         _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
         _widgetRefreshTimer.Stop();
         _widgetRefreshTimer.Tick -= WidgetRefreshTimer_Tick;
+        _iconRetryTimer.Stop();
+        _iconRetryTimer.Tick -= IconRetryTimer_Tick;
         _timedWidgetRefreshTimer.Stop();
         _timedWidgetRefreshTimer.Tick -= TimedWidgetRefreshTimer_Tick;
         foreach (var widget in _widgets.OfType<ITimedDockWidget>()) widget.PropertyChanged -= TimedWidget_PropertyChanged;

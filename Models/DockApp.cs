@@ -13,13 +13,15 @@ public sealed class DockApp(string name, string executablePath) : INotifyPropert
     private bool _hasNotification;
     private bool _isForeground;
     private int _windowCount;
+    private BitmapSource? _icon;
     public string? LaunchArguments { get; init; }
 
     [JsonIgnore]
     public string? ShortcutPath { get; init; }
 
+    // Notifies because packaged apps can receive their icon after the dock entry is created.
     [JsonIgnore]
-    public BitmapSource? Icon { get; set; }
+    public BitmapSource? Icon { get => _icon; set => SetField(ref _icon, value); }
 
     [JsonIgnore]
     public bool HasNotification { get => _hasNotification; set => SetField(ref _hasNotification, value); }

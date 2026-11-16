@@ -31,7 +31,6 @@ public partial class MainWindow
     private string? _appliedProfileSignature;
     private bool _profileFilterApplied;
     private readonly List<SecondaryDockWindow> _secondaryDocks = [];
-    private readonly Dictionary<string, System.Windows.Media.Imaging.BitmapSource?> _secondaryIcons = new(StringComparer.OrdinalIgnoreCase);
     private DispatcherTimer? _secondaryTimer;
 
     private void InitializeFeatures()
@@ -451,7 +450,7 @@ public partial class MainWindow
 
         foreach (var monitor in wanted.Where(monitor => _secondaryDocks.All(dock => dock.Monitor != monitor)))
         {
-            var dock = new SecondaryDockWindow(monitor, _secondaryIcons);
+            var dock = new SecondaryDockWindow(monitor, _runningAppIcons);
             dock.Show();
             _secondaryDocks.Add(dock);
         }

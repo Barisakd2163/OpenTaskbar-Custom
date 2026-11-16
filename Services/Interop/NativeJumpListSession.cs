@@ -108,6 +108,18 @@ internal sealed class NativeJumpListSession : IDisposable
         finally { if (appId != 0) Marshal.FreeCoTaskMem(appId); }
     }
 
+    // Explicit window identity without throwing, for dock icons. ApplicationFrameHost frames publish the hosted app's ID here.
+    internal static string? ReadWindowAppId(nint window)
+    {
+        var iid = PropertyStoreInterface;
+        if (window == 0 || SHGetPropertyStoreForWindow(window, ref iid, out var pointer) < 0 || pointer == 0) return null;
+        using var store = new ShellComObject(pointer);
+        var key = AppIdKey;
+        if (store.Method<GetValue>(5)(store.Handle, ref key, out var value) < 0) return null;
+        try { return value.Type is 31 or 8 && Marshal.PtrToStringUni(value.Pointer) is { } id && !string.IsNullOrWhiteSpace(id) ? id : null; }
+        finally { PropVariantClear(ref value); }
+    }
+
     private void AddAutomatic(List<JumpListGroup> groups, ShellComObject automatic, int kind, string title, CancellationToken cancellation)
     {
         var iid = ObjectArrayInterface;
