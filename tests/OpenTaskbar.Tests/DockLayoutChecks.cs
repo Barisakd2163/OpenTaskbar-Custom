@@ -490,6 +490,30 @@ internal static class DockLayoutChecks
         flyout.Close();
         Check(!flyout.IsOpen, "DockFlyout must close correctly.");
 
+        // Verify themed ComboBox and ComboBoxItem styling
+        Check(app.FindResource(typeof(ComboBox)) is Style cbStyle && cbStyle.Setters.Count > 0, "ComboBox must have themed style.");
+        Check(app.FindResource(typeof(ComboBoxItem)) is Style cbiStyle && cbiStyle.Setters.Count > 0, "ComboBoxItem must have themed style.");
+
+        // Verify dynamic weather condition gradient backgrounds and WeatherReport metrics
+        var clearBg = WeatherService.GetConditionBackground(0);
+        var rainBg = WeatherService.GetConditionBackground(61);
+        var snowBg = WeatherService.GetConditionBackground(71);
+        var stormBg = WeatherService.GetConditionBackground(95);
+        Check(clearBg is LinearGradientBrush && rainBg is LinearGradientBrush && snowBg is LinearGradientBrush && stormBg is LinearGradientBrush,
+            "Weather conditions must provide distinct LinearGradientBrush dynamic backgrounds.");
+        Check(!ReferenceEquals(clearBg, rainBg), "Clear and rain condition backgrounds must differ.");
+
+        var testDays = new[]
+        {
+            new WeatherDay(DateOnly.FromDateTime(DateTime.Today), 0, 10, 20),
+            new WeatherDay(DateOnly.FromDateTime(DateTime.Today.AddDays(1)), 1, 11, 21),
+            new WeatherDay(DateOnly.FromDateTime(DateTime.Today.AddDays(2)), 61, 9, 17),
+            new WeatherDay(DateOnly.FromDateTime(DateTime.Today.AddDays(3)), 3, 12, 19)
+        };
+        var testReport = new WeatherReport("Istanbul", 18.5, 0, 18.0, testDays, Humidity: 68.0, WindSpeed: 12.5);
+        Check(testReport.Humidity == 68.0 && testReport.WindSpeed == 12.5, "WeatherReport must track humidity and wind speed.");
+        Check(testReport.Days.Count == 4, "WeatherReport must track 4 total days (today + 3 forecast days).");
+
         return checks;
     }
 }

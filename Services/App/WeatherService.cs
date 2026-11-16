@@ -1,12 +1,21 @@
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Media;
 
 namespace OpenTaskbar.Services;
 
 public sealed record WeatherDay(DateOnly Date, int Code, double Min, double Max);
 
-public sealed record WeatherReport(string Place, double Temperature, int Code, double ApparentTemperature, IReadOnlyList<WeatherDay> Days);
+public sealed record WeatherReport(
+    string Place,
+    double Temperature,
+    int Code,
+    double ApparentTemperature,
+    IReadOnlyList<WeatherDay> Days,
+    double Humidity = 0,
+    double WindSpeed = 0);
 
 /// <summary>
 /// Weather from Open-Meteo (free, no API key). The location is the city typed in Settings, or Windows location
@@ -34,7 +43,7 @@ public static class WeatherService
             var invariant = CultureInfo.InvariantCulture;
             var url = "https://api.open-meteo.com/v1/forecast?latitude=" + place.Latitude.ToString("F3", invariant)
                 + "&longitude=" + place.Longitude.ToString("F3", invariant)
-                + "&current=temperature_2m,apparent_temperature,weather_code"
+                + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=4&timezone=auto";
             using var document = JsonDocument.Parse(await Client.GetStringAsync(url, cancellation));
             var current = document.RootElement.GetProperty("current");
@@ -44,11 +53,15 @@ public static class WeatherService
             var maxima = daily.GetProperty("temperature_2m_max").EnumerateArray().Select(value => value.GetDouble()).ToList();
             var minima = daily.GetProperty("temperature_2m_min").EnumerateArray().Select(value => value.GetDouble()).ToList();
             var days = dates.Select((date, index) => new WeatherDay(date, codes[index], minima[index], maxima[index])).ToList();
+            double humidity = current.TryGetProperty("relative_humidity_2m", out var hProp) ? hProp.GetDouble() : 0;
+            double windSpeed = current.TryGetProperty("wind_speed_10m", out var wProp) ? wProp.GetDouble() : 0;
             var report = new WeatherReport(place.Name,
                 current.GetProperty("temperature_2m").GetDouble(),
                 current.GetProperty("weather_code").GetInt32(),
                 current.GetProperty("apparent_temperature").GetDouble(),
-                days);
+                days,
+                humidity,
+                windSpeed);
             return (report, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
@@ -99,6 +112,43 @@ public static class WeatherService
         >= 71 and <= 77 or 85 or 86 => ("IconSnow", "WeatherSnow"),
         >= 95 => ("IconCloudLightning", "WeatherStorm"),
         _ => ("IconCloud", "WeatherCloudy")
+    };
+
+    /// <summary>Subtle ambient gradient tint matching the condition for flyout backgrounds.</summary>
+    public static Brush GetConditionBackground(int code) => code switch
+    {
+        0 => new LinearGradientBrush(
+            Color.FromArgb(0x38, 0xF5, 0x9E, 0x0B),
+            Color.FromArgb(0x0C, 0xF5, 0x9E, 0x0B),
+            new Point(0, 0), new Point(1, 1)),
+        1 or 2 => new LinearGradientBrush(
+            Color.FromArgb(0x32, 0x38, 0xBD, 0xF8),
+            Color.FromArgb(0x0C, 0x02, 0x84, 0xC7),
+            new Point(0, 0), new Point(1, 1)),
+        3 => new LinearGradientBrush(
+            Color.FromArgb(0x30, 0x64, 0x74, 0x8B),
+            Color.FromArgb(0x0C, 0x47, 0x55, 0x69),
+            new Point(0, 0), new Point(1, 1)),
+        45 or 48 => new LinearGradientBrush(
+            Color.FromArgb(0x30, 0x94, 0xA3, 0xB8),
+            Color.FromArgb(0x0C, 0x64, 0x74, 0x8B),
+            new Point(0, 0), new Point(1, 1)),
+        >= 51 and <= 67 or >= 80 and <= 82 => new LinearGradientBrush(
+            Color.FromArgb(0x38, 0x25, 0x63, 0xEB),
+            Color.FromArgb(0x0E, 0x1D, 0x4E, 0xD8),
+            new Point(0, 0), new Point(1, 1)),
+        >= 71 and <= 77 or 85 or 86 => new LinearGradientBrush(
+            Color.FromArgb(0x34, 0x06, 0xB6, 0xD4),
+            Color.FromArgb(0x0C, 0x08, 0x91, 0xB2),
+            new Point(0, 0), new Point(1, 1)),
+        >= 95 => new LinearGradientBrush(
+            Color.FromArgb(0x40, 0x7C, 0x3A, 0xED),
+            Color.FromArgb(0x10, 0x4C, 0x1D, 0x95),
+            new Point(0, 0), new Point(1, 1)),
+        _ => new LinearGradientBrush(
+            Color.FromArgb(0x28, 0x38, 0xBD, 0xF8),
+            Color.FromArgb(0x08, 0x38, 0xBD, 0xF8),
+            new Point(0, 0), new Point(1, 1))
     };
 
     private static HttpClient CreateClient()

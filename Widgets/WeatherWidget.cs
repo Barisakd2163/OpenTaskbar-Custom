@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -103,41 +104,236 @@ public sealed class WeatherWidget : DockWidget
 
     private UIElement BuildFlyout()
     {
-        var root = new StackPanel { Width = 280 };
+        var container = new Border
+        {
+            Width = 320,
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14, 12, 14, 12)
+        };
+
         if (_report is not { } report)
         {
-            root.Children.Add(DockFlyout.Heading(UiText.Get("Weather")));
-            root.Children.Add(DockFlyout.Caption(_error ?? UiText.Get("WeatherUnavailable")));
-            return root;
+            var emptyRoot = new StackPanel();
+            emptyRoot.Children.Add(DockFlyout.Heading(UiText.Get("Weather")));
+            emptyRoot.Children.Add(DockFlyout.Caption(_error ?? UiText.Get("WeatherUnavailable")));
+            container.Child = emptyRoot;
+            return container;
         }
+
+        container.Background = WeatherService.GetConditionBackground(report.Code);
+
+        var root = new StackPanel();
         var (icon, text) = WeatherService.Describe(report.Code);
-        root.Children.Add(DockFlyout.Heading(string.IsNullOrEmpty(report.Place) ? UiText.Get("Weather") : report.Place));
-        var now = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 10) };
-        var bigIcon = new ContentControl { Content = FindResource(icon), Width = 40, Height = 40, Margin = new Thickness(0, 0, 12, 0) };
+
+        // Header: Place name & condition description
+        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+        var conditionText = new TextBlock
+        {
+            Text = UiText.Get(text),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        conditionText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        DockPanel.SetDock(conditionText, Dock.Right);
+        header.Children.Add(conditionText);
+
+        var placeHeading = new TextBlock
+        {
+            Text = string.IsNullOrEmpty(report.Place) ? UiText.Get("Weather") : report.Place,
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        placeHeading.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        header.Children.Add(placeHeading);
+        root.Children.Add(header);
+
+        // Current weather row
+        var now = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 4, 2, 10) };
+        var bigIcon = new ContentControl
+        {
+            Content = FindResource(icon),
+            Width = 44,
+            Height = 44,
+            Margin = new Thickness(0, 0, 14, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
         bigIcon.SetResourceReference(StyleProperty, "WidgetIcon");
         bigIcon.SetResourceReference(ForegroundProperty, "TextPrimary");
+
         var summary = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        summary.Children.Add(new TextBlock { Text = FormatDegrees(report.Temperature), FontSize = 28, FontWeight = FontWeights.Light });
-        summary.Children.Add(DockFlyout.Caption($"{UiText.Get(text)} · {UiText.Format("WeatherFeelsLike", FormatDegrees(report.ApparentTemperature))}"));
+        var tempText = new TextBlock
+        {
+            Text = FormatDegrees(report.Temperature),
+            FontSize = 32,
+            FontWeight = FontWeights.Light,
+            Margin = new Thickness(0, 0, 0, 2)
+        };
+        tempText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        summary.Children.Add(tempText);
+
+        string todayRange = string.Empty;
+        if (report.Days.Count > 0)
+        {
+            todayRange = $" · {FormatDegrees(report.Days[0].Max)} / {FormatDegrees(report.Days[0].Min)}";
+        }
+        var feelsText = new TextBlock
+        {
+            Text = $"{UiText.Format("WeatherFeelsLike", FormatDegrees(report.ApparentTemperature))}{todayRange}",
+            FontSize = 12
+        };
+        feelsText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        summary.Children.Add(feelsText);
+
         now.Children.Add(bigIcon);
         now.Children.Add(summary);
         root.Children.Add(now);
-        var culture = CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
-        var days = new UniformGrid { Columns = Math.Max(1, report.Days.Count) };
-        foreach (var day in report.Days)
+
+        // Micro metrics cards: Humidity, Wind
+        var metricsGrid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 10) };
+
+        var humidityCard = new Border
         {
-            var column = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(2) };
-            column.Children.Add(DockFlyout.Caption(day.Date.ToString("ddd", culture)));
-            var dayIcon = new ContentControl { Content = FindResource(WeatherService.Describe(day.Code).Icon), Width = 20, Height = 20, Margin = new Thickness(0, 4, 0, 4) };
+            Background = (Brush)FindResource("SurfaceSelected"),
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(10, 6, 10, 6),
+            Margin = new Thickness(0, 0, 4, 0)
+        };
+        var humidityPanel = new StackPanel();
+        var humLabel = new TextBlock { Text = UiText.Get("WeatherHumidity"), FontSize = 11 };
+        humLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        var humVal = new TextBlock { Text = $"%{Math.Round(report.Humidity)}", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        humVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        humidityPanel.Children.Add(humLabel);
+        humidityPanel.Children.Add(humVal);
+        humidityCard.Child = humidityPanel;
+        metricsGrid.Children.Add(humidityCard);
+
+        var windCard = new Border
+        {
+            Background = (Brush)FindResource("SurfaceSelected"),
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(10, 6, 10, 6),
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+        var windPanel = new StackPanel();
+        var windLabel = new TextBlock { Text = UiText.Get("WeatherWind"), FontSize = 11 };
+        windLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        var windVal = new TextBlock { Text = $"{Math.Round(report.WindSpeed)} km/s", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        windVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        windPanel.Children.Add(windLabel);
+        windPanel.Children.Add(windVal);
+        windCard.Child = windPanel;
+        metricsGrid.Children.Add(windCard);
+
+        root.Children.Add(metricsGrid);
+
+        // Divider
+        var divider = new Border
+        {
+            Height = 1,
+            Margin = new Thickness(0, 2, 0, 10)
+        };
+        divider.SetResourceReference(Border.BackgroundProperty, "MenuDivider");
+        root.Children.Add(divider);
+
+        // Next 3 days forecast heading
+        var forecastHeading = new TextBlock
+        {
+            Text = UiText.Get("WeatherForecast3Days"),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        forecastHeading.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        root.Children.Add(forecastHeading);
+
+        // Next 3 days forecast cards
+        var culture = CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
+        var forecastDays = report.Days.Skip(1).Take(3).ToList();
+        var daysGrid = new UniformGrid { Columns = Math.Max(1, forecastDays.Count), Margin = new Thickness(0, 0, 0, 6) };
+
+        foreach (var day in forecastDays)
+        {
+            var dayCard = new Border
+            {
+                Background = (Brush)FindResource("SurfaceSelected"),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(6, 8, 6, 8),
+                Margin = new Thickness(3, 0, 3, 0)
+            };
+
+            var column = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            var dayTitle = new TextBlock
+            {
+                Text = day.Date.ToString("ddd", culture).ToUpperInvariant(),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            dayTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            column.Children.Add(dayTitle);
+
+            var (dayIconKey, dayTextKey) = WeatherService.Describe(day.Code);
+            var dayIcon = new ContentControl
+            {
+                Content = FindResource(dayIconKey),
+                Width = 22,
+                Height = 22,
+                Margin = new Thickness(0, 6, 0, 4),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
             dayIcon.SetResourceReference(StyleProperty, "WidgetIcon");
             dayIcon.SetResourceReference(ForegroundProperty, "TextPrimary");
             column.Children.Add(dayIcon);
-            column.Children.Add(new TextBlock { Text = $"{FormatDegrees(day.Max)} / {FormatDegrees(day.Min)}", FontSize = 11.5, HorizontalAlignment = HorizontalAlignment.Center });
-            days.Children.Add(column);
+
+            var dayDesc = new TextBlock
+            {
+                Text = UiText.Get(dayTextKey),
+                FontSize = 10.5,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 4),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            dayDesc.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            column.Children.Add(dayDesc);
+
+            var tempPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            var maxText = new TextBlock
+            {
+                Text = FormatDegrees(day.Max),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 4, 0)
+            };
+            maxText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+            var minText = new TextBlock
+            {
+                Text = FormatDegrees(day.Min),
+                FontSize = 12
+            };
+            minText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            tempPanel.Children.Add(maxText);
+            tempPanel.Children.Add(minText);
+            column.Children.Add(tempPanel);
+
+            dayCard.Child = column;
+            daysGrid.Children.Add(dayCard);
         }
 
-        root.Children.Add(days);
-        root.Children.Add(DockFlyout.Caption("Open-Meteo"));
-        return root;
+        root.Children.Add(daysGrid);
+
+        var footer = new TextBlock
+        {
+            Text = "Open-Meteo",
+            FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        footer.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        root.Children.Add(footer);
+
+        container.Child = root;
+        return container;
     }
 }
