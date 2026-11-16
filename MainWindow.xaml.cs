@@ -31,6 +31,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly ObservableCollection<DockWidget> _widgets = [];
+    private readonly StopwatchDockWidget _stopwatch = new(TimeProvider.System);
+    private readonly DispatcherTimer _stopwatchRefreshTimer;
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ApplicationPreferences _preferences = ((App)Application.Current).Preferences;
     private SettingsWindow? _settingsWindow;
@@ -57,10 +59,15 @@ public partial class MainWindow : Window
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
     private bool _resizingFromLeft;
+    private double _resizeAnchor;
+    private readonly bool _isPreview = ((App)Application.Current).IsPreview;
 
     public MainWindow()
     {
         InitializeComponent();
+        ShowInTaskbar = _isPreview;
+        if (((App)Application.Current).OpenSettingsOnStartup)
+            Loaded += (_, _) => OpenSettings_Click(this, new RoutedEventArgs());
         PinnedApps.ItemsSource = _pinnedApps;
         RunningApps.ItemsSource = _runningApps;
         DockWidgets.ItemsSource = _widgets;
@@ -75,6 +82,11 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(15)
         };
         _widgetRefreshTimer.Tick += WidgetRefreshTimer_Tick;
+        _stopwatchRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _stopwatchRefreshTimer.Tick += StopwatchRefreshTimer_Tick;
         ApplyWidgets(_preferences.Current.Widgets);
         _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
@@ -105,7 +117,7 @@ public partial class MainWindow : Window
         _source = source;
         _source.AddHook(WindowProc);
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
-        if (!ExcludeFromTaskSwitcher(source.Handle))
+        if (!_isPreview && !ExcludeFromTaskSwitcher(source.Handle))
         {
             ShowStatus("OpenTaskbar Alt+Tab listesinden çıkarılamadı.");
         }
@@ -136,7 +148,7 @@ public partial class MainWindow : Window
             () => (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible || _draggedApp is not null || (_settingsWindow?.IsVisible == true));
         _autoHideController.SetMode(_preferences.Current.AutoHide);
 
-        StartReplacementMode();
+        if (!_isPreview) StartReplacementMode();
     }
 
     private void PositionDock()
@@ -147,6 +159,11 @@ public partial class MainWindow : Window
         }
 
         var workArea = SystemParameters.WorkArea;
+        if (_isPreview)
+        {
+            _dockArea = new Size(workArea.Width, Height);
+            Width = workArea.Width;
+        }
         ResizeDockToContent();
         ApplyDockAlignment();
         Left = _dockPosition switch
@@ -1411,6 +1428,7 @@ public partial class MainWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
@@ -1438,7 +1456,9 @@ public partial class MainWindow : Window
     private void ApplyWidgets(IReadOnlyList<string>? selected)
     {
         _widgets.Clear();
-        foreach (var widget in DockWidgetService.CreateWidgets(selected)) _widgets.Add(widget);
+        foreach (var widget in DockWidgetService.CreateWidgets(selected, _stopwatch)) _widgets.Add(widget);
+        if (_widgets.Contains(_stopwatch) && _stopwatch.IsRunning) _stopwatchRefreshTimer.Start();
+        else _stopwatchRefreshTimer.Stop();
         WidgetDivider.Visibility = _widgets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
         ResizeDockToContent();
@@ -1449,6 +1469,21 @@ public partial class MainWindow : Window
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
         ResizeDockToContent();
     }
+
+    private void StopwatchToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _stopwatch.Toggle();
+        if (_stopwatch.IsRunning) _stopwatchRefreshTimer.Start();
+        else _stopwatchRefreshTimer.Stop();
+    }
+
+    private void StopwatchReset_Click(object sender, RoutedEventArgs e)
+    {
+        _stopwatch.Reset();
+        _stopwatchRefreshTimer.Stop();
+    }
+
+    private void StopwatchRefreshTimer_Tick(object? sender, EventArgs e) => _stopwatch.Refresh();
 
     private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
     {
@@ -1566,7 +1601,8 @@ public partial class MainWindow : Window
     private void DockResizeThumb_DragStarted(object sender, DragStartedEventArgs e)
     {
         _resizingFromLeft = ReferenceEquals(sender, LeftResizeThumb);
-        DockSurface.HorizontalAlignment = _resizingFromLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        var left = DockSurface.TranslatePoint(new Point(), DockHost).X;
+        _resizeAnchor = _resizingFromLeft ? left + DockSurface.ActualWidth : left;
         ResetMagnification();
     }
 
@@ -1574,13 +1610,20 @@ public partial class MainWindow : Window
     {
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
         var margin = DockSurface.Margin;
-        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
+        var maximumSurfaceWidth = Math.Max(1, _resizingFromLeft
+            ? _resizeAnchor - margin.Left
+            : availableWidth - margin.Right - _resizeAnchor);
         var minimumSurfaceWidth = Math.Min((double)FindResource("DockMinimumWidth"), maximumSurfaceWidth);
         var delta = _resizingFromLeft ? -e.HorizontalChange : e.HorizontalChange;
         var nextWidth = Math.Clamp(DockSurface.ActualWidth + delta, minimumSurfaceWidth, maximumSurfaceWidth);
         _dockWidthOverride = nextWidth + margin.Left + margin.Right;
         DockSurface.Width = nextWidth;
         ResizeDockToContent();
+        DockSurface.UpdateLayout();
+        // Compensate for alignment so the edge opposite the pointer stays fixed.
+        var left = DockSurface.TranslatePoint(new Point(), DockHost).X;
+        var currentAnchor = _resizingFromLeft ? left + DockSurface.ActualWidth : left;
+        DockSurfaceTranslate.X += _resizeAnchor - currentAnchor;
         _replacementSession?.RefreshPosition();
     }
 
@@ -1717,6 +1760,8 @@ public partial class MainWindow : Window
         _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
         _widgetRefreshTimer.Stop();
         _widgetRefreshTimer.Tick -= WidgetRefreshTimer_Tick;
+        _stopwatchRefreshTimer.Stop();
+        _stopwatchRefreshTimer.Tick -= StopwatchRefreshTimer_Tick;
         _thumbnailPreview.PointerEntered -= ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft -= ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;

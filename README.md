@@ -15,8 +15,8 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Native Windows Jump Lists:** View recent/frequent destinations and published application tasks directly in the context menu via lightweight STA Shell reading.
 - **Crash Recovery & State Journaling:** Automatically restores the native Windows taskbar on exit or unexpected shutdown using a local state journal (`taskbar-state.txt`). Reconnects on Explorer restarts (`TaskbarCreated`).
 - **Dedicated Settings Window:** A compact window with custom title-bar controls. Customize alignment (Left, Center, Right), theme (Dark/Light), auto-hide, animations, previews, and Windows startup. General settings fit at the default size; smaller windows keep all options reachable by scrolling.
-- **Optional Dock Widgets:** Search the Settings catalog and install, hide, or remove widgets. New installations start with no widgets enabled. The catalog includes local time, date, battery status, physical memory use, available system-drive space (GiB), and elapsed day percentage. Values refresh every 15 seconds from local system data and follow the selected Turkish or English language. Unreadable system data is shown as unavailable.
-- **Resizable Dock With Scrolling:** Drag either dock edge to set its width. When pinned apps and widgets exceed that width, the dock keeps them reachable through its horizontal scrollbar.
+- **Optional Dock Widgets:** Search the Settings catalog and install, hide, or remove widgets. New installations start with no widgets enabled. The catalog includes local time, date, battery status, physical memory use, available system-drive space (GiB), elapsed day percentage, and a stopwatch. System values refresh every 15 seconds and follow the selected Turkish or English language. Unreadable system data is shown as unavailable. The stopwatch supports start/pause, resume, and reset; while visible and running it refreshes every second. Its elapsed time survives widget visibility changes within the current session and resets when the app exits.
+- **Resizable Dock With Scrolling:** Drag either dock edge to set its width while the opposite edge stays fixed. When pinned apps and widgets exceed that width, the dock keeps them reachable through its thin horizontal scrollbar. Resize handles have a separate gutter beside the scrollable content.
 - **Glass & Surface Opacity:** Settings use native Desktop Acrylic on Windows 11 build 22621 or later. Adjust background opacity from 60–100% for settings, the dock, and context menus without fading text or icons. Changes preview live, save on Apply, and revert when discarded. Unsupported Windows versions and high-contrast mode use an opaque settings surface.
 - **Vector Icons:** Clean vector outline icons (Lucide icon set, 24x24 coordinate space) for context menus and dock controls.
 
@@ -39,6 +39,14 @@ With the .NET 10 SDK installed:
 ```powershell
 dotnet run --project OpenTaskbar.csproj
 ```
+
+For visual development without replacing the native Windows taskbar:
+
+```powershell
+dotnet run --project OpenTaskbar.csproj -- --preview --settings
+```
+
+Preview runs the same dock and settings UI with live local data in a separately discoverable window. It can coexist with the regular dock and uses `%LOCALAPPDATA%\OpenTaskbar\preview-settings.json`, a separate empty-by-default configuration. `--settings` opens Settings on startup and also works in regular mode. Only one instance of each mode can run at a time.
 
 To create a self-contained portable executable:
 

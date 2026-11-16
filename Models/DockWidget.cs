@@ -1,7 +1,7 @@
 using System.ComponentModel;
 namespace OpenTaskbar.Models;
 
-public sealed class DockWidget(string id, string label) : INotifyPropertyChanged
+public class DockWidget(string id, string label) : INotifyPropertyChanged
 {
     private string _value = string.Empty;
 
@@ -14,9 +14,10 @@ public sealed class DockWidget(string id, string label) : INotifyPropertyChanged
         {
             if (_value == value) return;
             _value = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
+            NotifyChanged(nameof(Value));
         }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    protected void NotifyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
