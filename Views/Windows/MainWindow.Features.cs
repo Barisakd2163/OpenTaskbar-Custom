@@ -33,6 +33,8 @@ public partial class MainWindow
     private readonly List<SecondaryDockWindow> _secondaryDocks = [];
     private DispatcherTimer? _secondaryTimer;
 
+    private void OnAnyDockFlyoutClosed() => _autoHideController?.EvaluateState();
+
     private void InitializeFeatures()
     {
         Deactivated += (_, _) =>
@@ -41,7 +43,7 @@ public partial class MainWindow
             DockFlyout.CloseAll();
             _autoHideController?.EvaluateState();
         };
-        DockFlyout.AnyClosed += () => _autoHideController?.EvaluateState();
+        DockFlyout.AnyClosed += OnAnyDockFlyoutClosed;
         PreviewKeyDown += Dock_PreviewKeyDown;
         _updateTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(12) };
         _updateTimer.Tick += async (_, _) =>
@@ -498,6 +500,7 @@ public partial class MainWindow
         _updateTimer?.Stop();
         _desktopTimer?.Stop();
         _updateCheck?.Cancel();
+        DockFlyout.AnyClosed -= OnAnyDockFlyoutClosed;
         _launcher?.Close();
     }
 

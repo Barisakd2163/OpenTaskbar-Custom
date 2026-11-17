@@ -422,7 +422,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1577,6 +1577,14 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
+    {
+        var original = ApplicationIconProvider.GetForFile(executablePath);
+        return _preferences.Current.ThemeApplicationIcons
+            ? ThemePacks.ApplyIcon(original, executablePath)
+            : original;
+    }
+
     private void ThemePacks_Changed(object? sender, EventArgs e)
     {
         foreach (var app in _pinnedApps)
@@ -1606,6 +1614,7 @@ public partial class MainWindow : Window
         _sizePreviewOverride = null;
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
+        ThemePacks_Changed(this, EventArgs.Empty);
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         if (_autoHideController is not null) _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
@@ -2010,6 +2019,9 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
         Application.Current.Resources["DockIconSize"] = profile.Icon;
+        // Keep app artwork visually balanced with neighboring compact widgets without
+        // shrinking the clickable dock cell or changing its drag/drop geometry.
+        Application.Current.Resources["DockApplicationIconSize"] = Math.Max(18, Math.Round(profile.Icon * 0.88));
         Application.Current.Resources["StartLogoSize"] = Math.Max(14, Math.Round(profile.Icon * 0.68));
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(profile.Radius);

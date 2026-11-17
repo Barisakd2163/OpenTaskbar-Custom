@@ -325,7 +325,8 @@ public partial class SettingsWindow : Window
                 : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
                 : ClockDateStyle.DayAndShortDate,
             StatsMeters = ReadStatsMeters(),
-            ThemePack = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id
+            ThemePack = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id,
+            ThemeApplicationIcons = ThemeApplicationIconsToggle.IsChecked == true
         };
     }
 
@@ -977,6 +978,7 @@ public partial class SettingsWindow : Window
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         UpdateDockScaleLabel();
         LoadThemePacks(settings.ThemePack);
+        ThemeApplicationIconsToggle.IsChecked = settings.ThemeApplicationIcons;
         foreach (var option in _widgetOptions)
         {
             option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;

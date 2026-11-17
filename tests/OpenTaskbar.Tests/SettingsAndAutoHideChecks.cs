@@ -23,9 +23,53 @@ internal static class SettingsAndAutoHideChecks
 
         CheckSettingsSurviveReopen(application, Check);
         CheckAutoHideLifecycleAndPointerSync(application, Check);
+        CheckFlyoutState(application, Check);
         CheckClockWidgetFlyoutAndAutoHide(application, Check);
         CheckTrayTransientTooltips(Check);
         return checks;
+    }
+
+    private static void CheckFlyoutState(Application application, Action<bool, string> check)
+    {
+        var anchor = new Button { Content = "Flyout anchor" };
+        var host = new Window
+        {
+            Width = 300, Height = 180, Left = -20000, Top = -20000,
+            ShowInTaskbar = false, ShowActivated = false, Content = anchor
+        };
+        var flyout = new DockFlyout();
+        var secondFlyout = new DockFlyout();
+        try
+        {
+            host.Show();
+            PumpDispatcher(application.Dispatcher, 100);
+            flyout.Show(anchor, new TextBlock { Text = "Calendar" }, animate: false, focusable: false);
+            PumpDispatcher(application.Dispatcher, 100);
+            check(flyout.IsOpen && DockFlyout.IsAnyOpen,
+                "An open widget flyout must lock auto-hide.");
+
+            flyout.Close();
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!flyout.IsOpen && !DockFlyout.IsAnyOpen,
+                "Closing the widget flyout must release the auto-hide lock.");
+
+            flyout.Show(anchor, new TextBlock { Text = "Weather" }, animate: false, focusable: false);
+            PumpDispatcher(application.Dispatcher, 100);
+            secondFlyout.Show(anchor, new TextBlock { Text = "Tray" }, animate: false, focusable: false);
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!flyout.IsOpen && secondFlyout.IsOpen && DockFlyout.IsAnyOpen,
+                "Opening another widget flyout must close the old one without releasing the new lock.");
+            DockFlyout.CloseAll();
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!flyout.IsOpen && !secondFlyout.IsOpen && !DockFlyout.IsAnyOpen,
+                "Closing all flyouts must release the auto-hide lock after switching widgets.");
+        }
+        finally
+        {
+            flyout.Close();
+            secondFlyout.Close();
+            host.Close();
+        }
     }
 
     private static void CheckTrayTransientTooltips(Action<bool, string> check)
@@ -54,7 +98,8 @@ internal static class SettingsAndAutoHideChecks
                 LauncherHotkey: HotkeyChoice.CtrlSpace,
                 DockHotkey: HotkeyChoice.WinAltD,
                 Widgets: ["Clock", "Media", "SystemStats"],
-                InstalledWidgets: ["Clock", "Media", "SystemStats"]);
+                InstalledWidgets: ["Clock", "Media", "SystemStats"],
+                ThemeApplicationIcons: false);
             check(store.Save(initial) is null, "Initial custom dock settings must save cleanly.");
 
             var preferences = new ApplicationPreferences(store);
@@ -94,6 +139,8 @@ internal static class SettingsAndAutoHideChecks
             check(changeCount == 0,
                 "Reopening SettingsWindow and browsing tabs after closing a prior instance must not fire spurious preference changes.");
             check(reloaded.Error is null, "Reloaded settings after SettingsWindow reopen must stay valid.");
+            check(!reloaded.Settings.ThemeApplicationIcons,
+                "Disabling themed application icons must survive settings reopen.");
             check(preferences.Current.AutoHide == AutoHideMode.Smart && reloaded.Settings.AutoHide == AutoHideMode.Smart,
                 "AutoHide preference must not reset when SettingsWindow is reopened.");
             check(preferences.Current.StartPlacement == StartButtonPlacement.End && reloaded.Settings.StartPlacement == StartButtonPlacement.End,
