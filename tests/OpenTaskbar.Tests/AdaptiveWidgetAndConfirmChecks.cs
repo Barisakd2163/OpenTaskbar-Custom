@@ -122,23 +122,37 @@ internal static class AdaptiveWidgetAndConfirmChecks
         coordinator.Apply(settings);
 
         var audio = strip.Children.OfType<AudioWidget>().Single();
-        var stats = strip.Children.OfType<SystemStatsWidget>().Single();
         var qs = strip.Children.OfType<QuickSettingsWidget>().Single();
+        var autoCandidates = strip.Children.OfType<OpenTaskbar.Widgets.DockWidget>()
+            .Where(widget => widget.Visibility == Visibility.Visible && widget.SupportsCompactMode)
+            .OrderBy(widget => widget.ShrinkPriority).ToArray();
 
-        // Generous space keeps all Auto widgets full.
+        check(autoCandidates.Length > 0,
+            "The widget strip must contain at least one compact-capable widget.");
+
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, settings);
-        check(!audio.IsCompact && !stats.IsCompact && !qs.IsCompact,
-            "Auto widgets must stay full when generous space is available.");
+        check(autoCandidates.All(widget => !widget.IsCompact),
+            "Auto widgets must stay full when there is enough room.");
 
-        // Tight space must not truncate widgets — the dock scrolls instead.
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 1200, appsContentWidth: 720, settings);
-        check(!qs.IsCompact && !stats.IsCompact && !audio.IsCompact,
-            "Widgets must never be auto-compacted to save space; overflow scrolls instead.");
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, settings);
+        check(autoCandidates[0].IsCompact,
+            "Auto density must compact the highest-priority eligible widget when space runs out.");
+        check(autoCandidates.Skip(1).All(widget => !widget.IsCompact),
+            "Auto density must leave other widgets full when one compaction is enough.");
 
-        // Per-widget overrides still control density explicitly.
+        var saving = autoCandidates[0].FullWidthEstimate - autoCandidates[0].CompactWidthEstimate;
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720 - saving, settings);
+        check(autoCandidates[0].IsCompact,
+            "Auto density must not oscillate after measuring compact widgets.");
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 730, appsContentWidth: 720 - saving, settings);
+        check(autoCandidates[0].IsCompact,
+            "Hysteresis must prevent immediate expansion near the width limit.");
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 800, appsContentWidth: 720 - saving, settings);
+        check(autoCandidates.All(widget => !widget.IsCompact),
+            "Auto density must expand widgets when enough space returns.");
+
         var overridden = settings with
         {
-            GlobalWidgetDensity = WidgetDensityMode.Auto,
             WidgetDensityOverrides = new Dictionary<string, WidgetDensityMode>
             {
                 ["Audio"] = WidgetDensityMode.Compact,
@@ -147,15 +161,16 @@ internal static class AdaptiveWidgetAndConfirmChecks
         };
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, overridden);
         check(audio.IsCompact && !qs.IsCompact,
-            "Per-widget Compact/Full overrides must take precedence over global Auto mode.");
+            "Per-widget Compact/Full choices must override Auto.");
 
-        // Scale and width budget must not affect widget density.
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 1640, appsContentWidth: 650, settings, widgetScale: 1.35);
-        check(!qs.IsCompact && !stats.IsCompact && !audio.IsCompact,
-            "Widget scale and available width must never compact widgets.");
-
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, settings, widgetScale: 1.35);
+        check(autoCandidates[0].IsCompact,
+            "Scaled Auto widgets must compact when the dock runs out of room.");
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, settings);
+        check(autoCandidates.All(widget => !widget.IsCompact),
+            "Auto widgets must return to full size when there is enough room.");
         check(!coordinator.TryCompactNextAutoWidget(settings),
-            "Automatic single-step compaction must stay disabled.");
+            "Single-step compaction is not used; density is recalculated for the whole strip.");
     }
 
     private static void CheckVisualBalanceAndTrayFiltering(Application application, Action<bool, string> check)

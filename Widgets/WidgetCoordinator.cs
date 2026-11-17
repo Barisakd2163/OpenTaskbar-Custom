@@ -518,8 +518,9 @@ public sealed class WidgetCoordinator : IDisposable
     }
 
     /// <summary>
-    /// Applies only the user's explicit density choice. Widgets are never auto-compacted to save space —
-    /// the dock scrolls instead, so their content is always shown at full width.
+    /// Compact Auto widgets only when the content would exceed the available dock width.
+    /// Explicit Compact and Full choices always take precedence. The full-width estimate
+    /// accounts for widgets already compacted on a previous layout pass.
     /// </summary>
     public bool UpdateAdaptiveDensity(
         double maxTotalWidth,
@@ -530,7 +531,11 @@ public sealed class WidgetCoordinator : IDisposable
     {
         if (_disposed) return false;
 
+        var candidates = new List<(DockWidget Widget, double Saving)>();
+        var projectedFullWidth = appsContentWidth;
+        var anyAutoCompact = false;
         var changed = false;
+
         foreach (var slot in _widgets)
         {
             if (slot.Widget is not { Visibility: Visibility.Visible } widget) continue;
@@ -539,17 +544,59 @@ public sealed class WidgetCoordinator : IDisposable
                     ? overrideMode
                     : settings.GlobalWidgetDensity;
 
-            var shouldCompact = widget.SupportsCompactMode && mode == WidgetDensityMode.Compact;
-            if (widget.IsCompact != shouldCompact)
+            if (!widget.SupportsCompactMode) continue;
+
+            var saving = Math.Max(0, widget.FullWidthEstimate - widget.CompactWidthEstimate)
+                * Math.Max(0, widgetScale);
+
+            if (mode == WidgetDensityMode.Compact)
             {
-                widget.SetCompactState(shouldCompact);
-                changed = true;
+                if (!widget.IsCompact) projectedFullWidth -= saving;
+                continue;
+            }
+
+            if (widget.IsCompact) projectedFullWidth += saving;
+            if (mode == WidgetDensityMode.Auto)
+            {
+                candidates.Add((widget, saving));
+                anyAutoCompact |= widget.IsCompact;
             }
         }
+
+        // Give compacted widgets some breathing room before expanding again.
+        // This prevents continuous resize/compact oscillation near the width limit.
+        var available = Math.Max(0, maxTotalWidth)
+            - (anyAutoCompact ? Math.Max(0, hysteresisMargin) : 0);
+        var overflow = Math.Max(0, projectedFullWidth - available);
+        var autoCompact = new HashSet<DockWidget>();
+
+        foreach (var (widget, saving) in candidates.OrderBy(item => item.Widget.ShrinkPriority))
+        {
+            if (overflow <= 0 || saving <= 0) break;
+            autoCompact.Add(widget);
+            overflow -= saving;
+        }
+
+        foreach (var slot in _widgets)
+        {
+            if (slot.Widget is not { Visibility: Visibility.Visible } widget) continue;
+            var mode = settings.WidgetDensityOverrides is not null
+                && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
+                    ? overrideMode
+                    : settings.GlobalWidgetDensity;
+
+            var shouldCompact = widget.SupportsCompactMode
+                && (mode == WidgetDensityMode.Compact
+                    || (mode == WidgetDensityMode.Auto && autoCompact.Contains(widget)));
+            if (widget.IsCompact == shouldCompact) continue;
+            widget.SetCompactState(shouldCompact);
+            changed = true;
+        }
+
         return changed;
     }
 
-    /// <summary>Kept for API compatibility; automatic compaction is intentionally disabled.</summary>
+    /// <summary>Automatic density is applied as a group during layout, not one widget at a time.</summary>
     public bool TryCompactNextAutoWidget(DockSettings settings) => false;
 
     public void Dispose()

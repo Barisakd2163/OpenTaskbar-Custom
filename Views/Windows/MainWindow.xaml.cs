@@ -2182,8 +2182,11 @@ public partial class MainWindow : Window
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         var maxLayoutWidth = Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome);
+        if (!IsFullWidth && _dockWidthOverride is { } fixedWidth)
+            maxLayoutWidth = Math.Min(maxLayoutWidth, Math.Max(1, fixedWidth - DockHorizontalChrome));
         var contentFixedWidth = leadWidth + appsContentWidth + trailWidth + widgetsWidth;
-        _widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale);
+        if (_widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale))
+            _resizePending = true; // Measure again after the widget templates switch to compact mode.
 
         var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
         DockScrollViewer.MaxWidth = maxAppsWidth;
