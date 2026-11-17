@@ -422,7 +422,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1577,6 +1577,14 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
+    {
+        var original = ApplicationIconProvider.GetForFile(executablePath);
+        return _preferences.Current.ThemeApplicationIcons
+            ? ThemePacks.ApplyIcon(original, executablePath)
+            : original;
+    }
+
     private void ThemePacks_Changed(object? sender, EventArgs e)
     {
         foreach (var app in _pinnedApps)
@@ -1606,6 +1614,7 @@ public partial class MainWindow : Window
         _sizePreviewOverride = null;
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
+        ThemePacks_Changed(this, EventArgs.Empty);
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         if (_autoHideController is not null) _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
