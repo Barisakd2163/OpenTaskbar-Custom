@@ -74,9 +74,10 @@ public partial class MainWindow : Window
     private bool _resizingFromLeft;
     private readonly bool _isPreview = ((App)Application.Current).IsPreview;
     private readonly bool _isInspection = ((App)Application.Current).IsInspection;
-    private readonly bool _isDev = ((App)Application.Current).IsDev;
     // Failures are written to the log only; the dock never displays error popups.
     private readonly WidgetCoordinator _widgetCoordinator;
+    private readonly Dictionary<string, FrameworkElement> _dockItemElements = new(StringComparer.OrdinalIgnoreCase);
+    private bool _rebuildingDockOrder;
     private double _dockTopGap;
     private (DockSize Size, double Scale)? _sizePreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
@@ -152,7 +153,12 @@ public partial class MainWindow : Window
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
         _widgetCoordinator.HoverActiveChanged += _ => _autoHideController?.EvaluateState();
-        _widgetCoordinator.WidgetsPlaced += ApplyStartPlacement;
+        _widgetCoordinator.ExternalLayout = true;
+        _widgetCoordinator.WidgetsPlaced += () =>
+        {
+            ApplyStartPlacement();
+            RebuildDockOrder();
+        };
         Deactivated += (_, _) => _widgetCoordinator.CollapseHover();
         _widgetCoordinator.AvailabilityChanged += () =>
         {
@@ -183,6 +189,7 @@ public partial class MainWindow : Window
 
         _widgetCoordinator.Apply(_preferences.Current);
         InitializeExtras();
+        RebuildDockOrder();
         ApplySizeProfile();
         ApplyLayoutMode();
         PositionDock();
@@ -305,18 +312,12 @@ public partial class MainWindow : Window
 
         var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         var workArea = targetDisplay.WorkArea;
-        if (_isPreview || _isDev)
+        if (_isPreview)
         {
             _dockArea = new Size(workArea.Width, Height);
             Width = workArea.Width;
         }
         ResizeDockToContent();
-        if (_isDev)
-        {
-            // In dev mode the window height already includes headroom, so no extra top gap is needed.
-            _dockTopGap = 0;
-            ApplyDockMargin();
-        }
         ApplyDockAlignment();
         Left = _dockPosition switch
         {
@@ -444,6 +445,7 @@ public partial class MainWindow : Window
             ReportError(result.ErrorKey);
         }
         else if (result.SkippedCount > 0) ReportError("SkippedPins", true, result.SkippedCount);
+        RebuildDockOrder();
     }
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
@@ -467,6 +469,7 @@ public partial class MainWindow : Window
         UpdateWindowIndicators(windows);
         if (UpdateRunningApps(windows))
         {
+            RebuildDockOrder();
             ResizeDockToContent();
             _replacementSession?.RefreshPosition();
         }
@@ -1603,6 +1606,7 @@ public partial class MainWindow : Window
         _replacementSession?.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         ApplyBackdropHitTesting();
         _widgetCoordinator.Apply(_preferences.Current);
+        RebuildDockOrder();
         ApplyExtrasSettings();
         ApplyFeatureSettings();
         ApplySizeProfile();
@@ -1653,6 +1657,110 @@ public partial class MainWindow : Window
         }
         UpdateTimedWidgetRefresh();
         ResizeDockToContent();
+    }
+
+    private IReadOnlyList<string> DefaultDockOrder(DockSettings settings)
+    {
+        var tokens = new List<string>();
+        if (settings.StartPlacement != StartButtonPlacement.Hidden) tokens.Add("start");
+
+        var pins = (settings.PinOrder ?? _pinnedApps.Select(a => a.ExecutablePath).Where(p => p is not null).ToArray())
+            .Where(p => p is not null).ToArray();
+        foreach (var path in pins) tokens.Add("app:" + path);
+        foreach (var app in _runningApps)
+        {
+            if (!pins.Contains(app.ExecutablePath, StringComparer.OrdinalIgnoreCase)) tokens.Add("app:" + app.ExecutablePath);
+        }
+        foreach (var stack in _stacks) tokens.Add("stack:" + stack.Path);
+        if (settings.ShowRecycleBin) tokens.Add("bin");
+        foreach (var id in _widgetCoordinator.CurrentOrder)
+        {
+            if (_widgetCoordinator.ActiveWidgets.ContainsKey(id)) tokens.Add("widget:" + id);
+        }
+        return tokens;
+    }
+
+    private DockApp? FindDockApp(string path) => _pinnedApps.Concat(_runningApps)
+        .FirstOrDefault(app => string.Equals(app.ExecutablePath, path, StringComparison.OrdinalIgnoreCase));
+
+    private FrameworkElement? CreateDockItemElement(string token)
+    {
+        if (string.Equals(token, "start", StringComparison.OrdinalIgnoreCase)) return StartButton;
+        if (string.Equals(token, "bin", StringComparison.OrdinalIgnoreCase)) return RecycleBinButton;
+        if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
+        {
+            var app = FindDockApp(token[4..]);
+            if (app is null) return null;
+            var element = (FrameworkElement)((DataTemplate)FindResource("DockAppIconTemplate")).LoadContent();
+            element.DataContext = app;
+            return element;
+        }
+        if (token.StartsWith("stack:", StringComparison.OrdinalIgnoreCase))
+        {
+            var stack = _stacks.FirstOrDefault(s => string.Equals(s.Path, token[6..], StringComparison.OrdinalIgnoreCase));
+            if (stack is null) return null;
+            var element = (FrameworkElement)((DataTemplate)FindResource("StackIconTemplate")).LoadContent();
+            element.DataContext = stack;
+            return element;
+        }
+        if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)
+            && _widgetCoordinator.ActiveWidgets.TryGetValue(token[7..], out var widget))
+        {
+            return widget;
+        }
+        return null;
+    }
+
+    /// <summary>Rebuilds the single dock strip from the persisted free-form item order.</summary>
+    private void RebuildDockOrder()
+    {
+        if (_rebuildingDockOrder || DockContents is null) return;
+        _rebuildingDockOrder = true;
+        try
+        {
+            var settings = _preferences.Current;
+            var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
+            foreach (var token in DefaultDockOrder(settings))
+            {
+                if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase)) tokens.Add(token);
+            }
+
+            var pairs = new List<(string Token, FrameworkElement Element)>();
+            foreach (var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (CreateDockItemElement(token) is { } element) pairs.Add((token, element));
+            }
+
+            foreach (var element in _dockItemElements.Values) DockContents.Children.Remove(element);
+            _dockItemElements.Clear();
+
+            var insertAt = DockContents.Children.IndexOf(StatusText);
+            if (insertAt < 0) insertAt = DockContents.Children.Count;
+            foreach (var (token, element) in pairs)
+            {
+                // A UIElement cannot be a logical child of two panels; detach from the old grouped host first.
+                if (element.Parent is Panel oldPanel) oldPanel.Children.Remove(element);
+                DockContents.Children.Insert(insertAt++, element);
+                _dockItemElements[token] = element;
+            }
+        }
+        finally
+        {
+            _rebuildingDockOrder = false;
+        }
+    }
+
+    /// <summary>Moves a dock item to an absolute position and persists the new order.</summary>
+    private void MoveDockItem(string token, int index)
+    {
+        var settings = _preferences.Current;
+        var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
+        tokens.RemoveAll(existing => string.Equals(existing, token, StringComparison.OrdinalIgnoreCase));
+        tokens.Insert(Math.Clamp(index, 0, tokens.Count), token);
+        _preferences.Save(settings with { DockItemOrder = tokens });
+        RebuildDockOrder();
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
     }
 
     private void WidgetRefreshTimer_Tick(object? sender, EventArgs e)
@@ -1912,7 +2020,7 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
-    private void ApplyBackdropHitTesting() => DockBackdrop.Visibility = !_isPreview && !_isDev
+    private void ApplyBackdropHitTesting() => DockBackdrop.Visibility = !_isPreview
         && _preferences.Current.AutoHide == AutoHideMode.Disabled ? Visibility.Visible : Visibility.Collapsed;
 
     private void ApplyTaskbarLayout(Size area)
@@ -1989,7 +2097,7 @@ public partial class MainWindow : Window
         }
 
         DockSurface.Height = double.NaN;
-        var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
+        var hasWidgets = _widgetCoordinator.ActiveWidgets.Values.Any(widget => widget.Visibility == Visibility.Visible);
         WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         // Measure first: the layout pass it runs can move the dock area, which is read below.
         var leadWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls);
