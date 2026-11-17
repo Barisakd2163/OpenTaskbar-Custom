@@ -1,0 +1,36 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# C# and WPF files (native Windows development)
+*.cs text diff=csharp eol=crlf
+*.xaml text diff=xml eol=crlf
+*.csproj text diff=xml eol=crlf
+*.sln text eol=crlf
+*.manifest text diff=xml eol=crlf
+
+# Scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh text eol=lf
+
+# Documentation and Configuration (universal LF)
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+LICENSE text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.dll binary
+*.exe binary
+*.zip binary
