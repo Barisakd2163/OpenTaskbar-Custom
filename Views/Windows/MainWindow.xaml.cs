@@ -258,7 +258,7 @@ public partial class MainWindow : Window
             () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible
                 || DockScrollViewer.IsPanning || LeftResizeThumb.IsDragging || RightResizeThumb.IsDragging
                 || _draggedApp is not null
-                || (_settingsWindow is { IsVisible: true, WindowState: not WindowState.Minimized })
+                || (_settingsWindow is { IsVisible: true, IsActive: true, WindowState: not WindowState.Minimized })
                 || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
         _autoHideController.DockBoundsProvider = GetDockPhysicalBounds;
         _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
@@ -1562,6 +1562,8 @@ public partial class MainWindow : Window
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow(_preferences);
+            _settingsWindow.Activated += (_, _) => _autoHideController?.EvaluateState();
+            _settingsWindow.Deactivated += (_, _) => _autoHideController?.EvaluateState();
             _settingsWindow.Closed += (_, _) =>
             {
                 _settingsWindow = null;
