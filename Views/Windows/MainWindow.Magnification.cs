@@ -11,6 +11,9 @@ public partial class MainWindow
     private readonly HashSet<FrameworkElement> _currentMagnifiedBuffer = [];
     private readonly List<(FrameworkElement Icon, Point Center)> _magnificationTargets = [];
     private bool _magnificationTargetsDirty = true;
+    private readonly Dictionary<FrameworkElement, double> _magnificationScaleTargets = [];
+    private bool _magnificationRendering;
+    private TimeSpan? _magnificationLastFrame;
 
     internal void InvalidateMagnificationTargets() => _magnificationTargetsDirty = true;
 
@@ -128,9 +131,7 @@ public partial class MainWindow
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (!_preferences.Current.MagnificationEnabled || !_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
-        {
             return;
-        }
 
         var mousePos = e.GetPosition(DockContents);
         var mouseX = IsVertical ? mousePos.Y : mousePos.X;
@@ -140,49 +141,84 @@ public partial class MainWindow
         if (_magnificationTargetsDirty) RebuildMagnificationTargets();
 
         _currentMagnifiedBuffer.Clear();
-        var currentMagnified = _currentMagnifiedBuffer;
+        _magnificationScaleTargets.Clear();
 
         foreach (var (icon, center) in _magnificationTargets)
         {
-            var (scale, _) = GetIconTransforms(icon);
-            icon.RenderTransformOrigin = IconScaleOrigin;
             var distance = Math.Abs(mouseX - (IsVertical ? center.Y : center.X));
-
-            double targetScale = 1.0;
+            var targetScale = 1.0;
             if (distance < influenceRadius)
             {
                 var factor = Math.Cos(distance / influenceRadius * (Math.PI / 2));
                 targetScale = 1.0 + (maxScale - 1.0) * factor * factor;
             }
 
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            scale.ScaleX = targetScale;
-            scale.ScaleY = targetScale;
-
-            if (targetScale > 1.005)
-            {
-                currentMagnified.Add(icon);
-            }
+            _magnificationScaleTargets[icon] = targetScale;
+            if (targetScale > 1.005) _currentMagnifiedBuffer.Add(icon);
         }
 
         foreach (var icon in _magnifiedIcons)
         {
-            if (!currentMagnified.Contains(icon))
-            {
-                var (scale, _) = GetIconTransforms(icon);
-                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                scale.ScaleX = 1.0;
-                scale.ScaleY = 1.0;
-            }
+            if (!_magnificationScaleTargets.ContainsKey(icon))
+                _magnificationScaleTargets[icon] = 1.0;
         }
 
         _magnifiedIcons.Clear();
-        foreach (var icon in currentMagnified)
-        {
+        foreach (var icon in _currentMagnifiedBuffer)
             _magnifiedIcons.Add(icon);
+
+        if (!_magnificationRendering)
+        {
+            // Cancel a still-running mouse-leave animation without snapping to its base value.
+            foreach (var icon in _magnificationScaleTargets.Keys)
+            {
+                var (scale, _) = GetIconTransforms(icon);
+                var currentX = scale.ScaleX;
+                var currentY = scale.ScaleY;
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                scale.ScaleX = currentX;
+                scale.ScaleY = currentY;
+            }
+
+            _magnificationLastFrame = null;
+            CompositionTarget.Rendering += RenderMagnification;
+            _magnificationRendering = true;
         }
+    }
+
+    private void RenderMagnification(object? sender, EventArgs e)
+    {
+        var frameTime = e is RenderingEventArgs frame ? frame.RenderingTime : TimeSpan.Zero;
+        var elapsedMs = _magnificationLastFrame is { } last
+            ? Math.Clamp((frameTime - last).TotalMilliseconds, 1, 50) : 16.7;
+        _magnificationLastFrame = frameTime;
+        // Frame-rate-independent easing with roughly a 55 ms response time.
+        var blend = 1 - Math.Exp(-elapsedMs / 55.0);
+        var settled = true;
+
+        foreach (var (icon, targetScale) in _magnificationScaleTargets)
+        {
+            var (scale, _) = GetIconTransforms(icon);
+            icon.RenderTransformOrigin = IconScaleOrigin;
+            var current = scale.ScaleX;
+            var next = Math.Abs(targetScale - current) < 0.003
+                ? targetScale : current + (targetScale - current) * blend;
+            if (Math.Abs(targetScale - next) >= 0.003) settled = false;
+            if (Math.Abs(current - next) < 0.0001) continue;
+            scale.ScaleX = next;
+            scale.ScaleY = next;
+        }
+
+        if (settled) StopMagnificationRendering();
+    }
+
+    private void StopMagnificationRendering()
+    {
+        if (!_magnificationRendering) return;
+        CompositionTarget.Rendering -= RenderMagnification;
+        _magnificationRendering = false;
+        _magnificationLastFrame = null;
     }
 
     private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseEnterDock();
@@ -198,6 +234,8 @@ public partial class MainWindow
 
     private void ResetMagnification()
     {
+        StopMagnificationRendering();
+        _magnificationScaleTargets.Clear();
         if (_magnifiedIcons.Count == 0) return;
         var duration = _preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation
             ? TimeSpan.FromMilliseconds(120) : TimeSpan.Zero;

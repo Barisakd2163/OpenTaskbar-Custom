@@ -2303,6 +2303,8 @@ public partial class MainWindow : Window
         _jumpListLoad?.Dispose();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
         _openContextMenu = null;
+        StopMagnificationRendering();
+        _magnificationScaleTargets.Clear();
         _magnifiedIcons.Clear();
         _source?.RemoveHook(WindowProc);
         _source = null;
