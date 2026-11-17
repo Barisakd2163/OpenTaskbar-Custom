@@ -10,6 +10,7 @@ public sealed class TrayWidget : DockWidget
 {
     private readonly Button _button;
     private readonly DockFlyout _flyout = new();
+    private int _requestVersion;
 
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
@@ -35,6 +36,7 @@ public sealed class TrayWidget : DockWidget
     protected override void OnDeactivated()
     {
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+        _requestVersion++;
         _flyout.Close();
     }
 
@@ -55,9 +57,19 @@ public sealed class TrayWidget : DockWidget
             return;
         }
 
-        var apps = await Task.Run(TrayIcons.RunningApps);
-        if (!IsActive) return;
-        _flyout.Show(_button, BuildContent(apps));
+        var requestVersion = ++_requestVersion;
+        try
+        {
+            var apps = await Task.Run(TrayIcons.RunningApps);
+            if (!IsActive || requestVersion != _requestVersion) return;
+            _flyout.Show(_button, BuildContent(apps));
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            AppLog.Warning($"Tray enumeration failed: {ex.Message}");
+            if (IsActive && requestVersion == _requestVersion) Report(UiText.Get("SystemDataUnavailable"));
+        }
     }
 
     internal UIElement BuildContent(IReadOnlyList<TrayApp> apps)

@@ -25,6 +25,8 @@ public partial class QuickSettingsWidget : DockWidget
     private Radio? _bluetooth;
     private bool _radioAccess;
     private int _activationVersion;
+    private int _bluetoothRequestVersion;
+    private readonly HashSet<Radio> _pendingRadioChanges = [];
     private RadioRenderState? _lastWifiState;
     private RadioRenderState? _lastBluetoothState;
     private readonly TwoStepConfirm _confirm;
@@ -165,6 +167,8 @@ public partial class QuickSettingsWidget : DockWidget
         _confirm.Disarm();
         _detailFlyout.Close();
         _activationVersion++;
+        _bluetoothRequestVersion++;
+        _pendingRadioChanges.Clear();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         if (_wifi is not null) _wifi.StateChanged -= Radio_StateChanged;
         if (_bluetooth is not null) _bluetooth.StateChanged -= Radio_StateChanged;
@@ -222,23 +226,31 @@ public partial class QuickSettingsWidget : DockWidget
             return;
         }
 
+        if (!_pendingRadioChanges.Add(radio)) return;
+        var activationVersion = _activationVersion;
         try
         {
             var target = radio.State == RadioState.On ? RadioState.Off : RadioState.On;
             var result = await radio.SetStateAsync(target);
+            if (!IsActive || activationVersion != _activationVersion) return;
             if (result != RadioAccessStatus.Allowed)
             {
                 AppLog.Warning($"Radio {radio.Kind} state change denied: {result}");
                 Report(ShellShortcuts.OpenQuickSettings(this));
             }
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidOperationException)
         {
             AppLog.Warning($"Radio {radio.Kind} state change failed: {ex.Message}");
-            Report(ShellShortcuts.OpenQuickSettings(this));
+            if (IsActive && activationVersion == _activationVersion)
+                Report(ShellShortcuts.OpenQuickSettings(this));
+        }
+        finally
+        {
+            _pendingRadioChanges.Remove(radio);
         }
 
-        if (IsActive) Render();
+        if (IsActive && activationVersion == _activationVersion) Render();
     }
 
     private void WifiToggle_Click(object sender, RoutedEventArgs e) =>
@@ -294,6 +306,8 @@ public partial class QuickSettingsWidget : DockWidget
 
     private async Task OpenBluetoothDetailsAsync(FrameworkElement anchor)
     {
+        var requestVersion = ++_bluetoothRequestVersion;
+        var activationVersion = _activationVersion;
         if (_detailFlyout.IsOpen || _detailFlyout.RecentlyClosed(anchor))
         {
             _detailFlyout.Close();
@@ -320,7 +334,7 @@ public partial class QuickSettingsWidget : DockWidget
             AppLog.Warning($"Bluetooth device listing unavailable: {ex.Message}");
         }
 
-        if (!IsActive) return;
+        if (!IsActive || activationVersion != _activationVersion || requestVersion != _bluetoothRequestVersion) return;
 
         var root = new StackPanel { Width = 264 };
         root.Children.Add(DockFlyout.Heading(UiText.Get("BluetoothDevices")));
@@ -395,6 +409,7 @@ public partial class QuickSettingsWidget : DockWidget
         var anchor = sender as FrameworkElement ?? this;
         if (_detailFlyout.IsOpen || _detailFlyout.RecentlyClosed(anchor))
         {
+            _bluetoothRequestVersion++;
             _detailFlyout.Close();
             return;
         }
