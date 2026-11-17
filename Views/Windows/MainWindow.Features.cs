@@ -74,19 +74,21 @@ public partial class MainWindow
     {
         var placement = _preferences.Current.StartPlacement;
         StartButton.Visibility = StartDivider.Visibility = placement == StartButtonPlacement.Hidden ? Visibility.Collapsed : Visibility.Visible;
-        var children = DockContents.Children;
-        children.Remove(StartButton);
-        children.Remove(StartDivider);
+        DockLeadControls.Children.Remove(StartButton);
+        DockLeadControls.Children.Remove(StartDivider);
+        DockTrailControls.Children.Remove(StartButton);
+        DockTrailControls.Children.Remove(StartDivider);
         if (placement == StartButtonPlacement.End)
         {
-            var index = children.Count;
-            children.Insert(index, StartDivider);
-            children.Insert(index + 1, StartButton);
+            var index = DockTrailControls.Children.IndexOf(WidgetDivider);
+            if (index < 0) index = DockTrailControls.Children.Count;
+            DockTrailControls.Children.Insert(index, StartDivider);
+            DockTrailControls.Children.Insert(index + 1, StartButton);
         }
         else
         {
-            children.Insert(0, StartButton);
-            children.Insert(1, StartDivider);
+            DockLeadControls.Children.Insert(0, StartButton);
+            DockLeadControls.Children.Insert(1, StartDivider);
         }
     }
 
