@@ -126,11 +126,12 @@ public static class TrayIcons
         {
             using var stream = new MemoryStream(png);
             var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count == 0) return null;
             var frame = decoder.Frames[0];
             frame.Freeze();
             return frame;
         }
-        catch (Exception ex) when (ex is NotSupportedException or FileFormatException or ArgumentException)
+        catch (Exception ex) when (ex is NotSupportedException or FileFormatException or ArgumentException or IOException or InvalidOperationException)
         {
             return null;
         }

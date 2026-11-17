@@ -23,8 +23,20 @@ public partial class FocusWidget : DockWidget
     public FocusWidget()
     {
         InitializeComponent();
-        UiText.Current.PropertyChanged += (_, _) => Render();
     }
+
+    protected override void OnActivated()
+    {
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
+        Render();
+    }
+
+    protected override void OnDeactivated()
+    {
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+    }
+
+    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Render();
 
     private TimeSpan PhaseLength => TimeSpan.FromMinutes(_phase == Phase.Focus ? Settings.FocusMinutes : Settings.FocusBreakMinutes);
     private bool IsRunning => _endsAt is not null;

@@ -198,13 +198,13 @@ public sealed class WindowThumbnailPreview : IDisposable
         _destinationHandle = new WindowInteropHelper(_window).Handle;
         if (_destinationHandle == 0 || !PositionWindow(anchor, totalWidth, totalHeight))
         {
-            _placeholder.Visibility = Visibility.Visible;
+            Hide();
             return false;
         }
 
         if (!PositionOverlayWindow())
         {
-            _placeholder.Visibility = Visibility.Visible;
+            Hide();
             return false;
         }
 
@@ -477,7 +477,21 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     private bool PositionWindow(FrameworkElement anchor, double totalWidth, double totalHeight)
     {
-        var anchorTop = anchor.PointToScreen(new Point(anchor.ActualWidth / 2, 0));
+        if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0)
+        {
+            return false;
+        }
+
+        Point anchorTop;
+        try
+        {
+            anchorTop = anchor.PointToScreen(new Point(anchor.ActualWidth / 2, 0));
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
         var dpi = GetDpiForWindow(_destinationHandle);
         if (dpi == 0)
         {
@@ -503,7 +517,16 @@ public sealed class WindowThumbnailPreview : IDisposable
         if (DockFlyout.Edge != Models.DockEdge.Bottom)
         {
             // Side docks: open beside the icon, vertically centred on it.
-            var anchorLeft = anchor.PointToScreen(new Point(0, anchor.ActualHeight / 2));
+            Point anchorLeft;
+            try
+            {
+                anchorLeft = anchor.PointToScreen(new Point(0, anchor.ActualHeight / 2));
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+
             var anchorWidth = (int)Math.Ceiling(anchor.ActualWidth * dpi / 96d);
             var sideLeft = DockFlyout.Edge == Models.DockEdge.Left
                 ? (int)Math.Round(anchorLeft.X) + anchorWidth + gap

@@ -21,12 +21,12 @@ public partial class QuickSettingsWidget : DockWidget
     public QuickSettingsWidget()
     {
         InitializeComponent();
-        UiText.Current.PropertyChanged += (_, _) => Render();
         Render();
     }
 
     protected override async void OnActivated()
     {
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
         try
         {
             _radioAccess = await Radio.RequestAccessAsync() == RadioAccessStatus.Allowed;
@@ -54,11 +54,14 @@ public partial class QuickSettingsWidget : DockWidget
 
     protected override void OnDeactivated()
     {
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         if (_wifi is not null) _wifi.StateChanged -= Radio_StateChanged;
         if (_bluetooth is not null) _bluetooth.StateChanged -= Radio_StateChanged;
         _wifi = null;
         _bluetooth = null;
     }
+
+    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Render();
 
     private void Radio_StateChanged(Radio sender, object args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, Render);

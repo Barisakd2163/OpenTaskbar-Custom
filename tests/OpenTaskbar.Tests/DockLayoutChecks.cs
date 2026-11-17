@@ -524,9 +524,16 @@ internal static class DockLayoutChecks
         Check(!TaskbarReplacementSession.IsFullScreenBounds(autoHideMaximizedWin, wsCaption, isZoomed: true, autoHideMon, autoHideWork),
             "Captioned maximized window in auto-hide mode must not be detected as full screen.");
 
+        // Maximized browser / custom chrome app without WS_CAPTION in auto-hide mode
+        Check(!TaskbarReplacementSession.IsFullScreenBounds(autoHideMaximizedWin, 0, isZoomed: true, autoHideMon, autoHideWork),
+            "Custom-frame maximized window (e.g. Chrome) in auto-hide mode must not be detected as full screen.");
+
         var autoHideVideoWin = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
         Check(TaskbarReplacementSession.IsFullScreenBounds(autoHideVideoWin, 0, isZoomed: false, autoHideMon, autoHideWork),
             "Fullscreen video in auto-hide mode must be detected as full screen.");
+
+        Check(UiText.Get("ErrorMediaControl") == "Cannot control the media session.",
+            "ErrorMediaControl must return localized media control failure message.");
 
         // Verify optical glass styling resources and panel structures
         Check(app.FindResource("MenuMaterial") is Brush, "MenuMaterial brush must be available.");

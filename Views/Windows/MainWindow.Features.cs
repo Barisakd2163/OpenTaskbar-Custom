@@ -80,6 +80,7 @@ public partial class MainWindow
         if (placement == StartButtonPlacement.End)
         {
             var index = children.IndexOf(StatusText);
+            if (index < 0) index = children.Count;
             children.Insert(index, StartDivider);
             children.Insert(index + 1, StartButton);
         }

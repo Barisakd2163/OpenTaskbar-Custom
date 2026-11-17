@@ -360,7 +360,8 @@ public sealed class UiText : INotifyPropertyChanged
             ["ErrorSettingsValuesInvalid"] = ("Ayar değerleri geçersiz.", "Settings contain invalid values."),
             ["ErrorDockSettingsPath"] = ("Dock ayarları için kayıt yolu oluşturulamadı.", "Cannot create a location for dock settings."),
             ["ErrorDockSettingsSave"] = ("Dock ayarları diske kaydedilemedi.", "Cannot save dock settings to disk."),
-            ["ErrorDockSettingsWriteAccess"] = ("Dock ayarlarına yazma izni yok.", "Permission to write dock settings was denied.")
+            ["ErrorDockSettingsWriteAccess"] = ("Dock ayarlarına yazma izni yok.", "Permission to write dock settings was denied."),
+            ["ErrorMediaControl"] = ("Medya oturumu kontrol edilemedi.", "Cannot control the media session.")
         };
 
     private static readonly IReadOnlyDictionary<string, string> ErrorTranslations = new Dictionary<string, string>

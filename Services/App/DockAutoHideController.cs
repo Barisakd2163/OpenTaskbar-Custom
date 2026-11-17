@@ -189,6 +189,10 @@ public sealed class DockAutoHideController : IDisposable
         if (hwnd == _windowHandle)
             return false;
 
+        _ = GetWindowThreadProcessId(hwnd, out var processId);
+        if (processId == Environment.ProcessId)
+            return false;
+
         var className = new StringBuilder(64);
         GetClassName(hwnd, className, 64);
         var cls = className.ToString();
@@ -205,6 +209,23 @@ public sealed class DockAutoHideController : IDisposable
 
         if (GetWindowRect(hwnd, out var winRect) && GetWindowRect(_windowHandle, out var dockRect))
         {
+            if (Edge == Models.DockEdge.Left)
+            {
+                int effectiveDockRight = dockRect.Right - 16;
+                return winRect.Left < effectiveDockRight
+                    && winRect.Right > dockRect.Left
+                    && winRect.Bottom > dockRect.Top
+                    && winRect.Top < dockRect.Bottom;
+            }
+            if (Edge == Models.DockEdge.Right)
+            {
+                int effectiveDockLeft = dockRect.Left + 16;
+                return winRect.Left < dockRect.Right
+                    && winRect.Right > effectiveDockLeft
+                    && winRect.Bottom > dockRect.Top
+                    && winRect.Top < dockRect.Bottom;
+            }
+
             int effectiveDockTop = dockRect.Top + 16;
             return winRect.Left < dockRect.Right
                 && winRect.Right > dockRect.Left
@@ -254,6 +275,9 @@ public sealed class DockAutoHideController : IDisposable
 
     [DllImport("user32.dll")]
     private static extern nint MonitorFromWindow(nint hWnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);

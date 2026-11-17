@@ -14,11 +14,11 @@ public partial class AudioWidget : DockWidget
     public AudioWidget()
     {
         InitializeComponent();
-        UiText.Current.PropertyChanged += (_, _) => Render();
     }
 
     protected override void OnActivated()
     {
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
         try
         {
             _monitor = new AudioEndpointMonitor();
@@ -36,12 +36,15 @@ public partial class AudioWidget : DockWidget
 
     protected override void OnDeactivated()
     {
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         if (_monitor is null) return;
         _monitor.VolumeChanged -= Monitor_VolumeChanged;
         _monitor.DefaultDeviceChanged -= Monitor_DefaultDeviceChanged;
         _monitor.Dispose();
         _monitor = null;
     }
+
+    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Render();
 
     // Both events arrive on Core Audio worker threads.
     private void Monitor_VolumeChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, Render);

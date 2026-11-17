@@ -145,6 +145,9 @@ public sealed class SecondaryDockWindow : Window
         var root = GetAncestor(window, 3);
         var targetHandle = root != 0 ? root : window;
 
+        if (MonitorFromWindow(targetHandle, 2) != _monitor)
+            return false;
+
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(_monitor, ref info) || !GetWindowRect(targetHandle, out var rect))
             return false;

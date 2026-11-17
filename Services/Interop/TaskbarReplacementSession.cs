@@ -547,7 +547,8 @@ public sealed class TaskbarReplacementSession : IDisposable
             && workBounds.Right == monitorBounds.Right
             && workBounds.Bottom == monitorBounds.Bottom;
 
-        if (workAreaEqualsMonitor && isZoomed && (windowStyle & WsCaption) == WsCaption)
+        if (workAreaEqualsMonitor && isZoomed
+            && ((windowStyle & WsCaption) == WsCaption || (windowRect.Left < monitorBounds.Left && windowRect.Top < monitorBounds.Top)))
         {
             return false;
         }

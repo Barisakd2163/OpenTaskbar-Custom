@@ -155,7 +155,7 @@ public static class ApplicationIconProvider
         try
         {
             var extracted = PrivateExtractIcons(path, index, TargetIconResolution, TargetIconResolution, icons, ids, 1, 0);
-            if (extracted > 0 && icons[0] != 0)
+            if (extracted != uint.MaxValue && extracted > 0 && icons[0] != 0)
             {
                 try
                 {

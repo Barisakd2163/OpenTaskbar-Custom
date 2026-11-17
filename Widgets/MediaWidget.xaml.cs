@@ -37,11 +37,11 @@ public partial class MediaWidget : DockWidget
     {
         InitializeComponent();
         HasData = false;
-        UiText.Current.PropertyChanged += (_, _) => RenderVolume();
     }
 
     protected override async void OnActivated()
     {
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
         try
         {
             _audio = new AudioEndpointMonitor();
@@ -73,6 +73,7 @@ public partial class MediaWidget : DockWidget
 
     protected override void OnDeactivated()
     {
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         BindSession(null);
         if (_manager is not null)
         {
@@ -96,6 +97,8 @@ public partial class MediaWidget : DockWidget
             UpdateProgressUI();
         }
     }
+
+    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => RenderVolume();
 
     private void Audio_VolumeChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, RenderVolume);
 
@@ -287,7 +290,8 @@ public partial class MediaWidget : DockWidget
             ArtPlaceholder.Visibility = Visibility.Collapsed;
             _artKey = key;
         }
-        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or IOException or NotSupportedException or FileFormatException)
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or IOException or NotSupportedException
+            or FileFormatException or InvalidOperationException or ArgumentException)
         {
             AppLog.Warning($"Media artwork unavailable: {ex.Message}");
         }
@@ -300,10 +304,12 @@ public partial class MediaWidget : DockWidget
     private void ProgressSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _draggingProgress = true;
+        if (sender is UIElement el) el.CaptureMouse();
     }
 
     private async void ProgressSlider_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (sender is UIElement el && el.IsMouseCaptured) el.ReleaseMouseCapture();
         if (!_draggingProgress) return;
         _draggingProgress = false;
         await SeekToSliderValueAsync();
@@ -347,12 +353,12 @@ public partial class MediaWidget : DockWidget
         if (_session is null) return;
         try
         {
-            if (!await command(_session)) Report("Medya oturumu kontrol edilemedi.");
+            if (!await command(_session)) Report(UiText.Get("ErrorMediaControl"));
         }
-        catch (System.Runtime.InteropServices.COMException ex)
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
             AppLog.Warning($"Media command failed: {ex.Message}");
-            Report("Medya oturumu kontrol edilemedi.");
+            Report(UiText.Get("ErrorMediaControl"));
         }
     }
 }
