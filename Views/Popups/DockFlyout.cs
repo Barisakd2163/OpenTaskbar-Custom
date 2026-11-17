@@ -56,7 +56,6 @@ public sealed class DockFlyout
         });
     }
 
-    private static int _openCount;
     public static event Action? AnyClosed;
     private WeakReference<UIElement>? _closedTarget;
     private nint _previousForeground;
@@ -106,12 +105,10 @@ public sealed class DockFlyout
         };
         _popup.Opened += (_, _) =>
         {
-            _openCount++;
-            OpenFlyouts.Add(this);
+            if (!OpenFlyouts.Contains(this)) OpenFlyouts.Add(this);
         };
         _popup.Closed += (_, _) =>
         {
-            _openCount = Math.Max(0, _openCount - 1);
             OpenFlyouts.Remove(this);
             var target = _popup.PlacementTarget;
             _closedTarget = target is not null ? new WeakReference<UIElement>(target) : null;
@@ -147,7 +144,9 @@ public sealed class DockFlyout
     /// <summary>The dock edge the flyouts open away from.</summary>
     public static DockEdge Edge { get; set; } = DockEdge.Bottom;
 
-    public static bool IsAnyOpen => _openCount > 0;
+    // Inspect the actual popup state rather than relying on a counter that can drift
+    // when WPF delivers open/close notifications during focus transitions.
+    public static bool IsAnyOpen => OpenFlyouts.Any(flyout => flyout.IsOpen);
 
     public event EventHandler? Closed;
 
