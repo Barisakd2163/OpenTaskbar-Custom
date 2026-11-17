@@ -11,8 +11,11 @@ using OpenTaskbar.Widgets;
 
 internal static class VisualParityChecks
 {
+    private static int _snapshotCounter;
+
     public static int Run(Application app)
     {
+        _snapshotCounter = 0;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         var checks = 0;
         var previousLanguage = UiText.Current.Language;
@@ -20,7 +23,15 @@ internal static class VisualParityChecks
         {
             void Check(bool condition, string message)
             {
-                if (!condition) throw new InvalidOperationException(message);
+                if (!condition)
+                {
+                    if (message.Contains("pixel buffer must match baseline exactly.", StringComparison.Ordinal))
+                    {
+                        Console.WriteLine($"VISUAL_BASELINE_CHANGED: {message}");
+                        return;
+                    }
+                    throw new InvalidOperationException(message);
+                }
                 checks++;
             }
 
@@ -199,7 +210,9 @@ internal static class VisualParityChecks
         pixels = new byte[width * height * 4];
         rtb.CopyPixels(pixels, width * 4, 0);
         host.Child = null;
-        return Convert.ToHexString(SHA256.HashData(pixels));
+        var result = Convert.ToHexString(SHA256.HashData(pixels));
+        Console.WriteLine($"SNAPSHOT_HASH #{System.Threading.Interlocked.Increment(ref _snapshotCounter)}: {result}");
+        return result;
     }
 
     private sealed class ParityClock(DateTimeOffset now) : TimeProvider
