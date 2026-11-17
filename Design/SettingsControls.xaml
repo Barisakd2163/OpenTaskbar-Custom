@@ -3,7 +3,7 @@
                     xmlns:local="clr-namespace:OpenTaskbar.Services"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
     <sys:Double x:Key="SettingsReadingWidth">960</sys:Double>
-    <Thickness x:Key="SettingsPageInset">32,20,24,20</Thickness>
+    <Thickness x:Key="SettingsPageInset">24,16,24,20</Thickness>
     <Thickness x:Key="SettingsRowInset">0,10</Thickness>
     <sys:Double x:Key="WidgetCatalogItemWidth">232</sys:Double>
     <sys:Double x:Key="WidgetCatalogPreviewHeight">116</sys:Double>
@@ -23,7 +23,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Surface" Background="{TemplateBinding Background}"
-                            CornerRadius="10,10,0,0" Padding="{TemplateBinding Padding}">
+                            CornerRadius="12,12,0,0" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -144,19 +144,19 @@
     <Style x:Key="SettingsHeading" TargetType="TextBlock">
         <Setter Property="FontSize" Value="24" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Margin" Value="0,0,0,16" />
+        <Setter Property="Margin" Value="0,0,0,14" />
     </Style>
     <Style x:Key="SettingsSectionHeading" TargetType="TextBlock">
         <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="Margin" Value="0,18,0,8" />
+        <Setter Property="Margin" Value="0,16,0,8" />
     </Style>
     <Style x:Key="SettingsRow" TargetType="Border">
-        <Setter Property="MinHeight" Value="56" />
-        <Setter Property="Padding" Value="16,12" />
-        <Setter Property="Margin" Value="0,0,0,6" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="MinHeight" Value="52" />
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="Margin" Value="0,0,0,5" />
+        <Setter Property="CornerRadius" Value="10" />
         <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
