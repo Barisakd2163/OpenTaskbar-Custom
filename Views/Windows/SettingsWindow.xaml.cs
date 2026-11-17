@@ -88,6 +88,7 @@ public partial class SettingsWindow : Window
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = _applied.FocusSessions;
         LoadFeatureSelection(_applied);
+        LoadThemePacks(_applied.ThemePack);
         UpdateWidgetOptionState();
         var startup = _startup.Read();
         _startupEnabled = startup.Enabled;
@@ -256,8 +257,73 @@ public partial class SettingsWindow : Window
                 : DateStyleNumeric.IsChecked == true ? ClockDateStyle.NumericDate
                 : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
                 : ClockDateStyle.DayAndShortDate,
-            StatsMeters = ReadStatsMeters()
+            StatsMeters = ReadStatsMeters(),
+            ThemePack = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id
         };
+    }
+
+    private sealed record ThemePackChoice(string? Id, string Name, string Details);
+
+    private void LoadThemePacks(string? selected)
+    {
+        var choices = new List<ThemePackChoice> { new(null, UiText.Get("ThemePackNone"), string.Empty) };
+        choices.AddRange(ThemePacks.Discover().Select(pack => new ThemePackChoice(pack.Id, pack.DisplayName, DescribeThemePack(pack))));
+        // A stored theme whose folder is gone stays listed so an unrelated edit does not silently clear it.
+        if (!string.IsNullOrWhiteSpace(selected) && !choices.Any(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase)))
+        {
+            choices.Add(new ThemePackChoice(selected, selected + " (?)", UiText.Get("ThemePackMissing")));
+        }
+
+        ThemePackBox.ItemsSource = choices;
+        ThemePackBox.SelectedItem = choices.FirstOrDefault(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase))
+            ?? choices[0];
+        UpdateThemePackDetails();
+    }
+
+    private static string DescribeThemePack(ThemePack pack)
+    {
+        var parts = new List<string>();
+        if (pack.Icons is not null) parts.Add(UiText.Get("ThemePackIcons"));
+        if (pack.Widgets is not null) parts.Add(UiText.Get("ThemePackWidgets"));
+        var contents = string.Join(" · ", parts);
+        var author = string.IsNullOrWhiteSpace(pack.Manifest.Author) ? string.Empty : " — " + pack.Manifest.Author;
+        return contents + author;
+    }
+
+    private void UpdateThemePackDetails()
+    {
+        var details = (ThemePackBox.SelectedItem as ThemePackChoice)?.Details ?? string.Empty;
+        ThemePackDetails.Text = details;
+        ThemePackDetails.Visibility = details.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ThemePackBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateThemePackDetails();
+        PreferenceEdited(sender, e);
+    }
+
+    private void ThemePackOpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(ThemePacks.Root);
+            using var _ = Process.Start(new ProcessStartInfo(ThemePacks.Root) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(this, ex.Message, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ThemePackReload_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id;
+        _initializing = true;
+        LoadThemePacks(selected);
+        _initializing = false;
+        ThemePacks.Select(selected, reload: true);
+        ThemePacks.ApplyWidgets(_preferences.Current.Theme);
     }
 
     private SystemMeters ReadStatsMeters() =>
@@ -592,6 +658,7 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = settings.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         UpdateDockScaleLabel();
+        LoadThemePacks(settings.ThemePack);
         foreach (var option in _widgetOptions)
         {
             option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;

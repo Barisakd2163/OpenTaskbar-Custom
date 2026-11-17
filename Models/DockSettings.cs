@@ -83,4 +83,6 @@ public sealed record DockSettings(
     bool Clock24Hour = true,
     bool ClockShowSeconds = false,
     ClockDateStyle DateStyle = ClockDateStyle.DayAndShortDate,
-    SystemMeters StatsMeters = SystemMeters.All);
+    SystemMeters StatsMeters = SystemMeters.All,
+    // Folder name under %LOCALAPPDATA%\OpenTaskbar\Themes; null keeps the built-in look.
+    string? ThemePack = null);

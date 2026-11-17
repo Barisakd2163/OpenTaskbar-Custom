@@ -152,6 +152,10 @@ public partial class MainWindow : Window
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
+        // App.OnStartup has already selected the theme pack; later changes come through ApplicationPreferences.Save.
+        ThemePacks.Changed += ThemePacks_Changed;
+        Closed += (_, _) => ThemePacks.Changed -= ThemePacks_Changed;
+        ApplyStartIcon();
         LoadPinnedApps(_preferences.Current.PinOrder);
         if (_preferences.LoadError is not null)
         {
@@ -353,7 +357,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath);
+            app.Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1450,6 +1454,30 @@ public partial class MainWindow : Window
         }
         if (_settingsWindow.WindowState == WindowState.Minimized) _settingsWindow.WindowState = WindowState.Normal;
         _settingsWindow.Activate();
+    }
+
+    private void ThemePacks_Changed(object? sender, EventArgs e)
+    {
+        foreach (var app in _pinnedApps)
+        {
+            app.Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
+        }
+
+        RefreshRecycleBinIcon();
+        ApplyStartIcon();
+        if (_windowTracker is not null)
+        {
+            WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+        }
+    }
+
+    // The theme's @start image replaces the Windows logo; without one the logo stays.
+    private void ApplyStartIcon()
+    {
+        var image = ThemePacks.ApplyIcon(null, null, specialKey: IconPack.StartKey);
+        StartImage.Source = image;
+        StartImage.Visibility = image is null ? Visibility.Collapsed : Visibility.Visible;
+        StartLogo.Visibility = image is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Preferences_Changed(object? sender, EventArgs e)

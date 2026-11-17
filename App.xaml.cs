@@ -36,6 +36,9 @@ public partial class App : Application
                 "OpenTaskbar", "preview-settings.json")));
         UiText.Current.SetLanguage(Preferences.Current.Language);
         ThemeManager.Apply(Preferences.Current.Theme, Preferences.Current.SurfaceOpacity);
+        // Before any window exists, so a widget pack's sizes and fonts are in place when styles are first built.
+        ThemePacks.Select(Preferences.Current.ThemePack);
+        ThemePacks.ApplyWidgets(Preferences.Current.Theme);
         _instanceMutex = new Mutex(initiallyOwned: true,
             name: IsPreview ? "Local\\OpenTaskbar.Preview" : "Local\\OpenTaskbar.Singleton", out var createdNew);
         if (!createdNew)

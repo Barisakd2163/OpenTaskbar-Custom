@@ -169,7 +169,9 @@
                                             <TranslateTransform Y="0" />
                                         </TransformGroup>
                                     </Grid.RenderTransform>
-                                    <Path Width="18" Height="18" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
+                                    <Image x:Name="StartImage" Visibility="Collapsed" Stretch="Uniform" Margin="2"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <Path x:Name="StartLogo" Width="18" Height="18" Stretch="Uniform" Fill="{DynamicResource WindowsLogoBrush}"
                                           MaxWidth="{DynamicResource DockIconSize}" MaxHeight="{DynamicResource DockIconSize}"
                                           Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
                                 </Grid>

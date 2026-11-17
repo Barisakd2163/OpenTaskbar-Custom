@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added theme packs: folders under `%LOCALAPPDATA%\OpenTaskbar\Themes` with a `theme.json`, an optional icon pack (`icons\`) and an optional widget pack (`widgets\`), selected in Settings → Appearance → Theme.
+- Icon packs map images by AppUserModelID, package name, executable path or name, or a file named after the executable, and can theme the Start button and the Recycle Bin.
+- Added fallback plates (Leaf, Petal, Rounded, Circle) that place unthemed app icons on a theme-shaped, tinted background.
+- Widget packs replace design tokens per theme: brushes and gradients apply at once, corner radii, sizes and fonts after a restart; the dock glass keeps the surface opacity setting.
+- Added `docs/themes.md` and a starter theme in `docs/theme-template`. Added the Prism theme in `themes/prism`: category icons (no application logos) built from Phosphor duotone glyphs (MIT) by `generate.mjs`, and a matching widget pack.
+
 ## 0.2.6 - 2026-11-17
 
 - Added automated in-place update downloader and restarter; updates download silently in the background and replace the executable without browser redirects.

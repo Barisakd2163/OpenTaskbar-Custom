@@ -37,6 +37,13 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Surface Opacity:** Adjust background glass opacity between 60% and 100% with immediate real-time preview.
 - **Two-Sided Dock Resizing:** Drag either outer border to narrow or expand the dock. Overflow is smoothly handled via hidden horizontal scrolling (Shift/Ctrl + Wheel or middle-click panning).
 
+### Theme Packs
+- **Theme Packs:** Restyle the dock with themes kept in `%LOCALAPPDATA%\OpenTaskbar\Themes`, selected in Settings → Appearance → Theme.
+- **Icon Packs:** Replace app, Start button and Recycle Bin icons; match by executable name, full path, Store app ID, or simply name a file after the executable (`firefox.png`).
+- **Fallback Plates:** Apps without a pack image are placed on a Leaf, Petal, Rounded, or Circle plate so the whole dock matches.
+- **Widget Packs:** Replace design tokens (colors, gradients, corner radii, sizes, fonts) for the dock, widgets, menus, and Settings. See [docs/themes.md](docs/themes.md).
+- **Prism Theme:** A ready-made theme in [themes/prism](themes/prism) with category icons on lit squircle plates and a graphite, violet-accented style. No application logos; duotone glyphs from Phosphor (MIT).
+
 ### Interaction and Motion
 - **Continuous Fisheye Magnification:** Smooth parabolic wave magnification that expands icons upward into the transparent headroom without clipping or layout shifts.
 - **Launch Feedback:** Tactile vertical launch bounce animation on application click.
@@ -141,6 +148,7 @@ User preferences, pinned item order, and widget configurations are stored locall
 - `settings.json` : User preferences, dock scaling, pinned applications, and active widgets.
 - `taskbar-state.txt` : Native Windows taskbar state recovery journal.
 - `log.txt` : Diagnostic and operational log.
+- `Themes\` : Theme packs (icon and widget packs). See [docs/themes.md](docs/themes.md).
 
 ---
 
