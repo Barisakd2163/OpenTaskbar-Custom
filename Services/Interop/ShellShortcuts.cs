@@ -292,7 +292,7 @@ public static class ShellShortcuts
             var winWidth = winRect.Right - winRect.Left;
             var winHeight = winRect.Bottom - winRect.Top;
 
-            for (var retry = 0; retry < 6; retry++)
+            for (var retry = 0; retry < 8; retry++)
             {
                 var buttons = element.FindAll(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
@@ -311,6 +311,12 @@ public static class ShellShortcuts
                     if (isCalendarButton)
                     {
                         var btnRect = btn.Current.BoundingRectangle;
+                        if (double.IsInfinity(btnRect.Top) || btnRect.Height <= 0)
+                        {
+                            AppLog.Info($"EnsureCalendarCollapsed: button layout pending (btnTop is Infinity) on attempt {retry}");
+                            continue;
+                        }
+
                         AppLog.Info($"EnsureCalendarCollapsed: found calendar button {autoId}/'{name}' at btnTop={btnRect.Top}, winTop={winRect.Top}");
 
                         if (name.Contains("Daralt", StringComparison.OrdinalIgnoreCase)
@@ -321,11 +327,14 @@ public static class ShellShortcuts
                             {
                                 ip.Invoke();
                                 AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name} to collapse");
+                                Thread.Sleep(60);
+                                GetWindowRect(hwnd, out winRect);
+                                btnRect = btn.Current.BoundingRectangle;
                             }
                         }
 
-                        // Clip window region above the calendar button so the date bar is not drawn at all
-                        var clipHeight = (int)Math.Max(100, btnRect.Top - winRect.Top);
+                        // Clip window region above the calendar button so the date bar and calendar are completely hidden
+                        var clipHeight = (int)Math.Clamp(btnRect.Top - winRect.Top - 2, 100, winHeight);
                         AppLog.Info($"EnsureCalendarCollapsed: clipping window 0x{hwnd:X} to height {clipHeight} (full was {winHeight})");
                         var rgn = CreateRectRgn(0, 0, winWidth, clipHeight);
                         var rgnResult = SetWindowRgn(hwnd, rgn, true);
