@@ -41,3 +41,6 @@ Ensure all behavior checks pass before submitting a pull request.
 1. Fork the repository and create a branch for your fix or feature.
 2. Verify that `dotnet build --warnaserror` succeeds and all tests pass.
 3. Fill out the pull request template completely in **English**.
+4. `master` is a protected branch: every change must go through a pull request with at least one approving review and a passing `Build & Test (Windows x64)` check. Do not push directly to `master`.
+5. Keep your branch current before requesting review (`git fetch origin && git rebase origin/master`) so the branch is mergeable and CI runs against the latest base.
+6. Once a pull request is merged, its head branch is deleted automatically (the repository has `delete_branch_on_merge` enabled). Do not leave merged branches behind: prune remote-tracking refs with `git fetch --prune` and remove local ones with `git branch -d <branch>`.
