@@ -14,7 +14,7 @@ public partial class MainWindow
         var foreground = OpenTaskbar.Services.NativeWindowTracker.GetForegroundApplicationWindow();
         _foregroundAtAppPress = foreground != 0 ? foreground : _foregroundWindow;
 
-        if (sender is Button { DataContext: DockApp app } && _pinnedApps.Contains(app))
+        if (sender is Button { DataContext: DockApp app } && (_pinnedApps.Contains(app) || _runningApps.Contains(app)))
         {
             _dragStartPoint = e.GetPosition(this);
             _draggedApp = app;
@@ -179,8 +179,7 @@ public partial class MainWindow
 
         if (e.Data.GetDataPresent(typeof(DockApp))
             && sender is Button targetButton
-            && targetButton.DataContext is DockApp targetApp
-            && _pinnedApps.Contains(targetApp))
+            && targetButton.DataContext is DockApp)
         {
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
@@ -208,19 +207,53 @@ public partial class MainWindow
         if (e.Data.GetData(typeof(DockApp)) is DockApp sourceApp
             && sender is Button targetButton
             && targetButton.DataContext is DockApp targetApp
-            && _pinnedApps.Contains(sourceApp)
-            && _pinnedApps.Contains(targetApp)
             && !ReferenceEquals(sourceApp, targetApp))
         {
-            var oldIndex = _pinnedApps.IndexOf(sourceApp);
-            var newIndex = _pinnedApps.IndexOf(targetApp);
-            if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+            var isSourcePinned = _pinnedApps.Contains(sourceApp);
+            var isTargetPinned = _pinnedApps.Contains(targetApp);
+
+            if (isSourcePinned && isTargetPinned)
             {
+                var oldIndex = _pinnedApps.IndexOf(sourceApp);
+                var newIndex = _pinnedApps.IndexOf(targetApp);
+                if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+                {
+                    ResetDisplacements();
+                    _pinnedApps.Move(oldIndex, newIndex);
+                    SavePinOrder();
+                    _replacementSession?.RefreshPosition();
+                    AnimateDropSettle(targetButton);
+                }
+            }
+            else if (!isSourcePinned && isTargetPinned)
+            {
+                var targetIndex = _pinnedApps.IndexOf(targetApp);
                 ResetDisplacements();
-                _pinnedApps.Move(oldIndex, newIndex);
-                SavePinOrder();
-                _replacementSession?.RefreshPosition();
+                PinRunningApp(sourceApp, targetIndex >= 0 ? targetIndex : -1);
                 AnimateDropSettle(targetButton);
+            }
+            else if (!isSourcePinned && !isTargetPinned)
+            {
+                var oldIndex = _runningApps.IndexOf(sourceApp);
+                var newIndex = _runningApps.IndexOf(targetApp);
+                if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+                {
+                    ResetDisplacements();
+                    _runningApps.Move(oldIndex, newIndex);
+                    AnimateDropSettle(targetButton);
+                }
+            }
+            else if (isSourcePinned && !isTargetPinned)
+            {
+                var oldIndex = _pinnedApps.IndexOf(sourceApp);
+                if (oldIndex >= 0 && oldIndex != _pinnedApps.Count - 1)
+                {
+                    ResetDisplacements();
+                    _pinnedApps.Move(oldIndex, _pinnedApps.Count - 1);
+                    SavePinOrder();
+                    _replacementSession?.RefreshPosition();
+                    AnimateDropSettle(targetButton);
+                }
             }
         }
 
@@ -296,6 +329,99 @@ public partial class MainWindow
             AnimateDropSettle(StartButton);
         }
 
+        e.Handled = true;
+    }
+
+    private void DockLeadControls_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+    }
+
+    private void DockLeadControls_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(StartButtonDragData))) return;
+
+        if (_preferences.Current.StartPlacement != StartButtonPlacement.Start)
+        {
+            _preferences.Save(_preferences.Current with { StartPlacement = StartButtonPlacement.Start });
+            ApplyStartPlacement();
+            AnimateDropSettle(StartButton);
+        }
+
+        e.Handled = true;
+    }
+
+    private void DockTrailControls_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+    }
+
+    private void DockTrailControls_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(StartButtonDragData))) return;
+
+        if (_preferences.Current.StartPlacement != StartButtonPlacement.End)
+        {
+            _preferences.Save(_preferences.Current with { StartPlacement = StartButtonPlacement.End });
+            ApplyStartPlacement();
+            AnimateDropSettle(StartButton);
+        }
+
+        e.Handled = true;
+    }
+
+    private void WidgetStrip_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+    }
+
+    private void WidgetStrip_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(StartButtonDragData))) return;
+
+        var dropPos = e.GetPosition(WidgetStrip);
+        var dropCoord = IsVertical ? dropPos.Y : dropPos.X;
+
+        var targetIndex = 0;
+        var validIndex = 0;
+        for (var i = 0; i < WidgetStrip.Children.Count; i++)
+        {
+            if (WidgetStrip.Children[i] is not FrameworkElement child || ReferenceEquals(child, StartButton))
+            {
+                continue;
+            }
+
+            var childPos = child.TranslatePoint(new Point(0, 0), WidgetStrip);
+            var childCenter = IsVertical
+                ? childPos.Y + (child.ActualHeight / 2)
+                : childPos.X + (child.ActualWidth / 2);
+
+            if (dropCoord > childCenter)
+            {
+                targetIndex = validIndex + 1;
+            }
+            validIndex++;
+        }
+
+        _preferences.Save(_preferences.Current with
+        {
+            StartPlacement = StartButtonPlacement.InWidgets,
+            StartWidgetIndex = targetIndex
+        });
+        ApplyStartPlacement();
+        AnimateDropSettle(StartButton);
         e.Handled = true;
     }
 }

@@ -69,23 +69,32 @@ public partial class MainWindow
 
     private bool StartButtonShown => _preferences.Current.StartPlacement != StartButtonPlacement.Hidden;
 
-    /// <summary>Moves the Start button (and its divider) to the front or the end of the dock, or hides it.</summary>
+    /// <summary>Moves the Start button (and its divider) to the front or the end of the dock, inside widgets, or hides it.</summary>
     private void ApplyStartPlacement()
     {
         var placement = _preferences.Current.StartPlacement;
-        StartButton.Visibility = StartDivider.Visibility = placement == StartButtonPlacement.Hidden ? Visibility.Collapsed : Visibility.Visible;
+        StartButton.Visibility = placement == StartButtonPlacement.Hidden ? Visibility.Collapsed : Visibility.Visible;
+        StartDivider.Visibility = placement is StartButtonPlacement.Start or StartButtonPlacement.End ? Visibility.Visible : Visibility.Collapsed;
+
         DockLeadControls.Children.Remove(StartButton);
         DockLeadControls.Children.Remove(StartDivider);
         DockTrailControls.Children.Remove(StartButton);
         DockTrailControls.Children.Remove(StartDivider);
-        if (placement == StartButtonPlacement.End)
+        WidgetStrip.Children.Remove(StartButton);
+
+        if (placement == StartButtonPlacement.InWidgets)
+        {
+            var index = Math.Clamp(_preferences.Current.StartWidgetIndex, 0, WidgetStrip.Children.Count);
+            WidgetStrip.Children.Insert(index, StartButton);
+        }
+        else if (placement == StartButtonPlacement.End)
         {
             var index = DockTrailControls.Children.IndexOf(WidgetDivider);
             if (index < 0) index = DockTrailControls.Children.Count;
             DockTrailControls.Children.Insert(index, StartDivider);
             DockTrailControls.Children.Insert(index + 1, StartButton);
         }
-        else
+        else if (placement == StartButtonPlacement.Start)
         {
             DockLeadControls.Children.Insert(0, StartButton);
             DockLeadControls.Children.Insert(1, StartDivider);

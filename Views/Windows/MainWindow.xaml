@@ -158,7 +158,8 @@
                             <ColumnDefinition x:Name="TrailColumn" Width="Auto" />
                             <ColumnDefinition x:Name="WidgetColumn" Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel x:Name="DockLeadControls" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel x:Name="DockLeadControls" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
+                                    AllowDrop="True" DragOver="DockLeadControls_DragOver" Drop="DockLeadControls_Drop">
                             <Button x:Name="StartButton" Style="{StaticResource StartDockButton}" Click="StartButton_Click"
                                     PreviewMouseLeftButtonDown="StartButton_PreviewMouseLeftButtonDown"
                                     PreviewMouseMove="StartButton_PreviewMouseMove"
@@ -192,7 +193,7 @@
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
-                                <Border x:Name="RunningAppsDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="4,0,4,0" Visibility="Collapsed" />
+                                <Border x:Name="RunningAppsDivider" Width="0" Height="22" Background="Transparent" Margin="0" Visibility="Collapsed" />
                                 <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -219,7 +220,8 @@
                                 </TextBlock>
                             </StackPanel>
                         </views:DockScrollViewer>
-                        <StackPanel x:Name="DockTrailControls" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel x:Name="DockTrailControls" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                                    AllowDrop="True" DragOver="DockTrailControls_DragOver" Drop="DockTrailControls_Drop">
                             <Button x:Name="RecycleBinButton" Style="{StaticResource DockButton}" Click="RecycleBin_Click"
                                     AllowDrop="True" DragOver="RecycleBin_DragOver" Drop="RecycleBin_Drop"
                                     AutomationProperties.Name="{local:Loc RecycleBin}" ToolTip="{local:Loc RecycleBin}" ToolTipService.InitialShowDelay="650">
@@ -252,6 +254,7 @@
                         <Border x:Name="WidgetIsland" Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
                                 Padding="0" BorderThickness="0" Background="Transparent" BorderBrush="Transparent">
                             <StackPanel x:Name="WidgetStrip" Orientation="Horizontal" VerticalAlignment="Center"
+                                        AllowDrop="True" DragOver="WidgetStrip_DragOver" Drop="WidgetStrip_Drop"
                                         SizeChanged="WidgetStrip_SizeChanged" />
                         </Border>
                     </Grid>

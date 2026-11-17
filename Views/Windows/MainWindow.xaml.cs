@@ -74,6 +74,7 @@ public partial class MainWindow : Window
     private bool _resizingFromLeft;
     private readonly bool _isPreview = ((App)Application.Current).IsPreview;
     private readonly bool _isInspection = ((App)Application.Current).IsInspection;
+    private readonly bool _isDev = ((App)Application.Current).IsDev;
     // Failures are written to the log only; the dock never displays error popups.
     private readonly WidgetCoordinator _widgetCoordinator;
     private double _dockTopGap;
@@ -151,6 +152,7 @@ public partial class MainWindow : Window
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
         _widgetCoordinator.HoverActiveChanged += _ => _autoHideController?.EvaluateState();
+        _widgetCoordinator.WidgetsPlaced += ApplyStartPlacement;
         Deactivated += (_, _) => _widgetCoordinator.CollapseHover();
         _widgetCoordinator.AvailabilityChanged += () =>
         {
@@ -249,7 +251,8 @@ public partial class MainWindow : Window
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
 
-        if (!_isPreview) StartReplacementMode();
+        if (_isDev) PositionDock();
+        else if (!_isPreview) StartReplacementMode();
         InitializeFeatures();
 #if DEBUG
         // Verifies crash recovery: the unhandled-exception handlers must restore the Windows taskbar.
@@ -553,8 +556,20 @@ public partial class MainWindow : Window
                     WindowCount = windowCount
                 };
             })
-            .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(app => app.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(app =>
+            {
+                var existingIndex = -1;
+                for (var i = 0; i < _runningApps.Count; i++)
+                {
+                    if (string.Equals(_runningApps[i].ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existingIndex = i;
+                        break;
+                    }
+                }
+                return existingIndex >= 0 ? existingIndex : int.MaxValue;
+            })
+            .ThenBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         var layoutChanged = !_runningApps.Select(app => app.ExecutablePath)
             .SequenceEqual(desiredApps.Select(app => app.ExecutablePath), StringComparer.OrdinalIgnoreCase);
@@ -602,7 +617,7 @@ public partial class MainWindow : Window
             AnimateRunningAppRemoval(_runningApps[index]);
         }
 
-        RunningAppsDivider.Visibility = desiredApps.Count > 0 && VisiblePinnedCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RunningAppsDivider.Visibility = Visibility.Collapsed;
         UpdateExtrasDividerVisibility();
         return layoutChanged;
     }
@@ -1326,6 +1341,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        PinRunningApp(app);
+    }
+
+    internal void PinRunningApp(DockApp app, int insertIndex = -1)
+    {
         if (RevealHiddenPin(app)) return;
         var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
         if (error is not null || shortcutPath is null)
@@ -1333,7 +1353,6 @@ public partial class MainWindow : Window
             ReportError(error ?? "ErrorAppPinFailed");
             return;
         }
-
 
         var pinnedApp = new DockApp(app.Name, app.ExecutablePath)
         {
@@ -1346,7 +1365,14 @@ public partial class MainWindow : Window
         };
 
         _runningApps.Remove(app);
-        _pinnedApps.Add(pinnedApp);
+        if (insertIndex >= 0 && insertIndex <= _pinnedApps.Count)
+        {
+            _pinnedApps.Insert(insertIndex, pinnedApp);
+        }
+        else
+        {
+            _pinnedApps.Add(pinnedApp);
+        }
 
         SavePinOrder();
         ResizeDockToContent();
@@ -1879,7 +1905,7 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
-    private void ApplyBackdropHitTesting() => DockBackdrop.Visibility = !_isPreview
+    private void ApplyBackdropHitTesting() => DockBackdrop.Visibility = !_isPreview && !_isDev
         && _preferences.Current.AutoHide == AutoHideMode.Disabled ? Visibility.Visible : Visibility.Collapsed;
 
     private void ApplyTaskbarLayout(Size area)
