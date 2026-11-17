@@ -12,7 +12,7 @@
     </UserControl.Style>
     <Border x:Name="CardBorder" Background="{DynamicResource SurfaceSelected}"
             BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1"
-            CornerRadius="10">
+            CornerRadius="{StaticResource DockWidgetRadius}">
         <Border.Style>
             <Style TargetType="Border">
                 <Style.Triggers>
@@ -55,7 +55,7 @@
                 </Button>
             </Grid>
             <Border x:Name="SettingsDrawer" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource StrokeSubtle}"
-                    Padding="14,12" Background="{DynamicResource SettingsSidebarOverlay}" CornerRadius="0,0,9,9">
+                    Padding="14,12" Background="{DynamicResource SettingsSidebarOverlay}" CornerRadius="0,0,11,11">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />

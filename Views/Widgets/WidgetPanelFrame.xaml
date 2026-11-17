@@ -8,7 +8,7 @@
     <Border Background="{DynamicResource MenuMaterial}" BorderBrush="{DynamicResource MenuStroke}" BorderThickness="1"
             CornerRadius="{StaticResource PopupRadius}">
         <Border BorderBrush="{DynamicResource DockInnerBevelMaterial}" BorderThickness="1"
-                CornerRadius="9" Padding="{StaticResource WidgetPanelPadding}" Background="Transparent">
+                CornerRadius="{StaticResource PopupInnerRadius}" Padding="{StaticResource WidgetPanelPadding}" Background="Transparent">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                     <DockPanel>
