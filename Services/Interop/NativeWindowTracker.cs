@@ -1,6 +1,6 @@
+using System.Buffers;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 
@@ -12,11 +12,13 @@ public sealed class NativeWindowTracker : IDisposable
     private const uint EventObjectDestroy = 0x8001;
     private const uint EventObjectShow = 0x8002;
     private const uint EventObjectHide = 0x8003;
-    private const uint EventObjectNameChange = 0x800C;
     private const uint EventObjectLocationChange = 0x800B;
+    private const uint EventObjectNameChange = 0x800C;
     private const uint EventSystemAlert = 0x0002;
     private const uint EventSystemForeground = 0x0003;
     private const uint WineventOutOfContext = 0x0000;
+    private const uint WineventSkipOwnProcess = 0x0002;
+    private const uint WinEventFlags = WineventOutOfContext | WineventSkipOwnProcess;
     private const int ObjectWindow = 0;
     private const int ChildIdSelf = 0;
     private const int WindowOwner = 4;
@@ -29,26 +31,30 @@ public sealed class NativeWindowTracker : IDisposable
     private const int ShowMinimize = 6;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const int ErrorInsufficientBuffer = 122;
+    private const int DwmwaCloaked = 14;
+    private const int DwmCloakedShell = 0x00000002;
     private static readonly string WindowsSystemAppsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SystemApps") + Path.DirectorySeparatorChar;
 
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly DispatcherTimer _locationTimer;
     private readonly WinEventDelegate _eventCallback;
     private readonly EnumWindowsDelegate _enumCallback;
     private readonly HashSet<nint> _notificationWindows = [];
-    private readonly List<TrackedWindow> _scratchWindows = [];
-    private readonly Dictionary<nint, TrackedWindow> _previousWindows = [];
-    private readonly StringBuilder _titleBuffer = new(256);
-    private readonly StringBuilder _classBuffer = new(256);
-    private readonly StringBuilder _pathBuffer = new(1024);
+    private readonly HashSet<nint> _ignoredWindows = [];
+    private readonly HashSet<nint> _snapshotHandles = [];
+    private readonly Dictionary<nint, TrackedWindow> _previousByHandle = [];
+    private readonly List<TrackedWindow> _pendingWindows = [];
+    private readonly char[] _titleBuffer = new char[1024];
+    private readonly char[] _classBuffer = new char[256];
     private nint _windowHook;
+    private nint _locationHook;
     private nint _nameChangeHook;
     private nint _systemEventHook;
     private nint _excludedWindow;
     private nint _lastForegroundWindow;
-    private nint _lastLocationForeground;
-    private long _lastLocationTick;
+    private nint _pendingLocationForeground;
     private int _refreshQueued;
     private int _urgentRefresh;
     private bool _disposed;
@@ -61,6 +67,11 @@ public sealed class NativeWindowTracker : IDisposable
             Interval = TimeSpan.FromMilliseconds(60)
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
+        _locationTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _locationTimer.Tick += LocationTimer_Tick;
         _eventCallback = OnWinEvent;
         _enumCallback = CollectWindow;
     }
@@ -78,13 +89,13 @@ public sealed class NativeWindowTracker : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_windowHook != 0) return;
         _excludedWindow = excludedWindow;
-        _windowHook = SetWinEventHook(EventObjectCreate, EventObjectHide, 0, _eventCallback, 0, 0, WineventOutOfContext);
+        _windowHook = SetWinEventHook(EventObjectCreate, EventObjectHide, 0, _eventCallback, 0, 0, WinEventFlags);
         if (_windowHook == 0)
         {
             throw new InvalidOperationException("ErrorWindowEvents");
         }
 
-        _nameChangeHook = SetWinEventHook(EventObjectLocationChange, EventObjectNameChange, 0, _eventCallback, 0, 0, WineventOutOfContext);
+        _nameChangeHook = SetWinEventHook(EventObjectNameChange, EventObjectNameChange, 0, _eventCallback, 0, 0, WinEventFlags);
         if (_nameChangeHook == 0)
         {
             UnhookWinEvent(_windowHook);
@@ -92,12 +103,15 @@ public sealed class NativeWindowTracker : IDisposable
             throw new InvalidOperationException("ErrorWindowTitleHook");
         }
 
-        _systemEventHook = SetWinEventHook(EventSystemAlert, EventSystemForeground, 0, _eventCallback, 0, 0, WineventOutOfContext);
+        _locationHook = SetWinEventHook(EventObjectLocationChange, EventObjectLocationChange, 0, _eventCallback, 0, 0, WinEventFlags);
+        _systemEventHook = SetWinEventHook(EventSystemAlert, EventSystemForeground, 0, _eventCallback, 0, 0, WinEventFlags);
         RefreshWindows();
         var foregroundWindow = GetForegroundWindow();
         if (foregroundWindow != 0)
         {
-            ForegroundWindowChanged?.Invoke(foregroundWindow);
+            var normalized = NormalizeRootWindow(foregroundWindow);
+            _lastForegroundWindow = normalized;
+            ForegroundWindowChanged?.Invoke(normalized);
         }
     }
 
@@ -110,21 +124,20 @@ public sealed class NativeWindowTracker : IDisposable
 
         if (eventType == EventObjectLocationChange)
         {
-            if (objectId == ObjectWindow && childId == ChildIdSelf)
+            if (objectId == ObjectWindow && childId == ChildIdSelf && windowHandle != 0)
             {
                 var foreground = GetForegroundWindow();
-                if (foreground != 0 && (windowHandle == foreground || GetAncestor(windowHandle, GaRootOwner) == foreground))
+                if (foreground != 0)
                 {
-                    var now = Environment.TickCount64;
-                    if (foreground == _lastLocationForeground && now - _lastLocationTick < 100)
+                    var foregroundRoot = NormalizeRootWindow(foreground);
+                    if (windowHandle == foreground || windowHandle == foregroundRoot)
                     {
-                        return;
+                        _pendingLocationForeground = foregroundRoot;
+                        if (!_locationTimer.IsEnabled)
+                        {
+                            _locationTimer.Start();
+                        }
                     }
-
-                    _lastLocationForeground = foreground;
-                    _lastLocationTick = now;
-                    QueueRefresh();
-                    ForegroundWindowChanged?.Invoke(foreground);
                 }
             }
             return;
@@ -132,17 +145,24 @@ public sealed class NativeWindowTracker : IDisposable
 
         if (eventType == EventSystemAlert && windowHandle != 0)
         {
-            _notificationWindows.Add(windowHandle);
-            QueueRefresh();
+            var target = NormalizeRootWindow(windowHandle);
+            if (target != 0 && target != _excludedWindow && IsWindowVisible(target) && GetWindow(target, WindowOwner) == 0)
+            {
+                _notificationWindows.Add(target);
+                QueueRefresh();
+            }
             return;
         }
 
         if (eventType == EventSystemForeground && windowHandle != 0)
         {
+            var target = NormalizeRootWindow(windowHandle);
             _notificationWindows.Remove(windowHandle);
-            _lastForegroundWindow = windowHandle;
+            _notificationWindows.Remove(target);
+            _lastForegroundWindow = target;
+            _locationTimer.Stop();
             QueueRefresh(urgent: true);
-            ForegroundWindowChanged?.Invoke(windowHandle);
+            ForegroundWindowChanged?.Invoke(target);
             return;
         }
 
@@ -152,8 +172,30 @@ public sealed class NativeWindowTracker : IDisposable
             return;
         }
 
+        if (eventType is EventObjectCreate or EventObjectDestroy)
+        {
+            _ignoredWindows.Remove(windowHandle);
+        }
+        else if (_ignoredWindows.Contains(windowHandle) && eventType == EventObjectNameChange)
+        {
+            return;
+        }
+
         QueueRefresh(urgent: eventType is EventObjectShow or EventObjectDestroy
-            || (eventType == EventObjectNameChange && !Snapshot.Any(window => window.Handle == windowHandle)));
+            || (eventType == EventObjectNameChange && !_snapshotHandles.Contains(windowHandle)));
+    }
+
+    private void LocationTimer_Tick(object? sender, EventArgs e)
+    {
+        _locationTimer.Stop();
+        if (_disposed) return;
+        var foreground = GetForegroundWindow();
+        var target = foreground != 0 ? NormalizeRootWindow(foreground) : _pendingLocationForeground;
+        if (target != 0 && IsWindow(target))
+        {
+            _lastForegroundWindow = target;
+            ForegroundWindowChanged?.Invoke(target);
+        }
     }
 
     private void QueueRefresh(bool urgent = false)
@@ -192,44 +234,54 @@ public sealed class NativeWindowTracker : IDisposable
         _refreshTimer.Stop();
         RefreshWindows();
         var currentForeground = GetForegroundWindow();
-        if (currentForeground != 0 && currentForeground != _lastForegroundWindow)
+        if (currentForeground != 0)
         {
-            _lastForegroundWindow = currentForeground;
-            ForegroundWindowChanged?.Invoke(currentForeground);
+            var normalized = NormalizeRootWindow(currentForeground);
+            if (normalized != _lastForegroundWindow)
+            {
+                _lastForegroundWindow = normalized;
+                ForegroundWindowChanged?.Invoke(normalized);
+            }
         }
     }
 
     private void RefreshWindows()
     {
-        _scratchWindows.Clear();
-        _previousWindows.Clear();
-        foreach (var existing in Snapshot)
+        _pendingWindows.Clear();
+        _previousByHandle.Clear();
+        for (var i = 0; i < Snapshot.Count; i++)
         {
-            _previousWindows[existing.Handle] = existing;
+            var item = Snapshot[i];
+            _previousByHandle[item.Handle] = item;
         }
 
         EnumWindows(_enumCallback, 0);
 
         _notificationWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
+        _ignoredWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
 
-        if (Snapshot.SequenceEqual(_scratchWindows))
+        if (Snapshot.SequenceEqual(_pendingWindows))
         {
-            _scratchWindows.Clear();
-            _previousWindows.Clear();
+            _pendingWindows.Clear();
             return;
         }
 
-        var snapshot = _scratchWindows.ToArray();
-        _scratchWindows.Clear();
-        _previousWindows.Clear();
-        Snapshot = snapshot;
-        WindowsChanged?.Invoke(this, snapshot);
+        var next = _pendingWindows.ToArray();
+        _pendingWindows.Clear();
+        _snapshotHandles.Clear();
+        for (var i = 0; i < next.Length; i++)
+        {
+            _snapshotHandles.Add(next[i].Handle);
+        }
+
+        Snapshot = next;
+        WindowsChanged?.Invoke(this, next);
     }
 
     private bool CollectWindow(nint windowHandle, nint state)
     {
-        if (windowHandle == _excludedWindow || !IsWindowVisible(windowHandle)
-            || GetWindow(windowHandle, WindowOwner) != 0)
+        if (windowHandle == _excludedWindow || _ignoredWindows.Contains(windowHandle)
+            || !IsWindowVisible(windowHandle) || GetWindow(windowHandle, WindowOwner) != 0)
         {
             return true;
         }
@@ -243,47 +295,64 @@ public sealed class NativeWindowTracker : IDisposable
             return true;
         }
 
+        // Skip DWM-cloaked suspended/hidden UWP frames while keeping other-virtual-desktop windows (DWM_CLOAKED_SHELL).
+        if (DwmGetWindowAttribute(windowHandle, DwmwaCloaked, out var cloaked, sizeof(int)) == 0
+            && (cloaked & ~DwmCloakedShell) != 0)
+        {
+            return true;
+        }
+
         var titleLength = GetWindowTextLength(windowHandle);
         if (titleLength <= 0)
         {
             return true;
         }
 
-        var needed = Math.Min(titleLength + 1, 1024);
-        if (_titleBuffer.Capacity < needed) _titleBuffer.EnsureCapacity(needed);
-        _titleBuffer.Clear();
-        GetWindowText(windowHandle, _titleBuffer, _titleBuffer.Capacity);
-        var value = _titleBuffer.ToString().Trim();
-        if (value.Length > 0)
+        var readCapacity = Math.Min(titleLength + 1, _titleBuffer.Length);
+        var actualLength = GetWindowText(windowHandle, _titleBuffer, readCapacity);
+        if (actualLength <= 0)
         {
-            _previousWindows.TryGetValue(windowHandle, out var previous);
-            var executablePath = previous?.ExecutablePath ?? GetExecutablePath(windowHandle, _pathBuffer);
-            if (IsWindowsSystemApp(executablePath))
-            {
-                return true;
-            }
+            return true;
+        }
 
-            if (IsExplorerShellWindow(executablePath, windowHandle, _classBuffer))
-            {
-                return true;
-            }
+        ReadOnlySpan<char> trimmedSpan = _titleBuffer.AsSpan(0, actualLength).Trim();
+        if (trimmedSpan.IsEmpty)
+        {
+            return true;
+        }
 
-            if (previous is not null)
+        _previousByHandle.TryGetValue(windowHandle, out var previous);
+        var executablePath = previous is not null ? previous.ExecutablePath : GetExecutablePath(windowHandle);
+        if (IsWindowsSystemApp(executablePath) || IsExplorerShellWindow(executablePath, windowHandle))
+        {
+            _ignoredWindows.Add(windowHandle);
+            return true;
+        }
+
+        var hasNotification = _notificationWindows.Contains(windowHandle);
+        if (previous is not null)
+        {
+            var title = trimmedSpan.SequenceEqual(previous.Title) ? previous.Title : trimmedSpan.ToString();
+            _pendingWindows.Add(previous with
             {
-                _scratchWindows.Add(previous with
-                {
-                    Title = value,
-                    HasNotification = _notificationWindows.Contains(windowHandle)
-                });
-            }
-            else
-            {
-                _scratchWindows.Add(new TrackedWindow(windowHandle, value,
-                    executablePath, _notificationWindows.Contains(windowHandle)));
-            }
+                Title = title,
+                HasNotification = hasNotification
+            });
+        }
+        else
+        {
+            _pendingWindows.Add(new TrackedWindow(windowHandle, trimmedSpan.ToString(),
+                executablePath, hasNotification));
         }
 
         return true;
+    }
+
+    private static nint NormalizeRootWindow(nint windowHandle)
+    {
+        if (windowHandle == 0) return 0;
+        var root = GetAncestor(windowHandle, GaRootOwner);
+        return root != 0 ? root : windowHandle;
     }
 
     public static bool Activate(nint windowHandle)
@@ -295,25 +364,42 @@ public sealed class NativeWindowTracker : IDisposable
 
         if (IsIconic(windowHandle))
         {
-            ShowWindow(windowHandle, ShowRestore);
+            ShowWindowAsync(windowHandle, ShowRestore);
         }
 
+        AllowSetForegroundWindow(-1);
+        var foreground = GetForegroundWindow();
+        var foregroundThread = foreground != 0 ? GetWindowThreadProcessId(foreground, out _) : 0;
         var targetThread = GetWindowThreadProcessId(windowHandle, out _);
         var currentThread = GetCurrentThreadId();
-        var attached = targetThread != 0 && targetThread != currentThread
+        var attachedForeground = foregroundThread != 0 && foregroundThread != currentThread
+            && AttachThreadInput(currentThread, foregroundThread, true);
+        var attachedTarget = targetThread != 0 && targetThread != currentThread && targetThread != foregroundThread
             && AttachThreadInput(currentThread, targetThread, true);
         try
         {
             BringWindowToTop(windowHandle);
-            return SetForegroundWindow(windowHandle);
+            if (SetForegroundWindow(windowHandle))
+            {
+                return true;
+            }
         }
         finally
         {
-            if (attached)
+            if (attachedTarget)
             {
                 AttachThreadInput(currentThread, targetThread, false);
             }
+            if (attachedForeground)
+            {
+                AttachThreadInput(currentThread, foregroundThread, false);
+            }
         }
+
+        SwitchToThisWindow(windowHandle, true);
+        var active = GetForegroundWindow();
+        return active == windowHandle
+            || (active != 0 && NormalizeRootWindow(active) == NormalizeRootWindow(windowHandle));
     }
 
     public static nint GetForegroundApplicationWindow()
@@ -335,15 +421,11 @@ public sealed class NativeWindowTracker : IDisposable
         var foregroundWindow = foregroundAtPress ?? GetForegroundApplicationWindow();
         if (foregroundWindow != 0)
         {
-            var foregroundRoot = GetAncestor(foregroundWindow, GaRootOwner);
-            if (foregroundRoot == 0)
-            {
-                foregroundRoot = foregroundWindow;
-            }
-
+            var foregroundRoot = NormalizeRootWindow(foregroundWindow);
             if (IsWindow(foregroundRoot) && !IsIconic(foregroundRoot)
                 && (foregroundRoot == windowHandle
-                    || string.Equals(GetExecutablePath(foregroundRoot), executablePath, StringComparison.OrdinalIgnoreCase)))
+                    || (!string.IsNullOrEmpty(executablePath)
+                        && string.Equals(GetExecutablePath(foregroundRoot), executablePath, StringComparison.OrdinalIgnoreCase))))
             {
                 return ShowWindowAsync(foregroundRoot, ShowMinimize);
             }
@@ -367,10 +449,18 @@ public sealed class NativeWindowTracker : IDisposable
         _disposed = true;
         _refreshTimer.Stop();
         _refreshTimer.Tick -= RefreshTimer_Tick;
+        _locationTimer.Stop();
+        _locationTimer.Tick -= LocationTimer_Tick;
         if (_windowHook != 0)
         {
             UnhookWinEvent(_windowHook);
             _windowHook = 0;
+        }
+
+        if (_locationHook != 0)
+        {
+            UnhookWinEvent(_locationHook);
+            _locationHook = 0;
         }
 
         if (_nameChangeHook != 0)
@@ -384,10 +474,20 @@ public sealed class NativeWindowTracker : IDisposable
             UnhookWinEvent(_systemEventHook);
             _systemEventHook = 0;
         }
+
+        _notificationWindows.Clear();
+        _ignoredWindows.Clear();
+        _snapshotHandles.Clear();
+        _previousByHandle.Clear();
+        _pendingWindows.Clear();
+        Snapshot = [];
     }
 
     private delegate void WinEventDelegate(nint hook, uint eventType, nint windowHandle, int objectId, int childId, uint eventThread, uint eventTime);
     private delegate bool EnumWindowsDelegate(nint windowHandle, nint state);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint eventHookModule, WinEventDelegate callback, uint processId, uint threadId, uint flags);
@@ -416,7 +516,7 @@ public sealed class NativeWindowTracker : IDisposable
     private static extern nint GetWindow(nint windowHandle, int command);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(nint windowHandle, StringBuilder text, int maximumCount);
+    private static extern int GetWindowText(nint windowHandle, char[] text, int maximumCount);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextLength(nint windowHandle);
@@ -430,12 +530,19 @@ public sealed class NativeWindowTracker : IDisposable
     private static extern bool BringWindowToTop(nint windowHandle);
 
     [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(int processId);
+
+    [DllImport("user32.dll")]
+    private static extern void SwitchToThisWindow(nint windowHandle, [MarshalAs(UnmanagedType.Bool)] bool altTab);
+
+    [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
-    private static string? GetExecutablePath(nint windowHandle, StringBuilder? buffer = null)
+    private static string? GetExecutablePath(nint windowHandle)
     {
         var threadId = GetWindowThreadProcessId(windowHandle, out var processId);
         if (threadId == 0 || processId == 0)
@@ -449,27 +556,31 @@ public sealed class NativeWindowTracker : IDisposable
             return null;
         }
 
+        var buffer = ArrayPool<char>.Shared.Rent(1024);
         try
         {
-            var path = buffer ?? new StringBuilder(1024);
-            path.Clear();
-            var length = (uint)path.Capacity;
-            if (QueryFullProcessImageName(processHandle, 0, path, ref length))
+            var length = (uint)buffer.Length;
+            if (QueryFullProcessImageName(processHandle, 0, buffer, ref length))
             {
-                return path.ToString();
+                return new string(buffer, 0, (int)length);
             }
 
-            if (Marshal.GetLastPInvokeError() == ErrorInsufficientBuffer)
+            if (Marshal.GetLastWin32Error() == ErrorInsufficientBuffer)
             {
-                path.EnsureCapacity(32768);
-                length = (uint)path.Capacity;
-                return QueryFullProcessImageName(processHandle, 0, path, ref length) ? path.ToString() : null;
+                ArrayPool<char>.Shared.Return(buffer);
+                buffer = ArrayPool<char>.Shared.Rent(32768);
+                length = (uint)buffer.Length;
+                if (QueryFullProcessImageName(processHandle, 0, buffer, ref length))
+                {
+                    return new string(buffer, 0, (int)length);
+                }
             }
 
             return null;
         }
         finally
         {
+            ArrayPool<char>.Shared.Return(buffer);
             CloseHandle(processHandle);
         }
     }
@@ -497,8 +608,18 @@ public sealed class NativeWindowTracker : IDisposable
                 return null;
             }
 
-            var appId = new StringBuilder((int)length);
-            return GetApplicationUserModelId(processHandle, ref length, appId) == 0 ? appId.ToString() : null;
+            var buffer = ArrayPool<char>.Shared.Rent((int)length);
+            try
+            {
+                if (GetApplicationUserModelId(processHandle, ref length, buffer) != 0 || length == 0) return null;
+                var charCount = (int)length;
+                if (charCount > 0 && buffer[charCount - 1] == '\0') charCount--;
+                return charCount > 0 ? new string(buffer, 0, charCount) : null;
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(buffer);
+            }
         }
         finally
         {
@@ -512,20 +633,21 @@ public sealed class NativeWindowTracker : IDisposable
             && executablePath.StartsWith(WindowsSystemAppsDirectory, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsExplorerShellWindow(string? executablePath, nint windowHandle, StringBuilder className)
+    private bool IsExplorerShellWindow(string? executablePath, nint windowHandle)
     {
         if (!string.Equals(Path.GetFileName(executablePath), "explorer.exe", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        className.Clear();
-        var length = GetClassName(windowHandle, className, className.Capacity);
-        return length <= 0 || className.ToString() is not ("CabinetWClass" or "ExploreWClass");
+        var length = GetClassName(windowHandle, _classBuffer, _classBuffer.Length);
+        if (length <= 0) return true;
+        ReadOnlySpan<char> cls = _classBuffer.AsSpan(0, length);
+        return !cls.SequenceEqual("CabinetWClass") && !cls.SequenceEqual("ExploreWClass");
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetApplicationUserModelId(nint processHandle, ref uint length, StringBuilder? applicationUserModelId);
+    private static extern int GetApplicationUserModelId(nint processHandle, ref uint length, char[]? applicationUserModelId);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
@@ -537,7 +659,7 @@ public sealed class NativeWindowTracker : IDisposable
     private static extern nint GetAncestor(nint windowHandle, uint flags);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(nint windowHandle, StringBuilder className, int maximumCount);
+    private static extern int GetClassName(nint windowHandle, char[] className, int maximumCount);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -552,15 +674,11 @@ public sealed class NativeWindowTracker : IDisposable
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool QueryFullProcessImageName(nint processHandle, uint flags, StringBuilder executablePath, ref uint size);
+    private static extern bool QueryFullProcessImageName(nint processHandle, uint flags, char[] executablePath, ref uint size);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(nint handle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindow(nint windowHandle, int command);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

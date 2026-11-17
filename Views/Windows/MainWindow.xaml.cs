@@ -231,7 +231,10 @@ public partial class MainWindow : Window
             DockSurface,
             () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible
                 || DockScrollViewer.IsPanning || LeftResizeThumb.IsDragging || RightResizeThumb.IsDragging
-                || _draggedApp is not null || (_settingsWindow?.IsVisible == true) || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
+                || _draggedApp is not null
+                || (_settingsWindow is { IsVisible: true, WindowState: not WindowState.Minimized })
+                || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
+        _autoHideController.DockBoundsProvider = GetDockPhysicalBounds;
         _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
@@ -253,6 +256,30 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => OpenSettings_Click(this, new RoutedEventArgs()));
         }
 #endif
+    }
+
+    private (int Left, int Top, int Right, int Bottom)? GetDockPhysicalBounds()
+    {
+        if (_source is null || _source.Handle == 0 || !IsLoaded || DockFrame.ActualWidth <= 0 || DockFrame.ActualHeight <= 0)
+            return null;
+        try
+        {
+            var topLeft = DockFrame.PointToScreen(new Point(0, 0));
+            var bottomRight = DockFrame.PointToScreen(new Point(DockFrame.ActualWidth, DockFrame.ActualHeight));
+            // Subtract DockSurfaceTranslate so auto-hide overlap checks always test the dock's resting position.
+            var matrix = _source.CompositionTarget?.TransformToDevice ?? Matrix.Identity;
+            var offsetX = DockSurfaceTranslate.X * matrix.M11;
+            var offsetY = DockSurfaceTranslate.Y * matrix.M22;
+            return (
+                (int)Math.Floor(topLeft.X - offsetX),
+                (int)Math.Floor(topLeft.Y - offsetY),
+                (int)Math.Ceiling(bottomRight.X - offsetX),
+                (int)Math.Ceiling(bottomRight.Y - offsetY));
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private void PositionDock()
@@ -915,6 +942,7 @@ public partial class MainWindow : Window
         var sourceHandle = _thumbnailPreview.SourceHandle;
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        _autoHideController?.EvaluateState();
         if (sourceHandle == 0 || !NativeWindowTracker.Activate(sourceHandle))
         {
             ReportError("ErrorPreviewActivate");
@@ -928,6 +956,7 @@ public partial class MainWindow : Window
         var sourceHandle = _thumbnailPreview.SourceHandle;
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
+        _autoHideController?.EvaluateState();
         if (sourceHandle == 0 || !NativeWindowTracker.RequestClose(sourceHandle))
         {
             ReportError("ErrorPreviewClose");
@@ -1424,13 +1453,18 @@ public partial class MainWindow : Window
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         _widgetPanel.Close(restoreFocus: false);
+        if (_settingsWindow is { IsClosingOrClosed: true }) _settingsWindow = null;
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow(_preferences);
             _settingsWindow.Closed += (_, _) =>
             {
                 _settingsWindow = null;
-                _autoHideController?.EvaluateState();
+                if (_autoHideController is not null)
+                {
+                    _autoHideController.CheckForegroundWindow(NativeWindowTracker.GetForegroundApplicationWindow());
+                    _autoHideController.EvaluateState();
+                }
             };
             _settingsWindow.Show();
         }

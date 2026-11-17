@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -12,6 +10,11 @@ namespace OpenTaskbar.Services;
 public sealed class DockAutoHideController : IDisposable
 {
     private const uint MonitorDefaultToNearest = 2;
+    private const uint GaRootOwner = 3;
+    private const int DwmwaExtendedFrameBounds = 9;
+
+    private static readonly CubicEase EaseOut = CreateFrozenEase(EasingMode.EaseOut);
+    private static readonly CubicEase EaseInOut = CreateFrozenEase(EasingMode.EaseInOut);
 
     private readonly Window _window;
     private readonly nint _windowHandle;
@@ -19,6 +22,8 @@ public sealed class DockAutoHideController : IDisposable
     private readonly FrameworkElement _dockSurface;
     private readonly Func<bool> _isInteractionLocked;
     private readonly DispatcherTimer _hideTimer;
+    private readonly DispatcherTimer _revealedGuardTimer;
+    private readonly char[] _classNameBuffer = new char[64];
     private bool _disposed;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
@@ -26,6 +31,12 @@ public sealed class DockAutoHideController : IDisposable
     /// <summary>The screen edge the dock slides towards when it hides.</summary>
     public Models.DockEdge Edge { get; set; } = Models.DockEdge.Bottom;
     public bool AnimationsEnabled { get; set; } = true;
+
+    /// <summary>Optional physical-pixel bounds of the visible dock surface (excluding transparent headroom/margins).</summary>
+    public Func<(int Left, int Top, int Right, int Bottom)?>? DockBoundsProvider { get; set; }
+
+    /// <summary>Optional cursor-position override for headless/sandboxed verification tests.</summary>
+    internal Func<(int X, int Y)?>? CursorPositionProvider { get; set; }
 
     private TimeSpan MotionDuration(double milliseconds) => AnimationsEnabled && SystemParameters.ClientAreaAnimation
         ? TimeSpan.FromMilliseconds(milliseconds) : TimeSpan.Zero;
@@ -54,6 +65,37 @@ public sealed class DockAutoHideController : IDisposable
             Interval = TimeSpan.FromMilliseconds(DockMetrics.AutoHideDelayMs)
         };
         _hideTimer.Tick += HideTimer_Tick;
+        _revealedGuardTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(280)
+        };
+        _revealedGuardTimer.Tick += RevealedGuardTimer_Tick;
+    }
+
+    private void SyncRevealedGuardTimer()
+    {
+        if (!_disposed && Mode != AutoHideMode.Disabled && !IsHidden)
+        {
+            if (!_revealedGuardTimer.IsEnabled) _revealedGuardTimer.Start();
+        }
+        else
+        {
+            _revealedGuardTimer.Stop();
+        }
+    }
+
+    private void RevealedGuardTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_disposed || Mode == AutoHideMode.Disabled || IsHidden)
+        {
+            _revealedGuardTimer.Stop();
+            return;
+        }
+        if (Mode == AutoHideMode.Smart)
+        {
+            HasOverlap = EvaluateWindowOverlap(GetForegroundWindow());
+        }
+        EvaluateState();
     }
 
     public void SetMode(AutoHideMode mode)
@@ -63,12 +105,19 @@ public sealed class DockAutoHideController : IDisposable
         if (Mode == AutoHideMode.Disabled)
         {
             _hideTimer.Stop();
-            AnimateReveal();
+            _revealedGuardTimer.Stop();
+            HasOverlap = false;
+            if (IsHidden) AnimateReveal();
+            return;
         }
-        else
+
+        if (Mode == AutoHideMode.Smart)
         {
-            EvaluateState();
+            HasOverlap = EvaluateWindowOverlap(GetForegroundWindow());
         }
+
+        EvaluateState();
+        SyncRevealedGuardTimer();
     }
 
     public void OnMouseEnterDock()
@@ -113,6 +162,7 @@ public sealed class DockAutoHideController : IDisposable
     public void EvaluateState()
     {
         if (_disposed || Mode == AutoHideMode.Disabled) return;
+        if (!IsHidden && (IsMouseOverDock || IsMouseAtEdge)) SyncPointerState();
 
         if (ShouldHide())
         {
@@ -127,6 +177,57 @@ public sealed class DockAutoHideController : IDisposable
             if (IsHidden)
             {
                 AnimateReveal();
+            }
+        }
+        SyncRevealedGuardTimer();
+    }
+
+    private void SyncPointerState()
+    {
+        (int X, int Y) cursor;
+        if (CursorPositionProvider is not null)
+        {
+            if (CursorPositionProvider() is not { } providedCursor) return;
+            cursor = providedCursor;
+        }
+        else if (GetCursorPos(out var nativeCursor))
+        {
+            cursor = (nativeCursor.X, nativeCursor.Y);
+        }
+        else
+        {
+            return;
+        }
+        var dpi = _windowHandle != 0 ? GetDpiForWindow(_windowHandle) : 96u;
+        var scale = (dpi != 0 ? dpi : 96u) / 96d;
+        var headroomPx = (int)Math.Ceiling(DockMetrics.Headroom * scale);
+
+        if (IsMouseOverDock && DockBoundsProvider?.Invoke() is { } bounds)
+        {
+            var left = bounds.Left - (Edge == Models.DockEdge.Right ? headroomPx : 6);
+            var right = bounds.Right + (Edge == Models.DockEdge.Left ? headroomPx : 6);
+            var top = bounds.Top - (Edge == Models.DockEdge.Bottom ? headroomPx : 6);
+            var bottom = bounds.Bottom + 6;
+            if (cursor.X < left || cursor.X > right || cursor.Y < top || cursor.Y > bottom)
+            {
+                IsMouseOverDock = false;
+            }
+        }
+
+        if (IsMouseAtEdge && _windowHandle != 0)
+        {
+            var monitor = MonitorFromWindow(_windowHandle, MonitorDefaultToNearest);
+            var info = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+            if (monitor != 0 && GetMonitorInfo(monitor, ref info))
+            {
+                var edgePx = Math.Max(4, (int)Math.Ceiling(DockMetrics.EdgeTriggerHeight * scale) + 2);
+                var atEdge = Edge switch
+                {
+                    Models.DockEdge.Left => cursor.X <= info.rcMonitor.Left + edgePx,
+                    Models.DockEdge.Right => cursor.X >= info.rcMonitor.Right - edgePx,
+                    _ => cursor.Y >= info.rcMonitor.Bottom - edgePx
+                };
+                if (!atEdge) IsMouseAtEdge = false;
             }
         }
     }
@@ -144,6 +245,7 @@ public sealed class DockAutoHideController : IDisposable
     private void HideTimer_Tick(object? sender, EventArgs e)
     {
         _hideTimer.Stop();
+        if (!IsHidden && (IsMouseOverDock || IsMouseAtEdge)) SyncPointerState();
         if (ShouldHide() && !IsHidden)
         {
             AnimateHide();
@@ -154,86 +256,141 @@ public sealed class DockAutoHideController : IDisposable
     {
         IsHidden = false;
         _hideTimer.Stop();
-        var anim = new DoubleAnimation
+        SyncRevealedGuardTimer();
+        var duration = MotionDuration(DockMetrics.RevealMs);
+        var vertical = Edge != Models.DockEdge.Bottom;
+        if (duration == TimeSpan.Zero)
         {
-            To = 0,
-            Duration = MotionDuration(DockMetrics.RevealMs),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        _dockTranslate.BeginAnimation(TranslateTransform.XProperty, Edge == Models.DockEdge.Bottom ? null : anim.Clone());
-        _dockTranslate.BeginAnimation(TranslateTransform.YProperty, Edge == Models.DockEdge.Bottom ? anim : null);
+            _dockTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            _dockTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            _dockTranslate.X = 0;
+            _dockTranslate.Y = 0;
+        }
+        else
+        {
+            var anim = new DoubleAnimation
+            {
+                To = 0,
+                Duration = duration,
+                EasingFunction = EaseOut
+            };
+            _dockTranslate.BeginAnimation(TranslateTransform.XProperty, vertical ? anim : null);
+            _dockTranslate.BeginAnimation(TranslateTransform.YProperty, vertical ? null : anim);
+        }
+
         VisibilityChanged?.Invoke(true);
     }
 
     public void AnimateHide()
     {
         IsHidden = true;
+        _revealedGuardTimer.Stop();
         var vertical = Edge != Models.DockEdge.Bottom;
         double hideOffset = Math.Max(DockMetrics.HideMinimumOffset, (vertical ? _dockSurface.ActualWidth : _dockSurface.ActualHeight) + 16);
         if (Edge == Models.DockEdge.Left) hideOffset = -hideOffset;
-        var anim = new DoubleAnimation
+        var duration = MotionDuration(DockMetrics.HideMs);
+        if (duration == TimeSpan.Zero)
         {
-            To = hideOffset,
-            Duration = MotionDuration(DockMetrics.HideMs),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
-        };
-        _dockTranslate.BeginAnimation(vertical ? TranslateTransform.XProperty : TranslateTransform.YProperty, anim);
+            _dockTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            _dockTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            _dockTranslate.X = vertical ? hideOffset : 0;
+            _dockTranslate.Y = vertical ? 0 : hideOffset;
+        }
+        else
+        {
+            var anim = new DoubleAnimation
+            {
+                To = hideOffset,
+                Duration = duration,
+                EasingFunction = EaseInOut
+            };
+            _dockTranslate.BeginAnimation(vertical ? TranslateTransform.XProperty : TranslateTransform.YProperty, anim);
+        }
+
         VisibilityChanged?.Invoke(false);
     }
 
     private bool EvaluateWindowOverlap(nint hwnd)
     {
-        if (hwnd == 0 || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd))
+        if (hwnd == 0) return false;
+        var root = GetAncestor(hwnd, GaRootOwner);
+        var target = root != 0 ? root : hwnd;
+
+        if (target == _windowHandle || !IsWindow(target) || !IsWindowVisible(target) || IsIconic(target))
             return false;
 
-        if (hwnd == _windowHandle)
-            return false;
-
-        _ = GetWindowThreadProcessId(hwnd, out var processId);
+        GetWindowThreadProcessId(target, out var processId);
         if (processId == Environment.ProcessId)
             return false;
 
-        var className = new StringBuilder(64);
-        GetClassName(hwnd, className, 64);
-        var cls = className.ToString();
-        if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd")
-            return false;
+        var classLen = GetClassName(target, _classNameBuffer, _classNameBuffer.Length);
+        if (classLen > 0)
+        {
+            ReadOnlySpan<char> cls = _classNameBuffer.AsSpan(0, classLen);
+            if (cls.SequenceEqual("Progman")
+                || cls.SequenceEqual("WorkerW")
+                || cls.SequenceEqual("Shell_TrayWnd")
+                || cls.SequenceEqual("Shell_SecondaryTrayWnd"))
+            {
+                return false;
+            }
+        }
 
         var dockMonitor = MonitorFromWindow(_windowHandle, MonitorDefaultToNearest);
-        var windowMonitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        var windowMonitor = MonitorFromWindow(target, MonitorDefaultToNearest);
         if (dockMonitor != windowMonitor)
             return false;
 
-        if (IsZoomed(hwnd))
+        if (IsZoomed(target))
             return true;
 
-        if (GetWindowRect(hwnd, out var winRect) && GetWindowRect(_windowHandle, out var dockRect))
+        if (DwmGetWindowAttribute(target, DwmwaExtendedFrameBounds, out var winRect, Marshal.SizeOf<Rect>()) != 0
+            && !GetWindowRect(target, out winRect))
         {
-            if (Edge == Models.DockEdge.Left)
-            {
-                int effectiveDockRight = dockRect.Right - 16;
-                return winRect.Left < effectiveDockRight
-                    && winRect.Right > dockRect.Left
-                    && winRect.Bottom > dockRect.Top
-                    && winRect.Top < dockRect.Bottom;
-            }
-            if (Edge == Models.DockEdge.Right)
-            {
-                int effectiveDockLeft = dockRect.Left + 16;
-                return winRect.Left < dockRect.Right
-                    && winRect.Right > effectiveDockLeft
-                    && winRect.Bottom > dockRect.Top
-                    && winRect.Top < dockRect.Bottom;
-            }
-
-            int effectiveDockTop = dockRect.Top + 16;
-            return winRect.Left < dockRect.Right
-                && winRect.Right > dockRect.Left
-                && winRect.Bottom > effectiveDockTop
-                && winRect.Top < dockRect.Bottom;
+            return false;
         }
 
-        return false;
+        Rect dockRect;
+        if (DockBoundsProvider?.Invoke() is { } provided)
+        {
+            dockRect = new Rect
+            {
+                Left = provided.Left,
+                Top = provided.Top,
+                Right = provided.Right,
+                Bottom = provided.Bottom
+            };
+        }
+        else
+        {
+            if (!GetWindowRect(_windowHandle, out dockRect)) return false;
+            var dpi = GetDpiForWindow(_windowHandle);
+            var headroomPx = (int)Math.Round(DockMetrics.Headroom * (dpi != 0 ? dpi : 96u) / 96d);
+            switch (Edge)
+            {
+                case Models.DockEdge.Left:
+                    dockRect.Right = Math.Max(dockRect.Left, dockRect.Right - headroomPx);
+                    break;
+                case Models.DockEdge.Right:
+                    dockRect.Left = Math.Min(dockRect.Right, dockRect.Left + headroomPx);
+                    break;
+                default:
+                    dockRect.Top = Math.Min(dockRect.Bottom, dockRect.Top + headroomPx);
+                    break;
+            }
+        }
+
+        return winRect.Left < dockRect.Right
+            && winRect.Right > dockRect.Left
+            && winRect.Bottom > dockRect.Top
+            && winRect.Top < dockRect.Bottom;
+    }
+
+    private static CubicEase CreateFrozenEase(EasingMode mode)
+    {
+        var ease = new CubicEase { EasingMode = mode };
+        ease.Freeze();
+        return ease;
     }
 
     public void Dispose()
@@ -242,6 +399,8 @@ public sealed class DockAutoHideController : IDisposable
         _disposed = true;
         _hideTimer.Stop();
         _hideTimer.Tick -= HideTimer_Tick;
+        _revealedGuardTimer.Stop();
+        _revealedGuardTimer.Tick -= RevealedGuardTimer_Tick;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -252,6 +411,33 @@ public sealed class DockAutoHideController : IDisposable
         public int Right;
         public int Bottom;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public uint cbSize;
+        public Rect rcMonitor;
+        public Rect rcWork;
+        public uint dwFlags;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint lpPoint);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out Rect pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -277,8 +463,17 @@ public sealed class DockAutoHideController : IDisposable
     private static extern nint MonitorFromWindow(nint hWnd, uint dwFlags);
 
     [DllImport("user32.dll")]
+    private static extern nint GetAncestor(nint hwnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
 
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(nint hwnd);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
+    private static extern int GetClassName(nint hWnd, char[] lpClassName, int nMaxCount);
 }
