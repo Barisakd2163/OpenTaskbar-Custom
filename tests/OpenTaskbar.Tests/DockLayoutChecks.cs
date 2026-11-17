@@ -272,6 +272,13 @@ internal static class DockLayoutChecks
             apps.Add(new DockApp("Opened app", "opened.exe"));
             FitDock();
             Check(dockSurface.Width == initialWidth, "Opening an application must grow the dock immediately.");
+            var widgetBefore = widgetsWidth;
+            widgetsWidth -= 40;
+            FitDock();
+            Check(dockSurface.Width == initialWidth - 40, "Removing a widget must shrink the dock width immediately.");
+            widgetsWidth = widgetBefore;
+            FitDock();
+            Check(dockSurface.Width == initialWidth, "Restoring widget width must resize dock width immediately.");
         }
 
         var testWindow = new Window { ShowActivated = false, ShowInTaskbar = false, Width = 10, Height = 10, WindowStyle = WindowStyle.None };

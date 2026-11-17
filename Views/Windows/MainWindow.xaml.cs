@@ -693,7 +693,7 @@ public partial class MainWindow : Window
         }
 
         button.IsHitTestVisible = false;
-        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(135))
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(75))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
@@ -707,11 +707,11 @@ public partial class MainWindow : Window
             afterRemoval();
         };
         button.BeginAnimation(UIElement.OpacityProperty, fade);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(135))
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(75))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(135))
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(75))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
@@ -1618,6 +1618,7 @@ public partial class MainWindow : Window
         ApplyFeatureSettings();
         ApplySizeProfile();
         ApplyLayoutMode();
+        ResizeDockToContent();
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
         ResetMagnification();
@@ -1653,8 +1654,12 @@ public partial class MainWindow : Window
         _instantDockResize = true;
         try
         {
-            var error = _preferences.Save(settings with { Widgets = widgets, WidgetOrder = order });
+            var updated = settings with { Widgets = widgets, WidgetOrder = order };
+            var error = _preferences.Save(updated);
             if (error is not null) ReportError(error);
+            _widgetCoordinator.Apply(updated);
+            ResizeDockToContent();
+            _replacementSession?.RefreshPosition();
         }
         finally
         {
@@ -2122,19 +2127,21 @@ public partial class MainWindow : Window
         }
 
         DockSurface.Height = double.NaN;
-        // All item kinds share DockContents now; widgets are never compacted — overflow scrolls instead.
+        var hasWidgets = _widgetCoordinator.ActiveWidgets.Values.Any(widget => widget.Visibility == Visibility.Visible);
+        WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         var leadWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls);
         var appsContentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
         var trailWidth = DockScrollViewer.MeasureContentWidth(DockTrailControls);
+        var widgetsWidth = hasWidgets ? DockScrollViewer.MeasureContentWidth(WidgetIsland) : 0;
         var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : targetDisplay.Width;
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         var maxLayoutWidth = Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome);
-        var contentFixedWidth = leadWidth + appsContentWidth + trailWidth;
+        var contentFixedWidth = leadWidth + appsContentWidth + trailWidth + widgetsWidth;
         _widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale);
 
-        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth);
+        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
         DockScrollViewer.MaxWidth = maxAppsWidth;
         if (appsContentWidth <= maxAppsWidth + 0.5 && DockScrollViewer.HorizontalOffset > 0)
             DockScrollViewer.ScrollToHorizontalOffset(0);
@@ -2150,6 +2157,9 @@ public partial class MainWindow : Window
         var desiredWidth = Math.Ceiling(contentFixedWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
+
+        DockSurface.BeginAnimation(WidthProperty, null);
+
         if (!double.IsNaN(DockSurface.Width)
             && DockSurface.ActualWidth > 0
             && _dockWidthOverride is null
@@ -2163,7 +2173,7 @@ public partial class MainWindow : Window
             {
                 From = DockSurface.ActualWidth,
                 To = targetWidth,
-                Duration = TimeSpan.FromMilliseconds(160),
+                Duration = TimeSpan.FromMilliseconds(120),
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             };
             anim.Completed += (_, _) =>
@@ -2173,9 +2183,8 @@ public partial class MainWindow : Window
             };
             DockSurface.BeginAnimation(WidthProperty, anim);
         }
-        else if (double.IsNaN(DockSurface.Width) || Math.Abs(DockSurface.Width - targetWidth) >= 0.5)
+        else
         {
-            DockSurface.BeginAnimation(WidthProperty, null);
             DockSurface.Width = targetWidth;
         }
         if (_dockArea.Width <= 0)
