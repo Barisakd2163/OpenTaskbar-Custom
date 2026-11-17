@@ -190,6 +190,7 @@ public sealed class WeatherWidget : DockWidget
         root.Children.Add(now);
 
         // Micro metrics cards: Humidity, Wind
+        var isEn = Settings.Language == AppLanguage.English;
         var metricsGrid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 10) };
 
         var humidityCard = new Border
@@ -202,7 +203,7 @@ public sealed class WeatherWidget : DockWidget
         var humidityPanel = new StackPanel();
         var humLabel = new TextBlock { Text = UiText.Get("WeatherHumidity"), FontSize = 11 };
         humLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var humVal = new TextBlock { Text = $"%{Math.Round(report.Humidity)}", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        var humVal = new TextBlock { Text = isEn ? $"{Math.Round(report.Humidity)}%" : $"%{Math.Round(report.Humidity)}", FontSize = 13, FontWeight = FontWeights.SemiBold };
         humVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         humidityPanel.Children.Add(humLabel);
         humidityPanel.Children.Add(humVal);
@@ -219,7 +220,7 @@ public sealed class WeatherWidget : DockWidget
         var windPanel = new StackPanel();
         var windLabel = new TextBlock { Text = UiText.Get("WeatherWind"), FontSize = 11 };
         windLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var windVal = new TextBlock { Text = $"{Math.Round(report.WindSpeed)} km/s", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        var windVal = new TextBlock { Text = isEn ? $"{Math.Round(report.WindSpeed)} km/h" : $"{Math.Round(report.WindSpeed)} km/sa", FontSize = 13, FontWeight = FontWeights.SemiBold };
         windVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         windPanel.Children.Add(windLabel);
         windPanel.Children.Add(windVal);

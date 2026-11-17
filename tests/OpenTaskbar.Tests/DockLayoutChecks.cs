@@ -561,6 +561,8 @@ internal static class DockLayoutChecks
         var stormBg = WeatherService.GetConditionBackground(95);
         Check(clearBg is LinearGradientBrush && rainBg is LinearGradientBrush && snowBg is LinearGradientBrush && stormBg is LinearGradientBrush,
             "Weather conditions must provide distinct LinearGradientBrush dynamic backgrounds.");
+        Check(clearBg.IsFrozen && rainBg.IsFrozen && snowBg.IsFrozen && stormBg.IsFrozen,
+            "Weather condition backgrounds must be frozen for performance and thread safety.");
         Check(!ReferenceEquals(clearBg, rainBg), "Clear and rain condition backgrounds must differ.");
 
         var testDays = new[]
