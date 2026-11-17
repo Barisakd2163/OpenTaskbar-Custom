@@ -22,7 +22,8 @@ public partial class FocusWidget : DockWidget
     private int _session = 1;
     private TimeSpan _remaining;
     private TimeSpan _lastFullLength;
-    private DateTime? _endsAt;
+    private long? _startedAt;
+    private readonly TimeProvider _clock;
     private bool _initialized;
 
     private int _renderedSeconds = -1;
@@ -37,8 +38,11 @@ public partial class FocusWidget : DockWidget
     public override double FullWidthEstimate => 162;
     public override double CompactWidthEstimate => 100;
 
-    public FocusWidget()
+    public FocusWidget() : this(TimeProvider.System) { }
+
+    public FocusWidget(TimeProvider clock)
     {
+        _clock = clock;
         InitializeComponent();
     }
 
@@ -85,7 +89,10 @@ public partial class FocusWidget : DockWidget
     }
 
     private TimeSpan PhaseLength => TimeSpan.FromMinutes(_phase == Phase.Focus ? Settings.FocusMinutes : Settings.FocusBreakMinutes);
-    private bool IsRunning => _endsAt is not null;
+    private bool IsRunning => _startedAt is not null;
+    private TimeSpan CurrentRemaining => _startedAt is { } startedAt
+        ? _remaining - _clock.GetElapsedTime(startedAt)
+        : _remaining;
 
     protected override void OnActivated()
     {
@@ -98,9 +105,8 @@ public partial class FocusWidget : DockWidget
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         if (IsRunning)
         {
-            _remaining = _endsAt!.Value - DateTime.Now;
-            if (_remaining < TimeSpan.Zero) _remaining = TimeSpan.Zero;
-            _endsAt = null;
+            _remaining = TimeSpan.FromTicks(Math.Max(0, CurrentRemaining.Ticks));
+            _startedAt = null;
         }
         Card.BeginAnimation(OpacityProperty, null);
     }
@@ -126,9 +132,8 @@ public partial class FocusWidget : DockWidget
 
     protected override void OnTick(DateTime now)
     {
-        if (_endsAt is not { } endsAt) return;
-        _remaining = endsAt - now;
-        if (_remaining <= TimeSpan.Zero) CompletePhase();
+        if (!IsRunning) return;
+        if (CurrentRemaining <= TimeSpan.Zero) CompletePhase();
         Render();
     }
 
@@ -152,20 +157,20 @@ public partial class FocusWidget : DockWidget
         _phase = phase;
         _remaining = PhaseLength;
         _lastFullLength = _remaining;
-        _endsAt = run ? DateTime.Now + _remaining : null;
+        _startedAt = run ? _clock.GetTimestamp() : null;
     }
 
     private void Toggle_Click(object sender, RoutedEventArgs e)
     {
         if (IsRunning)
         {
-            _remaining = _endsAt!.Value - DateTime.Now;
-            _endsAt = null;
+            _remaining = TimeSpan.FromTicks(Math.Max(0, CurrentRemaining.Ticks));
+            _startedAt = null;
         }
         else
         {
             if (_remaining <= TimeSpan.Zero) _remaining = PhaseLength;
-            _endsAt = DateTime.Now + _remaining;
+            _startedAt = _clock.GetTimestamp();
         }
 
         Render();
@@ -196,7 +201,8 @@ public partial class FocusWidget : DockWidget
 
     private void Render()
     {
-        var remaining = _remaining < TimeSpan.Zero ? TimeSpan.Zero : _remaining;
+        var elapsed = CurrentRemaining;
+        var remaining = elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
         // Round up so the display reads 25:00 at the start and 00:00 only at the end.
         var seconds = (int)Math.Ceiling(remaining.TotalSeconds);
         if (_renderedSeconds != seconds)
