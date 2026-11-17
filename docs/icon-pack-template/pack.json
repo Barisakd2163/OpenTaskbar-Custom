@@ -1,0 +1,20 @@
+{
+  // Copy this folder to %LOCALAPPDATA%\OpenTaskbar\IconPacks\<your-pack>, add images, then pick it in Settings.
+  // See docs/icon-packs.md for every option.
+  "name": "My Icon Pack",
+  "author": "",
+  "description": "",
+  "icons": {
+    // "firefox.exe": "icons/firefox.png",
+    // "Microsoft.WindowsTerminal": "icons/terminal.png",
+    // "@recyclebin": "icons/trash.png",
+    // "@recyclebin-full": "icons/trash-full.png"
+  },
+  "fallback": {
+    "shape": "Leaf",
+    "sharpCorner": "TopRight",
+    "cornerRadius": 0.5,
+    "background": "auto",
+    "iconScale": 0.64
+  }
+}

@@ -67,13 +67,14 @@ public sealed class RunningAppIconCache
 
         // Shell images are keyed by identity, never by executable: ApplicationFrameHost.exe hosts many apps.
         icon ??= GetAppIcon(window);
-        if (icon is not null) return icon;
-        if (!_fileIcons.TryGetValue(executablePath, out icon))
+        if (icon is null && !_fileIcons.TryGetValue(executablePath, out icon))
         {
             _fileIcons[executablePath] = icon = _fileIcon(executablePath);
         }
 
-        return icon;
+        // The icon pack is applied last, so switching packs needs no cache reset here.
+        var appId = _windows.TryGetValue(window, out var lookup) ? lookup.AppId : null;
+        return IconPacks.Apply(icon, executablePath, appId);
     }
 
     /// <summary>Drops entries for windows and executables that are no longer tracked, so the caches stay bounded.</summary>

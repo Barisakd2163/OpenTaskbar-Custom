@@ -37,6 +37,11 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Surface Opacity:** Adjust background glass opacity between 60% and 100% with immediate real-time preview.
 - **Two-Sided Dock Resizing:** Drag either outer border to narrow or expand the dock. Overflow is smoothly handled via hidden horizontal scrolling (Shift/Ctrl + Wheel or middle-click panning).
 
+### Icon Packs
+- **Custom Icon Packs:** Replace dock icons with image packs kept in `%LOCALAPPDATA%\OpenTaskbar\IconPacks`, selected in Settings → Appearance.
+- **Flexible Matching:** Map icons by executable name, full path, Store app ID, or simply name a file after the executable (`firefox.png`).
+- **Fallback Plates:** Apps without a pack image are placed on a Leaf, Rounded, or Circle plate so the whole dock matches. See [docs/icon-packs.md](docs/icon-packs.md).
+
 ### Interaction and Motion
 - **Continuous Fisheye Magnification:** Smooth parabolic wave magnification that expands icons upward into the transparent headroom without clipping or layout shifts.
 - **Launch Feedback:** Tactile vertical launch bounce animation on application click.

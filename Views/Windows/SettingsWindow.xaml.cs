@@ -88,6 +88,7 @@ public partial class SettingsWindow : Window
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = _applied.FocusSessions;
         LoadFeatureSelection(_applied);
+        LoadIconPacks(_applied.IconPack);
         UpdateWidgetOptionState();
         var startup = _startup.Read();
         _startupEnabled = startup.Enabled;
@@ -256,8 +257,50 @@ public partial class SettingsWindow : Window
                 : DateStyleNumeric.IsChecked == true ? ClockDateStyle.NumericDate
                 : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
                 : ClockDateStyle.DayAndShortDate,
-            StatsMeters = ReadStatsMeters()
+            StatsMeters = ReadStatsMeters(),
+            IconPack = (IconPackBox.SelectedItem as IconPackChoice)?.Id
         };
+    }
+
+    private sealed record IconPackChoice(string? Id, string Name);
+
+    private void LoadIconPacks(string? selected)
+    {
+        var choices = new List<IconPackChoice> { new(null, UiText.Get("IconPackNone")) };
+        choices.AddRange(IconPacks.Discover().Select(pack => new IconPackChoice(pack.Id, pack.DisplayName)));
+        // A stored pack whose folder is gone stays listed so an unrelated edit does not silently clear it.
+        if (!string.IsNullOrWhiteSpace(selected) && !choices.Any(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase)))
+        {
+            choices.Add(new IconPackChoice(selected, selected + " (?)"));
+        }
+
+        IconPackBox.ItemsSource = choices;
+        IconPackBox.SelectedItem = choices.FirstOrDefault(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase))
+            ?? choices[0];
+    }
+
+    private void IconPackBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => PreferenceEdited(sender, e);
+
+    private void IconPackOpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(IconPacks.Root);
+            using var _ = Process.Start(new ProcessStartInfo(IconPacks.Root) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(this, ex.Message, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void IconPackReload_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = (IconPackBox.SelectedItem as IconPackChoice)?.Id;
+        _initializing = true;
+        LoadIconPacks(selected);
+        _initializing = false;
+        IconPacks.Select(selected, reload: true);
     }
 
     private SystemMeters ReadStatsMeters() =>
@@ -592,6 +635,7 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = settings.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         UpdateDockScaleLabel();
+        LoadIconPacks(settings.IconPack);
         foreach (var option in _widgetOptions)
         {
             option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;

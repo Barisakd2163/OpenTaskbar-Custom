@@ -147,8 +147,15 @@ public partial class MainWindow
         var full = count > 0;
         if (_recycleBinFull == full) return;
         _recycleBinFull = full;
-        RecycleBinIcon.Source = full ? RecycleBin.FullIcon : RecycleBin.EmptyIcon;
+        RefreshRecycleBinIcon();
         EmptyRecycleBinItem.IsEnabled = full;
+    }
+
+    private void RefreshRecycleBinIcon()
+    {
+        var full = _recycleBinFull == true;
+        RecycleBinIcon.Source = IconPacks.Apply(full ? RecycleBin.FullIcon : RecycleBin.EmptyIcon, null,
+            specialKey: full ? IconPack.RecycleBinFullKey : IconPack.RecycleBinKey);
     }
 
     private void RecycleBin_Click(object sender, RoutedEventArgs e)
@@ -435,7 +442,7 @@ public partial class MainWindow
 
             _pinnedApps.Add(new DockApp(pin.Name, pin.ExecutablePath)
             {
-                Icon = ApplicationIconProvider.GetForFile(pin.ExecutablePath),
+                Icon = IconPacks.Apply(ApplicationIconProvider.GetForFile(pin.ExecutablePath), pin.ExecutablePath),
                 LaunchArguments = pin.Arguments,
                 ShortcutPath = shortcutPath
             });

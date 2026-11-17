@@ -152,6 +152,9 @@ public partial class MainWindow : Window
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
+        IconPacks.Select(_preferences.Current.IconPack);
+        IconPacks.Changed += IconPacks_Changed;
+        Closed += (_, _) => IconPacks.Changed -= IconPacks_Changed;
         LoadPinnedApps(_preferences.Current.PinOrder);
         if (_preferences.LoadError is not null)
         {
@@ -353,7 +356,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplicationIconProvider.GetForFile(app.ExecutablePath);
+            app.Icon = IconPacks.Apply(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1452,8 +1455,23 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
+    private void IconPacks_Changed(object? sender, EventArgs e)
+    {
+        foreach (var app in _pinnedApps)
+        {
+            app.Icon = IconPacks.Apply(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
+        }
+
+        RefreshRecycleBinIcon();
+        if (_windowTracker is not null)
+        {
+            WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+        }
+    }
+
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        IconPacks.Select(_preferences.Current.IconPack);
         _sizePreviewOverride = null;
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);

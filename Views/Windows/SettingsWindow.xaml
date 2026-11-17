@@ -126,6 +126,18 @@
                                 </UniformGrid>
                             </StackPanel></Border>
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
+                                <TextBlock Text="{local:Loc IconPack}" Style="{StaticResource SettingsChoiceLabel}" />
+                                <ComboBox x:Name="IconPackBox" DisplayMemberPath="Name"
+                                          AutomationProperties.Name="{local:Loc IconPack}"
+                                          SelectionChanged="IconPackBox_SelectionChanged" />
+                                <TextBlock Text="{local:Loc IconPackHint}" FontSize="11" Foreground="{DynamicResource TextSecondary}"
+                                           TextWrapping="Wrap" Margin="0,6,0,8" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="{local:Loc IconPackOpenFolder}" Style="{StaticResource SettingsButton}" Click="IconPackOpenFolder_Click" Margin="0,0,8,0" />
+                                    <Button Content="{local:Loc IconPackReload}" Style="{StaticResource SettingsButton}" Click="IconPackReload_Click" />
+                                </StackPanel>
+                            </StackPanel></Border>
+                            <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc Language}" Style="{StaticResource SettingsChoiceLabel}" />
                                 <UniformGrid Columns="2" Margin="-3,0">
                                     <RadioButton x:Name="TurkishLanguage" GroupName="Language" Content="Türkçe" Style="{StaticResource SettingsChoice}" />

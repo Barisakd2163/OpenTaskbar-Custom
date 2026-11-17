@@ -13,6 +13,7 @@ SettingsChecks();
 InitialLanguageChecks();
 checks += RunningAppChecks.Run();
 checks += WidgetViewChecks.Run();
+checks += IconPackChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)

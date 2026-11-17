@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added icon pack support: packs are folders with a `pack.json` under `%LOCALAPPDATA%\OpenTaskbar\IconPacks`, selected in Settings → Appearance.
+- Icon packs map images by AppUserModelID, package name, executable path or name, or a file named after the executable, and can theme the Recycle Bin.
+- Added fallback plates (Leaf, Rounded, Circle) that place unthemed app icons on a pack-shaped, tinted background.
+- Added `docs/icon-packs.md` and a starter `pack.json` template. No icon images ship in the repository.
+
 ## 0.2.6 - 2026-11-17
 
 - Added automated in-place update downloader and restarter; updates download silently in the background and replace the executable without browser redirects.
