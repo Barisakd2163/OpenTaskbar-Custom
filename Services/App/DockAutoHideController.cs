@@ -103,7 +103,7 @@ public sealed class DockAutoHideController : IDisposable
         }
         if (Mode == AutoHideMode.Smart)
         {
-            HasOverlap = EvaluateWindowOverlap(GetForegroundWindow());
+            RefreshSmartOverlap(GetForegroundWindow());
         }
         EvaluateState();
     }
@@ -167,8 +167,22 @@ public sealed class DockAutoHideController : IDisposable
     public void CheckForegroundWindow(nint foregroundHwnd)
     {
         if (Mode != AutoHideMode.Smart) return;
-        HasOverlap = EvaluateWindowOverlap(foregroundHwnd);
+        RefreshSmartOverlap(foregroundHwnd);
         EvaluateState();
+    }
+
+    // A focusable widget popup activates our own dock window. That must not erase
+    // the overlap state of the application beneath it; otherwise Smart auto-hide
+    // stays revealed after dismissing the popup.
+    private void RefreshSmartOverlap(nint foregroundHwnd)
+    {
+        if (foregroundHwnd == 0) return;
+        var root = GetAncestor(foregroundHwnd, GaRootOwner);
+        var target = root != 0 ? root : foregroundHwnd;
+        if (!IsWindow(target)) return;
+        GetWindowThreadProcessId(target, out var pid);
+        if (pid == Environment.ProcessId) return;
+        HasOverlap = EvaluateWindowOverlap(target);
     }
 
     public void EvaluateState()
@@ -262,7 +276,7 @@ public sealed class DockAutoHideController : IDisposable
     private void HideTimer_Tick(object? sender, EventArgs e)
     {
         _hideTimer.Stop();
-        if (!IsHidden && (IsMouseOverDock || IsMouseAtEdge)) SyncPointerState();
+        if (!IsHidden) SyncPointerState();
         if (ShouldHide() && !IsHidden)
         {
             AnimateHide();
