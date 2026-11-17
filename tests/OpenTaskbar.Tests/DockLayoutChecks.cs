@@ -200,8 +200,10 @@ internal static class DockLayoutChecks
                 Check(viewer.ScrollByWheel(-Mouse.MouseWheelDeltaForOneLine / 4, ModifierKeys.Control), "Ctrl+wheel must support high-resolution deltas.");
                 Layout();
                 Check(viewer.HorizontalOffset == Math.Min(cellWidth * 1.25, viewer.ScrollableWidth), "High-resolution wheel deltas must preserve fractional cell movement.");
-                Check(!viewer.ScrollByWheel(-120, ModifierKeys.None) && !viewer.ScrollByWheel(0, ModifierKeys.Shift),
-                    "Plain or zero wheel input must not trigger modifier scrolling.");
+                Check(viewer.ScrollByWheel(-120, ModifierKeys.None) && !viewer.ScrollByWheel(0, ModifierKeys.None),
+                    "Plain wheel must scroll horizontal-only overflow; zero input must do nothing.");
+                viewer.ScrollToHorizontalOffset(0);
+                Layout();
                 viewer.ScrollByWheel(int.MinValue, ModifierKeys.Control | ModifierKeys.Shift);
                 Layout();
                 Check(viewer.HorizontalOffset == viewer.ScrollableWidth && viewer.VerticalOffset == 0,

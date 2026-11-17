@@ -78,6 +78,7 @@ public partial class MainWindow : Window
     private readonly WidgetCoordinator _widgetCoordinator;
     private readonly Dictionary<string, FrameworkElement> _dockItemElements = new(StringComparer.OrdinalIgnoreCase);
     private bool _rebuildingDockOrder;
+    private bool _instantDockResize;
     private double _dockTopGap;
     private (DockSize Size, double Scale)? _sizePreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
@@ -1648,8 +1649,17 @@ public partial class MainWindow : Window
             .ToArray();
         if (widgets.Length == (settings.Widgets?.Count ?? 0)) return;
 
-        var error = _preferences.Save(settings with { Widgets = widgets, WidgetOrder = order });
-        if (error is not null) ReportError(error);
+        // Close the gap immediately instead of animating the dock width after a removal.
+        _instantDockResize = true;
+        try
+        {
+            var error = _preferences.Save(settings with { Widgets = widgets, WidgetOrder = order });
+            if (error is not null) ReportError(error);
+        }
+        finally
+        {
+            _instantDockResize = false;
+        }
     }
 
     private void ApplyWidgets(IReadOnlyList<string>? selected)
@@ -2099,14 +2109,8 @@ public partial class MainWindow : Window
     {
         if (!IsVisible || _dockArea.Width <= 0) return false;
         var totalAvailableWidth = Math.Max(1, _dockArea.Width - DockSurface.Margin.Left - DockSurface.Margin.Right);
-        var leadWidth = DockLeadControls.DesiredSize.Width;
-        var appsWidth = DockContents.DesiredSize.Width;
-        var trailWidth = DockTrailControls.DesiredSize.Width;
-        var currentWidgetsWidth = WidgetIsland.Visibility == Visibility.Visible
-            ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right
-            : 0;
         var extraWidth = widget.FullWidthEstimate - widget.ActualWidth;
-        return leadWidth + appsWidth + trailWidth + currentWidgetsWidth + Math.Max(0, extraWidth) <= totalAvailableWidth - 2;
+        return DockContents.DesiredSize.Width + Math.Max(0, extraWidth) <= totalAvailableWidth - 2;
     }
 
     private void FitDockToContent()
@@ -2118,38 +2122,19 @@ public partial class MainWindow : Window
         }
 
         DockSurface.Height = double.NaN;
-        var hasWidgets = _widgetCoordinator.ActiveWidgets.Values.Any(widget => widget.Visibility == Visibility.Visible);
-        WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
-        // Measure first: the layout pass it runs can move the dock area, which is read below.
+        // All item kinds share DockContents now; widgets are never compacted — overflow scrolls instead.
         var leadWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls);
         var appsContentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
         var trailWidth = DockScrollViewer.MeasureContentWidth(DockTrailControls);
         var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : targetDisplay.Width;
-        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         var maxLayoutWidth = Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome);
         var contentFixedWidth = leadWidth + appsContentWidth + trailWidth;
         _widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale);
-        if (hasWidgets)
-        {
-            WidgetIsland.Measure(unbounded);
-            var measuredWidgets = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
-            for (var step = 0; step < 9 && contentFixedWidth + measuredWidgets > maxLayoutWidth - 2; step++)
-            {
-                if (!_widgetCoordinator.TryCompactNextAutoWidget(_preferences.Current)) break;
-                WidgetIsland.Measure(unbounded);
-                measuredWidgets = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
-            }
-        }
-        else if (!WidgetIsland.IsMeasureValid)
-        {
-            WidgetIsland.Measure(unbounded);
-        }
 
-        var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
-        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
+        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth);
         DockScrollViewer.MaxWidth = maxAppsWidth;
         if (appsContentWidth <= maxAppsWidth + 0.5 && DockScrollViewer.HorizontalOffset > 0)
             DockScrollViewer.ScrollToHorizontalOffset(0);
@@ -2162,13 +2147,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var desiredWidth = Math.Ceiling(contentFixedWidth + widgetsWidth + DockHorizontalChrome);
+        var desiredWidth = Math.Ceiling(contentFixedWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
         if (!double.IsNaN(DockSurface.Width)
             && DockSurface.ActualWidth > 0
             && _dockWidthOverride is null
             && LeftResizeThumb.IsDragging == false && RightResizeThumb.IsDragging == false
+            && !_instantDockResize
             && _preferences.Current.AnimationsEnabled
             && SystemParameters.ClientAreaAnimation
             && Math.Abs(DockSurface.ActualWidth - targetWidth) >= 1.0)

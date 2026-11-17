@@ -130,20 +130,12 @@ internal static class AdaptiveWidgetAndConfirmChecks
         check(!audio.IsCompact && !stats.IsCompact && !qs.IsCompact,
             "Auto widgets must stay full when generous space is available.");
 
-        // Tight space shrinks high-priority widgets cleanly.
+        // Tight space must not truncate widgets — the dock scrolls instead.
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 1200, appsContentWidth: 720, settings);
-        check(qs.IsCompact && stats.IsCompact && audio.IsCompact,
-            "Tight space must automatically compact bulky widgets.");
+        check(!qs.IsCompact && !stats.IsCompact && !audio.IsCompact,
+            "Widgets must never be auto-compacted to save space; overflow scrolls instead.");
 
-        // Hysteresis prevents immediate oscillation when budget increases by a tiny margin.
-        var compactSum = strip.Children.OfType<OpenTaskbar.Widgets.DockWidget>()
-            .Where(w => w.Visibility == Visibility.Visible)
-            .Sum(w => w.IsCompact ? w.CompactWidthEstimate : w.FullWidthEstimate);
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 720 + compactSum + 10, appsContentWidth: 720, settings, hysteresisMargin: 32);
-        check(qs.IsCompact && stats.IsCompact && audio.IsCompact,
-            "Tiny free-space increases inside hysteresis margin must not bounce widgets back to full.");
-
-        // Per-widget overrides beat global density.
+        // Per-widget overrides still control density explicitly.
         var overridden = settings with
         {
             GlobalWidgetDensity = WidgetDensityMode.Auto,
@@ -157,19 +149,13 @@ internal static class AdaptiveWidgetAndConfirmChecks
         check(audio.IsCompact && !qs.IsCompact,
             "Per-widget Compact/Full overrides must take precedence over global Auto mode.");
 
-        // Large widgetScale (1.35x) consumes proportionally more horizontal budget than 1.0x.
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2200, appsContentWidth: 200, settings, widgetScale: 1.0);
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 1650, appsContentWidth: 650, settings, widgetScale: 0.78);
-        var compactAtSmallScale = qs.IsCompact || stats.IsCompact || audio.IsCompact;
-        // 1640 keeps the budget just below the 1.35x-scaled widget total in the integrated layout.
+        // Scale and width budget must not affect widget density.
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 1640, appsContentWidth: 650, settings, widgetScale: 1.35);
-        check(!compactAtSmallScale && (qs.IsCompact || stats.IsCompact || audio.IsCompact),
-            $"Larger WidgetScale must factor scaled widget widths into adaptive compaction (small={compactAtSmallScale}, qs={qs.IsCompact}, stats={stats.IsCompact}, audio={audio.IsCompact}).");
+        check(!qs.IsCompact && !stats.IsCompact && !audio.IsCompact,
+            "Widget scale and available width must never compact widgets.");
 
-        // Fallback single-step compaction helper compacts Auto widgets incrementally when real measurements overflow.
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 200, settings);
-        check(!qs.IsCompact && !stats.IsCompact && !audio.IsCompact, "Reset to full before step compaction test.");
-        check(coordinator.TryCompactNextAutoWidget(settings), "TryCompactNextAutoWidget must compact highest-priority Auto widget.");
+        check(!coordinator.TryCompactNextAutoWidget(settings),
+            "Automatic single-step compaction must stay disabled.");
     }
 
     private static void CheckVisualBalanceAndTrayFiltering(Application application, Action<bool, string> check)
