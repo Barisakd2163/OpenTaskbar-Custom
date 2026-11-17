@@ -1,0 +1,9 @@
+{
+  "fallback": {
+    "shape": "Petal",
+    "sharpCorner": "TopRight",
+    "cornerRadius": 0.38,
+    "background": "#FF1A1B26",
+    "iconScale": 0.62
+  }
+}

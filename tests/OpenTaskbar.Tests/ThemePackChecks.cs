@@ -159,6 +159,19 @@ internal static class ThemePackChecks
             try { Directory.Delete(root, recursive: true); } catch (IOException) { }
         }
 
+        var themesDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "themes");
+        if (!Directory.Exists(themesDir)) themesDir = Path.Combine(Directory.GetCurrentDirectory(), "themes");
+        if (Directory.Exists(themesDir))
+        {
+            foreach (var subDir in Directory.EnumerateDirectories(themesDir))
+            {
+                var (t, err, prob) = ThemePack.Load(subDir);
+                Check(err is null && t is not null, $"Theme {Path.GetFileName(subDir)} must load without errors.");
+                Check(prob.Count == 0, $"Theme {Path.GetFileName(subDir)} must have zero problems.");
+                Check(t!.Widgets is not null, $"Theme {Path.GetFileName(subDir)} must have a valid WidgetPack.");
+            }
+        }
+
         return checks;
     }
 

@@ -1,0 +1,8 @@
+{
+  "fallback": {
+    "shape": "Rounded",
+    "cornerRadius": 0.42,
+    "background": "#FF1E1E2E",
+    "iconScale": 0.62
+  }
+}
