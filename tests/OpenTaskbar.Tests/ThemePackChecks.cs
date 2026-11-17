@@ -105,6 +105,11 @@ internal static class ThemePackChecks
             Check(ThemePack.Load(Path.Combine(root, "not-a-theme")).Error is not null, "A folder without theme.json must report an error.");
 
             WidgetChecks(theme.Widgets!, Check);
+            var oversizedDir = Path.Combine(widgetDir, "oversized");
+            Directory.CreateDirectory(oversizedDir);
+            File.WriteAllText(Path.Combine(oversizedDir, WidgetPack.ManifestFileName), new string(' ', 128 * 1024 + 1));
+            var oversized = WidgetPack.Load(oversizedDir);
+            Check(oversized.Pack is null && oversized.Error is not null, "Oversized widget themes must be rejected.");
 
             ThemePacks.Root = root;
             var discovered = ThemePacks.Discover();
@@ -204,6 +209,13 @@ internal static class ThemePackChecks
         check(WidgetPack.Convert(Json("-3"), new CornerRadius()) is null && WidgetPack.Convert(Json("\"1,2,3\""), new Thickness()) is null,
             "Negative or malformed sizes must be rejected.");
         check(WidgetPack.Convert(Json("12"), Brushes.Teal) is null, "A number must not replace a brush.");
+        check(WidgetPack.Convert(Json("4096"), 12.0) is null
+            && WidgetPack.Convert(Json("4096"), new CornerRadius()) is null
+            && WidgetPack.Convert(Json("\"3,4096\""), new Thickness()) is null,
+            "Theme dimensions must stay within safe layout bounds.");
+        var oversizedGradient = "{ \"stops\": [" + string.Join(",", Enumerable.Repeat("\"#FFFFFFFF\"", 17)) + "] }";
+        check(WidgetPack.Convert(Json(oversizedGradient), Brushes.White) is null,
+            "Gradient themes must not allocate an unbounded number of stops.");
     }
 
     private static BitmapSource Render(IconPackFallback fallback)

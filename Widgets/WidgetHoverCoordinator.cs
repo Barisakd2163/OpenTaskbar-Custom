@@ -23,6 +23,7 @@ public sealed class WidgetHoverCoordinator : IDisposable
     private UIElement? _activeFlyoutContent;
     private long _outsideSinceMs;
     private bool _disposed;
+    private readonly HashSet<DockWidget> _attached = [];
 
     public bool IsHoverActive => _activeWidget is not null || _flyout.IsOpen;
     public event Action<bool>? HoverActiveChanged;
@@ -49,14 +50,14 @@ public sealed class WidgetHoverCoordinator : IDisposable
 
     public void Attach(DockWidget widget)
     {
-        if (!widget.SupportsCompactMode) return;
+        if (_disposed || !widget.SupportsCompactMode || !_attached.Add(widget)) return;
         widget.MouseEnter += Widget_MouseEnter;
         widget.MouseLeave += Widget_MouseLeave;
     }
 
     public void Detach(DockWidget widget)
     {
-        if (!widget.SupportsCompactMode) return;
+        if (!_attached.Remove(widget)) return;
         widget.MouseEnter -= Widget_MouseEnter;
         widget.MouseLeave -= Widget_MouseLeave;
         if (_pendingWidget == widget)
@@ -294,6 +295,14 @@ public sealed class WidgetHoverCoordinator : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        foreach (var widget in _attached)
+        {
+            widget.MouseEnter -= Widget_MouseEnter;
+            widget.MouseLeave -= Widget_MouseLeave;
+        }
+        _attached.Clear();
+        _enterTimer.Tick -= EnterTimer_Tick;
+        _leaveTimer.Tick -= LeaveTimer_Tick;
         _flyout.Closed -= Flyout_Closed;
         CollapseActive();
     }

@@ -228,11 +228,15 @@ public sealed class WidgetCoordinator : IDisposable
             orderMap[order[i]] = i;
         }
 
+        // List<T>.Sort is not stable; preserve the relative order of unspecified widgets.
+        var originalPositions = _widgets.Select((slot, index) => (slot.Id, index))
+            .ToDictionary(item => item.Id, item => item.index, StringComparer.OrdinalIgnoreCase);
         _widgets.Sort((a, b) =>
         {
             var indexA = orderMap.TryGetValue(a.Id, out var ia) ? ia : int.MaxValue;
             var indexB = orderMap.TryGetValue(b.Id, out var ib) ? ib : int.MaxValue;
-            return indexA.CompareTo(indexB);
+            var comparison = indexA.CompareTo(indexB);
+            return comparison != 0 ? comparison : originalPositions[a.Id].CompareTo(originalPositions[b.Id]);
         });
 
         PlaceWidgets();
