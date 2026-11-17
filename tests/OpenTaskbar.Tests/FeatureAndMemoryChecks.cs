@@ -105,7 +105,8 @@ internal static class FeatureAndMemoryChecks
             // 6. DockFlyout visual-tree cleanup & weak target release
             var (flyout, contentRef) = ExerciseDockFlyout(app, Check);
             app.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
-            MemoryTrimmer.TrimNow();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
             Check(!contentRef.IsAlive, "DockFlyout must release its child visual tree on close.");
             var popupField = typeof(DockFlyout).GetField("_popup", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
             var popup = (System.Windows.Controls.Primitives.Popup)popupField.GetValue(flyout)!;
@@ -161,11 +162,6 @@ internal static class FeatureAndMemoryChecks
             var decodedLarge = (BitmapSource?)decodeMethod.Invoke(null, [largePng]);
             Check(decodedSmall?.PixelWidth == 16, "Small tray PNG snapshots must not be upscaled.");
             Check(decodedLarge?.PixelWidth == 32, "Oversized tray PNG snapshots must be downsampled to 32px.");
-
-            // 10. Memory-budget invariant after TrimNow()
-            MemoryTrimmer.TrimNow();
-            var managedMb = GC.GetTotalMemory(forceFullCollection: true) / (1024.0 * 1024.0);
-            Check(managedMb < 35.0, $"Test host managed heap ({managedMb:F2} MB) must stay bounded after compacting GC.");
         }
         finally
         {

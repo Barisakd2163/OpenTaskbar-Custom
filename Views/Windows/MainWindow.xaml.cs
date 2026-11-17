@@ -169,7 +169,6 @@ public partial class MainWindow : Window
         PositionDock();
         NotificationService.UpdateRequested += OnUpdateNotificationRequested;
         Closed += (_, _) => NotificationService.UpdateRequested -= OnUpdateNotificationRequested;
-        Loaded += (_, _) => MemoryTrimmer.ScheduleTrim(Dispatcher, 4000);
     }
 
     private void OnUpdateNotificationRequested()
@@ -1425,7 +1424,6 @@ public partial class MainWindow : Window
             {
                 _settingsWindow = null;
                 _autoHideController?.EvaluateState();
-                MemoryTrimmer.ScheduleTrim(Dispatcher, 1000);
             };
             _settingsWindow.Show();
         }
@@ -1489,7 +1487,6 @@ public partial class MainWindow : Window
         {
             PositionDock();
         }
-        MemoryTrimmer.ScheduleTrim(Dispatcher, 1500);
     }
 
     private void ApplyWidgets(IReadOnlyList<string>? selected)

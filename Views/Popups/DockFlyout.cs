@@ -81,7 +81,6 @@ public sealed class DockFlyout
             _innerBevel.Child = null;
             _popup.PlacementTarget = null;
             Closed?.Invoke(this, EventArgs.Empty);
-            MemoryTrimmer.ScheduleTrim(_popup.Dispatcher, 1000);
         };
         _popup.KeyDown += (_, args) =>
         {

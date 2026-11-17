@@ -146,7 +146,6 @@ public sealed class LauncherWindow : Window
         _results.ItemsSource = null;
         if (_icons.Count > 24) _icons.Clear();
         Catalog.ClearCache();
-        MemoryTrimmer.ScheduleTrim(Dispatcher, 1000);
     }
 
     private async Task RefreshCatalogAsync()
