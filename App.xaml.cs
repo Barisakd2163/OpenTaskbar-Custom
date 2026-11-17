@@ -40,7 +40,7 @@ public partial class App : Application
             name: IsPreview ? "Local\\OpenTaskbar.Preview" : "Local\\OpenTaskbar.Singleton", out var createdNew);
         if (!createdNew)
         {
-            MessageBox.Show(UiText.Get("AlreadyRunning"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppLog.ReportError("AlreadyRunning");
             _instanceMutex.Dispose();
             _instanceMutex = null;
             Shutdown();
@@ -57,7 +57,7 @@ public partial class App : Application
         MainWindow = mainWindow;
         mainWindow.Show();
         if (themeInstallError is not null)
-            MessageBox.Show(themeInstallError, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppLog.Error($"Built-in theme installation: {themeInstallError}");
     }
 
     protected override void OnExit(ExitEventArgs e)

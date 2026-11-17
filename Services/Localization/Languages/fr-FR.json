@@ -288,6 +288,8 @@
   "EdgeBottom": "Bas",
   "EdgeLeft": "Gauche",
   "EdgeRight": "Droite",
+  "Diagnostics": "Diagnostics",
+  "OpenLogFile": "Ouvrir le fichier journal",
   "Backup": "Sauvegarde",
   "ExportSettings": "Exporter les paramètres",
   "ImportSettings": "Importer les paramètres",

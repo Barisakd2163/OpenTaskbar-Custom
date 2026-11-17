@@ -288,6 +288,8 @@
   "EdgeBottom": "Alt",
   "EdgeLeft": "Sol",
   "EdgeRight": "Sağ",
+  "Diagnostics": "Tanılama",
+  "OpenLogFile": "Günlük dosyasını aç",
   "Backup": "Yedekleme",
   "ExportSettings": "Ayarları dışa aktar…",
   "ImportSettings": "Ayarları içe aktar…",

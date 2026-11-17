@@ -111,6 +111,10 @@
                                     <Button Content="{local:Loc ImportSettings}" Style="{StaticResource SettingsButton}" Click="ImportSettings_Click" />
                                 </StackPanel>
                             </StackPanel>
+                            <StackPanel Margin="0,22,0,0">
+                                <TextBlock Text="{local:Loc Diagnostics}" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                <Button Content="{local:Loc OpenLogFile}" Style="{StaticResource SettingsButton}" Click="OpenLogFile_Click" HorizontalAlignment="Left" />
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

@@ -288,6 +288,8 @@
   "EdgeBottom": "Unten",
   "EdgeLeft": "Links",
   "EdgeRight": "Rechts",
+  "Diagnostics": "Diagnose",
+  "OpenLogFile": "Protokolldatei öffnen",
   "Backup": "Sicherung",
   "ExportSettings": "Einstellungen exportieren",
   "ImportSettings": "Einstellungen importieren",

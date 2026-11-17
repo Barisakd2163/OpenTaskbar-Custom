@@ -288,6 +288,8 @@
   "EdgeBottom": "아래쪽",
   "EdgeLeft": "왼쪽",
   "EdgeRight": "오른쪽",
+  "Diagnostics": "진단",
+  "OpenLogFile": "로그 파일 열기",
   "Backup": "백업",
   "ExportSettings": "설정 내보내기",
   "ImportSettings": "설정 가져오기",

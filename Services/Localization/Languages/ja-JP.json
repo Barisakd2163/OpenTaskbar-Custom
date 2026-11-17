@@ -288,6 +288,8 @@
   "EdgeBottom": "下",
   "EdgeLeft": "左",
   "EdgeRight": "右",
+  "Diagnostics": "診断",
+  "OpenLogFile": "ログ ファイルを開く",
   "Backup": "バックアップ",
   "ExportSettings": "設定のエクスポート…",
   "ImportSettings": "設定のインポート…",

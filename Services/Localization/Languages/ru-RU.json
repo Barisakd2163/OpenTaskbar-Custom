@@ -288,6 +288,8 @@
   "EdgeBottom": "Внизу",
   "EdgeLeft": "Слева",
   "EdgeRight": "Справа",
+  "Diagnostics": "Диагностика",
+  "OpenLogFile": "Открыть файл журнала",
   "Backup": "Резервное копирование",
   "ExportSettings": "Экспорт параметров",
   "ImportSettings": "Импорт параметров",

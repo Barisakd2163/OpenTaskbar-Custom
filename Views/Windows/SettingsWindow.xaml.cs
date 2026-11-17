@@ -320,7 +320,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            MessageBox.Show(this, UiText.Get("ErrorThemeFolderOpen"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppLog.ReportError("ErrorThemeFolderOpen", ex);
         }
     }
 
@@ -615,8 +615,10 @@ public partial class SettingsWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
         var error = SettingsBackup.Export(dialog.FileName, _preferences.Current);
-        MessageBox.Show(this, error ?? UiText.Get("ExportDone"), "OpenTaskbar", MessageBoxButton.OK,
-            error is not null ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        if (error is not null)
+            AppLog.Error($"Settings export: {error}");
+        else
+            MessageBox.Show(this, UiText.Get("ExportDone"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void ImportSettings_Click(object sender, RoutedEventArgs e)
@@ -626,14 +628,14 @@ public partial class SettingsWindow : Window
         var (settings, pins, error) = SettingsBackup.Read(dialog.FileName);
         if (settings is null)
         {
-            MessageBox.Show(this, UiText.Get(error ?? "ErrorSettingsFileInvalid"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppLog.ReportError(error ?? "ErrorSettingsFileInvalid");
             return;
         }
 
         var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         if (_preferences.Save(settings with { PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder }) is { } saveError)
         {
-            MessageBox.Show(this, UiText.Get(saveError), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppLog.ReportError(saveError);
             return;
         }
 
@@ -644,6 +646,8 @@ public partial class SettingsWindow : Window
         UpdateWidgetOptionState();
         MessageBox.Show(this, UiText.Format("ImportDone", added), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
     }
+
+    private void OpenLogFile_Click(object sender, RoutedEventArgs e) => AppLog.TryOpenLogFile();
 
     private void LoadAllSelections(DockSettings settings)
     {

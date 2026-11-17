@@ -288,6 +288,8 @@
   "EdgeBottom": "Bottom",
   "EdgeLeft": "Left",
   "EdgeRight": "Right",
+  "Diagnostics": "Diagnostics",
+  "OpenLogFile": "Open log file",
   "Backup": "Backup",
   "ExportSettings": "Export settings…",
   "ImportSettings": "Import settings…",

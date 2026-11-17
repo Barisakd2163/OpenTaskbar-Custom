@@ -121,7 +121,7 @@ public partial class MainWindow
             }
         }
 
-        if (failed) ShowStatus("ErrorHotkeyRegister");
+        if (failed) ReportError("ErrorHotkeyRegister");
     }
 
     private void UnregisterHotkeys()
@@ -159,7 +159,7 @@ public partial class MainWindow
 
     private LauncherWindow CreateLauncher()
     {
-        var launcher = new LauncherWindow(ShowStatus);
+        var launcher = new LauncherWindow(ReportError);
         launcher.Closed += (_, _) => _launcher = null;
         return launcher;
     }
@@ -252,7 +252,7 @@ public partial class MainWindow
     private void SaveProfiles(IReadOnlyList<DockProfile>? profiles, string? active)
     {
         var error = _preferences.Save(_preferences.Current with { Profiles = profiles is { Count: > 0 } ? profiles : null, ActiveProfile = active });
-        if (error is not null) ShowStatus(error);
+        if (error is not null) ReportError(error);
     }
 
     private void PopulateProfilesMenu(MenuItem menu)
@@ -297,7 +297,7 @@ public partial class MainWindow
         var profiles = (_preferences.Current.Profiles ?? []).ToList();
         if (profiles.Any(profile => string.Equals(profile.Name, name, StringComparison.CurrentCultureIgnoreCase)))
         {
-            ShowStatus("ErrorProfileExists");
+            ReportError("ErrorProfileExists");
             return;
         }
 
@@ -355,8 +355,8 @@ public partial class MainWindow
         if (!ReferenceEquals(_updateCheck, check) || !IsLoaded) return;
         if (!succeeded)
         {
-            // Background checks stay quiet when offline; a manual check informs via toast.
-            if (userInitiated) NotificationService.ShowInfoToast(UiText.Get("ErrorUpdateCheck"));
+            // Background checks stay quiet when offline; a manual check still records the failure.
+            if (userInitiated) AppLog.ReportError("ErrorUpdateCheck");
             return;
         }
 
@@ -394,19 +394,18 @@ public partial class MainWindow
             if (!success)
             {
                 _isUpdating = false;
-                var error = errorKey is null
-                    ? UiText.Get("UpdateFailed")
-                    : httpStatusCode is { } statusCode
-                        ? UiText.Format(errorKey, statusCode)
-                        : UiText.Get(errorKey);
-                NotificationService.ShowInfoToast(error);
+                if (errorKey is { } key)
+                    AppLog.ReportError(key, httpStatusCode is { } statusCode
+                        ? new object[] { statusCode }
+                        : []);
+                else
+                    AppLog.ReportError("UpdateFailed");
             }
         }
         catch (Exception ex)
         {
             _isUpdating = false;
-            AppLog.Error($"Update failed: {ex.Message}");
-            NotificationService.ShowInfoToast(UiText.Get("UpdateFailed"));
+            AppLog.ReportError("UpdateFailed", ex);
         }
     }
 

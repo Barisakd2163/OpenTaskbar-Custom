@@ -191,10 +191,9 @@ public partial class MainWindow
         });
     }
 
-    private void ReportResult(string? error)
+    private static void ReportResult(string? error)
     {
-        if (error is null) ClearStatus();
-        else ShowStatus(error);
+        if (error is not null) ReportError(error);
     }
 
     private void Stack_Click(object sender, RoutedEventArgs e)
@@ -260,12 +259,11 @@ public partial class MainWindow
         try
         {
             using var _ = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            ClearStatus();
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or FileNotFoundException)
         {
             AppLog.Warning($"Cannot open {path}: {ex.Message}");
-            ShowStatus("ErrorOpenFileOrFolder");
+            ReportError("ErrorOpenFileOrFolder");
         }
     }
 
@@ -295,7 +293,7 @@ public partial class MainWindow
     private void SaveStackFolders(IReadOnlyList<string> folders)
     {
         var error = _preferences.Save(_preferences.Current with { StackFolders = folders });
-        if (error is not null) ShowStatus(error);
+        if (error is not null) ReportError(error);
     }
 
     private void StackButton_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)

@@ -288,6 +288,8 @@
   "EdgeBottom": "底部",
   "EdgeLeft": "左侧",
   "EdgeRight": "右侧",
+  "Diagnostics": "诊断",
+  "OpenLogFile": "打开日志文件",
   "Backup": "备份与恢复",
   "ExportSettings": "导出设置",
   "ImportSettings": "导入设置",
