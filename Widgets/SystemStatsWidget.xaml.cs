@@ -43,6 +43,7 @@ public partial class SystemStatsWidget : DockWidget
     private bool _hasGpu;
     private bool _hasCpuTemp;
     private bool _hasGpuTemp;
+    private readonly Dictionary<FrameworkElement, int> _missingSensorSamples = [];
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 30;
@@ -126,11 +127,8 @@ public partial class SystemStatsWidget : DockWidget
     protected override void OnActivated()
     {
         _stats.SampleCpu();
-        lock (_sensorGate)
-        {
-            _sensorGeneration++;
-            _sensors ??= new SystemSensors();
-        }
+        // Opening the widget must never wait for a slow native sensor query.
+        Interlocked.Increment(ref _sensorGeneration);
 
         ApplyMeterSelection();
         // Show Memory & Battery right away, and schedule the first CPU/sensor sample for the next 1s tick.
@@ -144,12 +142,17 @@ public partial class SystemStatsWidget : DockWidget
     protected override void OnDeactivated()
     {
         _confirm.Disarm();
-        lock (_sensorGate)
+        var generation = Interlocked.Increment(ref _sensorGeneration);
+        // Dispose from the worker after any in-flight native query completes.
+        _ = Task.Run(() =>
         {
-            _sensorGeneration++;
-            _sensors?.Dispose();
-            _sensors = null;
-        }
+            lock (_sensorGate)
+            {
+                if (generation != Volatile.Read(ref _sensorGeneration)) return;
+                _sensors?.Dispose();
+                _sensors = null;
+            }
+        });
         _lastFastSampleTickMs = 0;
         _lastSensorSampleTickMs = 0;
     }
@@ -162,10 +165,7 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnSettingsChanged()
     {
-        lock (_sensorGate)
-        {
-            _sensorGeneration++;
-        }
+        Interlocked.Increment(ref _sensorGeneration);
 
         ApplyMeterSelection();
         if (IsActive)
@@ -215,9 +215,15 @@ public partial class SystemStatsWidget : DockWidget
             {
                 lock (_sensorGate)
                 {
-                    if (generation != _sensorGeneration || _sensors is null) return;
+                    if (generation != Volatile.Read(ref _sensorGeneration)) return;
+                    _sensors ??= new SystemSensors(meters);
+                    _sensors.Configure(meters);
                     if (meters.HasFlag(SystemMeters.Gpu)) _sensors.SampleGpuUsage();
                 }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warning($"Sensor baseline failed: {ex.Message}");
             }
             finally
             {
@@ -241,11 +247,18 @@ public partial class SystemStatsWidget : DockWidget
             {
                 lock (_sensorGate)
                 {
-                    if (generation != _sensorGeneration || _sensors is null) return;
+                    if (generation != Volatile.Read(ref _sensorGeneration)) return;
+                    _sensors ??= new SystemSensors(meters);
+                    _sensors.Configure(meters);
                     if (meters.HasFlag(SystemMeters.Gpu)) gpu = _sensors.SampleGpuUsage();
                     if (meters.HasFlag(SystemMeters.CpuTemperature)) cpuTemp = _sensors.SampleCpuTemperature();
                     if (meters.HasFlag(SystemMeters.GpuTemperature)) gpuTemp = _sensors.SampleGpuTemperature();
                 }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warning($"Sensor sampling failed: {ex.Message}");
+                return;
             }
             finally
             {
@@ -283,6 +296,19 @@ public partial class SystemStatsWidget : DockWidget
 
     private void UpdateSensor(FrameworkElement button, double? reading, Action<double> render)
     {
+        if (reading is null)
+        {
+            _missingSensorSamples.TryGetValue(button, out var misses);
+            misses = Math.Min(misses + 1, 3);
+            _missingSensorSamples[button] = misses;
+            // A single missed sample should not make the dock jump in width.
+            if (misses < 3) return;
+        }
+        else
+        {
+            _missingSensorSamples.Remove(button);
+        }
+
         var available = reading is not null;
         if (button == GpuButton) _hasGpu = available;
         else if (button == CpuTemperatureButton) _hasCpuTemp = available;

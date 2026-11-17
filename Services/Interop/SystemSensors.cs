@@ -317,14 +317,14 @@ public sealed partial class SystemSensors : IDisposable
 
         private readonly List<(Luid Luid, uint NodeCount)> _adapters;
         private readonly long[] _previousRunningTime;
+        private readonly long[] _previousNodeTimestamp;
         private readonly byte[] _buffer = new byte[QueryBufferSize];
-        private long _previousTimestamp;
-        private bool _hasBaseline;
 
         private D3dKmtGpuSampler(List<(Luid Luid, uint NodeCount)> adapters, int totalNodes)
         {
             _adapters = adapters;
             _previousRunningTime = new long[totalNodes];
+            _previousNodeTimestamp = new long[totalNodes];
         }
 
         public static D3dKmtGpuSampler? TryCreate()
@@ -384,7 +384,7 @@ public sealed partial class SystemSensors : IDisposable
         public double? Sample()
         {
             var now = Stopwatch.GetTimestamp();
-            var elapsed100ns = _hasBaseline ? (now - _previousTimestamp) * 10_000_000.0 / Stopwatch.Frequency : 0;
+            var hasValidDelta = false;
             double maxUtil = 0;
             var idx = 0;
             var anySuccess = false;
@@ -400,28 +400,24 @@ public sealed partial class SystemSensors : IDisposable
 
                     anySuccess = true;
                     var runningTime = BitConverter.ToInt64(_buffer, NodeRunningTimeOffset);
-                    if (_hasBaseline && elapsed100ns > 0)
+                    var previousTimestamp = _previousNodeTimestamp[idx];
+                    if (previousTimestamp != 0 && now > previousTimestamp)
                     {
                         var delta = runningTime - _previousRunningTime[idx];
-                        if (delta > 0)
+                        var elapsed100ns = (now - previousTimestamp) * 10_000_000.0 / Stopwatch.Frequency;
+                        if (delta >= 0 && elapsed100ns > 0)
                         {
-                            var util = delta / elapsed100ns;
-                            if (util > maxUtil) maxUtil = util;
+                            hasValidDelta = true;
+                            maxUtil = Math.Max(maxUtil, delta / elapsed100ns);
                         }
                     }
 
                     _previousRunningTime[idx] = runningTime;
+                    _previousNodeTimestamp[idx] = now;
                 }
             }
 
-            _previousTimestamp = now;
-            if (!anySuccess) return null;
-            if (!_hasBaseline)
-            {
-                _hasBaseline = true;
-                return null;
-            }
-
+            if (!anySuccess || !hasValidDelta) return null;
             return Math.Clamp(maxUtil, 0, 1);
         }
 
