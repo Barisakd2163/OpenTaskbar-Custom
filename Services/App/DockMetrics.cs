@@ -16,7 +16,7 @@ public static class DockMetrics
     public const double BottomGap = 6;
     public const double SideInset = 12;
     public const double FullWidthSideInset = 6;
-    public const double EdgeTriggerHeight = 3;
+    public const double EdgeTriggerHeight = 5;
 
     // Cells and icons (DIP).
     public const double CellSize = 52;

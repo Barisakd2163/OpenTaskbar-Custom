@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -16,28 +17,91 @@ public sealed record TrayApp(string Name, string ExecutablePath, BitmapSource? I
 public static class TrayIcons
 {
     private const string SettingsKey = @"Control Panel\NotifyIconSettings";
+    private const uint Th32csSnapProcess = 0x00000002;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const int MaxCacheEntries = 64;
+
+    private static readonly ConcurrentDictionary<Guid, string?> KnownFolderCache = new();
+    private static readonly ConcurrentDictionary<string, string> DescriptionCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, CachedIconEntry> IconCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly int CurrentSessionId = ResolveCurrentSessionId();
+
+    private sealed record CandidateEntry(string Path, string FileName, string? Tooltip, byte[]? SnapshotBytes, bool IsPromoted, bool PreferExeIcon);
+    private sealed record CachedIconEntry(int SnapshotLen, int SnapshotHash, bool PreferExeIcon, BitmapSource? Icon);
 
     public static IReadOnlyList<TrayApp> RunningApps()
     {
-        var running = RunningExecutables();
-        var apps = new Dictionary<string, TrayApp>(StringComparer.OrdinalIgnoreCase);
+        var candidates = ReadCandidateEntries();
+        if (candidates.Count == 0) return [];
+
+        var targetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            targetNames.Add(candidate.FileName);
+        }
+
+        var running = RunningExecutables(targetNames);
+        if (running.Count == 0) return [];
+
+        var apps = new List<TrayApp>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates
+            .OrderByDescending(c => c.IsPromoted)
+            .ThenBy(c => IsDriverStorePath(c.Path)))
+        {
+            if (!running.Contains(candidate.Path)) continue;
+            var name = string.IsNullOrWhiteSpace(candidate.Tooltip)
+                ? DescribeExecutable(candidate.Path)
+                : candidate.Tooltip;
+            if (!seenNames.Add(name)) continue;
+            apps.Add(new TrayApp(name, candidate.Path, GetCachedIcon(candidate.Path, candidate.SnapshotBytes, candidate.PreferExeIcon)));
+        }
+
+        apps.Sort((a, b) => StringComparer.CurrentCultureIgnoreCase.Compare(a.Name, b.Name));
+        return apps;
+    }
+
+    internal static bool IsTransientTooltip(string? rawTooltip)
+    {
+        if (string.IsNullOrWhiteSpace(rawTooltip)) return false;
+        return rawTooltip.Contains("starting", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("initializing", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("installing", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("updating", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("connecting", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("loading", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("başlatılıyor", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("yükleniyor", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("güncelleniyor", StringComparison.OrdinalIgnoreCase)
+            || rawTooltip.Contains("bağlanıyor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDriverStorePath(string path) =>
+        path.Contains(@"\DriverStore\FileRepository\", StringComparison.OrdinalIgnoreCase);
+
+    private static List<CandidateEntry> ReadCandidateEntries()
+    {
+        var candidates = new List<CandidateEntry>();
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
             using var root = Registry.CurrentUser.OpenSubKey(SettingsKey);
-            if (root is null) return [];
+            if (root is null) return candidates;
             foreach (var name in root.GetSubKeyNames())
             {
                 using var entry = root.OpenSubKey(name);
                 if (entry?.GetValue("ExecutablePath") is not string rawPath) continue;
-                var path = ResolveKnownFolder(rawPath);
-                if (path is null || apps.ContainsKey(path) || !running.Contains(path)) continue;
+                var path = ResolveKnownFolderPath(rawPath);
+                if (path is null || !seenPaths.Add(path)) continue;
                 var fileName = Path.GetFileName(path);
-                if (fileName.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) continue;
-                var tooltip = (entry.GetValue("InitialTooltip") as string)?.Trim('‪', '‬', ' ').Split('\n')[0];
-                apps[path] = new TrayApp(
-                    string.IsNullOrWhiteSpace(tooltip) ? DescribeExecutable(path) : tooltip,
-                    path,
-                    DecodeSnapshot(entry.GetValue("IconSnapshot") as byte[]) ?? ApplicationIconProvider.GetForFile(path));
+                if (string.IsNullOrEmpty(fileName) || fileName.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) continue;
+
+                var rawTooltip = (entry.GetValue("InitialTooltip") as string)?.Trim('\u202a', '\u202c', '\u200e', '\u200f', ' ');
+                var preferExe = IsTransientTooltip(rawTooltip);
+                var tooltip = rawTooltip?.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+                var isPromoted = entry.GetValue("IsPromoted") as int? == 1;
+                candidates.Add(new CandidateEntry(path, fileName, tooltip, entry.GetValue("IconSnapshot") as byte[], isPromoted, preferExe));
             }
         }
         catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
@@ -45,7 +109,7 @@ public static class TrayIcons
             AppLog.Warning($"Tray icon settings unavailable: {ex.Message}");
         }
 
-        return apps.Values.OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return candidates;
     }
 
     /// <summary>Starting a running tray app again brings up its window for most single-instance apps.</summary>
@@ -63,60 +127,121 @@ public static class TrayIcons
         }
     }
 
-    private static HashSet<string> RunningExecutables()
+    private static HashSet<string> RunningExecutables(HashSet<string> targetFileNames)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var buffer = new char[1024];
-        foreach (var process in Process.GetProcesses())
+        var snapshot = CreateToolhelp32Snapshot(Th32csSnapProcess, 0);
+        if (snapshot == 0 || snapshot == new nint(-1)) return paths;
+
+        try
         {
-            using (process)
+            var entry = new ProcessEntry32 { Size = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            if (!Process32FirstW(snapshot, ref entry)) return paths;
+
+            var buffer = new char[1024];
+            do
             {
+                if (entry.ProcessId == 0 || string.IsNullOrEmpty(entry.ExeFile)) continue;
+                if (!targetFileNames.Contains(entry.ExeFile)) continue;
+                if (CurrentSessionId >= 0 && (!ProcessIdToSessionId(entry.ProcessId, out var sessionId) || sessionId != CurrentSessionId)) continue;
+
                 // QueryFullProcessImageName works for elevated processes that Process.MainModule cannot open.
-                var handle = OpenProcess(0x1000, false, process.Id);
+                var handle = OpenProcess(ProcessQueryLimitedInformation, false, (int)entry.ProcessId);
                 if (handle == 0) continue;
                 try
                 {
                     var length = buffer.Length;
-                    if (QueryFullProcessImageName(handle, 0, buffer, ref length)) paths.Add(new string(buffer, 0, length));
+                    if (QueryFullProcessImageName(handle, 0, buffer, ref length))
+                    {
+                        paths.Add(new string(buffer, 0, length));
+                    }
                 }
                 finally
                 {
                     CloseHandle(handle);
                 }
             }
+            while (Process32NextW(snapshot, ref entry));
+        }
+        finally
+        {
+            CloseHandle(snapshot);
         }
 
         return paths;
     }
 
     /// <summary>Paths are stored as <c>{KNOWNFOLDERID}\relative\path.exe</c> or as plain absolute paths.</summary>
-    private static string? ResolveKnownFolder(string path)
+    private static string? ResolveKnownFolderPath(string path)
     {
         if (!path.StartsWith('{'))
         {
-            return File.Exists(path) ? path : null;
+            return path;
         }
 
         var end = path.IndexOf('}');
         if (end < 0 || !Guid.TryParse(path[..(end + 1)], out var folderId)) return null;
-        if (SHGetKnownFolderPath(ref folderId, 0, 0, out var folderPointer) != 0) return null;
-        try
+        var folder = KnownFolderCache.GetOrAdd(folderId, static id =>
         {
-            var folder = Marshal.PtrToStringUni(folderPointer);
-            if (folder is null) return null;
-            var resolved = Path.Combine(folder, path[(end + 1)..].TrimStart('\\'));
-            return File.Exists(resolved) ? resolved : null;
-        }
-        finally
-        {
-            Marshal.FreeCoTaskMem(folderPointer);
-        }
+            if (SHGetKnownFolderPath(ref id, 0, 0, out var folderPointer) != 0) return null;
+            try
+            {
+                return Marshal.PtrToStringUni(folderPointer);
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(folderPointer);
+            }
+        });
+
+        return folder is null ? null : Path.Combine(folder, path[(end + 1)..].TrimStart('\\'));
     }
 
     private static string DescribeExecutable(string path)
     {
+        if (DescriptionCache.TryGetValue(path, out var cached)) return cached;
         var description = FileVersionInfo.GetVersionInfo(path).FileDescription;
-        return string.IsNullOrWhiteSpace(description) ? Path.GetFileNameWithoutExtension(path) : description.Trim();
+        var resolved = string.IsNullOrWhiteSpace(description) ? Path.GetFileNameWithoutExtension(path) : description.Trim();
+        if (DescriptionCache.Count >= MaxCacheEntries) DescriptionCache.Clear();
+        DescriptionCache[path] = resolved;
+        return resolved;
+    }
+
+    private static BitmapSource? GetCachedIcon(string path, byte[]? png, bool preferExeIcon)
+    {
+        var len = png?.Length ?? 0;
+        var hash = ComputeBytesHash(png);
+        if (IconCache.TryGetValue(path, out var entry)
+            && entry.SnapshotLen == len
+            && entry.SnapshotHash == hash
+            && entry.PreferExeIcon == preferExeIcon)
+        {
+            return entry.Icon;
+        }
+
+        var icon = preferExeIcon
+            ? ApplicationIconProvider.GetForFile(path) ?? DecodeSnapshot(png)
+            : DecodeSnapshot(png) ?? ApplicationIconProvider.GetForFile(path);
+        if (IconCache.Count >= MaxCacheEntries) IconCache.Clear();
+        IconCache[path] = new CachedIconEntry(len, hash, preferExeIcon, icon);
+        return icon;
+    }
+
+    private static int ResolveCurrentSessionId() =>
+        ProcessIdToSessionId((uint)Environment.ProcessId, out var sessionId) ? (int)sessionId : -1;
+
+    private static int ComputeBytesHash(byte[]? data)
+    {
+        if (data is null || data.Length == 0) return 0;
+        unchecked
+        {
+            var hash = (int)2166136261;
+            for (var i = 0; i < data.Length; i++)
+            {
+                hash = (hash ^ data[i]) * 16777619;
+            }
+            return hash;
+        }
     }
 
     private static BitmapSource? DecodeSnapshot(byte[]? png)
@@ -155,6 +280,33 @@ public static class TrayIcons
         return width > 0;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public nuint DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int BasePriority;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string ExeFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32FirstW(nint hSnapshot, ref ProcessEntry32 lppe);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32NextW(nint hSnapshot, ref ProcessEntry32 lppe);
+
     [DllImport("shell32.dll")]
     private static extern int SHGetKnownFolderPath(ref Guid folderId, uint flags, nint token, out nint path);
 
@@ -168,4 +320,8 @@ public static class TrayIcons
     [DllImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(nint handle);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
 }
