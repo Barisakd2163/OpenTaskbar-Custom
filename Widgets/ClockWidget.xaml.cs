@@ -105,7 +105,7 @@ public partial class ClockWidget : DockWidget
             ? (Settings.ClockShowSeconds ? "HH:mm:ss" : "HH:mm")
             : (Settings.ClockShowSeconds ? "hh:mm:ss tt" : "hh:mm tt");
         var timeString = now.ToString(timeFormat, culture);
-        var renderKey = $"{timeString}|{Settings.DateStyle}|{Settings.Language}|{period}";
+        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.Language}|{period}";
         if (renderKey != _lastRenderKey)
         {
             _lastRenderKey = renderKey;
@@ -121,7 +121,7 @@ public partial class ClockWidget : DockWidget
                 case ClockDateStyle.ShortDateOnly:
                     DateColumn.Visibility = Visibility.Visible;
                     DayOfWeekText.Visibility = Visibility.Collapsed;
-                    DateText.Text = now.ToString("d", culture);
+                    DateText.Text = now.ToString("MMM d", culture);
                     break;
                 case ClockDateStyle.NumericDate:
                     DateColumn.Visibility = Visibility.Visible;
