@@ -151,6 +151,9 @@ public partial class MainWindow : Window
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
+        ShellShortcuts.IsMediaWidgetActive = () =>
+            _preferences.Current.Widgets?.Contains("Media", StringComparer.OrdinalIgnoreCase) == true
+            || _preferences.Current.ShowMedia;
         // App.OnStartup has already selected the theme pack; later changes come through ApplicationPreferences.Save.
         ThemePacks.Changed += ThemePacks_Changed;
         Closed += (_, _) => ThemePacks.Changed -= ThemePacks_Changed;
@@ -1942,6 +1945,7 @@ public partial class MainWindow : Window
         _widgetPanel.IsOpenChanged -= WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed -= ReportError;
         _widgetPanel.Dispose();
+        ShellShortcuts.IsMediaWidgetActive = null;
         _preferences.Changed -= Preferences_Changed;
         _settingsWindow?.CloseForShutdown();
         _jumpListLoad?.Cancel();

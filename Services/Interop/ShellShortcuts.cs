@@ -35,6 +35,12 @@ public static class ShellShortcuts
     private const uint SwpNoActivate = 0x0010;
     private const int ErrorCancelled = 1223;
 
+    /// <summary>Optional predicate indicating whether the dock's Media widget is active.</summary>
+    public static Func<bool>? IsMediaWidgetActive { get; set; }
+
+    /// <summary>Last known height of Quick Settings, used to proportion the Notification Center to match.</summary>
+    private static volatile int s_lastQuickSettingsHeight;
+
     private static bool IsExtended(ushort key) => key is VkLeft or VkRight or VkLeftWindows;
 
     /// <summary>Win+A: Quick Settings (Windows 11) or Action Center (Windows 10), anchored above the clicked button when given.</summary>
@@ -89,7 +95,6 @@ public static class ShellShortcuts
         var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo)) return;
         var edge = DockFlyout.Edge;
-        var movedOnce = false;
 
         for (var attempt = 0; attempt < 24; attempt++)
         {
@@ -100,12 +105,87 @@ public static class ShellShortcuts
             var height = rect.Bottom - rect.Top;
             if (width < 80 || height < 80) continue;
 
-            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, height, monitorInfo, edge);
-            SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-            if (movedOnce) break;
-            movedOnce = true;
-            // Re-apply once more after ShellHost finishes its entrance animation.
-            await Task.Delay(75);
+            bool hideMedia = IsMediaWidgetActive?.Invoke() == true;
+            int topOffset = 0;
+            int visibleHeight = height;
+
+            if (hideMedia)
+            {
+                try
+                {
+                    var element = AutomationElement.FromHandle(hwnd);
+                    if (element is not null)
+                    {
+                        AutomationElement? mediaElem = element.FindFirst(TreeScope.Descendants,
+                            new PropertyCondition(AutomationElement.AutomationIdProperty, "MediaTransportControls"));
+                        mediaElem ??= element.FindFirst(TreeScope.Descendants,
+                            new PropertyCondition(AutomationElement.ClassNameProperty, "ControlCenter.MediaTransportControls"));
+                        if (mediaElem is null)
+                        {
+                            var all = element.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
+                            foreach (AutomationElement el in all)
+                            {
+                                var id = el.Current.AutomationId;
+                                var cls = el.Current.ClassName;
+                                if (id.Contains("MediaTransportControls", StringComparison.OrdinalIgnoreCase)
+                                    || cls.Contains("MediaTransportControls", StringComparison.OrdinalIgnoreCase)
+                                    || id.Contains("MediaControls", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    mediaElem = el;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (mediaElem is not null)
+                        {
+                            var mediaRect = mediaElem.Current.BoundingRectangle;
+                            if (!double.IsInfinity(mediaRect.Height) && mediaRect.Height > 20)
+                            {
+                                bool isAtTop = (mediaRect.Top - rect.Top) < (rect.Bottom - mediaRect.Bottom);
+                                if (isAtTop)
+                                {
+                                    topOffset = (int)Math.Clamp(Math.Round(mediaRect.Bottom - rect.Top), 0, height - 120);
+                                    visibleHeight = height - topOffset;
+                                    AppLog.Info($"RepositionControlCenterAsync: hiding media at top (height={mediaRect.Height}, topOffset={topOffset}, visibleHeight={visibleHeight})");
+                                }
+                                else
+                                {
+                                    visibleHeight = (int)Math.Clamp(Math.Round(mediaRect.Top - rect.Top), 120, height);
+                                    AppLog.Info($"RepositionControlCenterAsync: hiding media at bottom (height={mediaRect.Height}, visibleHeight={visibleHeight})");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Warning($"RepositionControlCenterAsync media detection failed: {ex.Message}");
+                }
+            }
+
+            s_lastQuickSettingsHeight = visibleHeight;
+
+            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, visibleHeight, monitorInfo, edge);
+            int winY = targetY - topOffset;
+
+            for (var frame = 0; frame < 3; frame++)
+            {
+                SetWindowPos(hwnd, 0, targetX, winY, width, height, SwpNoZOrder | SwpNoActivate);
+                if (topOffset > 0 || visibleHeight < height)
+                {
+                    var rgn = topOffset > 0
+                        ? CreateRoundRectRgn(0, topOffset, width, height, 16, 16)
+                        : CreateRoundRectRgn(0, 0, width, visibleHeight, 16, 16);
+                    SetWindowRgn(hwnd, rgn, true);
+                }
+                else
+                {
+                    SetWindowRgn(hwnd, 0, true);
+                }
+                await Task.Delay(50);
+            }
+            return;
         }
     }
 
@@ -172,49 +252,17 @@ public static class ShellShortcuts
         try
         {
             var element = AutomationElement.FromHandle(hwnd);
-            int clipHeight = 0;
+            int baseUnit = winWidth > 0 ? winWidth : 360;
+            int minHeight = (int)Math.Round(baseUnit * (320.0 / 360.0));
+            int maxHeight = (int)Math.Round(baseUnit * (450.0 / 360.0));
+            int targetHeight = s_lastQuickSettingsHeight > 0
+                ? Math.Clamp(s_lastQuickSettingsHeight, minHeight, maxHeight)
+                : (int)Math.Round(baseUnit * (390.0 / 360.0));
 
             if (element is not null)
             {
-                for (var retry = 0; retry < 10; retry++)
+                for (var retry = 0; retry < 8; retry++)
                 {
-                    GetWindowRect(hwnd, out var curWinRect);
-
-                    AutomationElement? calGrid = null;
-                    AutomationElement? notifGrid = null;
-                    try
-                    {
-                        calGrid = element.FindFirst(TreeScope.Descendants,
-                            new PropertyCondition(AutomationElement.AutomationIdProperty, "CalendarCenterGrid"));
-                        notifGrid = element.FindFirst(TreeScope.Descendants,
-                            new PropertyCondition(AutomationElement.AutomationIdProperty, "NotificationCenterGrid"));
-                    }
-                    catch
-                    {
-                    }
-
-                    if (calGrid is not null)
-                    {
-                        var calRect = calGrid.Current.BoundingRectangle;
-                        if (!double.IsInfinity(calRect.Top) && calRect.Height > 0)
-                        {
-                            clipHeight = (int)Math.Round(calRect.Top - curWinRect.Top);
-                            AppLog.Info($"PositionAndClip: found CalendarCenterGrid top={calRect.Top}, clipHeight={clipHeight}");
-                            break;
-                        }
-                    }
-
-                    if (notifGrid is not null)
-                    {
-                        var notifRect = notifGrid.Current.BoundingRectangle;
-                        if (!double.IsInfinity(notifRect.Bottom) && notifRect.Height > 0)
-                        {
-                            clipHeight = (int)Math.Round(notifRect.Height);
-                            AppLog.Info($"PositionAndClip: found NotificationCenterGrid height={clipHeight}");
-                            break;
-                        }
-                    }
-
                     var buttons = element.FindAll(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
 
@@ -241,33 +289,17 @@ public static class ShellShortcuts
                                 {
                                     ip.Invoke();
                                     AppLog.Info($"PositionAndClip: invoked {autoId}/{name} to collapse");
-                                    await Task.Delay(50);
-                                    GetWindowRect(hwnd, out curWinRect);
-                                    btnRect = btn.Current.BoundingRectangle;
                                 }
                             }
-
-                            // The calendar card starts ~52px above the expand button
-                            var headerTop = btnRect.Top - 52;
-                            clipHeight = (int)Math.Clamp(headerTop - curWinRect.Top, 200, winHeight);
-                            AppLog.Info($"PositionAndClip: derived clipHeight={clipHeight} from btnTop={btnRect.Top}");
                             break;
                         }
                     }
 
-                    if (clipHeight > 0) break;
                     await Task.Delay(40);
                 }
             }
 
-            if (clipHeight <= 0)
-            {
-                clipHeight = Math.Min(winHeight, 420);
-                AppLog.Info($"PositionAndClip: fallback clipHeight={clipHeight}");
-            }
-
-            clipHeight = Math.Clamp(clipHeight, 180, winHeight);
-
+            int clipHeight = targetHeight;
             var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, winWidth, clipHeight, monitorInfo, edge);
             AppLog.Info($"PositionAndClip: positioning hwnd 0x{hwnd:X} to ({targetX}, {targetY}) size {winWidth}x{clipHeight}");
 
