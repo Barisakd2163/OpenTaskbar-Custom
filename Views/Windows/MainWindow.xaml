@@ -92,7 +92,7 @@
                     MouseUp="DockApp_MouseUp" MouseWheel="DockApp_MouseWheel">
                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
                       RenderTransformOrigin="0.5,0.95">
-                    <Image Source="{Binding Icon}" Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
+                    <Image Source="{Binding Icon}" Width="{DynamicResource DockApplicationIconSize}" Height="{DynamicResource DockApplicationIconSize}"
                            Stretch="Uniform" ClipToBounds="True" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Ellipse Width="9" Height="9" Fill="{DynamicResource NotificationBrush}"
                              Stroke="{DynamicResource SurfacePopup}" StrokeThickness="1"
