@@ -2019,6 +2019,9 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
         Application.Current.Resources["DockIconSize"] = profile.Icon;
+        // Keep app artwork visually balanced with neighboring compact widgets without
+        // shrinking the clickable dock cell or changing its drag/drop geometry.
+        Application.Current.Resources["DockApplicationIconSize"] = Math.Max(18, Math.Round(profile.Icon * 0.88));
         Application.Current.Resources["StartLogoSize"] = Math.Max(14, Math.Round(profile.Icon * 0.68));
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(profile.Radius);
