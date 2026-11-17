@@ -217,7 +217,7 @@ public static class UpdateChecker
 
     internal static bool IsValidSha256Digest(string? digest) =>
         digest is { Length: 71 } && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
-        && digest.AsSpan(7).IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
+        && digest[7..].All(Uri.IsHexDigit);
 
     internal static string GenerateUpdaterScript(string tempExe, string targetExe)
     {
