@@ -26,6 +26,9 @@ public sealed record WidgetPackManifest(
 public sealed class WidgetPack
 {
     public const string ManifestFileName = "pack.json";
+    private const int MaxManifestBytes = 128 * 1024;
+    private const int MaxGradientStops = 16;
+    private const double MaxDimension = 2048;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -44,6 +47,8 @@ public sealed class WidgetPack
         try
         {
             if (!File.Exists(manifestPath)) return (null, $"{manifestPath} not found.");
+            if (new FileInfo(manifestPath).Length > MaxManifestBytes)
+                return (null, $"{manifestPath} exceeds the {MaxManifestBytes}-byte limit.");
             var manifest = JsonSerializer.Deserialize<WidgetPackManifest>(File.ReadAllText(manifestPath), JsonOptions);
             return manifest is null ? (null, $"{manifestPath} is empty.") : (new WidgetPack(manifest), null);
         }
@@ -66,6 +71,11 @@ public sealed class WidgetPack
         }
 
         var resolved = new Dictionary<string, object>(StringComparer.Ordinal);
+        if (raw.Count > 256)
+        {
+            problems.Add("Widget theme contains too many token overrides.");
+            return resolved;
+        }
         foreach (var (key, value) in raw)
         {
             var existing = current(key);
@@ -93,8 +103,8 @@ public sealed class WidgetPack
                 Color => value.ValueKind == JsonValueKind.String ? ParseColor(value.GetString()) : null,
                 CornerRadius => ParseNumbers(value) is { } n ? new CornerRadius(n[0], n[1], n[2], n[3]) : null,
                 Thickness => ParseNumbers(value) is { } t ? new Thickness(t[0], t[1], t[2], t[3]) : null,
-                double => value.ValueKind == JsonValueKind.Number && value.GetDouble() is var d && double.IsFinite(d) && d >= 0 ? d : null,
-                FontFamily => value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
+                double => value.ValueKind == JsonValueKind.Number && value.GetDouble() is var d && double.IsFinite(d) && d >= 0 && d <= MaxDimension ? d : null,
+                FontFamily => value.ValueKind == JsonValueKind.String && value.GetString() is { Length: <= 128 } && !string.IsNullOrWhiteSpace(value.GetString())
                     ? new FontFamily(value.GetString()!) : null,
                 _ => null
             };
@@ -117,7 +127,7 @@ public sealed class WidgetPack
         }
 
         if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty("stops", out var stops)
-            || stops.ValueKind != JsonValueKind.Array || stops.GetArrayLength() < 2) return null;
+            || stops.ValueKind != JsonValueKind.Array || stops.GetArrayLength() is < 2 or > MaxGradientStops) return null;
         var colors = new List<Color>();
         foreach (var stop in stops.EnumerateArray())
         {
@@ -150,7 +160,7 @@ public sealed class WidgetPack
         if (value.ValueKind == JsonValueKind.Number)
         {
             var n = value.GetDouble();
-            return double.IsFinite(n) && n >= 0 ? [n, n, n, n] : null;
+            return double.IsFinite(n) && n >= 0 && n <= MaxDimension ? [n, n, n, n] : null;
         }
 
         if (value.ValueKind != JsonValueKind.String) return null;
@@ -160,7 +170,7 @@ public sealed class WidgetPack
         for (var i = 0; i < parts.Length; i++)
         {
             if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out numbers[i])
-                || !double.IsFinite(numbers[i]) || numbers[i] < 0) return null;
+                || !double.IsFinite(numbers[i]) || numbers[i] < 0 || numbers[i] > MaxDimension) return null;
         }
 
         return parts.Length switch
