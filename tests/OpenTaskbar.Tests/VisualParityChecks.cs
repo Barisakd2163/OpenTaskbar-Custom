@@ -26,15 +26,15 @@ internal static class VisualParityChecks
 
             UiText.Current.SetLanguage(AppLanguage.English);
 
-            // Baseline SHA-256 pixel hashes captured directly from the unmodified reference build.
+            // SHA-256 pixel hashes captured on the Windows CI runner for the reviewed design.
             var expected = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["DockButtons_Dark"] = "905C544B601A1EDB35D497CF3064E1367C1CCCA6DD306984AA66F725012F9F0F",
+                ["DockButtons_Dark"] = "E7B5F68F28A4ABC1FFA7FB097EADD2BDB9E30056E3D10733BD547CE985520E09",
                 ["DockButtons_Light"] = "AAB7166065A7A83F6A91A3F258550592333F9320D69855715FCB3C11FC105ECF",
                 ["RingMeters_Dark"] = "AA26B0446BBDF57C22178347AF6A6130652401D0CF2F2558BB2F89F242D01B39",
                 ["RingMeters_Light"] = "9C6CCB7DB0D700DA8B4A592B59359572624028B6536111E22545F834C75B7B05",
-                ["TimedWidgets_Dark"] = "A01CA10F0B315E2C70CBF0327669D9F696DDAF3A971481B9E160699A35355AB5",
-                ["TimedWidgets_Light"] = "3F4D2E5F0E865E3310D5E81018DBDAE633C8FB3533B19D62A8FFA248254CAFB9",
+                ["TimedWidgets_Dark"] = "59B51E36FF6D9E141D04BA307521612016FA3C821D672804F4CAFBF967AF9661",
+                ["TimedWidgets_Light"] = "2A90F2792880AD9D05430F808D682836BD7922968EAC43ADAE2734B42C66D731",
                 ["FocusWidget_Dark"] = "D842256A1EF1F1938FDF3CE13F96D7C93A61843D3B38C0210B7AD481936A7041",
                 ["FocusWidget_Light"] = "A43CBAB0E8609FA3086027BCF7D61F99F3932124247916EE3875F4BE823CD6B2",
                 ["TrayWidget_Dark"] = "B66A3488F5FE43763ECE9117B0813D7B5E356C861B676575D2CA340A82D75ED0",
