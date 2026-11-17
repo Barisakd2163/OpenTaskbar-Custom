@@ -40,6 +40,7 @@ public sealed class TrayWidget : DockWidget
 
     private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Localize();
 
+
     private void Localize()
     {
         _button.ToolTip = UiText.Get("TrayApps");

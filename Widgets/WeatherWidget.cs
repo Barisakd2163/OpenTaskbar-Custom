@@ -39,6 +39,8 @@ public sealed class WeatherWidget : DockWidget
         HasData = false;
     }
 
+    protected override void OnLanguageChanged() => Render();
+
     private string LocationKey => $"{Settings.WeatherCity.Trim()}|{Settings.Language}";
 
     protected override void OnActivated()

@@ -76,7 +76,7 @@ public partial class MainWindow : Window
     private readonly WidgetCoordinator _widgetCoordinator;
     private double _dockTopGap;
     private (DockSize Size, double Scale)? _sizePreviewOverride;
-    private AudioEndpointMonitor? _wheelAudio;
+    private AudioEndpointMonitor.SharedHandle? _wheelAudio;
     private int _wheelRemainder;
 
     static MainWindow()
@@ -136,7 +136,7 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(1)
         };
         _timedWidgetRefreshTimer.Tick += TimedWidgetRefreshTimer_Tick;
-        _widgetCoordinator = new WidgetCoordinator(WidgetStrip, Dispatcher, ReportError)
+        _widgetCoordinator = new WidgetCoordinator(WidgetStrip, Dispatcher, ReportError, lazy: true)
         {
             OrderChanged = OnWidgetOrderChanged
         };
@@ -144,7 +144,6 @@ public partial class MainWindow : Window
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
         InitializeWidgetOverflow();
         ApplyWidgets(_preferences.Current.Widgets);
-        _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
@@ -155,6 +154,7 @@ public partial class MainWindow : Window
         // App.OnStartup has already selected the theme pack; later changes come through ApplicationPreferences.Save.
         ThemePacks.Changed += ThemePacks_Changed;
         Closed += (_, _) => ThemePacks.Changed -= ThemePacks_Changed;
+        UpdatePreferredIconPixels();
         ApplyStartIcon();
         LoadPinnedApps(_preferences.Current.PinOrder);
         if (_preferences.LoadError is not null)
@@ -169,6 +169,7 @@ public partial class MainWindow : Window
         PositionDock();
         NotificationService.UpdateRequested += OnUpdateNotificationRequested;
         Closed += (_, _) => NotificationService.UpdateRequested -= OnUpdateNotificationRequested;
+        Loaded += (_, _) => MemoryTrimmer.ScheduleTrim(Dispatcher, 4000);
     }
 
     private void OnUpdateNotificationRequested()
@@ -746,7 +747,7 @@ public partial class MainWindow : Window
         e.Handled = true;
         try
         {
-            _wheelAudio ??= new AudioEndpointMonitor();
+            _wheelAudio ??= AudioEndpointMonitor.AcquireShared();
         }
         catch (COMException ex)
         {
@@ -1043,6 +1044,7 @@ public partial class MainWindow : Window
         }
 
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
+        contextMenu.DataContext = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext;
         _contextTargetWasForeground = pinnedApp?.IsForeground == true;
         var hasAppTarget = pinnedApp is not null;
         var isPinnedTarget = pinnedApp?.ShortcutPath is not null;
@@ -1190,6 +1192,15 @@ public partial class MainWindow : Window
 
     private async void DockContextMenu_Closed(object sender, RoutedEventArgs e)
     {
+        if (sender is ContextMenu closedMenu)
+        {
+            closedMenu.DataContext = null;
+            SetMenuCommandParameter(closedMenu, null);
+            if (closedMenu.Items.OfType<Separator>().FirstOrDefault(item => item.Tag as string == "JumpListCommands") is { } boundary)
+            {
+                ReplaceJumpListItems(closedMenu, boundary, []);
+            }
+        }
         if (!ReferenceEquals(sender, _openContextMenu)) return;
         _openContextMenu = null;
         _autoHideController?.EvaluateState();
@@ -1414,6 +1425,7 @@ public partial class MainWindow : Window
             {
                 _settingsWindow = null;
                 _autoHideController?.EvaluateState();
+                MemoryTrimmer.ScheduleTrim(Dispatcher, 1000);
             };
             _settingsWindow.Show();
         }
@@ -1477,6 +1489,7 @@ public partial class MainWindow : Window
         {
             PositionDock();
         }
+        MemoryTrimmer.ScheduleTrim(Dispatcher, 1500);
     }
 
     private void ApplyWidgets(IReadOnlyList<string>? selected)
@@ -1494,7 +1507,15 @@ public partial class MainWindow : Window
         foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
         WidgetDivider.Visibility = _widgets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+        if (_widgets.Count > 0)
+        {
+            DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+            if (!_widgetRefreshTimer.IsEnabled) _widgetRefreshTimer.Start();
+        }
+        else
+        {
+            _widgetRefreshTimer.Stop();
+        }
         UpdateTimedWidgetRefresh();
         ResizeDockToContent();
     }
@@ -1584,7 +1605,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void SetMenuCommandParameter(ItemsControl owner, string executablePath)
+    private static void SetMenuCommandParameter(ItemsControl owner, string? executablePath)
     {
         foreach (var item in owner.Items.OfType<MenuItem>())
         {
@@ -1673,6 +1694,7 @@ public partial class MainWindow : Window
 
     private void ApplySizeProfile()
     {
+        UpdatePreferredIconPixels();
         var profile = Profile;
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
@@ -1699,6 +1721,14 @@ public partial class MainWindow : Window
         {
             Height = DockMetrics.Headroom + profile.Shelf;
         }
+    }
+
+    private void UpdatePreferredIconPixels()
+    {
+        var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        var pixels = ApplicationIconProvider.ComputeTargetPixels(Profile.Icon, dpiScale);
+        ApplicationIconProvider.PreferredIconPixels = pixels;
+        ThemePacks.PreferredIconPixels = pixels;
     }
 
     private void WidgetStrip_SizeChanged(object sender, SizeChangedEventArgs e)

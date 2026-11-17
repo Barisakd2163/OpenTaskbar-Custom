@@ -20,7 +20,7 @@ public partial class MediaWidget : DockWidget
 {
     private MediaSessionManager? _manager;
     private MediaSession? _session;
-    private AudioEndpointMonitor? _audio;
+    private AudioEndpointMonitor.SharedHandle? _audio;
     private int _refreshVersion;
     private string? _artKey;
     private TimeSpan _startTime;
@@ -39,12 +39,14 @@ public partial class MediaWidget : DockWidget
         HasData = false;
     }
 
+    protected override void OnLanguageChanged() => RenderVolume();
+
     protected override async void OnActivated()
     {
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         try
         {
-            _audio = new AudioEndpointMonitor();
+            _audio = AudioEndpointMonitor.AcquireShared();
             _audio.VolumeChanged += Audio_VolumeChanged;
             _audio.DefaultDeviceChanged += Audio_DefaultDeviceChanged;
         }
@@ -75,6 +77,7 @@ public partial class MediaWidget : DockWidget
     {
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         BindSession(null);
+        ClearArtwork();
         if (_manager is not null)
         {
             _manager.CurrentSessionChanged -= Manager_CurrentSessionChanged;
@@ -223,6 +226,7 @@ public partial class MediaWidget : DockWidget
         if (session is null)
         {
             HasData = false;
+            ClearArtwork();
             return;
         }
 
@@ -245,6 +249,7 @@ public partial class MediaWidget : DockWidget
             if (string.IsNullOrWhiteSpace(title))
             {
                 HasData = false;
+                ClearArtwork();
                 return;
             }
 
@@ -258,8 +263,19 @@ public partial class MediaWidget : DockWidget
         {
             // Sessions vanish while their owning app exits; the next CurrentSessionChanged rebinds.
             AppLog.Warning($"Media session refresh failed: {ex.Message}");
-            if (version == _refreshVersion) HasData = false;
+            if (version == _refreshVersion)
+            {
+                HasData = false;
+                ClearArtwork();
+            }
         }
+    }
+
+    private void ClearArtwork()
+    {
+        _artKey = null;
+        ArtImage.Source = null;
+        ArtPlaceholder.Visibility = Visibility.Visible;
     }
 
     private async Task LoadArtAsync(GlobalSystemMediaTransportControlsSessionMediaProperties properties, int version)

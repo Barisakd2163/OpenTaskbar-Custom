@@ -47,11 +47,21 @@ public sealed class WidgetCoordinator : IDisposable
     public static bool HandlesWidget(string id) =>
         DefaultWidgetOrder.Contains(id, StringComparer.OrdinalIgnoreCase);
 
+    private sealed class WidgetSlot(string id, string labelKey, Func<DockWidget> factory, Func<DockSettings, bool> isEnabled)
+    {
+        public string Id { get; } = id;
+        public string LabelKey { get; } = labelKey;
+        public Func<DockWidget> Factory { get; } = factory;
+        public Func<DockSettings, bool> IsEnabled { get; } = isEnabled;
+        public DockWidget? Widget { get; set; }
+    }
+
     private sealed record WidgetDragPayload(string WidgetId);
 
     private readonly Panel _strip;
     private HashSet<string> _overflowIds = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<WidgetItem> _widgets;
+    private readonly Action<string> _reportError;
+    private readonly List<WidgetSlot> _widgets;
     private readonly DispatcherTimer _timer;
     private readonly HashSet<DockWidget> _displacedWidgets = [];
     private Point _dragStartPoint;
@@ -74,42 +84,60 @@ public sealed class WidgetCoordinator : IDisposable
     private static bool IsCatalogEnabled(DockSettings settings, string id) =>
         settings.Widgets?.Contains(id, StringComparer.OrdinalIgnoreCase) == true;
 
-    public WidgetCoordinator(Panel strip, Dispatcher dispatcher, Action<string> reportError)
+    public WidgetCoordinator(Panel strip, Dispatcher dispatcher, Action<string> reportError, bool lazy = false)
     {
         _strip = strip;
-        var tray = new TrayWidget();
-        tray.CloseApplicationRequested += path => CloseApplicationRequested?.Invoke(path);
-        tray.TerminateApplicationRequested += path => TerminateApplicationRequested?.Invoke(path);
+        _reportError = reportError;
         _widgets =
         [
-            new("Media", "WidgetMedia", new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
-            new("Desktops", "WidgetDesktops", new DesktopsWidget(), s => IsCatalogEnabled(s, "Desktops")),
-            new("SystemStats", "WidgetSystemStats", new SystemStatsWidget(), s => IsCatalogEnabled(s, "SystemStats")),
-            new("Focus", "WidgetFocus", new FocusWidget(), s => IsCatalogEnabled(s, "Focus")),
-            new("Weather", "WidgetWeather", new WeatherWidget(), s => IsCatalogEnabled(s, "Weather")),
-            new("Audio", "WidgetAudio", new AudioWidget(), s => IsCatalogEnabled(s, "Audio")),
-            new("QuickSettings", "WidgetQuickSettings", new QuickSettingsWidget(), s => IsCatalogEnabled(s, "QuickSettings")),
-            new("Tray", "WidgetTray", tray, s => IsCatalogEnabled(s, "Tray")),
-            new("Clock", "WidgetClock", new ClockWidget(), s => IsCatalogEnabled(s, "Clock") || IsCatalogEnabled(s, "Date"))
+            new("Media", "WidgetMedia", () => new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
+            new("Desktops", "WidgetDesktops", () => new DesktopsWidget(), s => IsCatalogEnabled(s, "Desktops")),
+            new("SystemStats", "WidgetSystemStats", () => new SystemStatsWidget(), s => IsCatalogEnabled(s, "SystemStats")),
+            new("Focus", "WidgetFocus", () => new FocusWidget(), s => IsCatalogEnabled(s, "Focus")),
+            new("Weather", "WidgetWeather", () => new WeatherWidget(), s => IsCatalogEnabled(s, "Weather")),
+            new("Audio", "WidgetAudio", () => new AudioWidget(), s => IsCatalogEnabled(s, "Audio")),
+            new("QuickSettings", "WidgetQuickSettings", () => new QuickSettingsWidget(), s => IsCatalogEnabled(s, "QuickSettings")),
+            new("Tray", "WidgetTray", CreateTrayWidget, s => IsCatalogEnabled(s, "Tray")),
+            new("Clock", "WidgetClock", () => new ClockWidget(), s => IsCatalogEnabled(s, "Clock") || IsCatalogEnabled(s, "Date"))
         ];
 
-        foreach (var item in _widgets)
+        if (!lazy)
         {
-            item.Widget.ReportError = reportError;
-            item.Widget.AllowDrop = true;
-            item.Widget.PreviewMouseLeftButtonDown += Widget_PreviewMouseLeftButtonDown;
-            item.Widget.PreviewMouseLeftButtonUp += Widget_PreviewMouseLeftButtonUp;
-            item.Widget.PreviewMouseMove += Widget_PreviewMouseMove;
-            item.Widget.DragOver += Widget_DragOver;
-            item.Widget.DragLeave += Widget_DragLeave;
-            item.Widget.Drop += Widget_Drop;
-            item.Widget.AvailabilityChanged += Widget_AvailabilityChanged;
+            foreach (var slot in _widgets)
+            {
+                EnsureWidget(slot);
+            }
         }
 
         PlaceWidgets();
 
         _timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += Timer_Tick;
+    }
+
+    private TrayWidget CreateTrayWidget()
+    {
+        var tray = new TrayWidget();
+        tray.CloseApplicationRequested += path => CloseApplicationRequested?.Invoke(path);
+        tray.TerminateApplicationRequested += path => TerminateApplicationRequested?.Invoke(path);
+        return tray;
+    }
+
+    private DockWidget EnsureWidget(WidgetSlot slot)
+    {
+        if (slot.Widget is { } existing) return existing;
+        var widget = slot.Factory();
+        widget.ReportError = _reportError;
+        widget.AllowDrop = true;
+        widget.PreviewMouseLeftButtonDown += Widget_PreviewMouseLeftButtonDown;
+        widget.PreviewMouseLeftButtonUp += Widget_PreviewMouseLeftButtonUp;
+        widget.PreviewMouseMove += Widget_PreviewMouseMove;
+        widget.DragOver += Widget_DragOver;
+        widget.DragLeave += Widget_DragLeave;
+        widget.Drop += Widget_Drop;
+        widget.AvailabilityChanged += Widget_AvailabilityChanged;
+        slot.Widget = widget;
+        return widget;
     }
 
     public void Apply(DockSettings settings)
@@ -122,18 +150,28 @@ public sealed class WidgetCoordinator : IDisposable
         }
 
         var anyActive = false;
-        foreach (var item in _widgets)
+        var stripNeedsSync = false;
+        foreach (var slot in _widgets)
         {
-            item.Widget.ApplySettings(settings);
-            if (item.IsEnabled(settings))
+            if (slot.IsEnabled(settings))
             {
-                item.Widget.Activate();
+                var wasCreated = slot.Widget is null;
+                var widget = EnsureWidget(slot);
+                if (wasCreated) stripNeedsSync = true;
+                widget.ApplySettings(settings);
+                widget.Activate();
                 anyActive = true;
             }
-            else
+            else if (slot.Widget is { } widget)
             {
-                item.Widget.Deactivate();
+                widget.ApplySettings(settings);
+                widget.Deactivate();
             }
+        }
+
+        if (stripNeedsSync)
+        {
+            PlaceWidgets();
         }
 
         if (anyActive)
@@ -401,7 +439,8 @@ public sealed class WidgetCoordinator : IDisposable
         OverflowPanel.Children.Clear();
         foreach (var item in _widgets)
         {
-            (_overflowIds.Contains(item.Id) ? OverflowPanel.Children : _strip.Children).Add(item.Widget);
+            if (item.Widget is not { } widget) continue;
+            (_overflowIds.Contains(item.Id) ? OverflowPanel.Children : _strip.Children).Add(widget);
         }
     }
 
@@ -413,10 +452,11 @@ public sealed class WidgetCoordinator : IDisposable
     {
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         var visible = new List<(string Id, double Width)>();
-        foreach (var item in _widgets.Where(w => w.Widget.Visibility == Visibility.Visible))
+        foreach (var item in _widgets.Where(w => w.Widget?.Visibility == Visibility.Visible))
         {
-            item.Widget.Measure(unbounded);
-            visible.Add((item.Id, item.Widget.DesiredSize.Width * scale));
+            var widget = item.Widget!;
+            widget.Measure(unbounded);
+            visible.Add((item.Id, widget.DesiredSize.Width * scale));
         }
 
         var overflow = WidgetOverflowPlanner.Plan(visible, budget, buttonWidth);
@@ -431,7 +471,7 @@ public sealed class WidgetCoordinator : IDisposable
     private void Timer_Tick(object? sender, EventArgs e)
     {
         var now = DateTime.Now;
-        foreach (var item in _widgets) item.Widget.Tick(now);
+        foreach (var item in _widgets) item.Widget?.Tick(now);
     }
 
     public void Dispose()
@@ -442,14 +482,15 @@ public sealed class WidgetCoordinator : IDisposable
         _timer.Tick -= Timer_Tick;
         foreach (var item in _widgets)
         {
-            item.Widget.PreviewMouseLeftButtonDown -= Widget_PreviewMouseLeftButtonDown;
-            item.Widget.PreviewMouseLeftButtonUp -= Widget_PreviewMouseLeftButtonUp;
-            item.Widget.PreviewMouseMove -= Widget_PreviewMouseMove;
-            item.Widget.DragOver -= Widget_DragOver;
-            item.Widget.DragLeave -= Widget_DragLeave;
-            item.Widget.Drop -= Widget_Drop;
-            item.Widget.AvailabilityChanged -= Widget_AvailabilityChanged;
-            item.Widget.Dispose();
+            if (item.Widget is not { } widget) continue;
+            widget.PreviewMouseLeftButtonDown -= Widget_PreviewMouseLeftButtonDown;
+            widget.PreviewMouseLeftButtonUp -= Widget_PreviewMouseLeftButtonUp;
+            widget.PreviewMouseMove -= Widget_PreviewMouseMove;
+            widget.DragOver -= Widget_DragOver;
+            widget.DragLeave -= Widget_DragLeave;
+            widget.Drop -= Widget_Drop;
+            widget.AvailabilityChanged -= Widget_AvailabilityChanged;
+            widget.Dispose();
         }
     }
 }
