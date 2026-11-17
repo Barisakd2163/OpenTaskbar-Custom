@@ -24,6 +24,7 @@ public readonly record struct AppLanguage
     public static AppLanguage Japanese { get; } = new("ja-JP");
     public CultureInfo Culture => CultureInfo.GetCultureInfo(CultureName);
     public string NativeName => Culture.NativeName;
+    public string Code => Culture.TwoLetterISOLanguageName.ToUpperInvariant();
 }
 public enum AutoHideMode { Disabled, Smart, Always }
 public enum DockLayout { Floating, FullWidth }

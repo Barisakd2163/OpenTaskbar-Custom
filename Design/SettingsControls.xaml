@@ -142,32 +142,62 @@
         <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
     </Style>
     <Style x:Key="SettingsHeading" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontSize" Value="24" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="Margin" Value="0,0,0,16" />
+    </Style>
+    <Style x:Key="SettingsSectionHeading" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Margin" Value="0,18,0,8" />
     </Style>
     <Style x:Key="SettingsRow" TargetType="Border">
-        <Setter Property="MinHeight" Value="52" />
-        <Setter Property="Padding" Value="{StaticResource SettingsRowInset}" />
-        <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="BorderBrush" Value="{DynamicResource MenuDivider}" />
+        <Setter Property="MinHeight" Value="56" />
+        <Setter Property="Padding" Value="16,12" />
+        <Setter Property="Margin" Value="0,0,0,6" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
     <Style x:Key="CompactSettingsRow" TargetType="Border">
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="4,4" />
-        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0,0,0,4" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
+        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
     <Style x:Key="SettingsRowLabel" TargetType="TextBlock">
         <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="SettingsRowDescription" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
     <Style x:Key="SettingsChoiceLabel" TargetType="TextBlock">
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,0,0,10" />
     </Style>
     <Style x:Key="SettingsChoiceRow" TargetType="Border" BasedOn="{StaticResource SettingsRow}">
-        <Setter Property="Padding" Value="0,14" />
+        <Setter Property="Padding" Value="16,14" />
     </Style>
     <Style x:Key="SettingsChoice" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
@@ -203,6 +233,31 @@
         <Setter Property="Margin" Value="0,0,0,4" />
         <Setter Property="Padding" Value="12,6" />
         <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
+    </Style>
+    <Style x:Key="SettingsSegmentChoice" TargetType="RadioButton" BasedOn="{StaticResource SettingsChoice}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="Margin" Value="1,0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                            CornerRadius="5">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SettingsControlHover}" /></Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style x:Key="SettingsSwitch" TargetType="CheckBox">
         <Setter Property="Cursor" Value="Hand" />
@@ -393,16 +448,20 @@
         </Setter>
     </Style>
     <Style TargetType="TabControl">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabControl">
                     <Grid KeyboardNavigation.TabNavigation="Local">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Border Background="{DynamicResource SettingsSidebarOverlay}" Padding="10,12">
                             <StackPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1" KeyboardNavigation.TabNavigation="Once"
                                         KeyboardNavigation.DirectionalNavigation="Contained" />
                         </Border>
-                        <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Column="1" ContentSource="SelectedContent" KeyboardNavigation.TabIndex="2" />
+                        <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Column="1"
+                                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                          ContentSource="SelectedContent" KeyboardNavigation.TabIndex="2" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>
@@ -418,8 +477,14 @@
                 <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="TemplateRoot" Background="Transparent" BorderThickness="0">
                         <Border x:Name="SplitBorder" Width="28" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-                            <Path x:Name="Arrow" Data="M0 0 L4 4 L8 0" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.5"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,1,0,0" />
+                            <Path x:Name="Arrow" Data="M1 2.5 L5 6.5 L9 2.5" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.6"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      RenderTransformOrigin="0.5,0.5"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Path.RenderTransform>
+                                        <RotateTransform Angle="0" />
+                                    </Path.RenderTransform>
+                                </Path>
                         </Border>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -428,6 +493,11 @@
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="180" />
+                                </Setter.Value>
+                            </Setter>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -436,15 +506,31 @@
     </Style>
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Padding" Value="10,7" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FontFamily" Value="{StaticResource InterfaceFont}" />
         <Setter Property="FontSize" Value="{StaticResource TextSizeBody}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="ItemBorder" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}" Margin="2,1">
-                        <ContentPresenter />
+                    <Border x:Name="ItemBorder" Background="Transparent" CornerRadius="7" Margin="3,1">
+                        <Grid>
+                            <Rectangle x:Name="AccentBar" Width="3" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                       RadiusX="1.5" RadiusY="1.5" Margin="0,6,0,6" Fill="{DynamicResource AccentBrush}"
+                                       Opacity="0" />
+                            <Grid Margin="{TemplateBinding Padding}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" VerticalAlignment="Center" />
+                                <Path x:Name="CheckMark" Grid.Column="1" Data="M0 5 L3.5 8.5 L10 1"
+                                      Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Width="11" Height="10" Margin="12,0,2,0" VerticalAlignment="Center"
+                                      Opacity="0" />
+                            </Grid>
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -452,13 +538,24 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SurfaceSelected}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="AccentBar" Property="Opacity" Value="1" />
+                            <Setter TargetName="CheckMark" Property="Opacity" Value="1" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+    <Style x:Key="LanguageBadge" TargetType="Border">
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="22" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSelectedStrong}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource StrokeSubtle}" />
+        <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style TargetType="ComboBox">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
@@ -524,18 +621,20 @@
                                VerticalOffset="4">
                             <Border x:Name="DropDownBorder"
                                     MinWidth="{Binding ActualWidth, ElementName=MainGrid}"
-                                    MaxHeight="220"
-                                    Background="{DynamicResource SurfacePopup}"
+                                    MaxHeight="240"
+                                    Background="{DynamicResource MenuMaterial}"
                                     BorderBrush="{DynamicResource MenuStroke}"
                                     BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="3">
+                                    CornerRadius="12">
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.4" RenderingBias="Performance" />
+                                    <DropShadowEffect BlurRadius="24" ShadowDepth="6" Direction="270" Opacity="0.5" RenderingBias="Performance" />
                                 </Border.Effect>
-                                <ScrollViewer CanContentScroll="True" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                                    <ItemsPresenter x:Name="ItemsPresenter" KeyboardNavigation.DirectionalNavigation="Contained" />
-                                </ScrollViewer>
+                                <Border BorderBrush="{DynamicResource DockInnerBevelMaterial}" BorderThickness="1"
+                                        CornerRadius="11" Margin="1" Padding="4">
+                                    <ScrollViewer CanContentScroll="True" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter x:Name="ItemsPresenter" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
                             </Border>
                         </Popup>
                     </Grid>

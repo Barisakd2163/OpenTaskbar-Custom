@@ -152,20 +152,10 @@ public partial class ClockWidget : DockWidget
         var today = DateOnly.FromDateTime(DateTime.Today);
         var theme = GetTheme(GetPeriod(DateTime.Now.Hour));
 
-        var container = new Border
-        {
-            Width = 296,
-            Background = theme.Background,
-            BorderBrush = theme.Border,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12, 10, 12, 12)
-        };
-
-        var root = new StackPanel();
+        var root = new StackPanel { Width = 280 };
         root.Children.Add(new TextBlock
         {
-            Text = DateTime.Today.ToString("D", culture), FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(4, 0, 4, 10)
+            Text = DateTime.Today.ToString("D", culture), FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 0, 0, 8)
         });
 
         var header = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
@@ -179,17 +169,18 @@ public partial class ClockWidget : DockWidget
         header.Children.Add(new TextBlock
         {
             Text = culture.TextInfo.ToTitleCase(title), HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold
+            VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, FontSize = 13
         });
         root.Children.Add(header);
 
-        var grid = new UniformGrid { Columns = 7 };
+        var grid = new UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, 4) };
         var firstDay = culture.DateTimeFormat.FirstDayOfWeek;
         for (var index = 0; index < 7; index++)
         {
             var day = (DayOfWeek)(((int)firstDay + index) % 7);
             var name = DockFlyout.Caption(culture.DateTimeFormat.GetShortestDayName(day));
             name.HorizontalAlignment = HorizontalAlignment.Center;
+            name.Margin = new Thickness(0, 0, 0, 4);
             grid.Children.Add(name);
         }
 
@@ -200,7 +191,8 @@ public partial class ClockWidget : DockWidget
             var date = start.AddDays(cell);
             var label = new TextBlock
             {
-                Text = date.Day.ToString(culture), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+                Text = date.Day.ToString(culture), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 12
             };
             var border = new Border { Width = 32, Height = 30, CornerRadius = new CornerRadius(15), Child = label, Margin = new Thickness(1) };
             if (date == today)
@@ -212,23 +204,15 @@ public partial class ClockWidget : DockWidget
             else if (date.Month != _shownMonth.Month)
             {
                 label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-                label.Opacity = 0.6;
+                label.Opacity = 0.5;
             }
 
             grid.Children.Add(border);
         }
 
         root.Children.Add(grid);
-        var notifications = DockFlyout.FlatButton(new TextBlock { Text = UiText.Get("OpenNotifications"), FontWeight = FontWeights.SemiBold }, (_, _) =>
-        {
-            _calendar.Close();
-            Report(ShellShortcuts.OpenNotificationCenter(ClockButton));
-        });
-        notifications.Margin = new Thickness(0, 8, 0, 0);
-        root.Children.Add(notifications);
 
-        container.Child = root;
-        return container;
+        return root;
     }
 
     private Button NavButton(string icon, int months, ContentControl host)

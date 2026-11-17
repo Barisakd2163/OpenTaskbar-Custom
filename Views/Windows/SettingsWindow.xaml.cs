@@ -453,6 +453,82 @@ public partial class SettingsWindow : Window
         ThemePacks.ApplyWidgets(_preferences.Current.Theme);
     }
 
+    private void ThemePackNew_Click(object sender, RoutedEventArgs e)
+    {
+        var name = TextPrompt.Ask(UiText.Get("ThemePackNew"), UiText.Get("ThemePackNew"), UiText.Get("ThemePackNewDefault"));
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var id = ThemePackTransfer.CreateTheme(name, null, null);
+        ReloadThemePacks(id);
+        MessageBox.Show(this, UiText.Get("ThemePackCreated"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ThemePackDuplicate_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id;
+        if (string.IsNullOrWhiteSpace(selected)) { AppLog.ReportError("ErrorThemeMissing"); return; }
+        var pack = ThemePacks.Discover().FirstOrDefault(p => string.Equals(p.Id, selected, StringComparison.OrdinalIgnoreCase));
+        var name = TextPrompt.Ask(UiText.Get("ThemePackDuplicate"), UiText.Get("ThemePackDuplicate"),
+            (pack?.DisplayName ?? selected) + " " + UiText.Get("ThemePackCopySuffix"));
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var id = ThemePackTransfer.CreateTheme(name, null, selected);
+        ReloadThemePacks(id);
+        MessageBox.Show(this, UiText.Get("ThemePackDuplicated"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ThemePackExport_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id;
+        if (string.IsNullOrWhiteSpace(selected)) { AppLog.ReportError("ErrorThemeMissing"); return; }
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = UiText.Get("ThemePackSaveFile"),
+            Filter = UiText.Get("ThemePackFileFilter"),
+            FileName = selected + ThemePackTransfer.ExportExtension,
+            DefaultExt = ThemePackTransfer.ExportExtension
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var error = ThemePackTransfer.ExportTheme(selected, dialog.FileName);
+        if (error is not null) { AppLog.ReportError(error); return; }
+        MessageBox.Show(this, UiText.Get("ThemePackExported"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ThemePackImport_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = UiText.Get("ThemePackChooseFile"),
+            Filter = UiText.Get("ThemePackFileFilter"),
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var (id, error) = ThemePackTransfer.ImportTheme(dialog.FileName);
+        if (error is not null) { AppLog.ReportError(error); return; }
+        ReloadThemePacks(id);
+        MessageBox.Show(this, UiText.Get("ThemePackImported"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ThemePackDelete_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id;
+        if (string.IsNullOrWhiteSpace(selected)) { AppLog.ReportError("ErrorThemeMissing"); return; }
+        var result = MessageBox.Show(this, UiText.Format("ThemePackDeleteConfirm", selected), "OpenTaskbar",
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes) return;
+        var error = ThemePackTransfer.DeleteTheme(selected);
+        if (error is not null) { AppLog.ReportError(error); return; }
+        ReloadThemePacks(null);
+        MessageBox.Show(this, UiText.Get("ThemePackDeleted"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ReloadThemePacks(string? selected)
+    {
+        _initializing = true;
+        LoadThemePacks(selected);
+        _initializing = false;
+        ThemePacks.Select(selected, reload: true);
+        ThemePacks.ApplyWidgets(_preferences.Current.Theme);
+    }
+
     private SystemMeters ReadStatsMeters() =>
         (StatsCpuToggle.IsChecked == true ? SystemMeters.Cpu : 0)
         | (StatsMemoryToggle.IsChecked == true ? SystemMeters.Memory : 0)
