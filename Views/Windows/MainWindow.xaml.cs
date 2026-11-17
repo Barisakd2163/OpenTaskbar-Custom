@@ -359,6 +359,8 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
+            // Only watch a process that actually hid the taskbar. Preview and inspection modes stay unwatched.
+            TaskbarRecoveryWatchdog.Start(Environment.ProcessId);
         }
         catch (InvalidOperationException ex)
         {
@@ -2281,14 +2283,22 @@ public partial class MainWindow : Window
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         var error = RestoreWindowsTaskbar();
-        if (_replacementSession?.IsActive == true)
+        var restoreUncertain = error is not null || TaskbarReplacementSession.HasPendingRecovery
+            || _replacementSession?.IsActive == true;
+        if (restoreUncertain)
+        {
+            // Stop() can fail while Explorer is restarting and still clear its active flags. The journal is the
+            // authoritative signal, so always try the journal-based restore before allowing the window to close.
+            var forced = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            if (forced is null && _replacementSession?.IsActive != true) error = null;
+            else error ??= forced;
+        }
+
+        if (error is not null || TaskbarReplacementSession.HasPendingRecovery || _replacementSession?.IsActive == true)
         {
             e.Cancel = true;
             ReportError(error ?? "ErrorTaskbarRestoreFailed");
-            return;
         }
-
-        if (error is not null) Trace.TraceWarning(error);
     }
 
     private void Window_Closed(object? sender, EventArgs e)

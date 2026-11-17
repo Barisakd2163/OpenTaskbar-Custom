@@ -79,6 +79,10 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 ### Foolproof Taskbar Recovery
 - **Zero Risk:** State journaling records every taskbar replacement action. On exit, system shutdown, or unexpected termination, OpenTaskbar automatically restores the native Windows taskbar.
+- **Verified Restore:** Recovery re-asserts the original taskbar state and visibility several times and keeps the journal until the taskbar is actually visible, so an Explorer restart cannot silently lose the recovery state.
+- **Self-Healing Startup:** A pending journal is repaired before any mode is selected, including `--preview` and `--inspect` (which never hide the taskbar themselves).
+- **Crash Watchdog:** A detached helper process handles cases no in-process handler can: End Task, `taskkill /F`, FailFast and power loss.
+- **Manual Escape Hatch:** `OpenTaskbar.exe --restore` forces the native taskbar back at any time, even when OpenTaskbar is not running.
 
 ---
 

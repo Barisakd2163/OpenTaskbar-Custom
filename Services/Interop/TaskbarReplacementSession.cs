@@ -44,6 +44,8 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const int SwShowNoActivate = 4;
     private const int SwShow = 5;
     private static readonly nint HwndTopmost = new(-1);
+    private const int RestoreAttempts = 4;
+    private const int RestoreAttemptDelayMs = 120;
 
     private readonly Window _window;
     private readonly nint _handle;
@@ -153,17 +155,31 @@ public sealed class TaskbarReplacementSession : IDisposable
     public static string? EmergencyRestore() => Volatile.Read(ref _current)?.Stop();
 
     /// <summary>
-    /// Forcefully restores the Windows taskbar and unhides all tray windows, even if no session is active.
-    /// Can be called directly from CLI (--restore).
+    /// True when a previous instance left a recovery journal behind. The journal is only removed after a verified
+    /// restore, so its presence always means "the native taskbar may still be hidden".
     /// </summary>
-    public static void ForceRestoreNativeTaskbar()
+    public static bool HasPendingRecovery => File.Exists(JournalPath);
+
+    /// <summary>
+    /// Startup self-heal: a crashed or killed instance can leave the taskbar hidden. Restore it before any dock
+    /// mode (including --preview and --inspect, which never replace the taskbar) is selected.
+    /// </summary>
+    public static string? HealPendingRecovery() => HasPendingRecovery ? ForceRestoreNativeTaskbar() : null;
+
+    /// <summary>
+    /// Forcefully restores the Windows taskbar and unhides all tray windows, even if no session is active.
+    /// Safe to call from any thread and from a separate process (--restore / watchdog). The journal is deleted
+    /// only after the taskbar is verified visible, so a transient Explorer restart cannot lose the recovery state.
+    /// </summary>
+    public static string? ForceRestoreNativeTaskbar()
     {
-        uint state = 0;
+        var state = 0u;
         if (File.Exists(JournalPath))
         {
             try
             {
-                state = ReadJournal();
+                // A damaged journal must fail safe: a visible taskbar with default state beats no taskbar.
+                state = FallbackState(File.ReadAllText(JournalPath));
             }
             catch
             {
@@ -171,9 +187,9 @@ public sealed class TaskbarReplacementSession : IDisposable
             }
         }
 
-        ShowNativeTaskbar();
-        SetTaskbarState(state, 0);
-        DeleteJournal();
+        var error = RestoreWithVerification(state, 0);
+        if (error is not null) return error;
+        return DeleteJournal();
     }
 
     public static bool HasActiveSession => Volatile.Read(ref _current)?.IsActive == true;
@@ -194,7 +210,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         SetFullScreenSuppression(IsFullScreen(windowHandle));
     }
 
-    private static bool HasPendingRecovery(out string? error)
+    private static bool HasPendingRecoveryFile(out string? error)
     {
         error = null;
         if (!File.Exists(JournalPath))
@@ -231,7 +247,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             return;
         }
 
-        var pending = HasPendingRecovery(out var recoveryError);
+        var pending = HasPendingRecoveryFile(out var recoveryError);
         if (recoveryError is not null)
         {
             throw new InvalidOperationException(recoveryError);
@@ -392,7 +408,9 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         try
         {
-            if (!_active && !_registered && !_stateChangeStarted) return null;
+            // A journal on disk is enough reason to restore: a previous Start() may have died between writing it
+            // and flipping _stateChangeStarted, or Explorer may have re-hidden the tray after a partial stop.
+            if (!_active && !_registered && !_stateChangeStarted && !File.Exists(JournalPath)) return null;
 
             // Stop enforcing hidden state before Shell calls can reenter our AppBar callback.
             _active = false;
@@ -406,14 +424,11 @@ public sealed class TaskbarReplacementSession : IDisposable
                 _reservation = null;
             }
 
-            var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
-            var taskbarShown = ShowNativeTaskbar();
+            var restoreError = RestoreWithVerification(_previousTaskbarState, _handle);
             _stateChangeStarted = false;
-            var deleteError = DeleteJournal();
-            if (!stateRestored || !taskbarShown)
-                return "ErrorTaskbarRestoreFailed";
+            if (restoreError is not null) return restoreError;
 
-            return deleteError;
+            return DeleteJournal();
         }
         finally
         {
@@ -732,6 +747,41 @@ public sealed class TaskbarReplacementSession : IDisposable
         return true;
     }
 
+    private static bool IsNativeTaskbarVisible()
+    {
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        return taskbar != 0 && IsWindowVisible(taskbar);
+    }
+
+    /// <summary>
+    /// Explorer can re-apply auto-hide right after we show the taskbar (ABN_STATECHANGE / ABN_POSCHANGE), and
+    /// secondary tray windows can appear a moment later. Re-assert state and visibility a few times and require
+    /// two consecutive clean observations before declaring success.
+    /// </summary>
+    private static string? RestoreWithVerification(uint state, nint fallbackHandle)
+    {
+        for (var attempt = 0; attempt < RestoreAttempts; attempt++)
+        {
+            var restored = TryRestoreOnce(state, fallbackHandle);
+            if (restored)
+            {
+                Thread.Sleep(RestoreAttemptDelayMs);
+                if (TryRestoreOnce(state, fallbackHandle)) return null;
+            }
+
+            if (attempt < RestoreAttempts - 1) Thread.Sleep(RestoreAttemptDelayMs);
+        }
+
+        return "ErrorTaskbarRestoreFailed";
+    }
+
+    private static bool TryRestoreOnce(uint state, nint fallbackHandle)
+    {
+        var stateRestored = SetTaskbarState(state, fallbackHandle);
+        var taskbarShown = ShowNativeTaskbar();
+        return stateRestored && taskbarShown && IsNativeTaskbarVisible();
+    }
+
     private void EnforceNativeTaskbarHidden()
     {
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
@@ -822,16 +872,31 @@ public sealed class TaskbarReplacementSession : IDisposable
         File.Move(temporaryPath, path, overwrite: true);
     }
 
-    private static uint ReadJournal()
+    private static uint ReadJournal() => ParseJournal(File.ReadAllText(JournalPath));
+
+    internal static uint ParseJournal(string text)
     {
-        var text = File.ReadAllText(JournalPath).Trim();
-        if (!uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var state)
+        if (!uint.TryParse(text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var state)
             || (state & ~SupportedTaskbarState) != 0)
         {
             throw new InvalidDataException("ErrorTaskbarJournalInvalid");
         }
 
         return state;
+    }
+
+    /// <summary>A missing or damaged journal must restore a visible taskbar, never a guessed hidden state.</summary>
+    internal static uint FallbackState(string? journalText)
+    {
+        if (journalText is null) return 0;
+        try
+        {
+            return ParseJournal(journalText);
+        }
+        catch (InvalidDataException)
+        {
+            return 0;
+        }
     }
 
     private static string? DeleteJournal()
@@ -880,6 +945,13 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         var error = Stop();
         if (error is not null) Trace.TraceError(error);
+        // ProcessExit can race with a Stop() on another thread. A leftover journal means the taskbar may still be
+        // hidden, so use the journal-based path which does not depend on instance state or _stopInProgress.
+        if (File.Exists(JournalPath))
+        {
+            error = ForceRestoreNativeTaskbar();
+            if (error is not null) Trace.TraceError(error);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

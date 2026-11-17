@@ -24,14 +24,26 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        if (e.Args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
+        if (TaskbarRecoveryWatchdog.IsWatchdogInvocation(e.Args))
         {
-            TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            TaskbarRecoveryWatchdog.Run(e.Args);
             Shutdown(0);
             return;
         }
 
+        if (e.Args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
+        {
+            var restoreError = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            if (restoreError is not null) Trace.TraceError(restoreError);
+            Shutdown(restoreError is null ? 0 : 1);
+            return;
+        }
+
         AppLog.Initialize();
+        // A previous instance may have been killed while the taskbar was hidden. Heal before choosing a mode:
+        // --preview and --inspect never start a replacement session, so they would otherwise leave it hidden.
+        var healError = TaskbarReplacementSession.HealPendingRecovery();
+        if (healError is not null) AppLog.Error($"Startup taskbar self-heal failed: {healError}");
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
@@ -102,6 +114,20 @@ public partial class App : Application
             AppLog.Error(error);
             e.ApplicationExitCode = 1;
         }
+
+        // The window-level restore can fail while Explorer is restarting. A leftover journal is the reliable
+        // signal that the taskbar may still be hidden, so try the journal-based path before shutting down.
+        if (TaskbarReplacementSession.HasPendingRecovery)
+        {
+            var recoveryError = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            if (recoveryError is not null)
+            {
+                AppLog.Error($"Exit taskbar self-heal failed: {recoveryError}");
+                e.ApplicationExitCode = 1;
+            }
+        }
+
+        TaskbarRecoveryWatchdog.NotifyCleanExit();
         _devReload?.Dispose();
         _devReload = null;
         _instanceMutex?.ReleaseMutex();
@@ -116,6 +142,12 @@ public partial class App : Application
     {
         var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
         if (error is not null) AppLog.Error(error);
+        if (TaskbarReplacementSession.HasPendingRecovery)
+        {
+            error = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            if (error is not null) AppLog.Error(error);
+        }
+
         base.OnSessionEnding(e);
     }
 
@@ -142,13 +174,23 @@ public partial class App : Application
     {
         if (Interlocked.Exchange(ref _crashHandled, 1) != 0) return;
         AppLog.Error($"Unhandled exception on {origin}: {exception}");
-        if (!TaskbarReplacementSession.HasActiveSession)
+        var hasSession = TaskbarReplacementSession.HasActiveSession;
+        if (!hasSession && !TaskbarReplacementSession.HasPendingRecovery)
         {
             Trace.Flush();
             return;
         }
 
-        var error = TaskbarReplacementSession.EmergencyRestore();
+        var error = hasSession ? TaskbarReplacementSession.EmergencyRestore() : null;
+        // EmergencyRestore reports "in progress" when another thread is already stopping. The journal is the
+        // authoritative signal, so fall back to the journal-based path whenever one is still left behind.
+        if (error is not null || TaskbarReplacementSession.HasPendingRecovery)
+        {
+            var forced = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            if (forced is null) error = null;
+            else error ??= forced;
+        }
+
         if (error is not null) AppLog.Error($"Emergency taskbar restore failed: {error}");
         else AppLog.Info("Windows taskbar restored after an unhandled exception.");
         Trace.Flush();
