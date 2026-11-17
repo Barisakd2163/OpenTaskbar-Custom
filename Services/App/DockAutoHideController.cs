@@ -25,9 +25,6 @@ public sealed class DockAutoHideController : IDisposable
     private readonly DispatcherTimer _revealedGuardTimer;
     private readonly char[] _classNameBuffer = new char[64];
     private bool _disposed;
-    internal Func<nint, bool>? WindowOverlapProvider { get; set; };
-    internal Func<nint, bool>? OwnForegroundProvider { get; set; };
-    internal nint? ForegroundWindowOverride { get; set; }
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
 
