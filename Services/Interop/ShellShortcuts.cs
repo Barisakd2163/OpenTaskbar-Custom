@@ -52,8 +52,30 @@ public static class ShellShortcuts
     }
 
     /// <summary>Win+N: notification center and calendar, opened natively via Windows shortcut.</summary>
-    public static string? OpenNotificationCenter(FrameworkElement? anchor = null) =>
-        SendWindowsShortcut(VkN);
+    public static string? OpenNotificationCenter(FrameworkElement? anchor = null)
+    {
+        AppLog.Info("OpenNotificationCenter: invoked.");
+        EnsureShellExperienceHost();
+        var error = SendWindowsShortcut(VkN);
+        if (error is not null) AppLog.Warning($"OpenNotificationCenter failed: {error}");
+        return error;
+    }
+
+    private static void EnsureShellExperienceHost()
+    {
+        try
+        {
+            if (Process.GetProcessesByName("ShellExperienceHost").Length == 0)
+            {
+                AppLog.Info("EnsureShellExperienceHost: launching ShellExperienceHost package...");
+                using var _ = Process.Start(new ProcessStartInfo("explorer.exe", "shell:AppsFolder\\Microsoft.Windows.ShellExperienceHost_cw5n1h2txyewy!App") { UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"EnsureShellExperienceHost exception: {ex.Message}");
+        }
+    }
 
     /// <summary>Win+P: display projection flyout, anchored above the clicked button when given.</summary>
     public static string? OpenProjection(FrameworkElement? anchor = null)

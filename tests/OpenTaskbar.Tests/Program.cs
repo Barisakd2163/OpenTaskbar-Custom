@@ -13,7 +13,6 @@ SettingsChecks();
 InitialLanguageChecks();
 checks += RunningAppChecks.Run();
 checks += WidgetViewChecks.Run();
-checks += WidgetOverflowChecks.Run();
 checks += ThemePackChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 

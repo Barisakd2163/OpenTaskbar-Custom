@@ -142,7 +142,11 @@ public partial class MainWindow : Window
         };
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
-        InitializeWidgetOverflow();
+        _widgetCoordinator.AvailabilityChanged += () =>
+        {
+            ResizeDockToContent();
+            _replacementSession?.RefreshPosition();
+        };
         ApplyWidgets(_preferences.Current.Widgets);
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft += ThumbnailPreview_PointerLeft;
@@ -1833,18 +1837,19 @@ public partial class MainWindow : Window
         }
 
         DockSurface.Height = double.NaN;
+        var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
+        WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         // Measure first: the layout pass it runs can move the dock area, which is read below.
         var contentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
-        var margin = DockSurface.Margin;
-        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
-        var widgetBasis = (IsFullWidth ? null : _dockWidthOverride) ?? maximumSurfaceWidth;
-        var hasWidgets = FitWidgetArea(widgetBasis - DockHorizontalChrome);
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         if (!WidgetIsland.IsMeasureValid) WidgetIsland.Measure(unbounded);
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
+        var margin = DockSurface.Margin;
+        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         if (IsFullWidth)
         {
+            DockLayoutRoot.MinWidth = Math.Max(0, maximumSurfaceWidth - DockHorizontalChrome);
             DockSurface.Width = double.NaN;
             if (_dockArea.Width <= 0) Width = Math.Max(16, availableWidth);
             return;
@@ -1980,7 +1985,6 @@ public partial class MainWindow : Window
         _thumbnailPreview.Dispose();
         _autoHideController?.Dispose();
         _autoHideController = null;
-        DisposeWidgetOverflow();
         _widgetCoordinator.Dispose();
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();

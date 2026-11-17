@@ -32,15 +32,46 @@ public sealed class DockScrollViewer : ScrollViewer
 
     public bool ScrollByWheel(int delta, ModifierKeys modifiers)
     {
-        if (delta == 0 || (modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) == 0 || ScrollableWidth <= 0) return false;
-        var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
-        ScrollToHorizontalOffset(HorizontalOffset - distance);
-        return true;
+        if (delta == 0 || (modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) == 0) return false;
+        if (ScrollableHeight > 0)
+        {
+            var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
+            ScrollToVerticalOffset(VerticalOffset - distance);
+            return true;
+        }
+        if (ScrollableWidth > 0)
+        {
+            var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
+            ScrollToHorizontalOffset(HorizontalOffset - distance);
+            return true;
+        }
+        return false;
     }
 
     protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
     {
-        if (ScrollByWheel(e.Delta, Keyboard.Modifiers)) e.Handled = true;
+        if (ScrollByWheel(e.Delta, Keyboard.Modifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // Plain wheel (without Shift/Ctrl) also scrolls overflowing dock content directly
+        if (e.Delta != 0 && ScrollableWidth > 0)
+        {
+            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
+            ScrollToHorizontalOffset(HorizontalOffset - distance);
+            e.Handled = true;
+            return;
+        }
+        if (e.Delta != 0 && ScrollableHeight > 0)
+        {
+            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
+            ScrollToVerticalOffset(VerticalOffset - distance);
+            e.Handled = true;
+            return;
+        }
+
         base.OnPreviewMouseWheel(e);
     }
 
@@ -96,6 +127,26 @@ public sealed class DockScrollViewer : ScrollViewer
     /// <summary>Fades the side that has more content, since the scrollbar is hidden and overflow would otherwise go unnoticed.</summary>
     private void UpdateEdgeFade()
     {
+        if (ScrollableHeight > 0)
+        {
+            var vHiddenBefore = VerticalOffset > 0.5;
+            var vHiddenAfter = VerticalOffset < ScrollableHeight - 0.5;
+            if (ActualHeight <= EdgeFadeWidth * 2 || (!vHiddenBefore && !vHiddenAfter))
+            {
+                ClearValue(OpacityMaskProperty);
+                return;
+            }
+            var vFade = EdgeFadeWidth / ActualHeight;
+            var vMask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+            vMask.GradientStops.Add(new GradientStop(Color.FromArgb(vHiddenBefore ? (byte)0 : (byte)255, 0, 0, 0), 0));
+            vMask.GradientStops.Add(new GradientStop(Colors.Black, vFade));
+            vMask.GradientStops.Add(new GradientStop(Colors.Black, 1 - vFade));
+            vMask.GradientStops.Add(new GradientStop(Color.FromArgb(vHiddenAfter ? (byte)0 : (byte)255, 0, 0, 0), 1));
+            vMask.Freeze();
+            OpacityMask = vMask;
+            return;
+        }
+
         var hiddenBefore = HorizontalOffset > 0.5;
         var hiddenAfter = HorizontalOffset < ScrollableWidth - 0.5;
         if (ActualWidth <= EdgeFadeWidth * 2 || (!hiddenBefore && !hiddenAfter))

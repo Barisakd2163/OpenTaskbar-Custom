@@ -59,7 +59,6 @@ public sealed class WidgetCoordinator : IDisposable
     private sealed record WidgetDragPayload(string WidgetId);
 
     private readonly Panel _strip;
-    private HashSet<string> _overflowIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Action<string> _reportError;
     private readonly List<WidgetSlot> _widgets;
     private readonly DispatcherTimer _timer;
@@ -73,12 +72,7 @@ public sealed class WidgetCoordinator : IDisposable
     public event Action<string>? TerminateApplicationRequested;
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
-    /// <summary>Holds the widgets that do not fit the dock; the dock shows it in a flyout.</summary>
-    public StackPanel OverflowPanel { get; } = new() { Orientation = Orientation.Vertical };
-
-    public bool HasOverflow => _overflowIds.Count > 0;
-
-    /// <summary>Raised when a widget appears or disappears and the dock must refit its widget area.</summary>
+    /// <summary>Raised when a widget appears or disappears and the dock must refit its layout.</summary>
     public event Action? AvailabilityChanged;
 
     private static bool IsCatalogEnabled(DockSettings settings, string id) =>
@@ -433,37 +427,14 @@ public sealed class WidgetCoordinator : IDisposable
     }
 
     /// <summary>Puts each widget in the dock strip or the overflow panel, keeping the user's order in both.</summary>
+    /// <summary>Puts each active widget in the dock strip in the user's configured order.</summary>
     private void PlaceWidgets()
     {
         _strip.Children.Clear();
-        OverflowPanel.Children.Clear();
         foreach (var item in _widgets)
         {
-            if (item.Widget is not { } widget) continue;
-            (_overflowIds.Contains(item.Id) ? OverflowPanel.Children : _strip.Children).Add(widget);
+            if (item.Widget is { } widget) _strip.Children.Add(widget);
         }
-    }
-
-    /// <summary>
-    /// Moves widgets that exceed <paramref name="budget"/> (dock pixels) into the overflow panel.
-    /// Returns true when the placement changed, so the caller closes the overflow flyout and relayouts.
-    /// </summary>
-    public bool FitOverflow(double budget, double buttonWidth, double scale)
-    {
-        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
-        var visible = new List<(string Id, double Width)>();
-        foreach (var item in _widgets.Where(w => w.Widget?.Visibility == Visibility.Visible))
-        {
-            var widget = item.Widget!;
-            widget.Measure(unbounded);
-            visible.Add((item.Id, widget.DesiredSize.Width * scale));
-        }
-
-        var overflow = WidgetOverflowPlanner.Plan(visible, budget, buttonWidth);
-        if (overflow.SetEquals(_overflowIds)) return false;
-        _overflowIds = overflow;
-        PlaceWidgets();
-        return true;
     }
 
     private void Widget_AvailabilityChanged(object? sender, EventArgs e) => AvailabilityChanged?.Invoke();
