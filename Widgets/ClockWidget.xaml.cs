@@ -68,7 +68,7 @@ public partial class ClockWidget : DockWidget
 
     public ClockWidget() => InitializeComponent();
 
-    private CultureInfo Culture => CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
+    private CultureInfo Culture => Settings.Language.Culture;
 
     protected override void OnActivated()
     {
@@ -116,12 +116,12 @@ public partial class ClockWidget : DockWidget
                     DateColumn.Visibility = Visibility.Visible;
                     DayOfWeekText.Visibility = Visibility.Visible;
                     DayOfWeekText.Text = now.ToString("dddd", culture).ToUpper(culture);
-                    DateText.Text = now.ToString(Settings.Language == AppLanguage.English ? "MMM d" : "d MMM", culture);
+                    DateText.Text = now.ToString("m", culture);
                     break;
                 case ClockDateStyle.ShortDateOnly:
                     DateColumn.Visibility = Visibility.Visible;
                     DayOfWeekText.Visibility = Visibility.Collapsed;
-                    DateText.Text = now.ToString(Settings.Language == AppLanguage.English ? "MMM d, yyyy" : "d MMM yyyy", culture);
+                    DateText.Text = now.ToString("d", culture);
                     break;
                 case ClockDateStyle.NumericDate:
                     DateColumn.Visibility = Visibility.Visible;

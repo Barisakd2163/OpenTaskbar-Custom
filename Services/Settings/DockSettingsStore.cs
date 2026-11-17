@@ -16,8 +16,7 @@ public sealed class DockSettingsStore
 
     public DockSettingsStore(string? path = null, CultureInfo? defaultCulture = null)
     {
-        _defaultLanguage = (defaultCulture ?? CultureInfo.CurrentUICulture).TwoLetterISOLanguageName
-            .Equals("tr", StringComparison.OrdinalIgnoreCase) ? AppLanguage.Turkish : AppLanguage.English;
+        _defaultLanguage = AppLanguage.FromCulture(defaultCulture ?? CultureInfo.CurrentUICulture);
         _path = path ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenTaskbar",
@@ -100,7 +99,7 @@ public sealed class DockSettingsStore
     }
 
     private static bool IsValid(DockSettings settings) => Enum.IsDefined(settings.Position)
-        && Enum.IsDefined(settings.Theme) && Enum.IsDefined(settings.Language)
+        && Enum.IsDefined(settings.Theme) && AppLanguage.IsSupported(settings.Language)
         && Enum.IsDefined(settings.AutoHide) && Enum.IsDefined(settings.Layout) && Enum.IsDefined(settings.Size)
         // Keep these ranges identical to the Widgets tab sliders.
         && settings.FocusMinutes is >= 1 and <= 90
@@ -133,7 +132,52 @@ public sealed class DockSettingsStore
     private static JsonSerializerOptions CreateJsonOptions()
     {
         var options = new JsonSerializerOptions { WriteIndented = true };
+        options.Converters.Add(new AppLanguageConverter());
         options.Converters.Add(new JsonStringEnumConverter());
         return options;
+    }
+
+    private sealed class AppLanguageConverter : JsonConverter<AppLanguage>
+    {
+        public override AppLanguage Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var legacyValue))
+            {
+                return legacyValue switch
+                {
+                    0 => AppLanguage.Turkish,
+                    1 => AppLanguage.English,
+                    _ => throw new JsonException("Legacy language value is not supported.")
+                };
+            }
+            if (reader.TokenType != JsonTokenType.String) throw new JsonException("Language must be a culture name.");
+            var value = reader.GetString();
+            if (string.Equals(value, "Turkish", StringComparison.OrdinalIgnoreCase)) return AppLanguage.Turkish;
+            if (string.Equals(value, "English", StringComparison.OrdinalIgnoreCase)) return AppLanguage.English;
+            foreach (var language in AppLanguage.Supported)
+            {
+                if (string.Equals(language.CultureName, value, StringComparison.OrdinalIgnoreCase)) return language;
+            }
+
+            if (value is not null)
+            {
+                try
+                {
+                    var culture = CultureInfo.GetCultureInfo(value);
+                    var language = AppLanguage.FromCulture(culture);
+                    if (language.Culture.TwoLetterISOLanguageName.Equals(culture.TwoLetterISOLanguageName,
+                            StringComparison.OrdinalIgnoreCase)) return language;
+                }
+                catch (CultureNotFoundException)
+                {
+                    throw new JsonException("Language culture is invalid.");
+                }
+            }
+
+            throw new JsonException("Language is not supported.");
+        }
+
+        public override void Write(Utf8JsonWriter writer, AppLanguage value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value.CultureName);
     }
 }

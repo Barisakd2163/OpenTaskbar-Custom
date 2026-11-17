@@ -67,8 +67,8 @@ public partial class SettingsWindow : Window
         };
         DarkTheme.IsChecked = _applied.Theme == AppTheme.Dark;
         LightTheme.IsChecked = _applied.Theme == AppTheme.Light;
-        TurkishLanguage.IsChecked = _applied.Language == AppLanguage.Turkish;
-        EnglishLanguage.IsChecked = _applied.Language == AppLanguage.English;
+        LanguageBox.ItemsSource = UiText.Languages;
+        SelectLanguage(_applied.Language);
         SelectAlignment(_applied);
         AnimationsToggle.IsChecked = _applied.AnimationsEnabled;
         PreviewsToggle.IsChecked = _applied.PreviewsEnabled;
@@ -211,8 +211,7 @@ public partial class SettingsWindow : Window
         return _preferences.Current with
         {
             Theme = LightTheme.IsChecked == true ? AppTheme.Light : AppTheme.Dark,
-            Language = EnglishLanguage.IsChecked == true ? AppLanguage.English
-                : TurkishLanguage.IsChecked == true ? AppLanguage.Turkish : _preferences.Current.Language,
+            Language = LanguageBox.SelectedItem is AppLanguage language ? language : _preferences.Current.Language,
             // Full width keeps the last floating alignment so switching back restores it.
             Position = RightPosition.IsChecked == true ? DockPosition.Right : LeftPosition.IsChecked == true ? DockPosition.Left
                 : CenterPosition.IsChecked == true ? DockPosition.Center : _preferences.Current.Position,
@@ -265,6 +264,14 @@ public partial class SettingsWindow : Window
 
     private sealed record ThemePackChoice(string? Id, string Name, string Details);
 
+    private void SelectLanguage(AppLanguage language)
+    {
+        var selected = UiText.Languages.FirstOrDefault(candidate => candidate == language);
+        LanguageBox.SelectedItem = AppLanguage.IsSupported(selected) ? selected : AppLanguage.English;
+    }
+
+    private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => PreferenceEdited(sender, e);
+
     private void LoadThemePacks(string? selected)
     {
         var choices = new List<ThemePackChoice> { new(null, UiText.Get("ThemePackNone"), string.Empty) };
@@ -313,7 +320,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            MessageBox.Show(this, ex.Message, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, UiText.Get("ErrorThemeFolderOpen"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -642,8 +649,7 @@ public partial class SettingsWindow : Window
     {
         DarkTheme.IsChecked = settings.Theme == AppTheme.Dark;
         LightTheme.IsChecked = settings.Theme == AppTheme.Light;
-        TurkishLanguage.IsChecked = settings.Language == AppLanguage.Turkish;
-        EnglishLanguage.IsChecked = settings.Language == AppLanguage.English;
+        SelectLanguage(settings.Language);
         SelectAlignment(settings);
         AnimationsToggle.IsChecked = settings.AnimationsEnabled;
         PreviewsToggle.IsChecked = settings.PreviewsEnabled;

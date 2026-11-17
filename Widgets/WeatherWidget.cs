@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -74,7 +73,7 @@ public sealed class WeatherWidget : DockWidget
         _loading = loading;
         _loadedAt = DateTime.Now;
         var key = LocationKey;
-        var (report, error) = await WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language == AppLanguage.English, loading.Token);
+        var (report, error) = await WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language, loading.Token);
         if (!ReferenceEquals(_loading, loading)) return;
         _loading = null;
         if (!IsActive) return;
@@ -106,7 +105,7 @@ public sealed class WeatherWidget : DockWidget
         System.Windows.Automation.AutomationProperties.SetName(_card, $"{UiText.Get("Weather")}: {_temperature.Text}, {_card.ToolTip}");
     }
 
-    private static string FormatDegrees(double value) => $"{Math.Round(value).ToString(CultureInfo.CurrentCulture)}°";
+    private string FormatDegrees(double value) => $"{Math.Round(value).ToString(Settings.Language.Culture)}°";
 
     private UIElement BuildFlyout()
     {
@@ -196,7 +195,6 @@ public sealed class WeatherWidget : DockWidget
         root.Children.Add(now);
 
         // Micro metrics cards: Humidity, Wind
-        var isEn = Settings.Language == AppLanguage.English;
         var metricsGrid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 10) };
 
         var humidityCard = new Border
@@ -209,7 +207,7 @@ public sealed class WeatherWidget : DockWidget
         var humidityPanel = new StackPanel();
         var humLabel = new TextBlock { Text = UiText.Get("WeatherHumidity"), FontSize = 11 };
         humLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var humVal = new TextBlock { Text = isEn ? $"{Math.Round(report.Humidity)}%" : $"%{Math.Round(report.Humidity)}", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        var humVal = new TextBlock { Text = (report.Humidity / 100).ToString("P0", Settings.Language.Culture), FontSize = 13, FontWeight = FontWeights.SemiBold };
         humVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         humidityPanel.Children.Add(humLabel);
         humidityPanel.Children.Add(humVal);
@@ -226,7 +224,7 @@ public sealed class WeatherWidget : DockWidget
         var windPanel = new StackPanel();
         var windLabel = new TextBlock { Text = UiText.Get("WeatherWind"), FontSize = 11 };
         windLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var windVal = new TextBlock { Text = isEn ? $"{Math.Round(report.WindSpeed)} km/h" : $"{Math.Round(report.WindSpeed)} km/sa", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        var windVal = new TextBlock { Text = UiText.Format("WeatherWindSpeed", Math.Round(report.WindSpeed).ToString(Settings.Language.Culture)), FontSize = 13, FontWeight = FontWeights.SemiBold };
         windVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         windPanel.Children.Add(windLabel);
         windPanel.Children.Add(windVal);
@@ -256,7 +254,7 @@ public sealed class WeatherWidget : DockWidget
         root.Children.Add(forecastHeading);
 
         // Next 3 days forecast cards
-        var culture = CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
+        var culture = Settings.Language.Culture;
         var forecastDays = report.Days.Skip(1).Take(3).ToList();
         var daysGrid = new UniformGrid { Columns = Math.Max(1, forecastDays.Count), Margin = new Thickness(0, 0, 0, 6) };
 

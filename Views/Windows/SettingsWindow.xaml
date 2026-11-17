@@ -137,10 +137,9 @@
                             </StackPanel></Border>
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc Language}" Style="{StaticResource SettingsChoiceLabel}" />
-                                <UniformGrid Columns="2" Margin="-3,0">
-                                    <RadioButton x:Name="TurkishLanguage" GroupName="Language" Content="Türkçe" Style="{StaticResource SettingsChoice}" />
-                                    <RadioButton x:Name="EnglishLanguage" GroupName="Language" Content="English" Style="{StaticResource SettingsChoice}" />
-                                </UniformGrid>
+                                <ComboBox x:Name="LanguageBox" DisplayMemberPath="NativeName"
+                                          AutomationProperties.Name="{local:Loc Language}"
+                                          SelectionChanged="LanguageBox_SelectionChanged" />
                             </StackPanel></Border>
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc DockSize}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc DockSizeDescription}" />

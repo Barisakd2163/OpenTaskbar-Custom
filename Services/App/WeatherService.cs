@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
+using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
@@ -26,13 +27,13 @@ public static class WeatherService
     private static readonly HttpClient Client = CreateClient();
 
 
-    public static async Task<(WeatherReport? Report, string? Error)> LoadAsync(string city, bool english, CancellationToken cancellation)
+    public static async Task<(WeatherReport? Report, string? Error)> LoadAsync(string city, AppLanguage language, CancellationToken cancellation)
     {
         try
         {
             var location = string.IsNullOrWhiteSpace(city)
                 ? await LocateDeviceAsync(cancellation)
-                : await GeocodeAsync(city.Trim(), english, cancellation);
+                : await GeocodeAsync(city.Trim(), language.Culture.TwoLetterISOLanguageName, cancellation);
             if (location is not { } place)
             {
                 return (null, string.IsNullOrWhiteSpace(city)
@@ -72,9 +73,9 @@ public static class WeatherService
         }
     }
 
-    private static async Task<(string Name, double Latitude, double Longitude)?> GeocodeAsync(string city, bool english, CancellationToken cancellation)
+    private static async Task<(string Name, double Latitude, double Longitude)?> GeocodeAsync(string city, string language, CancellationToken cancellation)
     {
-        var url = "https://geocoding-api.open-meteo.com/v1/search?count=1&format=json&language=" + (english ? "en" : "tr")
+        var url = "https://geocoding-api.open-meteo.com/v1/search?count=1&format=json&language=" + Uri.EscapeDataString(language)
             + "&name=" + Uri.EscapeDataString(city);
         using var document = JsonDocument.Parse(await Client.GetStringAsync(url, cancellation));
         if (!document.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0) return null;

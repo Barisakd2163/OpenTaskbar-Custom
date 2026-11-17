@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Markup;
 using OpenTaskbar.Models;
@@ -7,8 +8,26 @@ namespace OpenTaskbar.Services;
 
 public sealed class UiText : INotifyPropertyChanged
 {
-    private static readonly IReadOnlyDictionary<string, (string Turkish, string English)> Entries =
-        new Dictionary<string, (string, string)>
+    private sealed record LocalizedEntry(IReadOnlyDictionary<string, string> Translations)
+    {
+        public string Resolve(AppLanguage language)
+        {
+            if (Translations.TryGetValue(language.CultureName, out var exact)) return exact;
+            var languageCode = language.Culture.TwoLetterISOLanguageName;
+            var matchingLanguage = Translations.FirstOrDefault(translation =>
+                CultureInfo.GetCultureInfo(translation.Key).TwoLetterISOLanguageName.Equals(languageCode, StringComparison.OrdinalIgnoreCase));
+            return matchingLanguage.Value ?? Translations[AppLanguage.English.CultureName];
+        }
+
+        public static LocalizedEntry Create(params (AppLanguage Language, string Text)[] translations) =>
+            new(translations.ToDictionary(item => item.Language.CultureName, item => item.Text, StringComparer.OrdinalIgnoreCase));
+
+        public static implicit operator LocalizedEntry((string Turkish, string English) translations) => Create(
+            (AppLanguage.Turkish, translations.Turkish), (AppLanguage.English, translations.English));
+    }
+
+    private static readonly IReadOnlyDictionary<string, LocalizedEntry> Entries =
+        new Dictionary<string, LocalizedEntry>
         {
             ["Settings"] = ("Ayarlar", "Settings"),
             ["SettingsTitle"] = ("OpenTaskbar ayarları", "OpenTaskbar settings"),
@@ -361,7 +380,71 @@ public sealed class UiText : INotifyPropertyChanged
             ["ErrorDockSettingsPath"] = ("Dock ayarları için kayıt yolu oluşturulamadı.", "Cannot create a location for dock settings."),
             ["ErrorDockSettingsSave"] = ("Dock ayarları diske kaydedilemedi.", "Cannot save dock settings to disk."),
             ["ErrorDockSettingsWriteAccess"] = ("Dock ayarlarına yazma izni yok.", "Permission to write dock settings was denied."),
-            ["ErrorMediaControl"] = ("Medya oturumu kontrol edilemedi.", "Cannot control the media session.")
+            ["ErrorMediaControl"] = ("Medya oturumu kontrol edilemedi.", "Cannot control the media session."),
+            ["WeatherWindSpeed"] = ("{0} km/sa", "{0} km/h"),
+            ["LauncherDisplay"] = ("Ekran", "Display"),
+            ["LauncherSound"] = ("Ses", "Sound"),
+            ["LauncherNotifications"] = ("Bildirimler", "Notifications"),
+            ["LauncherPower"] = ("Güç ve pil", "Power & battery"),
+            ["LauncherStorage"] = ("Depolama", "Storage"),
+            ["LauncherBluetooth"] = ("Bluetooth ve cihazlar", "Bluetooth & devices"),
+            ["LauncherPrinters"] = ("Yazıcılar ve tarayıcılar", "Printers & scanners"),
+            ["LauncherMouse"] = ("Fare", "Mouse"),
+            ["LauncherWifi"] = ("Wi-Fi", "Wi-Fi"),
+            ["LauncherNetwork"] = ("Ağ ve internet", "Network & internet"),
+            ["LauncherVpn"] = ("VPN", "VPN"),
+            ["LauncherPersonalization"] = ("Kişiselleştirme", "Personalization"),
+            ["LauncherBackground"] = ("Arka plan", "Background"),
+            ["LauncherColors"] = ("Renkler", "Colors"),
+            ["LauncherApps"] = ("Uygulamalar", "Apps"),
+            ["LauncherDefaultApps"] = ("Varsayılan uygulamalar", "Default apps"),
+            ["LauncherStartupApps"] = ("Başlangıç uygulamaları", "Startup apps"),
+            ["LauncherAccounts"] = ("Hesaplar", "Accounts"),
+            ["LauncherDateTime"] = ("Tarih ve saat", "Date & time"),
+            ["LauncherLanguageRegion"] = ("Dil ve bölge", "Language & region"),
+            ["LauncherGaming"] = ("Oyun", "Gaming"),
+            ["LauncherAccessibility"] = ("Erişilebilirlik", "Accessibility"),
+            ["LauncherPrivacy"] = ("Gizlilik ve güvenlik", "Privacy & security"),
+            ["LauncherWindowsUpdate"] = ("Windows Update", "Windows Update"),
+            ["LauncherWindowsSecurity"] = ("Windows Güvenliği", "Windows Security"),
+            ["LauncherTaskbar"] = ("Görev çubuğu", "Taskbar"),
+            ["LauncherAbout"] = ("Sistem hakkında", "About"),
+            ["LauncherControlPanel"] = ("Denetim Masası", "Control Panel"),
+            ["LauncherTaskManager"] = ("Görev Yöneticisi", "Task Manager"),
+            ["LauncherUninstall"] = ("Kaldır", "Uninstall"),
+            ["ErrorUpdatePath"] = ("Uygulama yolu bulunamadı.", "Application path not found."),
+            ["ErrorUpdateDeveloperMode"] = ("Geliştirici ortamında (dotnet run) otomatik güncelleme uygulanamaz.", "Automatic updates are unavailable when running from the developer environment (dotnet run)."),
+            ["ErrorUpdateBinaryMissing"] = ("İndirilebilir uygulama bulunamadı; sürüm sayfası açıldı.", "No downloadable application was found; the release page was opened."),
+            ["ErrorUpdateHttp"] = ("İndirme hatası: HTTP {0}", "Download failed: HTTP {0}"),
+            ["ErrorUpdateSizeInvalid"] = ("İndirilen dosya boyutu geçersiz.", "The downloaded file size is invalid."),
+            ["ErrorUpdateSizeMismatch"] = ("İndirilen dosya boyutu eşleşmedi.", "The downloaded file size does not match."),
+            ["ErrorUpdateExecutableInvalid"] = ("İndirilen dosya geçerli bir Windows yürütülebilir dosyası değil.", "The downloaded file is not a valid Windows executable."),
+            ["ErrorTaskbarPinsRead"] = ("Windows görev çubuğu kısayol klasörü okunamadı.", "Cannot read the Windows taskbar shortcut folder."),
+            ["ErrorTaskbarPinsAccess"] = ("Windows görev çubuğu kısayol klasörüne erişim izni yok.", "Permission to access the Windows taskbar shortcut folder was denied."),
+            ["ErrorShortcutServiceImport"] = ("Windows kısayol hizmeti başlatılamadı; görev çubuğu uygulamaları içe aktarılamadı.", "Cannot start the Windows shortcut service; taskbar applications could not be imported."),
+            ["ErrorShortcutServiceStopped"] = ("Windows kısayol hizmeti durdu; görev çubuğu uygulamalarının bir bölümü içe aktarılamadı.", "The Windows shortcut service stopped; some taskbar applications could not be imported."),
+            ["ErrorTaskbarPinFolderCreate"] = ("Windows görev çubuğu sabitleme klasörü oluşturulamadı.", "Cannot create the Windows taskbar pin folder."),
+            ["ErrorShortcutServicePin"] = ("Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.", "Cannot start the Windows shortcut service; the pin could not be created."),
+            ["ErrorShortcutCreate"] = ("Kısayol nesnesi oluşturulamadı.", "Cannot create a shortcut object."),
+            ["ErrorTaskbarPin"] = ("Uygulama Windows görev çubuğuna sabitlenemedi.", "Cannot pin the application to the Windows taskbar."),
+            ["ErrorTaskbarPinPath"] = ("Kısayol Windows görev çubuğu sabitleme klasöründe değil.", "The shortcut is outside the Windows taskbar pin folder."),
+            ["ErrorTaskbarUnpin"] = ("Uygulama Windows görev çubuğu sabitlerinden kaldırılamadı.", "Cannot remove the application from Windows taskbar pins."),
+            ["ErrorTaskbarUnpinAccess"] = ("Görev çubuğu sabitini kaldırmak için erişim izni yok.", "Permission to remove the taskbar pin was denied."),
+            ["ErrorTaskbarJournalRead"] = ("Görev çubuğu kurtarma kaydı okunamadı.", "Cannot read the taskbar recovery record."),
+            ["ErrorTaskbarJournalAccess"] = ("Görev çubuğu kurtarma kaydına erişim izni yok.", "Permission to access the taskbar recovery record was denied."),
+            ["ErrorTaskbarJournalWrite"] = ("Görev çubuğu ayarı değiştirilmedi; kurtarma kaydı yazılamadı.", "The Windows taskbar was left unchanged because its recovery record could not be saved."),
+            ["ErrorTaskbarJournalWriteAccess"] = ("Görev çubuğu ayarı değiştirilmedi; kurtarma kaydına yazma izni yok.", "The Windows taskbar was left unchanged because permission to save its recovery record was denied."),
+            ["ErrorTaskbarEdgeTrigger"] = ("Windows görev çubuğunun kenar tetiklemesi kapatılamadı.", "Cannot disable the Windows taskbar edge trigger."),
+            ["ErrorDisplayDimensions"] = ("Ekran boyutları alınamadı.", "Cannot read display dimensions."),
+            ["ErrorTaskbarDimensions"] = ("Windows görev çubuğunun boyutları alınamadı.", "Cannot read Windows taskbar dimensions."),
+            ["ErrorDockPosition"] = ("OpenTaskbar ekranın alt kenarına yerleştirilemedi.", "Cannot position OpenTaskbar along the bottom of the screen."),
+            ["TaskbarAutoHideReenabled"] = ("Windows görev çubuğunun otomatik açılması yeniden etkinleşti.", "Windows taskbar auto-hide activation was enabled again."),
+            ["ErrorTaskbarJournalPath"] = ("Görev çubuğu kurtarma kaydı için yol oluşturulamadı.", "Cannot create a location for the taskbar recovery record."),
+            ["ErrorWindowTitleHook"] = ("Pencere başlığı değişiklikleri dinlenemedi.", "Cannot listen for window title changes."),
+            ["ErrorWindowEvents"] = ("Windows pencere bildirimleri dinlenemedi.", "Cannot listen for Windows window notifications."),
+            ["ErrorThemeInstall"] = ("Hazır temalar kullanıcı klasörüne kurulamadı. OpenTaskbar tema klasörüne yazma iznini denetleyin.", "Built-in themes could not be installed in your user folder. Check write access to the OpenTaskbar theme folder."),
+            ["ErrorThemeFolderOpen"] = ("Tema klasörü açılamadı. Klasöre erişim iznini denetleyin.", "The theme folder could not be opened. Check access permissions."),
+            ["ErrorUpdateFailed"] = ("Güncelleme indirilemedi. İnternet bağlantısını denetleyip yeniden deneyin.", "The update could not be downloaded. Check your internet connection and try again.")
         };
 
     private static readonly IReadOnlyDictionary<string, string> ErrorTranslations = new Dictionary<string, string>
@@ -451,38 +534,46 @@ public sealed class UiText : INotifyPropertyChanged
         ["Güncellemeler denetlenemedi. İnternet bağlantısını denetleyip yeniden deneyin."] = "Cannot check for updates. Check your internet connection and try again."
     };
 
-    private volatile AppLanguage _language;
+    private AppLanguage _language;
     public AppLanguage Language => _language;
-    public bool IsEnglish => _language == AppLanguage.English;
+    public bool IsEnglish => _language.Culture.TwoLetterISOLanguageName.Equals("en", StringComparison.OrdinalIgnoreCase);
+    public static IReadOnlyList<AppLanguage> Languages => AppLanguage.Supported
+        .Append(Current._language)
+        .Distinct()
+        .ToArray();
     public static UiText Current { get; } = new();
     public event PropertyChangedEventHandler? PropertyChanged;
     public string this[string key]
     {
         get
         {
-            var entry = Entries[key];
-            return _language == AppLanguage.English ? entry.English : entry.Turkish;
+            return Entries[key].Resolve(_language);
         }
     }
     public static string Get(string key) => Current[key];
-    public static string Format(string key, params object[] values) => string.Format(
-        System.Globalization.CultureInfo.GetCultureInfo(Current._language == AppLanguage.English ? "en-US" : "tr-TR"), Get(key), values);
+    public static IReadOnlyCollection<string> GetTranslations(string key) => Entries[key].Translations.Values.ToArray();
+    public static string Format(string key, params object[] values) => string.Format(Current._language.Culture, Get(key), values);
 
     // Look up translated message from Entries or preserve externally supplied errors using ErrorTranslations fallback.
     public static string LocalizeError(string message)
     {
-        if (Entries.TryGetValue(message, out var entry))
-        {
-            return Current._language == AppLanguage.English ? entry.English : entry.Turkish;
-        }
+        Entries.TryGetValue(message, out var entry);
+        entry ??= Entries.Values.FirstOrDefault(candidate => candidate.Translations.Values.Contains(message, StringComparer.Ordinal));
+        if (entry is not null) return entry.Resolve(Current._language);
 
-        return Current._language == AppLanguage.English
-            && ErrorTranslations.TryGetValue(message, out var translated) ? translated : message;
+        if (!ErrorTranslations.TryGetValue(message, out var translated)) return message;
+        return Current._language.Culture.TwoLetterISOLanguageName.Equals("tr", StringComparison.OrdinalIgnoreCase)
+            ? message
+            : translated;
     }
     public void SetLanguage(AppLanguage language)
     {
-        if (_language == language) return;
+        if (!AppLanguage.IsSupported(language)) language = AppLanguage.English;
+        var changed = _language != language;
         _language = language;
+        System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = language.Culture;
+        System.Globalization.CultureInfo.CurrentUICulture = language.Culture;
+        if (!changed) return;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
     }
 }

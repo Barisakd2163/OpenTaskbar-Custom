@@ -31,11 +31,11 @@ public static class WindowsTaskbarPinImporter
         }
         catch (IOException)
         {
-            return ([], "Windows görev çubuğu kısayol klasörü okunamadı.");
+            return ([], UiText.Get("ErrorTaskbarPinsRead"));
         }
         catch (UnauthorizedAccessException)
         {
-            return ([], "Windows görev çubuğu kısayol klasörüne erişim izni yok.");
+            return ([], UiText.Get("ErrorTaskbarPinsAccess"));
         }
 
         if (shortcutPaths.Count == 0)
@@ -52,16 +52,16 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return ([], "Windows kısayol hizmeti başlatılamadı; görev çubuğu uygulamaları içe aktarılamadı.");
+            return ([], UiText.Get("ErrorShortcutServiceImport"));
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return ([], "Windows kısayol hizmeti başlatılamadı; görev çubuğu uygulamaları içe aktarılamadı.");
+            return ([], UiText.Get("ErrorShortcutServiceImport"));
         }
 
         if (shellType is null || shell is null)
         {
-            return ([], "Windows kısayol hizmeti başlatılamadı; görev çubuğu uygulamaları içe aktarılamadı.");
+            return ([], UiText.Get("ErrorShortcutServiceImport"));
         }
 
         var apps = new List<DockApp>();
@@ -132,11 +132,11 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return (apps, "Windows kısayol hizmeti durdu; görev çubuğu uygulamalarının bir bölümü içe aktarılamadı.");
+            return (apps, UiText.Get("ErrorShortcutServiceStopped"));
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return (apps, "Windows kısayol hizmeti durdu; görev çubuğu uygulamalarının bir bölümü içe aktarılamadı.");
+            return (apps, UiText.Get("ErrorShortcutServiceStopped"));
         }
         finally
         {
@@ -168,7 +168,7 @@ public static class WindowsTaskbarPinImporter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return (null, "Windows görev çubuğu sabitleme klasörü oluşturulamadı.");
+            return (null, UiText.Get("ErrorTaskbarPinFolderCreate"));
         }
 
         var invalidChars = Path.GetInvalidFileNameChars();
@@ -189,16 +189,16 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return (null, "Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.");
+            return (null, UiText.Get("ErrorShortcutServicePin"));
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return (null, "Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.");
+            return (null, UiText.Get("ErrorShortcutServicePin"));
         }
 
         if (shellType is null || shell is null)
         {
-            return (null, "Windows kısayol hizmeti başlatılamadı; sabitleme oluşturulamadı.");
+            return (null, UiText.Get("ErrorShortcutServicePin"));
         }
 
         try
@@ -212,7 +212,7 @@ public static class WindowsTaskbarPinImporter
 
             if (shortcut is null)
             {
-                return (null, "Kısayol nesnesi oluşturulamadı.");
+                return (null, UiText.Get("ErrorShortcutCreate"));
             }
 
             try
@@ -241,7 +241,7 @@ public static class WindowsTaskbarPinImporter
         }
         catch (Exception ex) when (ex is COMException or TargetInvocationException or IOException or UnauthorizedAccessException)
         {
-            return (null, "Uygulama Windows görev çubuğuna sabitlenemedi.");
+            return (null, UiText.Get("ErrorTaskbarPin"));
         }
         finally
         {
@@ -265,7 +265,7 @@ public static class WindowsTaskbarPinImporter
         if (!string.Equals(Path.GetDirectoryName(fullPath), pinDirectory, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(Path.GetExtension(fullPath), ".lnk", StringComparison.OrdinalIgnoreCase))
         {
-            return "Kısayol Windows görev çubuğu sabitleme klasöründe değil.";
+            return UiText.Get("ErrorTaskbarPinPath");
         }
 
         try
@@ -275,11 +275,11 @@ public static class WindowsTaskbarPinImporter
         }
         catch (IOException)
         {
-            return "Uygulama Windows görev çubuğu sabitlerinden kaldırılamadı.";
+            return UiText.Get("ErrorTaskbarUnpin");
         }
         catch (UnauthorizedAccessException)
         {
-            return "Görev çubuğu sabitini kaldırmak için erişim izni yok.";
+            return UiText.Get("ErrorTaskbarUnpinAccess");
         }
     }
 

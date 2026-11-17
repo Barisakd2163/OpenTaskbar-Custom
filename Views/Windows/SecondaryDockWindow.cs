@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -101,7 +100,7 @@ public sealed class SecondaryDockWindow : Window
 
     public void Update(IReadOnlyList<TrackedWindow> windows, nint foreground)
     {
-        _clock.Text = DateTime.Now.ToString("t", CultureInfo.CurrentCulture);
+        _clock.Text = DateTime.Now.ToString("t", UiText.Current.Language.Culture);
         var mine = windows
             .Where(window => window.ExecutablePath is not null && MonitorFromWindow(window.Handle, 2) == _monitor)
             .GroupBy(window => window.ExecutablePath!, StringComparer.OrdinalIgnoreCase)

@@ -1773,7 +1773,7 @@ public partial class MainWindow : Window
             DockPosition.Left => HorizontalAlignment.Left,
             DockPosition.Center => HorizontalAlignment.Center,
             DockPosition.Right => HorizontalAlignment.Right,
-            _ => throw new InvalidOperationException("Dock konumu desteklenmiyor.")
+            _ => throw new InvalidOperationException(UiText.Get("ErrorDockPosition"))
         };
 
         DockSurface.HorizontalAlignment = alignment;

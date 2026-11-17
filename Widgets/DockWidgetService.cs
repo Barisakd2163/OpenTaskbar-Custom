@@ -76,7 +76,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
 
     public static void Refresh(IEnumerable<DockWidgetItem> widgets, AppLanguage language)
     {
-        var culture = CultureInfo.GetCultureInfo(language == AppLanguage.Turkish ? "tr-TR" : "en-US");
+        var culture = language.Culture;
         foreach (var widget in widgets)
         {
             if (DefinitionsById.TryGetValue(widget.Id, out var definition))

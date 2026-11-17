@@ -149,8 +149,7 @@ public sealed class LauncherWindow : Window
     private void UpdateResults()
     {
         _hint.Visibility = _query.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        var english = UiText.Current.IsEnglish;
-        var results = Catalog.Search(_query.Text, english, ResultLimit);
+        var results = Catalog.Search(_query.Text, UiText.Current.Language, ResultLimit);
         _results.ItemsSource = results.Select(entry => new ListBoxItem { Content = BuildRow(entry), Tag = entry }).ToList();
         _results.SelectedIndex = results.Count > 0 ? 0 : -1;
         _results.Visibility = results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;

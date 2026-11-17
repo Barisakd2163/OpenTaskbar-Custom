@@ -36,10 +36,6 @@ public partial class App : Application
                 "OpenTaskbar", "preview-settings.json")));
         UiText.Current.SetLanguage(Preferences.Current.Language);
         ThemeManager.Apply(Preferences.Current.Theme, Preferences.Current.SurfaceOpacity);
-        ThemePacks.InstallBuiltInThemes();
-        // Before any window exists, so a widget pack's sizes and fonts are in place when styles are first built.
-        ThemePacks.Select(Preferences.Current.ThemePack);
-        ThemePacks.ApplyWidgets(Preferences.Current.Theme);
         _instanceMutex = new Mutex(initiallyOwned: true,
             name: IsPreview ? "Local\\OpenTaskbar.Preview" : "Local\\OpenTaskbar.Singleton", out var createdNew);
         if (!createdNew)
@@ -51,11 +47,17 @@ public partial class App : Application
             return;
         }
 
+        var themeInstallError = ThemePacks.InstallBuiltInThemes();
+        // Before any window exists, so a widget pack's sizes and fonts are in place when styles are first built.
+        ThemePacks.Select(Preferences.Current.ThemePack);
+        ThemePacks.ApplyWidgets(Preferences.Current.Theme);
         base.OnStartup(e);
 
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
         mainWindow.Show();
+        if (themeInstallError is not null)
+            MessageBox.Show(themeInstallError, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     protected override void OnExit(ExitEventArgs e)

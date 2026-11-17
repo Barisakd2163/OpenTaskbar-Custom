@@ -102,18 +102,18 @@ public static class UpdateChecker
         var targetPath = GetExecutablePath();
         if (string.IsNullOrEmpty(targetPath) || !File.Exists(targetPath))
         {
-            return (false, "Uygulama yolu bulunamadı.");
+            return (false, UiText.Get("ErrorUpdatePath"));
         }
 
         if (string.Equals(Path.GetFileName(targetPath), "dotnet.exe", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "Geliştirici ortamında (dotnet run) otomatik güncelleme uygulanamaz.");
+            return (false, UiText.Get("ErrorUpdateDeveloperMode"));
         }
 
         if (string.IsNullOrEmpty(release.DownloadUrl))
         {
             ShellShortcuts.OpenUri(release.Url);
-            return (false, "İndirilebilir binary bulunamadı, web sayfası açıldı.");
+            return (false, UiText.Get("ErrorUpdateBinaryMissing"));
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), "OpenTaskbar", "update");
@@ -131,7 +131,7 @@ public static class UpdateChecker
             using var response = await client.GetAsync(release.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellation);
             if (!response.IsSuccessStatusCode)
             {
-                return (false, $"İndirme hatası: HTTP {(int)response.StatusCode}");
+                return (false, UiText.Format("ErrorUpdateHttp", (int)response.StatusCode));
             }
 
             await using (var contentStream = await response.Content.ReadAsStreamAsync(cancellation))
@@ -144,13 +144,13 @@ public static class UpdateChecker
             if (fileInfo.Length < 1_000_000)
             {
                 TryDelete(partFile);
-                return (false, "İndirilen dosya boyutu geçersiz.");
+                return (false, UiText.Get("ErrorUpdateSizeInvalid"));
             }
 
             if (release.Size.HasValue && release.Size.Value > 0 && fileInfo.Length != release.Size.Value)
             {
                 TryDelete(partFile);
-                return (false, "İndirilen dosya boyutu eşleşmedi.");
+                return (false, UiText.Get("ErrorUpdateSizeMismatch"));
             }
 
             byte[] header = new byte[2];
@@ -161,7 +161,7 @@ public static class UpdateChecker
             if (header[0] != 0x4D || header[1] != 0x5A) // 'M', 'Z'
             {
                 TryDelete(partFile);
-                return (false, "İndirilen dosya geçerli bir Windows yürütülebilir dosyası değil.");
+                return (false, UiText.Get("ErrorUpdateExecutableInvalid"));
             }
 
             if (File.Exists(tempExe)) File.Delete(tempExe);
@@ -175,7 +175,7 @@ public static class UpdateChecker
         {
             TryDelete(partFile);
             AppLog.Error($"Update download/apply error: {ex.Message}");
-            return (false, ex.Message);
+            return (false, UiText.Get("ErrorUpdateFailed"));
         }
     }
 

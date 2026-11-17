@@ -143,15 +143,15 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (InvalidDataException)
         {
-            error = "Görev çubuğu kurtarma kaydı bozuk. Windows ayarlarını elle denetleyin.";
+            error = UiText.Get("ErrorTaskbarJournalInvalid");
         }
         catch (IOException)
         {
-            error = "Görev çubuğu kurtarma kaydı okunamadı.";
+            error = UiText.Get("ErrorTaskbarJournalRead");
         }
         catch (UnauthorizedAccessException)
         {
-            error = "Görev çubuğu kurtarma kaydına erişim izni yok.";
+            error = UiText.Get("ErrorTaskbarJournalAccess");
         }
 
         return false;
@@ -182,11 +182,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (IOException ex)
         {
-            throw new InvalidOperationException("Görev çubuğu ayarı değiştirilmedi; kurtarma kaydı yazılamadı.", ex);
+            throw new InvalidOperationException(UiText.Get("ErrorTaskbarJournalWrite"), ex);
         }
         catch (UnauthorizedAccessException ex)
         {
-            throw new InvalidOperationException("Görev çubuğu ayarı değiştirilmedi; kurtarma kaydına yazma izni yok.", ex);
+            throw new InvalidOperationException(UiText.Get("ErrorTaskbarJournalWriteAccess"), ex);
         }
 
         try
@@ -195,7 +195,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             Volatile.Write(ref _current, this);
             if (!SetTaskbarState(ReplacementState, _handle))
             {
-                throw new InvalidOperationException("Windows görev çubuğunun kenar tetiklemesi kapatılamadı.");
+                throw new InvalidOperationException(UiText.Get("ErrorTaskbarEdgeTrigger"));
             }
 
             if (!HideNativeTaskbar())
@@ -380,11 +380,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         var monitorInfo = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(monitor, ref monitorInfo))
         {
-            throw new InvalidOperationException("Ekran boyutları alınamadı.");
+            throw new InvalidOperationException(UiText.Get("ErrorDisplayDimensions"));
         }
 
         var dpi = GetDpiForWindow(_handle);
-        if (dpi == 0) throw new InvalidOperationException("Ekran boyutları alınamadı.");
+        if (dpi == 0) throw new InvalidOperationException(UiText.Get("ErrorDisplayDimensions"));
         if (IsVertical)
         {
             PositionSideDock(monitorInfo.rcMonitor, dpi);
@@ -421,7 +421,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             _lastWindowPos = null;
-            throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
+            throw new InvalidOperationException(UiText.Get("ErrorDockPosition"));
         }
     }
 
@@ -430,10 +430,10 @@ public sealed class TaskbarReplacementSession : IDisposable
         var taskbar = FindWindow("Shell_TrayWnd", null);
         var data = CreateData();
         if (taskbar == 0 || SHAppBarMessage(AbmGetTaskbarPos, ref data) == 0)
-            throw new InvalidOperationException("Windows görev çubuğunun boyutları alınamadı.");
+            throw new InvalidOperationException(UiText.Get("ErrorTaskbarDimensions"));
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0 || data.rc.Bottom <= data.rc.Top || data.rc.Right <= data.rc.Left)
-            throw new InvalidOperationException("Windows görev çubuğunun boyutları alınamadı.");
+            throw new InvalidOperationException(UiText.Get("ErrorTaskbarDimensions"));
         _nativeBottomTaskbarHeight = data.uEdge == AbeBottom ? (data.rc.Bottom - data.rc.Top) * 96d / dpi : 0;
     }
 
@@ -495,7 +495,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, monitor.Top, total, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
-            throw new InvalidOperationException("OpenTaskbar ekranın alt kenarına yerleştirilemedi.");
+            throw new InvalidOperationException(UiText.Get("ErrorDockPosition"));
         }
     }
 
@@ -632,7 +632,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         if (!SetTaskbarState(ReplacementState, _handle))
         {
-            OperationFailed?.Invoke("Windows görev çubuğunun otomatik açılması yeniden etkinleşti.");
+            OperationFailed?.Invoke(UiText.Get("TaskbarAutoHideReenabled"));
             return;
         }
 
@@ -658,7 +658,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 _hideRetryPending = false;
                 if (_active && attempts >= 3 && !HideNativeTaskbar())
                 {
-                    OperationFailed?.Invoke("Windows görev çubuğu yeniden gizlenemedi.");
+                    OperationFailed?.Invoke(UiText.Get("ErrorTaskbarRehide"));
                 }
             }
         };
@@ -697,7 +697,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         var directory = Path.GetDirectoryName(path);
         if (directory is null)
         {
-            throw new IOException("Görev çubuğu kurtarma kaydı için yol oluşturulamadı.");
+            throw new IOException(UiText.Get("ErrorTaskbarJournalPath"));
         }
 
         Directory.CreateDirectory(directory);

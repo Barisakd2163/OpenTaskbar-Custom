@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
 
@@ -16,37 +17,37 @@ public sealed record LauncherEntry(string Name, string Target, LauncherKind Kind
 /// </summary>
 public sealed class LauncherCatalog
 {
-    private static readonly (string Turkish, string English, string Uri)[] SettingsPages =
+    private static readonly (string TextKey, string Uri)[] SettingsPages =
     [
-        ("Ekran", "Display", "ms-settings:display"),
-        ("Ses", "Sound", "ms-settings:sound"),
-        ("Bildirimler", "Notifications", "ms-settings:notifications"),
-        ("Güç ve pil", "Power & battery", "ms-settings:powersleep"),
-        ("Depolama", "Storage", "ms-settings:storagesense"),
-        ("Bluetooth ve cihazlar", "Bluetooth & devices", "ms-settings:bluetooth"),
-        ("Yazıcılar ve tarayıcılar", "Printers & scanners", "ms-settings:printers"),
-        ("Fare", "Mouse", "ms-settings:mousetouchpad"),
-        ("Wi-Fi", "Wi-Fi", "ms-settings:network-wifi"),
-        ("Ağ ve internet", "Network & internet", "ms-settings:network-status"),
-        ("VPN", "VPN", "ms-settings:network-vpn"),
-        ("Kişiselleştirme", "Personalization", "ms-settings:personalization"),
-        ("Arka plan", "Background", "ms-settings:personalization-background"),
-        ("Renkler", "Colors", "ms-settings:colors"),
-        ("Uygulamalar", "Apps", "ms-settings:appsfeatures"),
-        ("Varsayılan uygulamalar", "Default apps", "ms-settings:defaultapps"),
-        ("Başlangıç uygulamaları", "Startup apps", "ms-settings:startupapps"),
-        ("Hesaplar", "Accounts", "ms-settings:yourinfo"),
-        ("Tarih ve saat", "Date & time", "ms-settings:dateandtime"),
-        ("Dil ve bölge", "Language & region", "ms-settings:regionlanguage"),
-        ("Oyun", "Gaming", "ms-settings:gaming-gamebar"),
-        ("Erişilebilirlik", "Accessibility", "ms-settings:easeofaccess"),
-        ("Gizlilik ve güvenlik", "Privacy & security", "ms-settings:privacy"),
-        ("Windows Update", "Windows Update", "ms-settings:windowsupdate"),
-        ("Windows Güvenliği", "Windows Security", "windowsdefender:"),
-        ("Görev çubuğu", "Taskbar", "ms-settings:taskbar"),
-        ("Sistem hakkında", "About", "ms-settings:about"),
-        ("Denetim Masası", "Control Panel", "control"),
-        ("Görev Yöneticisi", "Task Manager", "taskmgr")
+        ("LauncherDisplay", "ms-settings:display"),
+        ("LauncherSound", "ms-settings:sound"),
+        ("LauncherNotifications", "ms-settings:notifications"),
+        ("LauncherPower", "ms-settings:powersleep"),
+        ("LauncherStorage", "ms-settings:storagesense"),
+        ("LauncherBluetooth", "ms-settings:bluetooth"),
+        ("LauncherPrinters", "ms-settings:printers"),
+        ("LauncherMouse", "ms-settings:mousetouchpad"),
+        ("LauncherWifi", "ms-settings:network-wifi"),
+        ("LauncherNetwork", "ms-settings:network-status"),
+        ("LauncherVpn", "ms-settings:network-vpn"),
+        ("LauncherPersonalization", "ms-settings:personalization"),
+        ("LauncherBackground", "ms-settings:personalization-background"),
+        ("LauncherColors", "ms-settings:colors"),
+        ("LauncherApps", "ms-settings:appsfeatures"),
+        ("LauncherDefaultApps", "ms-settings:defaultapps"),
+        ("LauncherStartupApps", "ms-settings:startupapps"),
+        ("LauncherAccounts", "ms-settings:yourinfo"),
+        ("LauncherDateTime", "ms-settings:dateandtime"),
+        ("LauncherLanguageRegion", "ms-settings:regionlanguage"),
+        ("LauncherGaming", "ms-settings:gaming-gamebar"),
+        ("LauncherAccessibility", "ms-settings:easeofaccess"),
+        ("LauncherPrivacy", "ms-settings:privacy"),
+        ("LauncherWindowsUpdate", "ms-settings:windowsupdate"),
+        ("LauncherWindowsSecurity", "windowsdefender:"),
+        ("LauncherTaskbar", "ms-settings:taskbar"),
+        ("LauncherAbout", "ms-settings:about"),
+        ("LauncherControlPanel", "control"),
+        ("LauncherTaskManager", "taskmgr")
     ];
 
     private IReadOnlyList<LauncherEntry> _apps = [];
@@ -98,7 +99,7 @@ public sealed class LauncherCatalog
                 string path = item.Path;
                 if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(path)) continue;
                 // Uninstallers and help links clutter results.
-                if (name.Contains("Uninstall", StringComparison.OrdinalIgnoreCase) || name.Contains("Kaldır", StringComparison.OrdinalIgnoreCase)) continue;
+                if (UiText.GetTranslations("LauncherUninstall").Any(label => name.Contains(label, StringComparison.OrdinalIgnoreCase))) continue;
                 apps.Add(new LauncherEntry(name, "shell:AppsFolder\\" + path, LauncherKind.App));
             }
         }
@@ -110,13 +111,14 @@ public sealed class LauncherCatalog
         return apps.DistinctBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
-    public IReadOnlyList<LauncherEntry> Search(string query, bool english, int limit)
+    public IReadOnlyList<LauncherEntry> Search(string query, AppLanguage language, int limit)
     {
+        var culture = language.Culture;
         query = query.Trim();
         var results = new List<(LauncherEntry Entry, int Score)>();
         if (query.Length == 0)
         {
-            return RecentFiles(english).Take(limit).ToList();
+            return RecentFiles(culture).Take(limit).ToList();
         }
 
         if (TryCalculate(query, out var value))
@@ -132,12 +134,12 @@ public sealed class LauncherCatalog
 
         foreach (var page in SettingsPages)
         {
-            var name = english ? page.English : page.Turkish;
-            var score = Math.Max(Score(name, query), Score(english ? page.Turkish : page.English, query));
+            var name = UiText.Get(page.TextKey);
+            var score = UiText.GetTranslations(page.TextKey).Max(translation => Score(translation, query));
             if (score > 0) results.Add((new LauncherEntry(name, page.Uri, LauncherKind.Setting), score));
         }
 
-        foreach (var recent in RecentFiles(english))
+        foreach (var recent in RecentFiles(culture))
         {
             var score = Score(recent.Name, query);
             if (score > 0) results.Add((recent, score - 10));
@@ -153,7 +155,7 @@ public sealed class LauncherCatalog
         return ordered;
     }
 
-    private static IEnumerable<LauncherEntry> RecentFiles(bool english)
+    private static IEnumerable<LauncherEntry> RecentFiles(CultureInfo culture)
     {
         var folder = Environment.GetFolderPath(Environment.SpecialFolder.Recent);
         IEnumerable<FileInfo> files;
@@ -169,14 +171,14 @@ public sealed class LauncherCatalog
         foreach (var file in files)
         {
             yield return new LauncherEntry(Path.GetFileNameWithoutExtension(file.Name), file.FullName, LauncherKind.Recent,
-                file.LastWriteTime.ToString("g", CultureInfo.GetCultureInfo(english ? "en-US" : "tr-TR")));
+                file.LastWriteTime.ToString("g", culture));
         }
     }
 
     /// <summary>Prefix beats word-prefix beats initials beats substring; zero means no match.</summary>
     private static int Score(string name, string query)
     {
-        var compare = CultureInfo.CurrentCulture.CompareInfo;
+        var compare = UiText.Current.Language.Culture.CompareInfo;
         const CompareOptions options = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
         if (compare.IsPrefix(name, query, options)) return 300 - Math.Min(100, name.Length);
         var words = name.Split([' ', '-', '_', '.', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
@@ -202,7 +204,7 @@ public sealed class LauncherCatalog
             using var table = new DataTable { Locale = CultureInfo.InvariantCulture };
             var result = Convert.ToDouble(table.Compute(expression, null), CultureInfo.InvariantCulture);
             if (double.IsNaN(result) || double.IsInfinity(result)) return false;
-            value = result.ToString("G12", CultureInfo.CurrentCulture);
+            value = result.ToString("G12", UiText.Current.Language.Culture);
             return true;
         }
         catch (Exception ex) when (ex is EvaluateException or SyntaxErrorException or InvalidCastException or OverflowException or FormatException or DivideByZeroException)

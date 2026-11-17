@@ -98,7 +98,7 @@ public static class ThemePacks
     public static ThemePack? Current { get; private set; }
 
     /// <summary>Copies bundled theme packs into the user theme folder without replacing user files.</summary>
-    public static void InstallBuiltInThemes()
+    public static string? InstallBuiltInThemes()
     {
         try
         {
@@ -109,6 +109,7 @@ public static class ThemePacks
                 .Select(name => (Name: name, RelativePath: name[BuiltInResourcePrefix.Length..]
                     .Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar)))
                 .ToArray();
+            if (resources.Length == 0) throw new InvalidDataException("No built-in theme resources were found.");
 
             foreach (var theme in resources.GroupBy(resource => resource.RelativePath.Split(Path.DirectorySeparatorChar)[0], StringComparer.OrdinalIgnoreCase))
             {
@@ -130,10 +131,13 @@ public static class ThemePacks
                     input.CopyTo(output);
                 }
             }
+
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             AppLog.Warning($"Built-in theme packs could not be installed: {ex.Message}");
+            return UiText.Get("ErrorThemeInstall");
         }
     }
 
