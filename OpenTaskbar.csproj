@@ -18,6 +18,7 @@
     <Compile Remove="tmp/**/*.cs" />
     <InternalsVisibleTo Include="OpenTaskbar.Tests" />
     <EmbeddedResource Include="themes\**\*.*" LogicalName="OpenTaskbar.BuiltInThemes/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Services\Localization\Languages\*.json" LogicalName="OpenTaskbar.Localization.Languages.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

@@ -267,7 +267,7 @@ public partial class SettingsWindow : Window
     private void SelectLanguage(AppLanguage language)
     {
         var selected = UiText.Languages.FirstOrDefault(candidate => candidate == language);
-        LanguageBox.SelectedItem = AppLanguage.IsSupported(selected) ? selected : AppLanguage.English;
+        LanguageBox.SelectedItem = LanguageCatalog.IsSupported(selected) ? selected : AppLanguage.English;
     }
 
     private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => PreferenceEdited(sender, e);

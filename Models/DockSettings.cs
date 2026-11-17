@@ -13,41 +13,17 @@ public enum AppTheme { Dark, Light }
 public readonly record struct AppLanguage
 {
     private readonly string? _cultureName;
-    public AppLanguage(string cultureName) => _cultureName =
-        string.Equals(cultureName, "en-US", StringComparison.OrdinalIgnoreCase) ? null : cultureName;
+    public AppLanguage(string cultureName)
+    {
+        var culture = CultureInfo.GetCultureInfo(cultureName);
+        _cultureName = string.Equals(culture.Name, "en-US", StringComparison.OrdinalIgnoreCase) ? null : culture.Name;
+    }
     public string CultureName => _cultureName ?? "en-US";
     public static AppLanguage Turkish { get; } = new("tr-TR");
     public static AppLanguage English => default;
-    public static IReadOnlyList<AppLanguage> Supported { get; } = [Turkish, English];
+    public static AppLanguage Japanese { get; } = new("ja-JP");
     public CultureInfo Culture => CultureInfo.GetCultureInfo(CultureName);
     public string NativeName => Culture.NativeName;
-
-    public static AppLanguage FromCulture(CultureInfo culture)
-    {
-        foreach (var language in Supported)
-        {
-            if (string.Equals(language.Culture.TwoLetterISOLanguageName, culture.TwoLetterISOLanguageName,
-                    StringComparison.OrdinalIgnoreCase))
-                return culture.IsNeutralCulture || string.Equals(language.CultureName, culture.Name, StringComparison.OrdinalIgnoreCase)
-                    ? language
-                    : new AppLanguage(culture.Name);
-        }
-
-        return English;
-    }
-
-    public static bool IsSupported(AppLanguage language)
-    {
-        try
-        {
-            return Supported.Any(candidate => string.Equals(candidate.Culture.TwoLetterISOLanguageName,
-                language.Culture.TwoLetterISOLanguageName, StringComparison.OrdinalIgnoreCase));
-        }
-        catch (CultureNotFoundException)
-        {
-            return false;
-        }
-    }
 }
 public enum AutoHideMode { Disabled, Smart, Always }
 public enum DockLayout { Floating, FullWidth }

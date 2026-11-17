@@ -16,7 +16,7 @@ public sealed class DockSettingsStore
 
     public DockSettingsStore(string? path = null, CultureInfo? defaultCulture = null)
     {
-        _defaultLanguage = AppLanguage.FromCulture(defaultCulture ?? CultureInfo.CurrentUICulture);
+        _defaultLanguage = LanguageCatalog.FromCulture(defaultCulture ?? CultureInfo.CurrentUICulture);
         _path = path ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenTaskbar",
@@ -99,7 +99,7 @@ public sealed class DockSettingsStore
     }
 
     private static bool IsValid(DockSettings settings) => Enum.IsDefined(settings.Position)
-        && Enum.IsDefined(settings.Theme) && AppLanguage.IsSupported(settings.Language)
+        && Enum.IsDefined(settings.Theme) && LanguageCatalog.IsSupported(settings.Language)
         && Enum.IsDefined(settings.AutoHide) && Enum.IsDefined(settings.Layout) && Enum.IsDefined(settings.Size)
         // Keep these ranges identical to the Widgets tab sliders.
         && settings.FocusMinutes is >= 1 and <= 90
@@ -147,6 +147,7 @@ public sealed class DockSettingsStore
                 {
                     0 => AppLanguage.Turkish,
                     1 => AppLanguage.English,
+                    2 => AppLanguage.Japanese,
                     _ => throw new JsonException("Legacy language value is not supported.")
                 };
             }
@@ -154,19 +155,13 @@ public sealed class DockSettingsStore
             var value = reader.GetString();
             if (string.Equals(value, "Turkish", StringComparison.OrdinalIgnoreCase)) return AppLanguage.Turkish;
             if (string.Equals(value, "English", StringComparison.OrdinalIgnoreCase)) return AppLanguage.English;
-            foreach (var language in AppLanguage.Supported)
-            {
-                if (string.Equals(language.CultureName, value, StringComparison.OrdinalIgnoreCase)) return language;
-            }
-
+            if (string.Equals(value, "Japanese", StringComparison.OrdinalIgnoreCase)) return AppLanguage.Japanese;
             if (value is not null)
             {
                 try
                 {
-                    var culture = CultureInfo.GetCultureInfo(value);
-                    var language = AppLanguage.FromCulture(culture);
-                    if (language.Culture.TwoLetterISOLanguageName.Equals(culture.TwoLetterISOLanguageName,
-                            StringComparison.OrdinalIgnoreCase)) return language;
+                    var language = new AppLanguage(value);
+                    if (LanguageCatalog.IsSupported(language)) return language;
                 }
                 catch (CultureNotFoundException)
                 {

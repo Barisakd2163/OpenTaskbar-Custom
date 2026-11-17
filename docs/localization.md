@@ -1,15 +1,16 @@
 # Localization
 
-OpenTaskbar stores the selected UI language as a BCP 47 culture tag, such as `tr-TR` or `en-US`. On first launch, it selects the supported translation matching the Windows display language. Regional variants such as `en-GB` keep their culture-specific formatting while using the matching English translation. Existing settings that contain `Turkish` or `English` are still read and are saved using culture tags next time.
+OpenTaskbar stores the selected UI language as a BCP 47 culture tag, such as `tr-TR`, `en-US`, or `ja-JP`. The language catalog reads embedded JSON files from `Services/Localization/Languages`. The file name is the culture tag and each JSON property is a localization key.
 
-## Adding a language
+On first launch, the app selects a translation matching the Windows UI language. Regional variants keep their culture-specific date and number formatting while using the matching language translation. If the Windows UI language is not available, the app starts in English. A missing translation in another language uses the English entry; a missing English key raises an explicit error.
 
-1. Add an `AppLanguage` value with its culture tag in `Models/DockSettings.cs`, then include it in `AppLanguage.Supported`.
-2. Add the translation for every UI key in `Services/Localization/UiText.cs`. Use `LocalizedEntry.Create` when an entry needs more than the existing Turkish and English values.
-3. Check all new text in a narrow Settings window and in the dock widgets. The language picker uses each culture's native display name.
+## Add a language
 
-Translations that are not available use the English catalog entry. Keep dates, numbers, percentages, and localized service queries culture-based; do not add language-specific conditionals for individual cultures.
+1. Copy `en-US.json` to a file named with the new culture tag, such as `fr-FR.json`.
+2. Translate the values while keeping every key and any format placeholders such as `{0}` unchanged.
+3. The project embeds JSON files in this folder automatically. The language picker uses the culture's native name, so no language enum, switch statement, or UI control needs editing.
+4. Translate launcher labels and error messages too. If a key is not ready yet, English is shown until its translation is added.
 
 ## Existing fixed text
 
-User-facing labels and errors belong in the `UiText` catalog. Product names, keyboard shortcuts, file formats, protocol values, operating-system identifiers, and source data such as city names are not translated UI copy.
+User-facing labels and errors belong in the locale JSON files. Product names, keyboard shortcuts, file formats, protocol values, operating-system identifiers, and source data such as city names are not translated UI copy.
