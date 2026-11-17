@@ -447,7 +447,7 @@ public partial class MainWindow
 
     private void ApplySecondaryDocks()
     {
-        var wanted = _preferences.Current.ShowOnAllMonitors ? SecondaryDockWindow.SecondaryMonitors() : [];
+        var wanted = _preferences.Current.ShowOnAllMonitors ? SecondaryDockWindow.SecondaryMonitors(_preferences.Current.TargetDisplay) : [];
         foreach (var dock in _secondaryDocks.Where(dock => !wanted.Contains(dock.Monitor)).ToList())
         {
             dock.Close();
@@ -456,12 +456,16 @@ public partial class MainWindow
 
         foreach (var monitor in wanted.Where(monitor => _secondaryDocks.All(dock => dock.Monitor != monitor)))
         {
-            var dock = new SecondaryDockWindow(monitor, _runningAppIcons);
+            var dock = new SecondaryDockWindow(monitor, _runningAppIcons, _preferences.Current.SecondaryApps, _preferences.Current.SecondaryWidgets);
             dock.Show();
             _secondaryDocks.Add(dock);
         }
 
-        foreach (var dock in _secondaryDocks) dock.PositionOnMonitor();
+        foreach (var dock in _secondaryDocks)
+        {
+            dock.Configure(_preferences.Current.SecondaryApps, _preferences.Current.SecondaryWidgets);
+            dock.PositionOnMonitor();
+        }
         if (_secondaryDocks.Count > 0)
         {
             _secondaryTimer ??= CreateSecondaryTimer();
@@ -477,9 +481,13 @@ public partial class MainWindow
 
     private DispatcherTimer CreateSecondaryTimer()
     {
-        // Keeps the secondary clocks current; window changes update the docks immediately.
+        // Keeps the secondary clocks current and re-measures the shelf Explorer may release after startup.
         var timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(10) };
-        timer.Tick += (_, _) => UpdateSecondaryDocks();
+        timer.Tick += (_, _) =>
+        {
+            foreach (var dock in _secondaryDocks) dock.PositionOnMonitor();
+            UpdateSecondaryDocks();
+        };
         return timer;
     }
 

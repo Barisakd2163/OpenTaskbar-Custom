@@ -106,6 +106,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        DockContents.LayoutUpdated += (_, _) => InvalidateMagnificationTargets();
         _widgetPanel = new WidgetPanelHost(this);
         _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed += ReportError;
@@ -262,7 +263,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var workArea = SystemParameters.WorkArea;
+        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
+        var workArea = targetDisplay.WorkArea;
         if (_isPreview)
         {
             _dockArea = new Size(workArea.Width, Height);
@@ -291,12 +293,14 @@ public partial class MainWindow : Window
 
         ResizeDockToContent();
         ApplyDockAlignment();
+        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         var session = new TaskbarReplacementSession(this, source.Handle, _preferences.Current.AutoHide != AutoHideMode.Disabled);
         session.OperationReported += ReportOperationStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = Profile.Shelf;
         session.Edge = Edge;
+        session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
         try
         {
@@ -406,8 +410,10 @@ public partial class MainWindow : Window
             _replacementSession?.UpdateForeground(foreground);
             _autoHideController?.CheckForegroundWindow(foreground);
         }
-        foreach (var path in _lastSelectedWindows.Keys.Where(path => !windows.Any(window =>
-                     string.Equals(window.ExecutablePath, path, StringComparison.OrdinalIgnoreCase))).ToList())
+        var trackedPaths = windows.Where(window => window.ExecutablePath is not null)
+            .Select(window => window.ExecutablePath!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in _lastSelectedWindows.Keys.Where(path => !trackedPaths.Contains(path)).ToList())
         {
             _lastSelectedWindows.Remove(path);
         }
@@ -449,11 +455,16 @@ public partial class MainWindow : Window
         ObservableCollection<DockApp> apps,
         IReadOnlyList<TrackedWindow> windows)
     {
+        var notificationPaths = _preferences.Current.NotificationBadgesEnabled
+            ? windows.Where(window => window.HasNotification && window.ExecutablePath is not null)
+                .Select(window => window.ExecutablePath!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         for (var index = 0; index < apps.Count; index++)
         {
             var app = apps[index];
-            var hasNotification = _preferences.Current.NotificationBadgesEnabled && windows.Any(window => window.HasNotification
-                && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+            var hasNotification = notificationPaths.Contains(app.ExecutablePath);
             if (app.HasNotification != hasNotification)
             {
                 app.HasNotification = hasNotification;
@@ -466,11 +477,12 @@ public partial class MainWindow : Window
         // Apps hidden by the active profile still show up among running apps while they have windows.
         var pinnedPaths = _pinnedApps.Where(app => !IsHiddenByProfile(app)).Select(app => app.ExecutablePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var desiredPaths = windows
+        var candidates = windows
             .Where(window => window.ExecutablePath is not null
                 && File.Exists(window.ExecutablePath)
                 && !pinnedPaths.Contains(window.ExecutablePath))
-            .Select(window => window.ExecutablePath!)
+            .ToList();
+        var desiredPaths = candidates.Select(window => window.ExecutablePath!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var executablePath in desiredPaths)
         {
@@ -478,10 +490,7 @@ public partial class MainWindow : Window
         }
 
         var currentApps = _runningApps.ToDictionary(app => app.ExecutablePath, StringComparer.OrdinalIgnoreCase);
-        var desiredApps = windows
-            .Where(window => window.ExecutablePath is not null
-                && File.Exists(window.ExecutablePath)
-                && !pinnedPaths.Contains(window.ExecutablePath))
+        var desiredApps = candidates
             .GroupBy(window => window.ExecutablePath!, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
@@ -489,12 +498,14 @@ public partial class MainWindow : Window
                 var hasNotification = _preferences.Current.NotificationBadgesEnabled && group.Any(window => window.HasNotification);
                 // The topmost window decides identity icons, as ApplicationFrameHost hosts several Store apps.
                 var icon = _runningAppIcons.Get(executablePath, group.First().Handle);
+                var isForeground = group.Any(window => window.Handle == _foregroundWindow);
+                var windowCount = group.Count();
                 if (currentApps.TryGetValue(executablePath, out var existingApp))
                 {
                     existingApp.Icon = icon;
                     existingApp.HasNotification = hasNotification;
-                    existingApp.IsForeground = group.Any(window => window.Handle == _foregroundWindow);
-                    existingApp.WindowCount = group.Count();
+                    existingApp.IsForeground = isForeground;
+                    existingApp.WindowCount = windowCount;
                     return existingApp;
                 }
 
@@ -502,8 +513,8 @@ public partial class MainWindow : Window
                 {
                     Icon = icon,
                     HasNotification = hasNotification,
-                    IsForeground = group.Any(window => window.Handle == _foregroundWindow),
-                    WindowCount = group.Count()
+                    IsForeground = isForeground,
+                    WindowCount = windowCount
                 };
             })
             .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -968,13 +979,22 @@ public partial class MainWindow : Window
 
     private void UpdateWindowIndicators(IReadOnlyList<TrackedWindow> windows)
     {
+        var states = new Dictionary<string, (int Count, bool IsForeground)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var window in windows)
+        {
+            if (window.ExecutablePath is null) continue;
+            states.TryGetValue(window.ExecutablePath, out var state);
+            states[window.ExecutablePath] = (
+                state.Count + 1,
+                state.IsForeground || window.Handle == _foregroundWindow);
+        }
+
         for (var index = 0; index < _pinnedApps.Count; index++)
         {
             var app = _pinnedApps[index];
-            var matching = windows.Where(window => string.Equals(window.ExecutablePath, app.ExecutablePath,
-                StringComparison.OrdinalIgnoreCase)).ToList();
-            var isForeground = matching.Any(window => window.Handle == _foregroundWindow);
-            var count = matching.Count;
+            states.TryGetValue(app.ExecutablePath, out var state);
+            var isForeground = state.IsForeground;
+            var count = state.Count;
             if (app.IsRunning != (count > 0) || app.IsForeground != isForeground || app.WindowCount != count)
             {
                 app.IsForeground = isForeground;
@@ -1010,10 +1030,11 @@ public partial class MainWindow : Window
         if (_foregroundWindow == windowHandle) return;
         _foregroundWindow = windowHandle;
         UpdateWindowIndicators(VisibleSnapshot);
+        var foregroundPath = VisibleSnapshot.FirstOrDefault(window => window.Handle == windowHandle)?.ExecutablePath;
         foreach (var app in _runningApps)
         {
-            app.IsForeground = VisibleSnapshot.Any(window => window.Handle == windowHandle
-                && string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)) == true;
+            app.IsForeground = foregroundPath is not null
+                && string.Equals(foregroundPath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -1486,8 +1507,10 @@ public partial class MainWindow : Window
             UpdateNotificationBadges(_pinnedApps, VisibleSnapshot);
             UpdateNotificationBadges(_runningApps, VisibleSnapshot);
         }
+        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         if (_replacementSession?.IsActive == true)
         {
+            _replacementSession.SetTargetMonitor(targetDisplay.Handle);
             ApplyDockAlignment();
         }
         else
@@ -1841,7 +1864,8 @@ public partial class MainWindow : Window
         WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         // Measure first: the layout pass it runs can move the dock area, which is read below.
         var contentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
-        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
+        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
+        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : targetDisplay.Width;
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         if (!WidgetIsland.IsMeasureValid) WidgetIsland.Measure(unbounded);
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;

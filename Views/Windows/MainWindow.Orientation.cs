@@ -114,7 +114,7 @@ public partial class MainWindow
     /// <summary>Side docks: cells shrink in height when many apps are open; the surface hugs its content.</summary>
     private void ResizeSideDockToContent()
     {
-        var available = _dockArea.Height > 0 ? _dockArea.Height : SystemParameters.PrimaryScreenHeight;
+        var available = _dockArea.Height > 0 ? _dockArea.Height : DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay).Height;
         var count = Math.Max(1, (StartButtonShown ? 1 : 0) + VisiblePinnedCount + _runningApps.Count + ExtraButtonCount);
         var frame = DockFrame.Padding.Top + DockFrame.Padding.Bottom + DockSurface.Margin.Top + DockSurface.Margin.Bottom + 24;
         Application.Current.Resources["DockCellSize"] = Profile.Cell;

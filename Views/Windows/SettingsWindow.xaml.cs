@@ -239,7 +239,10 @@ public partial class SettingsWindow : Window
             FocusBreakMinutes = (int)Math.Round(BreakMinutesSlider.Value),
             FocusSessions = (int)Math.Round(FocusSessionsSlider.Value),
             ShowRecycleBin = RecycleBinToggle.IsChecked == true,
+            TargetDisplay = (TargetDisplayBox.SelectedItem as DisplayChoice)?.DeviceName,
             ShowOnAllMonitors = AllMonitorsToggle.IsChecked == true,
+            SecondaryApps = (SecondaryAppsBox.SelectedItem as SecondaryAppChoice)?.Scope ?? SecondaryAppScope.CurrentMonitorOnly,
+            SecondaryWidgets = SecondaryWidgetsToggle.IsChecked == true,
             CurrentDesktopOnly = CurrentDesktopToggle.IsChecked == true,
             CheckUpdates = UpdatesToggle.IsChecked == true,
             Edge = LeftEdge.IsChecked == true ? DockEdge.Left : RightEdge.IsChecked == true ? DockEdge.Right : DockEdge.Bottom,
@@ -266,6 +269,63 @@ public partial class SettingsWindow : Window
     }
 
     private sealed record ThemePackChoice(string? Id, string Name, string Details);
+    private sealed record DisplayChoice(string? DeviceName, string DisplayName);
+    private sealed record SecondaryAppChoice(SecondaryAppScope Scope, string DisplayName);
+
+    private void LoadDisplayChoices(string? selectedDevice)
+    {
+        var primaryLabel = UiText.Get("TargetDisplayPrimary");
+        var choices = new List<DisplayChoice> { new(null, primaryLabel) };
+        try
+        {
+            var displays = DisplayService.GetDisplays();
+            foreach (var d in displays)
+            {
+                var suffix = d.IsPrimary ? $" ({primaryLabel})" : "";
+                var label = $"{d.Index}: {d.Bounds.Width:0}x{d.Bounds.Height:0}{suffix}";
+                choices.Add(new DisplayChoice(d.DeviceName, label));
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.ReportError("ErrorDisplayDimensions", ex);
+        }
+
+        TargetDisplayBox.ItemsSource = choices;
+        TargetDisplayBox.SelectedItem = !string.IsNullOrWhiteSpace(selectedDevice)
+            ? choices.FirstOrDefault(c => string.Equals(c.DeviceName, selectedDevice, StringComparison.OrdinalIgnoreCase)) ?? choices[0]
+            : choices[0];
+    }
+
+    private void LoadSecondaryAppChoices(SecondaryAppScope selectedScope)
+    {
+        var choices = new List<SecondaryAppChoice>
+        {
+            new(SecondaryAppScope.CurrentMonitorOnly, UiText.Get("SecondaryAppsCurrent")),
+            new(SecondaryAppScope.AllMonitors, UiText.Get("SecondaryAppsAll"))
+        };
+        SecondaryAppsBox.ItemsSource = choices;
+        SecondaryAppsBox.SelectedItem = choices.FirstOrDefault(c => c.Scope == selectedScope) ?? choices[0];
+    }
+
+    private void UpdateMultiMonitorControls()
+    {
+        var allMonitors = AllMonitorsToggle.IsChecked == true;
+        SecondaryAppsRow.IsEnabled = allMonitors;
+        SecondaryWidgetsRow.IsEnabled = allMonitors;
+    }
+
+    private void TargetDisplayBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing) return;
+        PreferenceEdited(sender, e);
+    }
+
+    private void SecondaryAppsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing) return;
+        PreferenceEdited(sender, e);
+    }
 
     private void SelectLanguage(AppLanguage language)
     {
@@ -469,7 +529,11 @@ public partial class SettingsWindow : Window
     private void LoadFeatureSelection(DockSettings settings)
     {
         RecycleBinToggle.IsChecked = settings.ShowRecycleBin;
+        LoadDisplayChoices(settings.TargetDisplay);
         AllMonitorsToggle.IsChecked = settings.ShowOnAllMonitors;
+        LoadSecondaryAppChoices(settings.SecondaryApps);
+        SecondaryWidgetsToggle.IsChecked = settings.SecondaryWidgets;
+        UpdateMultiMonitorControls();
         CurrentDesktopToggle.IsChecked = settings.CurrentDesktopOnly;
         UpdatesToggle.IsChecked = settings.CheckUpdates;
         BottomEdge.IsChecked = settings.Edge == DockEdge.Bottom;
@@ -779,6 +843,7 @@ public partial class SettingsWindow : Window
         var selectedSize = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact;
         (Application.Current.MainWindow as MainWindow)?.SetSizePreview(selectedSize, Math.Round(DockScaleSlider.Value) / 100);
         UpdateWidgetOptionState();
+        UpdateMultiMonitorControls();
         TriggerAutoSave(immediate: sender is not (Slider or TextBox));
     }
 

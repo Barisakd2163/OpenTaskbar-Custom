@@ -33,6 +33,7 @@ public enum HotkeyChoice { Disabled, AltSpace, CtrlSpace, CtrlAltSpace, CtrlAltD
 public enum StartButtonAction { WindowsStart, Launcher }
 public enum StartButtonPlacement { Start, End, Hidden }
 public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
+public enum SecondaryAppScope { CurrentMonitorOnly, AllMonitors }
 
 /// <summary>The individual meters of the System meters widget; a cleared flag hides that meter.</summary>
 [Flags]
@@ -89,6 +90,9 @@ public sealed record DockSettings(
     bool CurrentDesktopOnly = false,
     bool ShowTray = false,
     bool ShowOnAllMonitors = true,
+    string? TargetDisplay = null,
+    SecondaryAppScope SecondaryApps = SecondaryAppScope.CurrentMonitorOnly,
+    bool SecondaryWidgets = true,
     DockEdge Edge = DockEdge.Bottom,
     // Changed from the dock itself, not the Settings edit buffer. Null stacks means "Downloads only".
     IReadOnlyList<string>? StackFolders = null,

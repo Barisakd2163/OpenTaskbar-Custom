@@ -10,11 +10,18 @@ using OpenTaskbar.Services;
 namespace OpenTaskbar;
 
 /// <summary>
-/// A lightweight dock for a non-primary display. It sits on the strip Explorer's hidden secondary taskbar still
-/// reserves, so it never changes the work area and has nothing to restore on exit. It lists the windows on its display.
+/// A lightweight dock for a non-primary display. It uses the strip Explorer's taskbar still reserves when there is
+/// one, and reserves its own app-bar shelf when taskbar replacement released that strip. It lists the windows on
+/// its display and unregisters the shelf when it closes.
 /// </summary>
 public sealed class SecondaryDockWindow : Window
 {
+    private const uint AbmNew = 0x00000000;
+    private const uint AbmRemove = 0x00000001;
+    private const uint AbmQueryPos = 0x00000002;
+    private const uint AbmSetPos = 0x00000003;
+    private const uint AbeBottom = 3;
+
     private sealed class AppSlot(string path, BitmapSource? icon, nint targetHandle, string title, bool isForeground, System.Windows.Shapes.Ellipse dot)
     {
         public string Path { get; } = path;
@@ -28,19 +35,28 @@ public sealed class SecondaryDockWindow : Window
     private readonly nint _monitor;
     private readonly StackPanel _apps;
     private readonly TextBlock _clock;
+    private readonly Button _clockButton;
+    private readonly Button _quickSettingsButton;
+    private readonly StackPanel _widgetsArea;
     private readonly RunningAppIconCache _icons;
     private readonly List<AppSlot> _slots = [];
+    private SecondaryAppScope _scope;
+    private bool _showWidgets;
     private string _lastClockText = string.Empty;
     private nint _handle;
     private bool _stripAvailable = true;
     private bool _fullScreen;
+    private bool _appBarRegistered;
+    private (int Left, int Right, int Height)? _reservation;
 
     private void ApplyVisibility() => Visibility = _stripAvailable && !_fullScreen ? Visibility.Visible : Visibility.Hidden;
 
-    public SecondaryDockWindow(nint monitor, RunningAppIconCache iconCache)
+    public SecondaryDockWindow(nint monitor, RunningAppIconCache iconCache, SecondaryAppScope scope = SecondaryAppScope.CurrentMonitorOnly, bool showWidgets = true)
     {
         _monitor = monitor;
         _icons = iconCache;
+        _scope = scope;
+        _showWidgets = showWidgets;
         Title = UiText.Get("SecondaryDockTitle");
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -52,11 +68,26 @@ public sealed class SecondaryDockWindow : Window
         SetResourceReference(FontFamilyProperty, "InterfaceFont");
 
         _apps = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        _clock = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 6, 0), FontSize = 12, FontWeight = FontWeights.SemiBold };
+        _clock = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0), FontSize = 12, FontWeight = FontWeights.SemiBold };
         _clock.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+
+        _clockButton = DockFlyout.FlatButton(_clock, (_, _) => ShellShortcuts.OpenNotificationCenter(), UiText.Get("NotificationCenter"));
+        _clockButton.Padding = new Thickness(6, 2, 6, 2);
+
+        var quickIcon = new ContentControl { Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center };
+        quickIcon.SetResourceReference(ContentControl.ContentProperty, "IconVolume");
+        quickIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+        _quickSettingsButton = DockFlyout.FlatButton(quickIcon, (_, _) => ShellShortcuts.OpenQuickSettings(), UiText.Get("WidgetQuickSettings"));
+        _quickSettingsButton.Padding = new Thickness(6, 2, 6, 2);
+        _quickSettingsButton.Visibility = showWidgets ? Visibility.Visible : Visibility.Collapsed;
+
+        _widgetsArea = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        _widgetsArea.Children.Add(_quickSettingsButton);
+        _widgetsArea.Children.Add(_clockButton);
+
         var row = new DockPanel { LastChildFill = false };
-        DockPanel.SetDock(_clock, Dock.Right);
-        row.Children.Add(_clock);
+        DockPanel.SetDock(_widgetsArea, Dock.Right);
+        row.Children.Add(_widgetsArea);
         row.Children.Add(_apps);
         var surface = new Border
         {
@@ -87,12 +118,19 @@ public sealed class SecondaryDockWindow : Window
             handled = true;
             return 3; // MA_NOACTIVATE
         });
+        RegisterAppBar();
         PositionOnMonitor();
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        UnregisterAppBar();
+        base.OnClosed(e);
+    }
+
     /// <summary>
-    /// Covers the strip below the work area. When the strip is released (auto-hide or side docks set Explorer's
-    /// taskbars to auto-hide), the dock hides instead of covering maximized windows.
+    /// Sits on the strip below the work area. When taskbar replacement releases Explorer's secondary taskbar strip,
+    /// reserves an app-bar shelf of its own so the dock stays visible without covering maximized windows.
     /// </summary>
     public void PositionOnMonitor()
     {
@@ -100,12 +138,90 @@ public sealed class SecondaryDockWindow : Window
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(_monitor, ref info)) return;
         var dpi = GetDpiForMonitor(_monitor);
-        var height = info.Monitor.Bottom - info.Work.Bottom;
-        _stripAvailable = height >= 24 * dpi / 96;
+        var stripHeight = info.Monitor.Bottom - info.Work.Bottom;
+        int height;
+
+        var metrics = DockLayoutMetrics.Calculate(DockMetrics.ShelfHeight, 0, 0, dpi);
+        var additional = metrics.AdditionalReservation(stripHeight, autoHide: false);
+        if (additional == 0)
+        {
+            // Explorer still reserves enough space here: reuse it and drop any shelf we reserved earlier.
+            if (_reservation is not null) ReleaseReservation();
+            height = stripHeight;
+        }
+        else
+        {
+            // The secondary taskbar is hidden and its strip released. Reserve as much as is missing, just above
+            // whatever strip remains, so the dock is visible and maximized windows still avoid it.
+            if (_appBarRegistered && _reservation != (info.Monitor.Left, info.Monitor.Right, additional))
+            {
+                var bottom = info.Monitor.Bottom - stripHeight;
+                var data = CreateData();
+                data.uEdge = AbeBottom;
+                data.rc = new NativeRect
+                {
+                    Left = info.Monitor.Left,
+                    Top = bottom - additional,
+                    Right = info.Monitor.Right,
+                    Bottom = bottom
+                };
+                SHAppBarMessage(AbmQueryPos, ref data);
+                data.rc.Top = data.rc.Bottom - additional;
+                SHAppBarMessage(AbmSetPos, ref data);
+                _reservation = (info.Monitor.Left, info.Monitor.Right, additional);
+            }
+
+            // Re-read the work area: the reservation may have moved the bottom edge.
+            if (!GetMonitorInfo(_monitor, ref info))
+                height = metrics.ShelfPixels;
+            else
+                height = Math.Max(metrics.ShelfPixels, info.Monitor.Bottom - info.Work.Bottom);
+        }
+
+        _stripAvailable = true;
         ApplyVisibility();
-        if (!_stripAvailable) return;
         SetWindowPos(_handle, new nint(-1), info.Monitor.Left, info.Monitor.Bottom - height,
             info.Monitor.Right - info.Monitor.Left, height, 0x0010 | 0x0040);
+    }
+
+    /// <summary>True when Explorer released the secondary taskbar strip and the dock must reserve its own shelf.</summary>
+    internal static bool NeedsOwnShelf(int stripHeight, uint dpi) =>
+        DockLayoutMetrics.Calculate(DockMetrics.ShelfHeight, 0, 0, dpi).AdditionalReservation(stripHeight, false) > 0;
+
+    private AppBarData CreateData() => new()
+    {
+        cbSize = (uint)Marshal.SizeOf<AppBarData>(),
+        hWnd = _handle
+    };
+
+    private void RegisterAppBar()
+    {
+        var data = CreateData();
+        _appBarRegistered = SHAppBarMessage(AbmNew, ref data) != 0;
+        if (!_appBarRegistered)
+            AppLog.Warning("Could not register a secondary dock as an app bar; the dock will use the taskbar strip.");
+    }
+
+    private void UnregisterAppBar()
+    {
+        if (!_appBarRegistered) return;
+        var data = CreateData();
+        SHAppBarMessage(AbmRemove, ref data);
+        _appBarRegistered = false;
+        _reservation = null;
+    }
+
+    private void ReleaseReservation()
+    {
+        UnregisterAppBar();
+        RegisterAppBar();
+    }
+
+    public void Configure(SecondaryAppScope scope, bool showWidgets)
+    {
+        _scope = scope;
+        _showWidgets = showWidgets;
+        _quickSettingsButton.Visibility = showWidgets ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public void Update(IReadOnlyList<TrackedWindow> windows, nint foreground)
@@ -117,7 +233,8 @@ public sealed class SecondaryDockWindow : Window
             _clock.Text = clockText;
         }
         var mine = windows
-            .Where(window => window.ExecutablePath is not null && MonitorFromWindow(window.Handle, 2) == _monitor)
+            .Where(window => window.ExecutablePath is not null
+                && (_scope == SecondaryAppScope.AllMonitors || MonitorFromWindow(window.Handle, 2) == _monitor))
             .GroupBy(window => window.ExecutablePath!, StringComparer.OrdinalIgnoreCase)
             .ToList();
         // Captionless windows covering the display (games, video) hide this dock like the main one.
@@ -220,23 +337,24 @@ public sealed class SecondaryDockWindow : Window
     }
 
     /// <summary>Handles of every display except the primary one.</summary>
-    public static List<nint> SecondaryMonitors()
-    {
-        var monitors = new List<nint>();
-        EnumDisplayMonitors(0, 0, (monitor, _, _, _) =>
-        {
-            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-            if (GetMonitorInfo(monitor, ref info) && (info.Flags & 1) == 0) monitors.Add(monitor);
-            return true;
-        }, 0);
-        return monitors;
-    }
+    public static List<nint> SecondaryMonitors(string? targetDisplay = null) =>
+        DisplayService.GetSecondaryMonitors(targetDisplay).ToList();
 
     private static uint GetDpiForMonitor(nint monitor) =>
         GetDpiForMonitor(monitor, 0, out var x, out _) == 0 && x > 0 ? x : 96;
 
     [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AppBarData
+    {
+        public uint cbSize;
+        public nint hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public NativeRect rc;
+        public nint lParam;
+    }
     private delegate bool MonitorEnumProc(nint monitor, nint hdc, nint rect, nint data);
 
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
@@ -252,4 +370,5 @@ public sealed class SecondaryDockWindow : Window
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetWindowLongPtr(nint window, int index, nint value);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
+    [DllImport("shell32.dll")] private static extern nuint SHAppBarMessage(uint message, ref AppBarData data);
 }

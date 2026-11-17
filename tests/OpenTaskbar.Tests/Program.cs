@@ -11,6 +11,7 @@ LocalizationChecks();
 TaskManagerTextChecks();
 SettingsChecks();
 InitialLanguageChecks();
+MultiMonitorChecks();
 checks += RunningAppChecks.Run();
 checks += WidgetViewChecks.Run();
 checks += ThemePackChecks.Run();
@@ -255,6 +256,65 @@ void InitialLanguageChecks()
         File.Delete(path);
         File.Delete(path + ".tmp");
     }
+}
+
+void MultiMonitorChecks()
+{
+    var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    try
+    {
+        var store = new DockSettingsStore(path);
+        var targetSettings = new DockSettings(
+            TargetDisplay: @"\\.\DISPLAY2",
+            SecondaryApps: SecondaryAppScope.AllMonitors,
+            SecondaryWidgets: false);
+        Check(store.Save(targetSettings) is null, "TargetDisplay and Secondary settings must save without error.");
+        var loaded = store.Load();
+        Check(loaded.Error is null, "Saved multi-monitor settings must load without error.");
+        Check(loaded.Settings.TargetDisplay == @"\\.\DISPLAY2", "TargetDisplay must persist and reload.");
+        Check(loaded.Settings.SecondaryApps == SecondaryAppScope.AllMonitors, "SecondaryApps scope must persist and reload.");
+        Check(!loaded.Settings.SecondaryWidgets, "SecondaryWidgets boolean must persist and reload.");
+
+        var json = File.ReadAllText(path);
+        Check(json.Contains("\"SecondaryApps\": \"AllMonitors\""), "SecondaryAppScope must serialize as string enum.");
+
+        File.WriteAllText(path, "{}");
+        var empty = store.Load();
+        Check(empty.Error is null && empty.Settings.TargetDisplay is null, "Default TargetDisplay must be null (primary).");
+        Check(empty.Settings.SecondaryApps == SecondaryAppScope.CurrentMonitorOnly, "Default SecondaryApps must be CurrentMonitorOnly.");
+        Check(empty.Settings.SecondaryWidgets, "Default SecondaryWidgets must be true.");
+    }
+    finally
+    {
+        File.Delete(path);
+        File.Delete(path + ".tmp");
+    }
+
+    var primary = DisplayService.GetTargetDisplay(null);
+    ArgumentNullException.ThrowIfNull(primary);
+    Check(!string.IsNullOrWhiteSpace(primary.DeviceName), "Target display must have a device name.");
+    Check(primary.Width > 0 && primary.Height > 0, "Target display must have positive dimensions.");
+
+    var fallback = DisplayService.GetTargetDisplay("NON_EXISTENT_DISPLAY_XYZ");
+    ArgumentNullException.ThrowIfNull(fallback);
+    Check(fallback.Handle == primary.Handle || fallback.IsPrimary, "Fallback display must be primary or first display.");
+
+    var secondaries = DisplayService.GetSecondaryMonitors(null);
+    Check(!secondaries.Contains(primary.Handle), "GetSecondaryMonitors must not contain the target monitor handle.");
+
+    UiText.Current.SetLanguage(AppLanguage.English);
+    Check(UiText.Get("TargetDisplay") == "Main dock display", "TargetDisplay must be localized in English.");
+    Check(UiText.Get("SecondaryApps") == "Secondary display apps", "SecondaryApps must be localized in English.");
+    Check(UiText.Get("SecondaryWidgets") == "Secondary display widgets", "SecondaryWidgets must be localized in English.");
+    Check(UiText.Get("SecondaryAppsCurrent") == "Windows on this display only", "SecondaryAppsCurrent must be localized in English.");
+    Check(UiText.Get("SecondaryAppsAll") == "All open windows", "SecondaryAppsAll must be localized in English.");
+
+    UiText.Current.SetLanguage(AppLanguage.Turkish);
+    Check(UiText.Get("TargetDisplay") == "Ana dock ekranı", "TargetDisplay must be localized in Turkish.");
+    Check(UiText.Get("SecondaryApps") == "İkinci ekran uygulamaları", "SecondaryApps must be localized in Turkish.");
+    Check(UiText.Get("SecondaryWidgets") == "İkinci ekranda widget göster", "SecondaryWidgets must be localized in Turkish.");
+    Check(UiText.Get("SecondaryAppsCurrent") == "Yalnızca bu ekrandaki pencereler", "SecondaryAppsCurrent must be localized in Turkish.");
+    Check(UiText.Get("SecondaryAppsAll") == "Tüm açık pencereler", "SecondaryAppsAll must be localized in Turkish.");
 }
 
 sealed class TestClock : TimeProvider

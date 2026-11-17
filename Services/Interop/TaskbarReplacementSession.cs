@@ -103,6 +103,36 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
     }
 
+    private nint _targetMonitor;
+
+    /// <summary>The monitor handle where the dock is positioned, or 0 to use nearest monitor.</summary>
+    public nint TargetMonitor
+    {
+        get => _targetMonitor;
+        set => SetTargetMonitor(value);
+    }
+
+    public void SetTargetMonitor(nint monitorHandle)
+    {
+        if (_targetMonitor == monitorHandle) return;
+        _targetMonitor = monitorHandle;
+        _reservation = null;
+        _sideReservation = null;
+        _lastWindowPos = null;
+        _lastLayout = default;
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
+        if (_registered)
+        {
+            var data = CreateData();
+            SHAppBarMessage(AbmRemove, ref data);
+            data = CreateData();
+            data.uCallbackMessage = CallbackMessage;
+            _registered = SHAppBarMessage(AbmNew, ref data) != 0;
+        }
+
+        PositionDockWindow();
+    }
+
     private static TaskbarReplacementSession? _current;
 
     /// <summary>
@@ -376,7 +406,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private void PositionDock()
     {
-        var monitor = MonitorFromWindow(_handle, MonitorDefaultToNearest);
+        var monitor = _targetMonitor != 0 ? _targetMonitor : MonitorFromWindow(_handle, MonitorDefaultToNearest);
         var monitorInfo = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(monitor, ref monitorInfo))
         {

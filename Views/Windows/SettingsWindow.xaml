@@ -82,10 +82,27 @@
                                           AutomationProperties.Name="{local:Loc ShowRecycleBin}" />
                                 <TextBlock Text="{local:Loc ShowRecycleBin}" Style="{StaticResource SettingsRowLabel}" />
                             </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
+                                <TextBlock Text="{local:Loc TargetDisplay}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc TargetDisplayDescription}" />
+                                <ComboBox x:Name="TargetDisplayBox" DisplayMemberPath="DisplayName"
+                                          AutomationProperties.Name="{local:Loc TargetDisplay}"
+                                          SelectionChanged="TargetDisplayBox_SelectionChanged" />
+                            </StackPanel></Border>
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <CheckBox x:Name="AllMonitorsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                           AutomationProperties.Name="{local:Loc AllMonitors}" AutomationProperties.HelpText="{local:Loc AllMonitorsDescription}" />
                                 <TextBlock Text="{local:Loc AllMonitors}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc AllMonitorsDescription}" />
+                            </DockPanel></Border>
+                            <Border x:Name="SecondaryAppsRow" Style="{StaticResource SettingsChoiceRow}"><StackPanel>
+                                <TextBlock Text="{local:Loc SecondaryApps}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc SecondaryAppsDescription}" />
+                                <ComboBox x:Name="SecondaryAppsBox" DisplayMemberPath="DisplayName"
+                                          AutomationProperties.Name="{local:Loc SecondaryApps}"
+                                          SelectionChanged="SecondaryAppsBox_SelectionChanged" />
+                            </StackPanel></Border>
+                            <Border x:Name="SecondaryWidgetsRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="SecondaryWidgetsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc SecondaryWidgets}" AutomationProperties.HelpText="{local:Loc SecondaryWidgetsDescription}" />
+                                <TextBlock Text="{local:Loc SecondaryWidgets}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc SecondaryWidgetsDescription}" />
                             </DockPanel></Border>
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <CheckBox x:Name="CurrentDesktopToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
