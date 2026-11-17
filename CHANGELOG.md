@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Fixed the native taskbar staying hidden after a failed restore: shutdown is now blocked while a recovery journal remains, and a journal-based fallback runs before exit.
+- Recovery journals are deleted only after the taskbar is verified visible; transient Explorer restarts no longer destroy the recovery state.
+- Added verified, repeated taskbar state/visibility restore so Explorer cannot re-hide the tray right after recovery.
+- Startup now self-heals a pending recovery journal in every mode, including `--preview` and `--inspect`.
+- Crash handlers now fall back to journal-based restore when no session is active or another thread is already stopping.
+- Added a detached watchdog process that restores the taskbar after End Task, `taskkill /F`, FailFast or power loss.
+- `OpenTaskbar.exe --restore` now reports failures through the exit code and only clears the journal after success.
+
 ## 0.2.7 - 2026-11-17
 
 - Fixed auto-hide lock when clicking the Clock/Date widget by auto-closing flyouts on cursor departure, preventing activation foreground theft, and eliminating counter desynchronization.
