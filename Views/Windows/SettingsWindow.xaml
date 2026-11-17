@@ -197,6 +197,9 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" HorizontalContentAlignment="Stretch">
                         <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}" HorizontalAlignment="Stretch">
                             <TextBlock Text="{local:Loc Appearance}" Style="{StaticResource SettingsHeading}" />
+
+                            <!-- Theme & Style -->
+                            <TextBlock Text="{local:Loc SectionTheme}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc Theme}" Style="{StaticResource SettingsChoiceLabel}" />
                                 <UniformGrid Columns="2" Margin="-3,0">
@@ -211,15 +214,27 @@
                                            TextWrapping="Wrap" Margin="0,6,0,8" />
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="{local:Loc ThemePackOpenFolder}" Style="{StaticResource SettingsButton}" Click="ThemePackOpenFolder_Click" Margin="0,0,8,0" />
-                                    <Button Content="{local:Loc ThemePackReload}" Style="{StaticResource SettingsButton}" Click="ThemePackReload_Click" />
+                                    <Button Content="{local:Loc ThemePackReload}" Style="{StaticResource SettingsButton}" Click="ThemePackReload_Click" Margin="0,0,8,0" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="{local:Loc ThemePackNew}" Style="{StaticResource SettingsButton}" Click="ThemePackNew_Click" Margin="0,0,8,0" />
+                                    <Button Content="{local:Loc ThemePackDuplicate}" Style="{StaticResource SettingsButton}" Click="ThemePackDuplicate_Click" Margin="0,0,8,0" />
+                                    <Button Content="{local:Loc ThemePackExport}" Style="{StaticResource SettingsButton}" Click="ThemePackExport_Click" Margin="0,0,8,0" />
+                                    <Button Content="{local:Loc ThemePackImport}" Style="{StaticResource SettingsButton}" Click="ThemePackImport_Click" Margin="0,0,8,0" />
+                                    <Button Content="{local:Loc ThemePackDelete}" Style="{StaticResource SettingsButton}" Click="ThemePackDelete_Click" />
                                 </StackPanel>
                             </StackPanel></Border>
-                            <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
-                                <TextBlock Text="{local:Loc Language}" Style="{StaticResource SettingsChoiceLabel}" />
-                                <ComboBox x:Name="LanguageBox" DisplayMemberPath="NativeName"
+
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <ComboBox x:Name="LanguageBox" DockPanel.Dock="Right" Width="220" VerticalAlignment="Center"
+                                          DisplayMemberPath="NativeName"
                                           AutomationProperties.Name="{local:Loc Language}"
                                           SelectionChanged="LanguageBox_SelectionChanged" />
-                            </StackPanel></Border>
+                                <TextBlock Text="{local:Loc Language}" Style="{StaticResource SettingsRowLabel}" VerticalAlignment="Center" />
+                            </DockPanel></Border>
+
+                            <!-- Dock Layout & Sizing -->
+                            <TextBlock Text="{local:Loc SectionDockLayout}" Style="{StaticResource SettingsSectionHeading}" />
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc DockSize}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc DockSizeDescription}" />
                                 <UniformGrid Columns="3" Margin="-3,0">
@@ -228,7 +243,7 @@
                                     <RadioButton x:Name="LargeSize" GroupName="DockSize" Content="{local:Loc SizeLarge}" Style="{StaticResource SettingsChoice}" />
                                 </UniformGrid>
                                 <DockPanel Margin="0,14,0,10">
-                                    <TextBlock x:Name="DockScaleValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
+                                    <TextBlock x:Name="DockScaleValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" FontWeight="SemiBold" />
                                     <TextBlock Text="{local:Loc DockScale}" FontWeight="SemiBold" />
                                 </DockPanel>
                                 <Slider x:Name="DockScaleSlider" Minimum="75" Maximum="150" Value="100" TickFrequency="5"
@@ -236,6 +251,7 @@
                                         AutomationProperties.Name="{local:Loc DockScale}" AutomationProperties.HelpText="{local:Loc DockScaleHelp}"
                                         ValueChanged="DockScaleSlider_ValueChanged" />
                             </StackPanel></Border>
+
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc DockEdge}" Style="{StaticResource SettingsChoiceLabel}" />
                                 <UniformGrid Columns="3" Margin="-3,0">
@@ -244,7 +260,7 @@
                                     <RadioButton x:Name="RightEdge" GroupName="DockEdge" Content="{local:Loc EdgeRight}" Style="{StaticResource SettingsChoice}" />
                                 </UniformGrid>
                             </StackPanel></Border>
-                            <!-- One choice covers both: Left/Center/Right float the dock, Full width stretches it edge to edge. -->
+
                             <Border x:Name="PositionRow" Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc DockAlignment}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc DockAlignmentDescription}" />
                                 <UniformGrid Columns="4" Margin="-3,0">
@@ -254,16 +270,17 @@
                                     <RadioButton x:Name="FullWidthLayout" GroupName="Position" Content="{local:Loc LayoutFullWidth}" Style="{StaticResource SettingsChoice}" />
                                 </UniformGrid>
                             </StackPanel></Border>
-                            <StackPanel Margin="0,16,0,0">
-                                <DockPanel Margin="0,0,0,12">
-                                    <TextBlock x:Name="OpacityValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" />
-                                    <TextBlock Text="{local:Loc SurfaceOpacity}" FontWeight="SemiBold" />
+
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,14"><StackPanel>
+                                <DockPanel Margin="0,0,0,10">
+                                    <TextBlock x:Name="OpacityValue" DockPanel.Dock="Right" Foreground="{DynamicResource TextSecondary}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{local:Loc SurfaceOpacity}" Style="{StaticResource SettingsRowLabel}" />
                                 </DockPanel>
                                 <Slider x:Name="OpacitySlider" Minimum="60" Maximum="100" Value="90" TickFrequency="5"
                                         IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10" Style="{StaticResource SettingsOpacitySlider}"
                                         AutomationProperties.Name="{local:Loc SurfaceOpacity}" AutomationProperties.HelpText="{local:Loc SurfaceOpacityHelp}"
                                         ValueChanged="OpacitySlider_ValueChanged" />
-                            </StackPanel>
+                            </StackPanel></Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
@@ -405,6 +422,7 @@
                             <TextBlock Text="{local:Loc Shortcuts}" Style="{StaticResource SettingsHeading}" />
 
                             <!-- Hotkeys -->
+                            <TextBlock Text="{local:Loc SectionHotkeys}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
                             <Border Style="{StaticResource SettingsRow}" Padding="16,14">
                                 <StackPanel>
                                     <TextBlock Text="{local:Loc LauncherHotkey}" FontWeight="SemiBold" Margin="0,0,0,10" />
@@ -426,6 +444,7 @@
                             </Border>
 
                             <!-- Start Button & Interactions -->
+                            <TextBlock Text="{local:Loc SectionInteractions}" Style="{StaticResource SettingsSectionHeading}" />
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc StartButton}" Style="{StaticResource SettingsChoiceLabel}" />
                                 <UniformGrid Columns="2" Margin="-3,0">
