@@ -83,9 +83,16 @@ public sealed class DockSettingsStore
             }
 
             Directory.CreateDirectory(directory);
-            var temporaryPath = _path + ".tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
-            File.Move(temporaryPath, _path, overwrite: true);
+            var temporaryPath = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
+                File.Move(temporaryPath, _path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
             return null;
         }
         catch (IOException)
