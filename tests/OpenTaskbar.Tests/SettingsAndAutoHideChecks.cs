@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -333,9 +334,10 @@ internal static class SettingsAndAutoHideChecks
             check(!controller.IsHidden, "Dock must stay visible while a widget flyout is actively open.");
 
             // Toggling ClockButton closed closes the flyout and lets the dock auto-hide
+            clockBtn.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseDownEvent });
             clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher(application.Dispatcher, 100);
-            check(!DockFlyout.IsAnyOpen, "Toggling ClockButton must close the flyout.");
+            check(!DockFlyout.IsAnyOpen, "Toggling ClockButton with mouse down must close the flyout.");
             PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
             check(controller.IsHidden, "Dock must auto-hide after open flyout is closed.");
 

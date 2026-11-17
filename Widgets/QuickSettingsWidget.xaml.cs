@@ -390,7 +390,16 @@ public partial class QuickSettingsWidget : DockWidget
         base.OnDisposed();
     }
     private void WifiSettings_Click(object sender, RoutedEventArgs e) => OpenWifiDetails(sender as FrameworkElement ?? this);
-    private void BluetoothSettings_Click(object sender, RoutedEventArgs e) => _ = OpenBluetoothDetailsAsync(sender as FrameworkElement ?? this);
+    private void BluetoothSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var anchor = sender as FrameworkElement ?? this;
+        if (_detailFlyout.IsOpen || _detailFlyout.RecentlyClosed(anchor))
+        {
+            _detailFlyout.Close();
+            return;
+        }
+        _ = OpenBluetoothDetailsAsync(anchor);
+    }
     private void Display_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenProjection(sender as FrameworkElement ?? this));
     private void Hotspot_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenQuickSettings(sender as FrameworkElement ?? this));
     private void QuickSettings_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenQuickSettings(sender as FrameworkElement ?? this));
