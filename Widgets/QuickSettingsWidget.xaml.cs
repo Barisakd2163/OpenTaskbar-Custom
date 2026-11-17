@@ -125,5 +125,5 @@ public partial class QuickSettingsWidget : DockWidget
     private void Display_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenProjection(sender as FrameworkElement ?? this));
     private void Hotspot_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("ms-settings:network-mobilehotspot"));
     private void QuickSettings_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenQuickSettings(sender as FrameworkElement ?? this));
-    private void Notifications_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenNotificationCenter());
+    private void Notifications_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenNotificationCenter(sender as FrameworkElement ?? this));
 }

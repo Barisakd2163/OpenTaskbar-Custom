@@ -2,8 +2,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Interop;
 using OpenTaskbar.Models;
 
@@ -45,8 +47,16 @@ public static class ShellShortcuts
         return error;
     }
 
-    /// <summary>Win+N: notification center and calendar.</summary>
-    public static string? OpenNotificationCenter() => SendWindowsShortcut(VkN);
+    /// <summary>Win+N: notification center and calendar, anchored above the clicked button when given.</summary>
+    public static string? OpenNotificationCenter(FrameworkElement? anchor = null)
+    {
+        var error = SendWindowsShortcut(VkN);
+        if (error is null && anchor is not null)
+        {
+            _ = RepositionNotificationCenterAsync(anchor);
+        }
+        return error;
+    }
 
     /// <summary>Win+P: display projection flyout, anchored above the clicked button when given.</summary>
     public static string? OpenProjection(FrameworkElement? anchor = null)
@@ -89,31 +99,170 @@ public static class ShellShortcuts
             var height = rect.Bottom - rect.Top;
             if (width < 80 || height < 80) continue;
 
-            var centerX = (int)Math.Round((topLeft.X + bottomRight.X) / 2);
-            var centerY = (int)Math.Round((topLeft.Y + bottomRight.Y) / 2);
-            int targetX;
-            int targetY;
-            switch (edge)
-            {
-                case DockEdge.Left:
-                    targetX = (int)Math.Round(bottomRight.X) + 12;
-                    targetY = Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8);
-                    break;
-                case DockEdge.Right:
-                    targetX = (int)Math.Round(topLeft.X) - width - 12;
-                    targetY = Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8);
-                    break;
-                default:
-                    targetX = Math.Clamp(centerX - width / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - width - 8);
-                    targetY = Math.Max(monitorInfo.Work.Top + 8, (int)Math.Round(topLeft.Y) - height - 12);
-                    break;
-            }
-
+            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, height, monitorInfo, edge);
             SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
             if (movedOnce) break;
             movedOnce = true;
             // Re-apply once more after ShellHost finishes its entrance animation.
             await Task.Delay(75);
+        }
+    }
+
+    private static async Task RepositionNotificationCenterAsync(FrameworkElement anchor)
+    {
+        if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0) return;
+        Point topLeft;
+        Point bottomRight;
+        try
+        {
+            topLeft = anchor.PointToScreen(new Point(0, 0));
+            bottomRight = anchor.PointToScreen(new Point(anchor.ActualWidth, anchor.ActualHeight));
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        var monitor = MonitorFromWindow(source.Handle, MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo)) return;
+        var edge = DockFlyout.Edge;
+        var movedOnce = false;
+
+        for (var attempt = 0; attempt < 24; attempt++)
+        {
+            await Task.Delay(25);
+            var hwnd = FindNotificationCenterHandle();
+            if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            if (width < 80 || height < 80) continue;
+
+            if (!movedOnce)
+            {
+                _ = Task.Run(() => EnsureCalendarCollapsed(hwnd));
+            }
+
+            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, height, monitorInfo, edge);
+            SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+            if (movedOnce) break;
+            movedOnce = true;
+            await Task.Delay(75);
+        }
+    }
+
+    private static (int TargetX, int TargetY) CalculateTargetPosition(
+        Point topLeft, Point bottomRight, int width, int height, MonitorInfo monitorInfo, DockEdge edge)
+    {
+        var centerX = (int)Math.Round((topLeft.X + bottomRight.X) / 2);
+        var centerY = (int)Math.Round((topLeft.Y + bottomRight.Y) / 2);
+        switch (edge)
+        {
+            case DockEdge.Left:
+                return (
+                    (int)Math.Round(bottomRight.X) + 12,
+                    Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8)
+                );
+            case DockEdge.Right:
+                return (
+                    (int)Math.Round(topLeft.X) - width - 12,
+                    Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8)
+                );
+            default:
+                return (
+                    Math.Clamp(centerX - width / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - width - 8),
+                    Math.Max(monitorInfo.Work.Top + 8, (int)Math.Round(topLeft.Y) - height - 12)
+                );
+        }
+    }
+
+    private static nint FindNotificationCenterHandle()
+    {
+        foreach (var cls in new[] { "NotificationCenterWindow", "Shell_ActionCenter" })
+        {
+            var h = FindWindow(cls, null);
+            if (h != 0 && IsWindowVisible(h)) return h;
+        }
+
+        nint found = 0;
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h)) return true;
+            var sb = new StringBuilder(64);
+            GetClassName(h, sb, 64);
+            var className = sb.ToString();
+            if (className is "NotificationCenterWindow" or "Shell_ActionCenter")
+            {
+                found = h;
+                return false;
+            }
+
+            if (className == "Windows.UI.Core.CoreWindow")
+            {
+                var titleSb = new StringBuilder(64);
+                GetWindowText(h, titleSb, 64);
+                var title = titleSb.ToString();
+                if (title.Contains("Notification", StringComparison.OrdinalIgnoreCase)
+                    || title.Contains("Bildirim", StringComparison.OrdinalIgnoreCase)
+                    || title.Contains("Action", StringComparison.OrdinalIgnoreCase))
+                {
+                    found = h;
+                    return false;
+                }
+            }
+            return true;
+        }, 0);
+
+        return found;
+    }
+
+    private static void EnsureCalendarCollapsed(nint hwnd)
+    {
+        try
+        {
+            var element = AutomationElement.FromHandle(hwnd);
+            if (element is null) return;
+
+            var buttons = element.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+
+            foreach (AutomationElement btn in buttons)
+            {
+                if (btn.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var pattern)
+                    && pattern is ExpandCollapsePattern ecp)
+                {
+                    if (ecp.Current.ExpandCollapseState == ExpandCollapseState.Expanded)
+                    {
+                        ecp.Collapse();
+                        return;
+                    }
+                }
+
+                var autoId = btn.Current.AutomationId;
+                var name = btn.Current.Name;
+                if (autoId is "CollapseButton" or "ExpandCollapseButton" or "ChevronButton" or "Chevron"
+                    || name?.Contains("Collapse", StringComparison.OrdinalIgnoreCase) == true
+                    || name?.Contains("Daralt", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv)
+                        && inv is InvokePattern ip)
+                    {
+                        ip.Invoke();
+                        return;
+                    }
+
+                    if (btn.TryGetCurrentPattern(TogglePattern.Pattern, out var tog)
+                        && tog is TogglePattern tp && tp.Current.ToggleState == ToggleState.On)
+                    {
+                        tp.Toggle();
+                        return;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Transient cross-process UIA failures must not throw.
         }
     }
 
@@ -219,6 +368,18 @@ public static class ShellShortcuts
     [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
+
+    private delegate bool EnumWindowsProc(nint hWnd, nint lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, nint lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(nint hWnd, StringBuilder lpString, int nMaxCount);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

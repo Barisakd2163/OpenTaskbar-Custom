@@ -651,6 +651,12 @@ internal static class DockLayoutChecks
         Check(script.Contains("start \"\" \"%DST%\""), "Script must start updated executable.");
         Check(script.Contains("del /f /q \"%~f0\""), "Script must clean itself up.");
 
+        // Verify notification center anchoring support
+        var dummyButton = new Button();
+        var openNotifError = ShellShortcuts.OpenNotificationCenter(dummyButton);
+        Check(openNotifError is null || openNotifError == UiText.Get("ErrorShortcutSend"),
+            "OpenNotificationCenter with anchor must execute without crashing.");
+
         return checks;
     }
 }

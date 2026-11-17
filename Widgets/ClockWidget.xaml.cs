@@ -222,7 +222,7 @@ public partial class ClockWidget : DockWidget
         var notifications = DockFlyout.FlatButton(new TextBlock { Text = UiText.Get("OpenNotifications"), FontWeight = FontWeights.SemiBold }, (_, _) =>
         {
             _calendar.Close();
-            Report(ShellShortcuts.OpenNotificationCenter());
+            Report(ShellShortcuts.OpenNotificationCenter(ClockButton));
         });
         notifications.Margin = new Thickness(0, 8, 0, 0);
         root.Children.Add(notifications);
