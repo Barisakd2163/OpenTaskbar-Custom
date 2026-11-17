@@ -112,6 +112,7 @@ public sealed record DockSettings(
     SystemMeters StatsMeters = SystemMeters.All,
     // Folder name under %LOCALAPPDATA%\OpenTaskbar\Themes; null keeps the built-in look.
     string? ThemePack = null,
+    bool ThemeApplicationIcons = true,
     WidgetDensityMode GlobalWidgetDensity = WidgetDensityMode.Auto,
     IReadOnlyDictionary<string, WidgetDensityMode>? WidgetDensityOverrides = null,
     // Free-form dock order: "start", "app:<path>", "stack:<path>", "widget:<id>", "bin".
