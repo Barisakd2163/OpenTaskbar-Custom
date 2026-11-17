@@ -20,6 +20,7 @@ public sealed class WeatherWidget : DockWidget
     private string? _error;
     private DateTime _loadedAt = DateTime.MinValue;
     private string? _loadedFor;
+    private string? _loadingFor;
     private CancellationTokenSource? _loading;
 
     public WeatherWidget()
@@ -60,32 +61,48 @@ public sealed class WeatherWidget : DockWidget
 
     protected override void OnSettingsChanged()
     {
-        if (IsActive && _loadedFor is not null && _loadedFor != LocationKey) _ = LoadAsync();
+        if (IsActive && _loadedFor != LocationKey && _loadingFor != LocationKey) _ = LoadAsync();
     }
 
     protected override void OnTick(DateTime now)
     {
-        if (now - _loadedAt > (_report is null ? RetryInterval : RefreshInterval) && _loading is null) _ = LoadAsync();
+        if (DateTime.UtcNow - _loadedAt > (_report is null ? RetryInterval : RefreshInterval) && _loading is null) _ = LoadAsync();
     }
 
     private async Task LoadAsync()
     {
+        var key = LocationKey;
+        if (_loading is not null && _loadingFor == key) return;
         _loading?.Cancel();
         var loading = new CancellationTokenSource();
         _loading = loading;
-        _loadedAt = DateTime.Now;
-        var key = LocationKey;
-        var (report, error) = await WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language, loading.Token);
-        if (!ReferenceEquals(_loading, loading)) return;
-        _loading = null;
-        if (!IsActive) return;
-        // Keep the last good report through brief network failures.
-        if (report is not null || _loadedFor != key) _report = report;
-        // Without a city, missing location access just hides the widget instead of raising an error.
-        if (error is not null && _loadedFor != key && !string.IsNullOrWhiteSpace(Settings.WeatherCity)) Report(error);
-        _error = _report is null ? error : null;
-        _loadedFor = key;
-        Render();
+        _loadingFor = key;
+        _loadedAt = DateTime.UtcNow;
+        if (_loadedFor != key)
+        {
+            _report = null;
+            _error = null;
+            Render();
+        }
+        try
+        {
+            var (report, error) = await WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language, loading.Token);
+            if (!ReferenceEquals(_loading, loading) || !IsActive || LocationKey != key) return;
+            if (report is not null || _loadedFor != key) _report = report;
+            if (error is not null && _loadedFor != key && !string.IsNullOrWhiteSpace(Settings.WeatherCity)) Report(error);
+            _error = _report is null ? error : null;
+            _loadedFor = key;
+            Render();
+        }
+        finally
+        {
+            if (ReferenceEquals(_loading, loading))
+            {
+                _loading = null;
+                _loadingFor = null;
+            }
+            loading.Dispose();
+        }
     }
 
     private void Render()

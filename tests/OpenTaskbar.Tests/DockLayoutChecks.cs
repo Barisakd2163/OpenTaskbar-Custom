@@ -485,6 +485,30 @@ internal static class DockLayoutChecks
         Check(dayText?.Text == "MONDAY", "ClockWidget must display uppercase day of week.");
         Check(dateText?.Text == "Nov 16", "ClockWidget must display date format.");
         Check(timeText?.Text.Contains("20") == true || timeText?.Text.Contains("8") == true, "ClockWidget must display time.");
+        clockWidget.Tick(new DateTime(2026, 11, 17, 20, 16, 0));
+        Check(dayText?.Text == "TUESDAY" && dateText?.Text == "Nov 17", "Date changes must refresh even when the displayed time is unchanged.");
+        clockWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, DateStyle: ClockDateStyle.ShortDateOnly));
+        clockWidget.Tick(new DateTime(2026, 11, 17, 20, 16, 0));
+        var shortDate = dateText?.Text;
+        clockWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, DateStyle: ClockDateStyle.NumericDate));
+        clockWidget.Tick(new DateTime(2026, 11, 17, 20, 16, 0));
+        Check(shortDate != dateText?.Text, "Short date and numeric date must display different formats.");
+
+        var focusClock = new TestClock();
+        using var focusWidget = new FocusWidget(focusClock);
+        focusWidget.ApplySettings(new DockSettings(FocusMinutes: 25));
+        focusWidget.Activate();
+        var focusPlay = (Button)focusWidget.FindName("PlayButton")!;
+        var focusRemaining = (TextBlock)focusWidget.FindName("RemainingText")!;
+        focusPlay.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        focusClock.Advance(TimeSpan.FromMinutes(5));
+        focusWidget.Tick(DateTime.Now.AddHours(-2));
+        Check(focusRemaining.Text == "20:00", "Focus timer must use monotonic elapsed time.");
+        focusPlay.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        focusClock.Advance(TimeSpan.FromMinutes(10));
+        focusWidget.Tick(DateTime.Now.AddHours(3));
+        Check(focusRemaining.Text == "20:00", "Paused focus timer must ignore changes to the system clock.");
+        clockWidget.Dispose();
 
         // Verify DockStack icon property and notifications
         var tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "OpenTaskbarStackTest_" + Guid.NewGuid().ToString("N"));
