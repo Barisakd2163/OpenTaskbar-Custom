@@ -20,15 +20,30 @@ public static class UpdateChecker
 
     public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null);
 
+    private static readonly HttpClient ApiClient = CreateApiClient();
+    private static readonly HttpClient DownloadClient = CreateDownloadClient();
+
+    private static HttpClient CreateApiClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("OpenTaskbar", CurrentVersion.ToString(3)));
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        return client;
+    }
+
+    private static HttpClient CreateDownloadClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("OpenTaskbar", CurrentVersion.ToString(3)));
+        return client;
+    }
+
     /// <summary>The newer release (null when up to date); <c>Checked</c> is false when GitHub could not be reached.</summary>
     public static async Task<(Release? Release, bool Checked)> FindNewerAsync(CancellationToken cancellation)
     {
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("OpenTaskbar", CurrentVersion.ToString(3)));
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            using var response = await client.GetAsync($"https://api.github.com/repos/{Repository}/releases/latest", cancellation);
+            using var response = await ApiClient.GetAsync($"https://api.github.com/repos/{Repository}/releases/latest", cancellation);
             if (!response.IsSuccessStatusCode)
             {
                 AppLog.Info($"Update check: GitHub returned {(int)response.StatusCode}.");
@@ -125,10 +140,7 @@ public static class UpdateChecker
         {
             if (File.Exists(partFile)) File.Delete(partFile);
 
-            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("OpenTaskbar", CurrentVersion.ToString(3)));
-
-            using var response = await client.GetAsync(release.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellation);
+            using var response = await DownloadClient.GetAsync(release.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellation);
             if (!response.IsSuccessStatusCode)
             {
                 var statusCode = (int)response.StatusCode;

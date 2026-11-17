@@ -88,7 +88,7 @@ public static class ThemePacks
 {
     public const int RenderSize = 128;
     private const string BuiltInResourcePrefix = "OpenTaskbar.BuiltInThemes/";
-    private const int MaxCachedImages = 64;
+    private const int MaxCachedImages = 24;
     private static readonly Dictionary<string, BitmapSource?> Images = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Queue<string> ImageOrder = new();
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<BitmapSource, BitmapSource> Plated = new();

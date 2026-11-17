@@ -9,6 +9,23 @@ namespace OpenTaskbar;
 public partial class MainWindow
 {
     private readonly HashSet<FrameworkElement> _currentMagnifiedBuffer = [];
+    private readonly List<(FrameworkElement Icon, Point Center)> _magnificationTargets = [];
+    private bool _magnificationTargetsDirty = true;
+
+    internal void InvalidateMagnificationTargets() => _magnificationTargetsDirty = true;
+
+    private void RebuildMagnificationTargets()
+    {
+        _magnificationTargets.Clear();
+        foreach (var button in GetAllDockButtons())
+        {
+            if (GetButtonIcon(button) is not { } icon) continue;
+            var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), DockContents);
+            _magnificationTargets.Add((icon, center));
+        }
+
+        _magnificationTargetsDirty = false;
+    }
 
     internal static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
     {
@@ -103,18 +120,16 @@ public partial class MainWindow
         const double influenceRadius = DockMetrics.InfluenceRadius;
         const double maxScale = DockMetrics.HoverScale;
 
+        if (_magnificationTargetsDirty) RebuildMagnificationTargets();
+
         _currentMagnifiedBuffer.Clear();
         var currentMagnified = _currentMagnifiedBuffer;
 
-        foreach (var button in GetAllDockButtons())
+        foreach (var (icon, center) in _magnificationTargets)
         {
-            var icon = GetButtonIcon(button);
-            if (icon is null) continue;
-
             var (scale, _) = GetIconTransforms(icon);
             icon.RenderTransformOrigin = IconScaleOrigin;
-            var buttonPos = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), DockContents);
-            var distance = Math.Abs(mouseX - (IsVertical ? buttonPos.Y : buttonPos.X));
+            var distance = Math.Abs(mouseX - (IsVertical ? center.Y : center.X));
 
             double targetScale = 1.0;
             if (distance < influenceRadius)

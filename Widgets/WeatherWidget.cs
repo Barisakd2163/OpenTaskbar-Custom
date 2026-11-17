@@ -111,12 +111,9 @@ public sealed class WeatherWidget : DockWidget
 
     private UIElement BuildFlyout()
     {
-        var container = new Border
-        {
-            Width = 320,
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(14, 12, 14, 12)
-        };
+        // DockFlyout already supplies the glass card and its padding. Only the
+        // condition tint is ours, so the content sits directly inside the flyout.
+        var container = new Border { Width = 320 };
 
         if (_report is not { } report)
         {

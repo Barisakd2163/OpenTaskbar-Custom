@@ -44,6 +44,11 @@ internal static class DockLayoutChecks
                 "Auto-hide must release the additional desktop reservation.");
         }
 
+        // Secondary docks must appear even when taskbar replacement releases Explorer's strip.
+        Check(SecondaryDockWindow.NeedsOwnShelf(0, 96), "A released strip must make the secondary dock reserve a shelf.");
+        Check(!SecondaryDockWindow.NeedsOwnShelf(66, 96), "An existing taskbar strip must be reused as is.");
+        Check(SecondaryDockWindow.NeedsOwnShelf(66, 192), "A strip must be measured in DPI-aware pixels.");
+
         foreach (var width in new[] { 140d, 280d, 500d })
         {
             var iconSize = (double)app.FindResource("DockIconSize");

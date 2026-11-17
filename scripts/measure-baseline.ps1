@@ -30,7 +30,8 @@
 param(
     [string]$Label = "baseline",
     [int]$IdleSeconds = 12,
-    [int]$SweepSeconds = 12
+    [int]$SweepSeconds = 12,
+    [string]$MagnificationEnabled = "true"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -155,13 +156,13 @@ $settingsExisted = Test-Path $settingsPath
 if ($settingsExisted) { Copy-Item $settingsPath $settingsBackup -Force }
 
 New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
-@'
+@"
 {
   "Language": "en-US",
   "Theme": "Dark",
   "Position": "Center",
   "AnimationsEnabled": true,
-  "MagnificationEnabled": true,
+  "MagnificationEnabled": $($MagnificationEnabled.ToLowerInvariant()),
   "PreviewsEnabled": false,
   "NotificationBadgesEnabled": true,
   "AutoHide": "Disabled",
@@ -179,7 +180,7 @@ New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
   "DateStyle": "DayAndShortDate",
   "DockScale": 1.0
 }
-'@ | Set-Content -Path $settingsPath -Encoding UTF8
+"@ | Set-Content -Path $settingsPath -Encoding UTF8
 
 # Running apps give the fisheye real buttons to magnify; the Start button and Recycle Bin are always present.
 $measurementStartedAt = Get-Date
@@ -192,7 +193,8 @@ $timeline = Join-Path $outputDir 'timeline.log'
 function Write-Timeline([string]$message) {
     "$(Get-Date -Format 'HH:mm:ss.fff') $message" | Add-Content -Path $timeline
 }
-Write-Timeline "measurement started; notepad launch PIDs: $($notepads.Id -join ', ')"
+$notepadWindows = @(Get-Process notepad -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 })
+Write-Timeline "measurement started; notepad launch PIDs: $($notepads.Id -join ', '); notepad windows: $($notepadWindows.Count)"
 
 $app = $null
 try {
