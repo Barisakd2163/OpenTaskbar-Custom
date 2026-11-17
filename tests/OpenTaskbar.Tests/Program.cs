@@ -150,6 +150,11 @@ void LocalizationChecks()
     UiText.Current.SetLanguage(AppLanguage.Turkish);
     Check(!UiText.Current.IsEnglish && UiText.Current.Language == AppLanguage.Turkish, "UiText must reflect Turkish language selection.");
     Check(UiText.Get("ErrorDockAttach") == "Dock penceresi Windows'a bağlanamadı.", "Error keys must resolve to Turkish.");
+    Check(AppLog.ResolveMessage("ErrorDockAttach") == "Dock penceresi Windows'a bağlanamadı.",
+        "Structured log entries must resolve the same text shown to the user.");
+    Check(AppLog.ResolveMessage("raw exception text") == "raw exception text",
+        "Unknown keys must fall back to raw text so logging never throws.");
+    Check(UiText.Get("OpenLogFile") == "Günlük dosyasını aç", "The log-opening action must be localized.");
 }
 
 void TaskManagerTextChecks()
