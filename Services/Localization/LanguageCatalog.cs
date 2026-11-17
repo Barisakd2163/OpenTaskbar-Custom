@@ -9,12 +9,55 @@ namespace OpenTaskbar.Services;
 public static class LanguageCatalog
 {
     private const string ResourcePrefix = "OpenTaskbar.Localization.Languages.";
-    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Catalogs = LoadCatalogs();
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Catalogs = LoadCatalogs();
 
-    public static IReadOnlyList<AppLanguage> Languages { get; } = Catalogs.Keys
-        .Select(name => new AppLanguage(name))
-        .OrderBy(language => language.Culture.EnglishName, StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    public static IReadOnlyList<AppLanguage> Languages { get; private set; } = BuildLanguages(Catalogs);
+
+    private static IReadOnlyList<AppLanguage> BuildLanguages(
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> catalogs) =>
+        catalogs.Keys
+            .Select(name => new AppLanguage(name))
+            .OrderBy(language => language.Culture.EnglishName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    /// <summary>
+    /// Reloads catalogs from disk under <paramref name="sourceDirectory"/>, or from embedded resources when null.
+    /// Used by dev reload; malformed files are skipped so a bad edit never breaks the running app.
+    /// </summary>
+    public static void Reload(string? sourceDirectory = null)
+    {
+        var loaded = string.IsNullOrWhiteSpace(sourceDirectory)
+            ? LoadCatalogs()
+            : LoadCatalogsFromDisk(sourceDirectory);
+        if (loaded is null) return;
+        Catalogs = loaded;
+        Languages = BuildLanguages(loaded);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? LoadCatalogsFromDisk(string directory)
+    {
+        try
+        {
+            var path = Path.Combine(directory, "Services", "Localization", "Languages");
+            if (!System.IO.Directory.Exists(path)) return null;
+            var catalogs = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in System.IO.Directory.EnumerateFiles(path, "*.json"))
+            {
+                using var stream = File.OpenRead(file);
+                var translations = JsonSerializer.Deserialize<Dictionary<string, string>>(stream);
+                if (translations is null) continue;
+                var culture = CultureInfo.GetCultureInfo(Path.GetFileNameWithoutExtension(file));
+                catalogs[culture.Name] = translations;
+            }
+            return catalogs.ContainsKey(AppLanguage.English.CultureName) ? catalogs : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+            or CultureNotFoundException or ArgumentException)
+        {
+            AppLog.Warning($"Dev reload: localization from disk failed: {ex.Message}");
+            return null;
+        }
+    }
 
     public static bool IsSupported(AppLanguage language) => Catalogs.Keys.Any(name =>
         string.Equals(CultureInfo.GetCultureInfo(name).TwoLetterISOLanguageName,
