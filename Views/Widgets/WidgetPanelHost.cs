@@ -11,6 +11,9 @@ public sealed class WidgetPanelHost : IDisposable
     private readonly WidgetPanelFrame _frame = new();
     private readonly Popup _popup;
     private FrameworkElement? _anchor;
+    private FrameworkElement? _closedAnchor;
+    private bool _suppressNextClick;
+    private bool _explicitClose;
     private bool _restoreFocus;
     private bool _disposed;
 
@@ -47,6 +50,16 @@ public sealed class WidgetPanelHost : IDisposable
             Close();
             return;
         }
+
+        if (_suppressNextClick && ReferenceEquals(_closedAnchor, anchor))
+        {
+            _suppressNextClick = false;
+            _closedAnchor = null;
+            return;
+        }
+
+        _suppressNextClick = false;
+        _closedAnchor = null;
         Close(restoreFocus: false);
         if (!_owner.IsActive && !_owner.Activate())
         {
@@ -67,6 +80,7 @@ public sealed class WidgetPanelHost : IDisposable
 
     public void Close(bool restoreFocus = true)
     {
+        _explicitClose = true;
         _restoreFocus = restoreFocus;
         _popup.IsOpen = false;
     }
@@ -82,12 +96,39 @@ public sealed class WidgetPanelHost : IDisposable
     private void Popup_Closed(object? sender, EventArgs e)
     {
         var anchor = _anchor;
+        if (!_explicitClose && anchor is not null && IsCursorOver(anchor))
+        {
+            _suppressNextClick = true;
+            _closedAnchor = anchor;
+        }
+        else
+        {
+            _suppressNextClick = false;
+            _closedAnchor = null;
+        }
+        _explicitClose = false;
         _anchor = null;
         _frame.Body = null;
         _popup.PlacementTarget = null;
         if (_restoreFocus && _owner.IsActive && anchor is { IsLoaded: true, IsVisible: true })
             anchor.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
         IsOpenChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static bool IsCursorOver(UIElement? element)
+    {
+        if (element is null || !element.IsVisible) return false;
+        if (element.IsMouseOver) return true;
+        try
+        {
+            var pos = Mouse.GetPosition(element);
+            var size = element.RenderSize;
+            return pos.X >= 0 && pos.Y >= 0 && pos.X <= size.Width && pos.Y <= size.Height;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void Frame_CloseRequested(object? sender, EventArgs e) => Close();

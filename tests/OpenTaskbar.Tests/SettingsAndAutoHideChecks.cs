@@ -352,8 +352,16 @@ internal static class SettingsAndAutoHideChecks
 
             // Clicking outside (CloseAll) must dismiss flyout and allow auto-hide
             DockFlyout.CloseAll();
-            PumpDispatcher(application.Dispatcher, 100);
+            PumpDispatcher(application.Dispatcher, 400);
             check(!DockFlyout.IsAnyOpen, "Clicking outside must close the flyout.");
+
+            // 3. Test toggle directly via Click while open
+            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher(application.Dispatcher, 100);
+            check(DockFlyout.IsAnyOpen, "Clicking clock button must reopen calendar flyout for toggle test.");
+            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!DockFlyout.IsAnyOpen, "Clicking clock button again directly must toggle calendar flyout closed.");
 
             simulatedCursor = (0, 0);
             controller.EvaluateState();

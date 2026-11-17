@@ -60,11 +60,13 @@ public sealed class DockFlyout
     private static readonly List<WeakReference<DockFlyout>> FlyoutRegistry = [];
     public static event Action? AnyClosed;
     private UIElement? _currentTarget;
-    private bool _targetPressedWhileOpen;
+    private bool _suppressNextClick;
+    private bool _explicitClose;
     private WeakReference<UIElement>? _closedTarget;
+    private long _closedAt;
     private nint _previousForeground;
     private bool _restoreFocus;
-    private long _closedAt;
+
     private readonly Popup _popup;
     private readonly Grid _root;
     private readonly Border _frame;
@@ -154,17 +156,19 @@ public sealed class DockFlyout
         _popup.Closed += (_, _) =>
         {
             var target = _currentTarget ?? _popup.PlacementTarget;
+            var isClosingTargetClick = !_explicitClose && target is not null && (_suppressNextClick || IsCursorOver(target));
+            if (target is not null)
+            {
+                _closedTarget = new WeakReference<UIElement>(target);
+            }
             if (_currentTarget is not null)
             {
                 _currentTarget.PreviewMouseDown -= Target_PreviewMouseDown;
                 _currentTarget = null;
             }
-            if (target is not null)
-            {
-                _closedTarget = new WeakReference<UIElement>(target);
-            }
             _closedAt = Environment.TickCount64;
-            _targetPressedWhileOpen = false;
+            _suppressNextClick = isClosingTargetClick;
+            _explicitClose = false;
             // Light dismiss and Esc hand the keyboard back to the app that had it before the flyout opened.
             if (_restoreFocus && _previousForeground != 0)
             {
@@ -198,14 +202,32 @@ public sealed class DockFlyout
     {
         if (_popup.IsOpen)
         {
-            _targetPressedWhileOpen = true;
+            _suppressNextClick = true;
             _closedTarget = new WeakReference<UIElement>((UIElement)sender);
-            _closedAt = Environment.TickCount64;
+        }
+    }
+
+    private static bool IsCursorOver(UIElement? element)
+    {
+        if (element is null || !element.IsVisible) return false;
+        if (element.IsMouseOver) return true;
+        try
+        {
+            var pos = Mouse.GetPosition(element);
+            var size = element.RenderSize;
+            return pos.X >= 0 && pos.Y >= 0 && pos.X <= size.Width && pos.Y <= size.Height;
+        }
+        catch
+        {
+            return false;
         }
     }
 
     public void Show(UIElement target, UIElement content, bool animate = true, bool focusable = false)
     {
+        _explicitClose = false;
+        _suppressNextClick = false;
+        _closedTarget = null;
         _root.Margin = Edge switch
         {
             DockEdge.Left => new Thickness(12, 10, 14, 14),
@@ -228,7 +250,6 @@ public sealed class DockFlyout
             _currentTarget.PreviewMouseDown -= Target_PreviewMouseDown;
         }
         _currentTarget = target;
-        _targetPressedWhileOpen = false;
         target.PreviewMouseDown -= Target_PreviewMouseDown;
         target.PreviewMouseDown += Target_PreviewMouseDown;
         _popup.PlacementTarget = target;
@@ -253,32 +274,44 @@ public sealed class DockFlyout
 
     public void Toggle(UIElement target, Func<UIElement> content, bool animate = true, bool focusable = false)
     {
-        if (_targetPressedWhileOpen)
-        {
-            _targetPressedWhileOpen = false;
-            Close();
-            return;
-        }
-
         if (_popup.IsOpen && ReferenceEquals(_popup.PlacementTarget ?? _currentTarget, target))
         {
             Close();
             return;
         }
 
-        // Clicking the anchor of an open flyout first light-dismisses it on mouse down; don't reopen on the click.
-        if (RecentlyClosed(target)) return;
+        if (_suppressNextClick && (_closedTarget is null || (_closedTarget.TryGetTarget(out var prev) && ReferenceEquals(prev, target))))
+        {
+            _suppressNextClick = false;
+            _closedTarget = null;
+            return;
+        }
+
         Show(target, content(), animate, focusable);
     }
 
-    public bool RecentlyClosed(UIElement target) =>
-        _targetPressedWhileOpen
-        || (_closedTarget is not null && _closedTarget.TryGetTarget(out var prev) && ReferenceEquals(prev, target)
-        && Environment.TickCount64 - _closedAt < 450);
+    public bool RecentlyClosed(UIElement target)
+    {
+        if (_suppressNextClick && (_closedTarget is null || (_closedTarget.TryGetTarget(out var clickTarget) && ReferenceEquals(clickTarget, target))))
+        {
+            _suppressNextClick = false;
+            _closedTarget = null;
+            return true;
+        }
+
+        if (_closedTarget is not null && _closedTarget.TryGetTarget(out var prev) && ReferenceEquals(prev, target)
+            && Environment.TickCount64 - _closedAt < 350)
+        {
+            return true;
+        }
+
+        return false;
+    }
 
     /// <summary>Closes flyout; clears focus restoration when explicitly requested.</summary>
     public void Close(bool restoreFocus = true)
     {
+        _explicitClose = true;
         if (!restoreFocus) _restoreFocus = false;
         _popup.IsOpen = false;
     }
