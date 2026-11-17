@@ -17,6 +17,7 @@ public enum HotkeyChoice { Disabled, AltSpace, CtrlSpace, CtrlAltSpace, CtrlAltD
 public enum StartButtonAction { WindowsStart, Launcher }
 public enum StartButtonPlacement { Start, End, Hidden }
 public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
+public enum WidgetDensityMode { Auto, Compact, Full }
 
 /// <summary>The individual meters of the System meters widget; a cleared flag hides that meter.</summary>
 [Flags]
@@ -85,4 +86,6 @@ public sealed record DockSettings(
     ClockDateStyle DateStyle = ClockDateStyle.DayAndShortDate,
     SystemMeters StatsMeters = SystemMeters.All,
     // Folder name under %LOCALAPPDATA%\OpenTaskbar\Themes; null keeps the built-in look.
-    string? ThemePack = null);
+    string? ThemePack = null,
+    WidgetDensityMode GlobalWidgetDensity = WidgetDensityMode.Auto,
+    IReadOnlyDictionary<string, WidgetDensityMode>? WidgetDensityOverrides = null);

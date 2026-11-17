@@ -1,8 +1,8 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Media;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -21,7 +21,9 @@ public sealed class WeatherWidget : DockWidget
     private string? _error;
     private DateTime _loadedAt = DateTime.MinValue;
     private string? _loadedFor;
+    private string? _loadingKey;
     private CancellationTokenSource? _loading;
+    public override double FullWidthEstimate => Math.Max(80, DesiredSize.Width);
 
     public WeatherWidget()
     {
@@ -38,22 +40,35 @@ public sealed class WeatherWidget : DockWidget
         _card.Click += (_, _) => _flyout.Toggle(_card, BuildFlyout);
         Content = _card;
         HasData = false;
-        UiText.Current.PropertyChanged += (_, _) => Render();
     }
 
     private string LocationKey => $"{Settings.WeatherCity.Trim()}|{Settings.Language}";
 
-    protected override void OnActivated() => _ = LoadAsync();
+    protected override void OnActivated()
+    {
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
+        _ = LoadAsync();
+    }
 
     protected override void OnDeactivated()
     {
-        _loading?.Cancel();
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+        var loading = _loading;
+        _loading = null;
+        _loadingKey = null;
+        loading?.Cancel();
+        loading?.Dispose();
         _flyout.Close();
     }
 
     protected override void OnSettingsChanged()
     {
-        if (IsActive && _loadedFor is not null && _loadedFor != LocationKey) _ = LoadAsync();
+        if (!IsActive) return;
+        var key = LocationKey;
+        if ((_loadedFor is not null && _loadedFor != key) || (_loading is not null && _loadingKey != key))
+        {
+            _ = LoadAsync();
+        }
     }
 
     protected override void OnTick(DateTime now)
@@ -61,43 +76,71 @@ public sealed class WeatherWidget : DockWidget
         if (now - _loadedAt > (_report is null ? RetryInterval : RefreshInterval) && _loading is null) _ = LoadAsync();
     }
 
+    private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (IsActive) Render();
+    }
+
     private async Task LoadAsync()
     {
-        _loading?.Cancel();
+        var previous = _loading;
+        _loading = null;
+        previous?.Cancel();
+        previous?.Dispose();
+
         var loading = new CancellationTokenSource();
         _loading = loading;
         _loadedAt = DateTime.Now;
         var key = LocationKey;
-        var (report, error) = await WeatherService.LoadAsync(Settings.WeatherCity, Settings.Language == AppLanguage.English, loading.Token);
-        if (!ReferenceEquals(_loading, loading)) return;
-        _loading = null;
-        if (!IsActive) return;
-        // Keep the last good report through brief network failures.
-        if (report is not null || _loadedFor != key) _report = report;
-        // Without a city, missing location access just hides the widget instead of raising an error.
-        if (error is not null && _loadedFor != key && !string.IsNullOrWhiteSpace(Settings.WeatherCity)) Report(error);
-        _error = _report is null ? error : null;
-        _loadedFor = key;
-        Render();
+        _loadingKey = key;
+        var city = Settings.WeatherCity;
+        var english = Settings.Language == AppLanguage.English;
+
+        try
+        {
+            var (report, error) = await WeatherService.LoadAsync(city, english, loading.Token);
+            if (!ReferenceEquals(_loading, loading) || !IsActive) return;
+
+            var hasCity = !string.IsNullOrWhiteSpace(city);
+            // Keep the last good report through brief network failures.
+            if (report is not null || _loadedFor != key) _report = report;
+            // Without a city, missing location access just hides the widget instead of raising an error.
+            if (error is not null && _loadedFor != key && hasCity) Report(error);
+            _error = _report is null && hasCity ? error : null;
+            _loadedFor = key;
+            Render();
+        }
+        finally
+        {
+            if (ReferenceEquals(_loading, loading))
+            {
+                _loading = null;
+                _loadingKey = null;
+            }
+            loading.Dispose();
+        }
     }
 
     private void Render()
     {
-        // A failed load stays visible with its cause instead of silently hiding the widget.
+        // A failed load for an explicit city stays visible with its cause; an empty city without location access stays hidden.
         HasData = _report is not null || _error is not null;
         if (_report is not { } report)
         {
-            _icon.Content = null;
+            _icon.Content = FindResource("IconCloud");
+            _icon.Opacity = 0.65;
             _temperature.Text = UiText.Get("WeatherUnavailable");
             _card.ToolTip = _error;
-            System.Windows.Automation.AutomationProperties.SetName(_card, $"{UiText.Get("Weather")}: {_error}");
+            AutomationProperties.SetName(_card, _error is null ? UiText.Get("Weather") : $"{UiText.Get("Weather")}: {_error}");
             return;
         }
+
+        _icon.Opacity = 1.0;
         var (icon, text) = WeatherService.Describe(report.Code);
         _icon.Content = FindResource(icon);
         _temperature.Text = FormatDegrees(report.Temperature);
         _card.ToolTip = string.IsNullOrEmpty(report.Place) ? UiText.Get(text) : $"{report.Place} · {UiText.Get(text)}";
-        System.Windows.Automation.AutomationProperties.SetName(_card, $"{UiText.Get("Weather")}: {_temperature.Text}, {_card.ToolTip}");
+        AutomationProperties.SetName(_card, $"{UiText.Get("Weather")}: {_temperature.Text}, {_card.ToolTip}");
     }
 
     private static string FormatDegrees(double value) => $"{Math.Round(value).ToString(CultureInfo.CurrentCulture)}°";
@@ -190,19 +233,19 @@ public sealed class WeatherWidget : DockWidget
         root.Children.Add(now);
 
         // Micro metrics cards: Humidity, Wind
-        var metricsGrid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 10) };
+        var metricsGrid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 10) };
 
         var humidityCard = new Border
         {
-            Background = (Brush)FindResource("SurfaceSelected"),
             CornerRadius = new CornerRadius(7),
             Padding = new Thickness(10, 6, 10, 6),
             Margin = new Thickness(0, 0, 4, 0)
         };
+        humidityCard.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
         var humidityPanel = new StackPanel();
         var humLabel = new TextBlock { Text = UiText.Get("WeatherHumidity"), FontSize = 11 };
         humLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var humVal = new TextBlock { Text = $"%{Math.Round(report.Humidity)}", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        var humVal = new TextBlock { Text = UiText.Format("Percent", (int)Math.Round(report.Humidity)), FontSize = 13, FontWeight = FontWeights.SemiBold };
         humVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         humidityPanel.Children.Add(humLabel);
         humidityPanel.Children.Add(humVal);
@@ -211,15 +254,16 @@ public sealed class WeatherWidget : DockWidget
 
         var windCard = new Border
         {
-            Background = (Brush)FindResource("SurfaceSelected"),
             CornerRadius = new CornerRadius(7),
             Padding = new Thickness(10, 6, 10, 6),
             Margin = new Thickness(4, 0, 0, 0)
         };
+        windCard.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
         var windPanel = new StackPanel();
         var windLabel = new TextBlock { Text = UiText.Get("WeatherWind"), FontSize = 11 };
         windLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var windVal = new TextBlock { Text = $"{Math.Round(report.WindSpeed)} km/s", FontSize = 13, FontWeight = FontWeights.SemiBold };
+        var windUnit = Settings.Language == AppLanguage.English ? "km/h" : "km/s";
+        var windVal = new TextBlock { Text = $"{Math.Round(report.WindSpeed)} {windUnit}", FontSize = 13, FontWeight = FontWeights.SemiBold };
         windVal.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         windPanel.Children.Add(windLabel);
         windPanel.Children.Add(windVal);
@@ -251,22 +295,22 @@ public sealed class WeatherWidget : DockWidget
         // Next 3 days forecast cards
         var culture = CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
         var forecastDays = report.Days.Skip(1).Take(3).ToList();
-        var daysGrid = new UniformGrid { Columns = Math.Max(1, forecastDays.Count), Margin = new Thickness(0, 0, 0, 6) };
+        var daysGrid = new System.Windows.Controls.Primitives.UniformGrid { Columns = Math.Max(1, forecastDays.Count), Margin = new Thickness(0, 0, 0, 6) };
 
         foreach (var day in forecastDays)
         {
             var dayCard = new Border
             {
-                Background = (Brush)FindResource("SurfaceSelected"),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(6, 8, 6, 8),
                 Margin = new Thickness(3, 0, 3, 0)
             };
+            dayCard.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
 
             var column = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             var dayTitle = new TextBlock
             {
-                Text = day.Date.ToString("ddd", culture).ToUpperInvariant(),
+                Text = day.Date.ToString("ddd", culture).ToUpper(culture),
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 HorizontalAlignment = HorizontalAlignment.Center

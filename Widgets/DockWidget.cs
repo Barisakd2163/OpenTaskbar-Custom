@@ -28,6 +28,39 @@ public class DockWidget : UserControl, IDisposable
     public Action<string>? ReportError { get; set; }
     protected bool IsActive { get; private set; }
     protected DockSettings Settings { get; private set; } = new();
+    public virtual bool SupportsCompactMode => false;
+    public virtual int ShrinkPriority => 100;
+    public virtual double FullWidthEstimate => Math.Max(0, DesiredSize.Width);
+    public virtual double CompactWidthEstimate => FullWidthEstimate;
+    public bool IsCompact { get; private set; }
+    public bool IsHoverExpanded { get; private set; }
+    public bool IsHoverFlyoutOpen { get; internal set; }
+
+    internal void SetCompactState(bool compact)
+    {
+        if (!SupportsCompactMode) compact = false;
+        if (IsCompact == compact) return;
+        IsCompact = compact;
+        if (!compact && IsHoverExpanded)
+        {
+            IsHoverExpanded = false;
+            OnHoverExpandedChanged(false);
+        }
+        OnCompactChanged(compact);
+    }
+
+    internal void SetHoverExpanded(bool expanded)
+    {
+        if (!SupportsCompactMode || !IsCompact) expanded = false;
+        if (IsHoverExpanded == expanded) return;
+        IsHoverExpanded = expanded;
+        OnHoverExpandedChanged(expanded);
+    }
+
+    public virtual UIElement? BuildHoverFlyoutContent() => null;
+
+    protected virtual void OnCompactChanged(bool compact) { }
+    protected virtual void OnHoverExpandedChanged(bool expanded) { }
 
     /// <summary>False hides the widget while active, e.g. media controls with no playing session.</summary>
     protected bool HasData
@@ -69,6 +102,7 @@ public class DockWidget : UserControl, IDisposable
 
     protected virtual void OnActivated() { }
     protected virtual void OnDeactivated() { }
+    protected virtual void OnDisposed() { }
     protected virtual void OnSettingsChanged() { }
     protected virtual void OnTick(DateTime now) { }
 
@@ -83,6 +117,7 @@ public class DockWidget : UserControl, IDisposable
     public void Dispose()
     {
         Deactivate();
+        OnDisposed();
         GC.SuppressFinalize(this);
     }
 }

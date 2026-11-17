@@ -13,6 +13,7 @@ public sealed class TrayWidget : DockWidget
 
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
+    public override double FullWidthEstimate => Math.Max(46, DesiredSize.Width);
 
     public TrayWidget()
     {
@@ -22,18 +23,33 @@ public sealed class TrayWidget : DockWidget
         _button = new Button { Content = glyph, Padding = new Thickness(10, 0, 10, 0) };
         _button.SetResourceReference(StyleProperty, "WidgetCardButton");
         _button.Click += Button_Click;
-        void Localize()
-        {
-            _button.ToolTip = UiText.Get("TrayApps");
-            System.Windows.Automation.AutomationProperties.SetName(_button, UiText.Get("TrayApps"));
-        }
-
         Localize();
-        UiText.Current.PropertyChanged += (_, _) => Localize();
         Content = _button;
     }
 
-    protected override void OnDeactivated() => _flyout.Close();
+    private void Localize()
+    {
+        var label = UiText.Get("TrayApps");
+        _button.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(_button, label);
+    }
+
+    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (IsActive) Localize();
+    }
+
+    protected override void OnActivated()
+    {
+        UiText.Current.PropertyChanged += UiText_PropertyChanged;
+        Localize();
+    }
+
+    protected override void OnDeactivated()
+    {
+        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+        _flyout.Close();
+    }
 
     private async void Button_Click(object sender, RoutedEventArgs e)
     {

@@ -43,7 +43,9 @@ public partial class MainWindow : Window
     private readonly ApplicationJumpListService _jumpLists = new();
     private CancellationTokenSource? _jumpListLoad;
     private long? _jumpListSession;
+    private readonly DispatcherTimer _previewHoverTimer;
     private readonly DispatcherTimer _previewCloseTimer;
+    private Button? _pendingPreviewButton;
     private readonly DispatcherTimer _widgetRefreshTimer;
     private readonly DispatcherTimer _iconRetryTimer;
     private readonly RunningAppIconCache _runningAppIcons = new();
@@ -116,6 +118,8 @@ public partial class MainWindow : Window
         RunningApps.ItemsSource = _runningApps;
         DockWidgets.ItemsSource = _widgets;
         _thumbnailPreview = new WindowThumbnailPreview((Style)FindResource("PreviewCloseButton"));
+        _previewHoverTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher);
+        _previewHoverTimer.Tick += PreviewHoverTimer_Tick;
         _previewCloseTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(500)
@@ -136,12 +140,19 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(1)
         };
         _timedWidgetRefreshTimer.Tick += TimedWidgetRefreshTimer_Tick;
-        _widgetCoordinator = new WidgetCoordinator(WidgetStrip, Dispatcher, ShowStatus)
+        _widgetCoordinator = new WidgetCoordinator(
+            WidgetStrip,
+            Dispatcher,
+            ShowStatus,
+            lazy: false,
+            canExpandInline: CanExpandWidgetInline,
+            onHoverLayoutChanged: ResizeDockToContent)
         {
             OrderChanged = OnWidgetOrderChanged
         };
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
+        _widgetCoordinator.HoverActiveChanged += _ => _autoHideController?.EvaluateState();
         ApplyWidgets(_preferences.Current.Widgets);
         _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
@@ -152,6 +163,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
+        Deactivated += (_, _) => ResetMagnification();
         // App.OnStartup has already selected the theme pack; later changes come through ApplicationPreferences.Save.
         ThemePacks.Changed += ThemePacks_Changed;
         Closed += (_, _) => ThemePacks.Changed -= ThemePacks_Changed;
@@ -224,7 +236,7 @@ public partial class MainWindow : Window
             DockSurface,
             () => _widgetPanel.IsOpen || (_openContextMenu?.IsOpen == true) || _thumbnailPreview.IsVisible
                 || DockScrollViewer.IsPanning || LeftResizeThumb.IsDragging || RightResizeThumb.IsDragging
-                || _draggedApp is not null || (_settingsWindow?.IsVisible == true) || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
+                || _draggedApp is not null || (_settingsWindow?.IsVisible == true) || DockFlyout.IsAnyOpen || _widgetCoordinator.IsHoverActive || _keyboardNavigationActive);
         _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
@@ -853,6 +865,8 @@ public partial class MainWindow : Window
     private void DockApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _previewCloseTimer.Stop();
+        _previewHoverTimer.Stop();
+        _pendingPreviewButton = null;
         if (_widgetPanel.IsOpen) return;
         if (!_preferences.Current.PreviewsEnabled)
         {
@@ -860,7 +874,7 @@ public partial class MainWindow : Window
             _thumbnailPreview.Hide();
             return;
         }
-        if (sender is not Button { Tag: string executablePath })
+        if (sender is not Button { Tag: string executablePath } hoveredButton)
         {
             return;
         }
@@ -869,19 +883,49 @@ public partial class MainWindow : Window
             .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
             .ToList() ?? [];
 
-        ToolTipService.SetIsEnabled((Button)sender, matchingWindows.Count == 0);
+        ToolTipService.SetIsEnabled(hoveredButton, matchingWindows.Count == 0);
         if (matchingWindows.Count == 0)
         {
             _thumbnailPreview.Hide();
             return;
         }
 
-        var appIcon = ((Button)sender).DataContext is DockApp app ? app.Icon : null;
-        _thumbnailPreview.ShowForWindows(matchingWindows, (FrameworkElement)sender, appIcon);
+        _pendingPreviewButton = hoveredButton;
+        _previewHoverTimer.Interval = TimeSpan.FromMilliseconds(_thumbnailPreview.IsVisible ? 140 : 300);
+        _previewHoverTimer.Start();
+    }
+
+    private void PreviewHoverTimer_Tick(object? sender, EventArgs e)
+    {
+        _previewHoverTimer.Stop();
+        var hoveredButton = _pendingPreviewButton;
+        _pendingPreviewButton = null;
+        if (hoveredButton is null || !hoveredButton.IsMouseOver || _widgetPanel.IsOpen || !_preferences.Current.PreviewsEnabled)
+        {
+            return;
+        }
+        if (hoveredButton.Tag is not string executablePath)
+        {
+            return;
+        }
+
+        var matchingWindows = VisibleSnapshot
+            .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+            .ToList() ?? [];
+        if (matchingWindows.Count == 0)
+        {
+            _thumbnailPreview.Hide();
+            return;
+        }
+
+        var appIcon = hoveredButton.DataContext is DockApp app ? app.Icon : null;
+        _thumbnailPreview.ShowForWindows(matchingWindows, hoveredButton, appIcon);
     }
 
     private void DockApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        _previewHoverTimer.Stop();
+        _pendingPreviewButton = null;
         _previewCloseTimer.Stop();
         _previewCloseTimer.Start();
     }
@@ -1670,8 +1714,24 @@ public partial class MainWindow : Window
 
     private bool IsFullWidth => _preferences.Current.Layout == DockLayout.FullWidth;
 
+    private bool CanExpandWidgetInline(OpenTaskbar.Widgets.DockWidget widget)
+    {
+        if (!IsVisible || _dockArea.Width <= 0) return false;
+
+        var totalAvailableWidth = Math.Max(1, _dockArea.Width - DockSurface.Margin.Left - DockSurface.Margin.Right);
+        var leadWidth = DockLeadControls.DesiredSize.Width;
+        var appsWidth = DockContents.DesiredSize.Width;
+        var trailWidth = DockTrailControls.DesiredSize.Width;
+        var currentWidgetsWidth = WidgetIsland.Visibility == Visibility.Visible
+            ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right
+            : 0;
+        var extraWidth = widget.FullWidthEstimate - widget.ActualWidth;
+        return leadWidth + appsWidth + trailWidth + currentWidgetsWidth + Math.Max(0, extraWidth) <= totalAvailableWidth - 2;
+    }
+
     private void ApplyLayoutMode()
     {
+        AppsColumn.Width = IsFullWidth ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
         WidgetColumn.Width = IsFullWidth ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
         WidgetIsland.HorizontalAlignment = IsFullWidth ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         ApplyDockMargin();
@@ -1714,6 +1774,7 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
         Application.Current.Resources["DockIconSize"] = profile.Icon;
+        Application.Current.Resources["StartLogoSize"] = Math.Max(14, Math.Round(profile.Icon * 0.68));
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(profile.Radius);
         DockInnerBevel.CornerRadius = new CornerRadius(Math.Max(1, profile.Radius - 1));
@@ -1796,6 +1857,7 @@ public partial class MainWindow : Window
     private void OnFullScreenChanged(bool suppressed)
     {
         if (!suppressed) return;
+        _widgetCoordinator.CollapseHover();
         _widgetPanel.Close(restoreFocus: false);
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
@@ -1844,13 +1906,38 @@ public partial class MainWindow : Window
         var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
         WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         // Measure first: the layout pass it runs can move the dock area, which is read below.
-        var contentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
+        var leadWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls);
+        var appsContentWidth = DockScrollViewer.MeasureContentWidth(DockContents);
+        var trailWidth = DockScrollViewer.MeasureContentWidth(DockTrailControls);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
-        if (!WidgetIsland.IsMeasureValid) WidgetIsland.Measure(unbounded);
-        var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
+        var maxLayoutWidth = Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome);
+        var contentFixedWidth = leadWidth + appsContentWidth + trailWidth;
+        _widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale);
+        if (hasWidgets)
+        {
+            WidgetIsland.Measure(unbounded);
+            var measuredWidgets = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
+            for (var step = 0; step < 9 && contentFixedWidth + measuredWidgets > maxLayoutWidth - 2; step++)
+            {
+                if (!_widgetCoordinator.TryCompactNextAutoWidget(_preferences.Current)) break;
+                WidgetIsland.Measure(unbounded);
+                measuredWidgets = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
+            }
+        }
+        else if (!WidgetIsland.IsMeasureValid)
+        {
+            WidgetIsland.Measure(unbounded);
+        }
+
+        var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
+        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
+        DockScrollViewer.MaxWidth = maxAppsWidth;
+        if (appsContentWidth <= maxAppsWidth + 0.5 && DockScrollViewer.HorizontalOffset > 0)
+            DockScrollViewer.ScrollToHorizontalOffset(0);
+
         if (IsFullWidth)
         {
             DockLayoutRoot.MinWidth = Math.Max(0, maximumSurfaceWidth - DockHorizontalChrome);
@@ -1860,7 +1947,7 @@ public partial class MainWindow : Window
         }
 
         DockLayoutRoot.MinWidth = 0;
-        var desiredWidth = Math.Ceiling(contentWidth + widgetsWidth + DockHorizontalChrome);
+        var desiredWidth = Math.Ceiling(contentFixedWidth + widgetsWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
         if (!double.IsNaN(DockSurface.Width)
@@ -1976,6 +2063,8 @@ public partial class MainWindow : Window
 
         _previewCloseTimer.Stop();
         _previewCloseTimer.Tick -= PreviewCloseTimer_Tick;
+        _previewHoverTimer.Stop();
+        _previewHoverTimer.Tick -= PreviewHoverTimer_Tick;
         _widgetRefreshTimer.Stop();
         _widgetRefreshTimer.Tick -= WidgetRefreshTimer_Tick;
         _iconRetryTimer.Stop();

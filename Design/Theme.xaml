@@ -24,17 +24,15 @@
     <x:Static x:Key="DockCellSize" Member="svc:DockMetrics.CellSize" />
     <x:Static x:Key="DockCellHeight" Member="svc:DockMetrics.CellSize" />
     <x:Static x:Key="DockIconSize" Member="svc:DockMetrics.IconSize" />
+    <sys:Double x:Key="StartLogoSize">20</sys:Double>
     <x:Static x:Key="DockEdgeTriggerHeight" Member="svc:DockMetrics.EdgeTriggerHeight" />
     <sys:Double x:Key="TextSizeWidgetValue">18</sys:Double>
     <sys:Double x:Key="DockWidgetMinimumWidth">104</sys:Double>
     <sys:Double x:Key="DockWidgetMinimumHeight">52</sys:Double>
     <sys:Double x:Key="DockWidgetValueMaxWidth">180</sys:Double>
-    <sys:Double x:Key="DockShadowBlur">16</sys:Double>
-    <sys:Double x:Key="DockShadowDepth">2</sys:Double>
-    <sys:Double x:Key="DockShadowOpacity">0.25</sys:Double>
-    <sys:Double x:Key="PreviewWidth">344</sys:Double>
-    <sys:Double x:Key="PreviewHeight">236</sys:Double>
-    <sys:Double x:Key="PreviewHeaderHeight">40</sys:Double>
+    <sys:Double x:Key="PreviewWidth">228</sys:Double>
+    <sys:Double x:Key="PreviewHeight">154</sys:Double>
+    <sys:Double x:Key="PreviewHeaderHeight">32</sys:Double>
     <x:Static x:Key="PreviewGap" Member="svc:DockMetrics.PreviewGap" />
     <x:Static x:Key="DockHoverScale" Member="svc:DockMetrics.HoverScale" />
     <sys:Double x:Key="PreviewDurationMs">160</sys:Double>
@@ -67,9 +65,6 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{StaticResource PopupRadius}"
                             Padding="{TemplateBinding Padding}">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.35" RenderingBias="Performance" />
-                        </Border.Effect>
                         <ContentPresenter />
                     </Border>
                 </ControlTemplate>

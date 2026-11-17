@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -11,29 +12,63 @@ public partial class ClockWidget : DockWidget
 {
     private readonly DockFlyout _calendar = new();
     private string _lastRenderKey = string.Empty;
+    private string _lastWidthKey = string.Empty;
     private DateOnly _shownMonth;
 
     public ClockWidget() => InitializeComponent();
+    public override double FullWidthEstimate => Math.Max(118, DesiredSize.Width);
 
     private CultureInfo Culture => CultureInfo.GetCultureInfo(Settings.Language == AppLanguage.English ? "en-US" : "tr-TR");
 
     protected override void OnActivated()
     {
         _lastRenderKey = string.Empty;
+        _lastWidthKey = string.Empty;
         OnTick(DateTime.Now);
     }
 
     protected override void OnSettingsChanged()
     {
         _lastRenderKey = string.Empty;
+        _lastWidthKey = string.Empty;
         if (IsActive) OnTick(DateTime.Now);
     }
 
     protected override void OnDeactivated() => _calendar.Close();
 
+    private void UpdateLockedTimeWidth(CultureInfo culture)
+    {
+        var fontFamily = TimeText.FontFamily;
+        var widthKey = $"{Settings.Clock24Hour}|{Settings.ClockShowSeconds}|{Settings.Language}|{fontFamily.Source}";
+        if (widthKey == _lastWidthKey) return;
+        _lastWidthKey = widthKey;
+
+        var typeface = new Typeface(fontFamily, TimeText.FontStyle, TimeText.FontWeight, TimeText.FontStretch);
+        var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var digits = Settings.ClockShowSeconds ? "88:88:88" : "88:88";
+
+        double maxWidth = MeasureTextWidth(digits, typeface, pixelsPerDip, culture);
+        if (!Settings.Clock24Hour)
+        {
+            var am = culture.DateTimeFormat.AMDesignator;
+            var pm = culture.DateTimeFormat.PMDesignator;
+            maxWidth = Math.Max(maxWidth, MeasureTextWidth($"{digits} {am}", typeface, pixelsPerDip, culture));
+            maxWidth = Math.Max(maxWidth, MeasureTextWidth($"{digits} {pm}", typeface, pixelsPerDip, culture));
+        }
+
+        TimeText.Width = Math.Ceiling(maxWidth) + 2;
+    }
+
+    private double MeasureTextWidth(string sample, Typeface typeface, double pixelsPerDip, CultureInfo culture)
+    {
+        var formatted = new FormattedText(sample, culture, FlowDirection.LeftToRight, typeface, TimeText.FontSize, Brushes.Transparent, pixelsPerDip);
+        return formatted.WidthIncludingTrailingWhitespace;
+    }
+
     protected override void OnTick(DateTime now)
     {
         var culture = Culture;
+        UpdateLockedTimeWidth(culture);
         var timeFormat = Settings.Clock24Hour
             ? (Settings.ClockShowSeconds ? "HH:mm:ss" : "HH:mm")
             : (Settings.ClockShowSeconds ? "hh:mm:ss tt" : "hh:mm tt");
@@ -71,11 +106,14 @@ public partial class ClockWidget : DockWidget
 
     private void ClockButton_Click(object sender, RoutedEventArgs e)
     {
-        _shownMonth = DateOnly.FromDateTime(DateTime.Today);
-        _shownMonth = new DateOnly(_shownMonth.Year, _shownMonth.Month, 1);
-        var root = new ContentControl();
-        root.Content = BuildCalendar(root);
-        _calendar.Toggle(ClockButton, () => root);
+        _calendar.Toggle(ClockButton, () =>
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            _shownMonth = new DateOnly(today.Year, today.Month, 1);
+            var root = new ContentControl();
+            root.Content = BuildCalendar(root);
+            return root;
+        });
     }
 
     /// <summary>Month view with the user's first day of week; arrows rebuild it in place.</summary>

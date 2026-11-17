@@ -22,6 +22,7 @@ public partial class SettingsWindow : Window
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
+    private readonly Dictionary<string, ComboBox> _widgetDensityBoxes = [];
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -64,6 +65,7 @@ public partial class SettingsWindow : Window
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             ThemeManager.SetSurfaceOpacity(_preferences.Current.SurfaceOpacity);
             (Application.Current.MainWindow as MainWindow)?.SetSizePreview(null, null);
+            _widgetDensityBoxes.Clear();
         };
         DarkTheme.IsChecked = _applied.Theme == AppTheme.Dark;
         LightTheme.IsChecked = _applied.Theme == AppTheme.Light;
@@ -84,6 +86,9 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = _applied.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
         UpdateDockScaleLabel();
+        DensityAuto.Checked += (_, _) => TriggerAutoSave(immediate: true);
+        DensityCompact.Checked += (_, _) => TriggerAutoSave(immediate: true);
+        DensityFull.Checked += (_, _) => TriggerAutoSave(immediate: true);
         FocusMinutesSlider.Value = _applied.FocusMinutes;
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = _applied.FocusSessions;
@@ -226,6 +231,12 @@ public partial class SettingsWindow : Window
             Layout = FullWidthLayout.IsChecked == true ? DockLayout.FullWidth : DockLayout.Floating,
             Size = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact,
             DockScale = Math.Round(DockScaleSlider.Value) / 100,
+            GlobalWidgetDensity = DensityCompact.IsChecked == true
+                ? WidgetDensityMode.Compact
+                : DensityFull.IsChecked == true
+                    ? WidgetDensityMode.Full
+                    : WidgetDensityMode.Auto,
+            WidgetDensityOverrides = ReadWidgetDensityOverrides(),
             ShowClock = IsEnabled("Clock"),
             ShowMedia = IsEnabled("Media"),
             ShowSystemStats = IsEnabled("SystemStats"),
@@ -491,16 +502,106 @@ public partial class SettingsWindow : Window
         StartLast.IsChecked = settings.StartPlacement == StartButtonPlacement.End;
         StartHidden.IsChecked = settings.StartPlacement == StartButtonPlacement.Hidden;
         WheelVolumeToggle.IsChecked = settings.WheelVolume;
+        DensityAuto.IsChecked = settings.GlobalWidgetDensity == WidgetDensityMode.Auto;
+        DensityCompact.IsChecked = settings.GlobalWidgetDensity == WidgetDensityMode.Compact;
+        DensityFull.IsChecked = settings.GlobalWidgetDensity == WidgetDensityMode.Full;
+        foreach (var (id, combo) in _widgetDensityBoxes)
+        {
+            var tag = settings.WidgetDensityOverrides is not null && settings.WidgetDensityOverrides.TryGetValue(id, out var mode)
+                ? mode.ToString()
+                : "Default";
+            SelectDensityTag(combo, tag);
+        }
         _ = InitializeWeatherLocationsAsync(settings.WeatherCity);
     }
 
     private void AttachWidgetSettingsPanels()
     {
         WidgetPanelsPool.Children.Clear();
+        _widgetDensityBoxes.Clear();
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock) clock.SettingsView = ClockOptions;
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather) weather.SettingsView = WeatherOptions;
-        if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } focus) focus.SettingsView = FocusOptions;
-        if (_widgetOptions.FirstOrDefault(o => o.Id == "SystemStats") is { } stats) stats.SettingsView = StatsOptions;
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } focus)
+        {
+            AttachDensityRow("Focus", FocusOptions);
+            focus.SettingsView = FocusOptions;
+        }
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "SystemStats") is { } stats)
+        {
+            AttachDensityRow("SystemStats", StatsOptions);
+            stats.SettingsView = StatsOptions;
+        }
+        foreach (var id in new[] { "Media", "Audio", "QuickSettings", "Desktops" })
+        {
+            if (_widgetOptions.FirstOrDefault(o => o.Id == id) is not { } opt) continue;
+            var panel = new StackPanel();
+            AttachDensityRow(id, panel);
+            opt.SettingsView = panel;
+        }
+    }
+
+    private void AttachDensityRow(string widgetId, FrameworkElement container)
+    {
+        var panel = container is Border { Child: Panel inner } ? inner : container as Panel;
+        if (panel is null || _widgetDensityBoxes.ContainsKey(widgetId)) return;
+
+        var row = new Grid { Margin = new Thickness(0, 0, 0, panel.Children.Count > 0 ? 10 : 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var label = new TextBlock
+        {
+            Text = UiText.Get("WidgetDensity"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "SettingsSecondaryTextBrush");
+        Grid.SetColumn(label, 0);
+        row.Children.Add(label);
+
+        var combo = new ComboBox { MinWidth = 128 };
+        combo.Items.Add(new ComboBoxItem { Content = UiText.Get("WidgetDensityFollowGlobal"), Tag = "Default" });
+        combo.Items.Add(new ComboBoxItem { Content = UiText.Get("WidgetDensityAuto"), Tag = nameof(WidgetDensityMode.Auto) });
+        combo.Items.Add(new ComboBoxItem { Content = UiText.Get("WidgetDensityCompact"), Tag = nameof(WidgetDensityMode.Compact) });
+        combo.Items.Add(new ComboBoxItem { Content = UiText.Get("WidgetDensityFull"), Tag = nameof(WidgetDensityMode.Full) });
+        combo.SelectedIndex = 0;
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (!_initializing) TriggerAutoSave(immediate: true);
+        };
+        Grid.SetColumn(combo, 1);
+        row.Children.Add(combo);
+
+        _widgetDensityBoxes[widgetId] = combo;
+        panel.Children.Insert(0, row);
+    }
+
+    private static void SelectDensityTag(ComboBox combo, string tag)
+    {
+        foreach (var item in combo.Items)
+        {
+            if (item is ComboBoxItem cbi && string.Equals(cbi.Tag as string, tag, StringComparison.Ordinal))
+            {
+                combo.SelectedItem = cbi;
+                return;
+            }
+        }
+        combo.SelectedIndex = 0;
+    }
+
+    private IReadOnlyDictionary<string, WidgetDensityMode>? ReadWidgetDensityOverrides()
+    {
+        Dictionary<string, WidgetDensityMode>? result = null;
+        foreach (var (id, combo) in _widgetDensityBoxes)
+        {
+            if (combo.SelectedItem is ComboBoxItem { Tag: string tag } && Enum.TryParse<WidgetDensityMode>(tag, out var mode))
+            {
+                result ??= new Dictionary<string, WidgetDensityMode>(StringComparer.OrdinalIgnoreCase);
+                result[id] = mode;
+            }
+        }
+        return result;
     }
 
     private async Task InitializeWeatherLocationsAsync(string savedCity)

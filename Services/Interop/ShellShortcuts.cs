@@ -31,16 +31,30 @@ public static class ShellShortcuts
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const int ErrorCancelled = 1223;
+    private static CancellationTokenSource? _repositionCts;
 
     private static bool IsExtended(ushort key) => key is VkLeft or VkRight or VkLeftWindows;
 
     /// <summary>Win+A: Quick Settings (Windows 11) or Action Center (Windows 10), anchored above the clicked button when given.</summary>
     public static string? OpenQuickSettings(FrameworkElement? anchor = null)
     {
+        var wasVisible = IsControlCenterVisible();
         var error = SendWindowsShortcut(VkA);
-        if (error is null && anchor is not null)
+        if (error is null && anchor is not null && !wasVisible)
         {
-            _ = RepositionControlCenterAsync(anchor);
+            ScheduleControlCenterReposition(anchor);
+        }
+        return error;
+    }
+
+    /// <summary>Opens Windows' native available Wi-Fi networks flyout without throwing the user into full Settings.</summary>
+    public static string? OpenAvailableNetworks(FrameworkElement? anchor = null)
+    {
+        var wasVisible = IsControlCenterVisible();
+        var error = Start("ms-availablenetworks:", "ErrorSettingsPageOpen");
+        if (error is null && anchor is not null && !wasVisible)
+        {
+            ScheduleControlCenterReposition(anchor);
         }
         return error;
     }
@@ -51,15 +65,31 @@ public static class ShellShortcuts
     /// <summary>Win+P: display projection flyout, anchored above the clicked button when given.</summary>
     public static string? OpenProjection(FrameworkElement? anchor = null)
     {
+        var wasVisible = IsControlCenterVisible();
         var error = SendWindowsShortcut(VkP);
-        if (error is null && anchor is not null)
+        if (error is null && anchor is not null && !wasVisible)
         {
-            _ = RepositionControlCenterAsync(anchor);
+            ScheduleControlCenterReposition(anchor);
         }
         return error;
     }
 
-    private static async Task RepositionControlCenterAsync(FrameworkElement anchor)
+    private static bool IsControlCenterVisible()
+    {
+        var hwnd = FindWindow("ControlCenterWindow", null);
+        return hwnd != 0 && IsWindowVisible(hwnd);
+    }
+
+    private static void ScheduleControlCenterReposition(FrameworkElement anchor)
+    {
+        var next = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _repositionCts, next);
+        previous?.Cancel();
+        previous?.Dispose();
+        _ = RepositionControlCenterAsync(anchor, next.Token);
+    }
+
+    private static async Task RepositionControlCenterAsync(FrameworkElement anchor, CancellationToken cancellation)
     {
         if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0) return;
         Point topLeft;
@@ -80,40 +110,51 @@ public static class ShellShortcuts
         var edge = DockFlyout.Edge;
         var movedOnce = false;
 
-        for (var attempt = 0; attempt < 24; attempt++)
+        try
         {
-            await Task.Delay(25);
-            var hwnd = FindWindow("ControlCenterWindow", null);
-            if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
-            var width = rect.Right - rect.Left;
-            var height = rect.Bottom - rect.Top;
-            if (width < 80 || height < 80) continue;
-
-            var centerX = (int)Math.Round((topLeft.X + bottomRight.X) / 2);
-            var centerY = (int)Math.Round((topLeft.Y + bottomRight.Y) / 2);
-            int targetX;
-            int targetY;
-            switch (edge)
+            for (var attempt = 0; attempt < 24; attempt++)
             {
-                case DockEdge.Left:
-                    targetX = (int)Math.Round(bottomRight.X) + 12;
-                    targetY = Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8);
-                    break;
-                case DockEdge.Right:
-                    targetX = (int)Math.Round(topLeft.X) - width - 12;
-                    targetY = Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8);
-                    break;
-                default:
-                    targetX = Math.Clamp(centerX - width / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - width - 8);
-                    targetY = Math.Max(monitorInfo.Work.Top + 8, (int)Math.Round(topLeft.Y) - height - 12);
-                    break;
-            }
+                await Task.Delay(25, cancellation);
+                if (cancellation.IsCancellationRequested) return;
+                var hwnd = FindWindow("ControlCenterWindow", null);
+                if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
+                var width = rect.Right - rect.Left;
+                var height = rect.Bottom - rect.Top;
+                if (width < 80 || height < 80) continue;
 
-            SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-            if (movedOnce) break;
-            movedOnce = true;
-            // Re-apply once more after ShellHost finishes its entrance animation.
-            await Task.Delay(75);
+                var centerX = (int)Math.Round((topLeft.X + bottomRight.X) / 2);
+                var centerY = (int)Math.Round((topLeft.Y + bottomRight.Y) / 2);
+                int targetX;
+                int targetY;
+                var minY = monitorInfo.Work.Top + 8;
+                var maxY = Math.Max(minY, monitorInfo.Work.Bottom - height - 8);
+                switch (edge)
+                {
+                    case DockEdge.Left:
+                        targetX = (int)Math.Round(bottomRight.X) + 12;
+                        targetY = Math.Clamp(centerY - height / 2, minY, maxY);
+                        break;
+                    case DockEdge.Right:
+                        targetX = (int)Math.Round(topLeft.X) - width - 12;
+                        targetY = Math.Clamp(centerY - height / 2, minY, maxY);
+                        break;
+                    default:
+                        var minX = monitorInfo.Work.Left + 8;
+                        var maxX = Math.Max(minX, monitorInfo.Work.Right - width - 8);
+                        targetX = Math.Clamp(centerX - width / 2, minX, maxX);
+                        targetY = Math.Clamp((int)Math.Round(topLeft.Y) - height - 12, minY, maxY);
+                        break;
+                }
+
+                SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+                if (movedOnce) break;
+                movedOnce = true;
+                // Re-apply once more after ShellHost finishes its entrance animation.
+                await Task.Delay(75, cancellation);
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -150,9 +191,20 @@ public static class ShellShortcuts
     /// <summary>Presses the keys in order and releases them in reverse, like a user typing the chord.</summary>
     public static string? SendChord(params ushort[] keys)
     {
-        var inputs = keys.Select(key => KeyInput(key, IsExtended(key) ? KeyEventExtended : 0))
-            .Concat(keys.Reverse().Select(key => KeyInput(key, KeyEventKeyUp | (IsExtended(key) ? KeyEventExtended : 0))))
-            .ToArray();
+        if (keys.Length == 0) return null;
+        var inputs = new Input[keys.Length * 2];
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var key = keys[i];
+            inputs[i] = KeyInput(key, IsExtended(key) ? KeyEventExtended : 0);
+        }
+
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var key = keys[keys.Length - 1 - i];
+            inputs[keys.Length + i] = KeyInput(key, KeyEventKeyUp | (IsExtended(key) ? KeyEventExtended : 0));
+        }
+
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
         if (sent == inputs.Length) return null;
         AppLog.Warning($"SendInput sent {sent}/{inputs.Length} events: {Marshal.GetLastPInvokeError()}");
