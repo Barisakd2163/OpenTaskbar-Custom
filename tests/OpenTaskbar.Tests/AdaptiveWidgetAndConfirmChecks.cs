@@ -123,7 +123,7 @@ internal static class AdaptiveWidgetAndConfirmChecks
 
         var audio = strip.Children.OfType<AudioWidget>().Single();
         var qs = strip.Children.OfType<QuickSettingsWidget>().Single();
-        var autoCandidates = strip.Children.OfType<DockWidget>()
+        var autoCandidates = strip.Children.OfType<OpenTaskbar.Widgets.DockWidget>()
             .Where(widget => widget.Visibility == Visibility.Visible && widget.SupportsCompactMode)
             .OrderBy(widget => widget.ShrinkPriority).ToArray();
 
