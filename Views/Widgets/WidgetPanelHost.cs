@@ -13,6 +13,7 @@ public sealed class WidgetPanelHost : IDisposable
     private readonly Popup _popup;
     private FrameworkElement? _anchor;
     private FrameworkElement? _closedAnchor;
+    private bool _isOpenState;
     private bool _suppressNextClick;
     private bool _explicitClose;
     private bool _restoreFocus;
@@ -39,7 +40,7 @@ public sealed class WidgetPanelHost : IDisposable
         _owner.Deactivated += Owner_Deactivated;
     }
 
-    public bool IsOpen => _popup.IsOpen;
+    public bool IsOpen => _isOpenState || _popup.IsOpen;
     public event EventHandler? IsOpenChanged;
     public event Action<string>? OperationFailed;
 
@@ -48,12 +49,14 @@ public sealed class WidgetPanelHost : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (IsOpen && ReferenceEquals(_anchor, anchor))
         {
+            _isOpenState = false;
             Close();
             return;
         }
 
         if (_suppressNextClick && ReferenceEquals(_closedAnchor, anchor))
         {
+            _isOpenState = false;
             _suppressNextClick = false;
             _closedAnchor = null;
             return;
@@ -67,6 +70,7 @@ public sealed class WidgetPanelHost : IDisposable
             OperationFailed?.Invoke("WidgetPanelFocusError");
             return;
         }
+        _isOpenState = true;
         _anchor = anchor;
         _restoreFocus = true;
         _frame.Heading = heading;
@@ -81,6 +85,7 @@ public sealed class WidgetPanelHost : IDisposable
 
     public void Close(bool restoreFocus = true)
     {
+        _isOpenState = false;
         _explicitClose = true;
         _restoreFocus = restoreFocus;
         _popup.IsOpen = false;
@@ -96,6 +101,7 @@ public sealed class WidgetPanelHost : IDisposable
 
     private void Popup_Closed(object? sender, EventArgs e)
     {
+        _isOpenState = false;
         var anchor = _anchor;
         if (!_explicitClose && anchor is not null && IsCursorOver(anchor))
         {

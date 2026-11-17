@@ -61,6 +61,7 @@ public sealed class DockFlyout
     private static readonly List<WeakReference<DockFlyout>> FlyoutRegistry = [];
     public static event Action? AnyClosed;
     private UIElement? _currentTarget;
+    private bool _isOpenState;
     private bool _suppressNextClick;
     private bool _explicitClose;
     private WeakReference<UIElement>? _closedTarget;
@@ -156,9 +157,9 @@ public sealed class DockFlyout
         };
         _popup.Closed += (_, _) =>
         {
+            _isOpenState = false;
             var target = _currentTarget ?? _popup.PlacementTarget;
             var isClosingTargetClick = !_explicitClose && target is not null && (_suppressNextClick || IsCursorOver(target));
-            AppLog.Info($"[DockFlyout.Closed] target={target?.GetType().Name}, explicit={_explicitClose}, isClosingTargetClick={isClosingTargetClick}, cursorOver={IsCursorOver(target)}");
             if (target is not null)
             {
                 _closedTarget = new WeakReference<UIElement>(target);
@@ -198,7 +199,7 @@ public sealed class DockFlyout
 
     public event EventHandler? Closed;
 
-    public bool IsOpen => _popup.IsOpen;
+    public bool IsOpen => _isOpenState || _popup.IsOpen;
 
     private void Target_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -255,15 +256,16 @@ public sealed class DockFlyout
             bounds = (Math.Min(tl.X, br.X) - padX, Math.Min(tl.Y, br.Y) - padY, Math.Max(tl.X, br.X) + padX, Math.Max(tl.Y, br.Y) + padY);
             return true;
         }
-        catch (InvalidOperationException)
+        catch (Exception ex)
         {
+            AppLog.Warning($"[TryGetScreenBounds] PointToScreen error: {ex.Message}");
             return false;
         }
     }
 
     public void Show(UIElement target, UIElement content, bool animate = true, bool focusable = false)
     {
-        AppLog.Info($"[DockFlyout.Show] target={target.GetType().Name}");
+        _isOpenState = true;
         _explicitClose = false;
         _suppressNextClick = false;
         _closedTarget = null;
@@ -313,17 +315,18 @@ public sealed class DockFlyout
 
     public void Toggle(UIElement target, Func<UIElement> content, bool animate = true, bool focusable = false)
     {
-        AppLog.Info($"[DockFlyout.Toggle] target={target.GetType().Name}, IsOpen={_popup.IsOpen}, suppressNextClick={_suppressNextClick}");
-        if (_popup.IsOpen && ReferenceEquals(_popup.PlacementTarget ?? _currentTarget, target))
+        var isAnchorMatch = ReferenceEquals(_currentTarget, target) || ReferenceEquals(_popup.PlacementTarget, target);
+        if (isAnchorMatch && (_isOpenState || _popup.IsOpen))
         {
-            AppLog.Info("[DockFlyout.Toggle] Closing via IsOpen && ReferenceEquals");
+            _isOpenState = false;
+            _suppressNextClick = false;
+            _closedTarget = null;
             Close();
             return;
         }
 
         if (_suppressNextClick && (_closedTarget is null || (_closedTarget.TryGetTarget(out var prev) && ReferenceEquals(prev, target))))
         {
-            AppLog.Info("[DockFlyout.Toggle] Suppressing click via _suppressNextClick");
             _suppressNextClick = false;
             _closedTarget = null;
             return;
@@ -354,6 +357,7 @@ public sealed class DockFlyout
     public void Close(bool restoreFocus = true)
     {
         _explicitClose = true;
+        _isOpenState = false;
         if (!restoreFocus) _restoreFocus = false;
         _popup.IsOpen = false;
     }
