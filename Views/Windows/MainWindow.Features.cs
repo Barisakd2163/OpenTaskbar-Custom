@@ -79,8 +79,7 @@ public partial class MainWindow
         children.Remove(StartDivider);
         if (placement == StartButtonPlacement.End)
         {
-            var index = children.IndexOf(StatusText);
-            if (index < 0) index = children.Count;
+            var index = children.Count;
             children.Insert(index, StartDivider);
             children.Insert(index + 1, StartButton);
         }

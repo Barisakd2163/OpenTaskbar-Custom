@@ -1,11 +1,13 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace OpenTaskbar.Views;
 
 public sealed class DockScrollViewer : ScrollViewer
 {
+    private const double EdgeFadeWidth = 14;
     private Point? _panStart;
     private double _panOffset;
     public static readonly DependencyProperty HoverHeadroomProperty = DependencyProperty.Register(
@@ -77,6 +79,39 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         _panStart = null;
         base.OnLostMouseCapture(e);
+    }
+
+    protected override void OnScrollChanged(ScrollChangedEventArgs e)
+    {
+        base.OnScrollChanged(e);
+        UpdateEdgeFade();
+    }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        UpdateEdgeFade();
+    }
+
+    /// <summary>Fades the side that has more content, since the scrollbar is hidden and overflow would otherwise go unnoticed.</summary>
+    private void UpdateEdgeFade()
+    {
+        var hiddenBefore = HorizontalOffset > 0.5;
+        var hiddenAfter = HorizontalOffset < ScrollableWidth - 0.5;
+        if (ActualWidth <= EdgeFadeWidth * 2 || (!hiddenBefore && !hiddenAfter))
+        {
+            ClearValue(OpacityMaskProperty);
+            return;
+        }
+
+        var fade = EdgeFadeWidth / ActualWidth;
+        var mask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        mask.GradientStops.Add(new GradientStop(Color.FromArgb(hiddenBefore ? (byte)0 : (byte)255, 0, 0, 0), 0));
+        mask.GradientStops.Add(new GradientStop(Colors.Black, fade));
+        mask.GradientStops.Add(new GradientStop(Colors.Black, 1 - fade));
+        mask.GradientStops.Add(new GradientStop(Color.FromArgb(hiddenAfter ? (byte)0 : (byte)255, 0, 0, 0), 1));
+        mask.Freeze();
+        OpacityMask = mask;
     }
 
     private static void LayoutChanged(DependencyObject owner, DependencyPropertyChangedEventArgs e)

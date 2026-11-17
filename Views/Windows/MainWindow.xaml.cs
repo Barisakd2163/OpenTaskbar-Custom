@@ -73,6 +73,9 @@ public partial class MainWindow : Window
     private readonly bool _isPreview = ((App)Application.Current).IsPreview;
     private readonly bool _isInspection = ((App)Application.Current).IsInspection;
     private string? _statusMessage;
+    private bool _statusIsError;
+    private object[] _statusArguments = [];
+    private readonly DockNotice _notice;
     private readonly WidgetCoordinator _widgetCoordinator;
     private double _dockTopGap;
     private (DockSize Size, double Scale)? _sizePreviewOverride;
@@ -106,6 +109,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _notice = new DockNotice(DockSurface);
         _widgetPanel = new WidgetPanelHost(this);
         _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed += ShowStatus;
@@ -142,6 +146,7 @@ public partial class MainWindow : Window
         };
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
+        InitializeWidgetOverflow();
         ApplyWidgets(_preferences.Current.Widgets);
         _widgetRefreshTimer.Start();
         _thumbnailPreview.PointerEntered += ThumbnailPreview_PointerEntered;
@@ -187,7 +192,7 @@ public partial class MainWindow : Window
         var source = (HwndSource?)PresentationSource.FromVisual(this);
         if (source is null)
         {
-            ShowStatus(UiText.Get("ErrorDockAttach"));
+            ShowStatus("ErrorDockAttach");
             return;
         }
 
@@ -196,7 +201,7 @@ public partial class MainWindow : Window
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
         if (!_isPreview && !_isInspection && !ExcludeFromTaskSwitcher(source.Handle))
         {
-            ShowStatus(UiText.Get("ErrorAltTabExclude"));
+            ShowStatus("ErrorAltTabExclude");
         }
 
         _windowTracker = new NativeWindowTracker(Dispatcher);
@@ -207,7 +212,7 @@ public partial class MainWindow : Window
             _windowTracker.Start(source.Handle);
             if (!_windowTracker.NotificationsAvailable)
             {
-                ShowStatus(UiText.Get("ErrorNotificationBadge"));
+                ShowStatus("ErrorNotificationBadge");
             }
         }
         catch (InvalidOperationException ex)
@@ -278,14 +283,14 @@ public partial class MainWindow : Window
         var source = _source;
         if (source is null)
         {
-            ShowStatus(UiText.Get("ErrorDockNotReady"));
+            ShowStatus("ErrorDockNotReady");
             return;
         }
 
         ResizeDockToContent();
         ApplyDockAlignment();
         var session = new TaskbarReplacementSession(this, source.Handle, _preferences.Current.AutoHide != AutoHideMode.Disabled);
-        session.OperationFailed += ShowStatus;
+        session.OperationReported += ShowOperationStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = Profile.Shelf;
@@ -382,10 +387,11 @@ public partial class MainWindow : Window
             _pinnedApps.Add(app);
         }
 
-        if (result.Error is not null)
+        if (result.ErrorKey is not null)
         {
-            ShowStatus(result.Error);
+            ShowStatus(result.ErrorKey);
         }
+        else if (result.SkippedCount > 0) ShowStatus("SkippedPins", true, result.SkippedCount);
     }
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
@@ -760,7 +766,7 @@ public partial class MainWindow : Window
         if (notches == 0) return;
         _wheelRemainder -= notches * 120;
         var level = Math.Clamp(_wheelAudio.Volume + notches * 0.02f, 0f, 1f);
-        if (!_wheelAudio.SetVolume(level)) ShowStatus(UiText.Get("ErrorVolumeChange"));
+        if (!_wheelAudio.SetVolume(level)) ShowStatus("ErrorVolumeChange");
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
@@ -777,7 +783,7 @@ public partial class MainWindow : Window
         const int scTaskList = 0xF130;
         if (_source is null || !PostMessage(_source.Handle, wmSysCommand, scTaskList, 0))
         {
-            ShowStatus(UiText.Get("ErrorStartMenuOpen"));
+            ShowStatus("ErrorStartMenuOpen");
         }
     }
 
@@ -796,7 +802,7 @@ public partial class MainWindow : Window
                 : NativeWindowTracker.Activate(existingWindow.Handle);
             if (!activated)
             {
-                ShowStatus(UiText.Get("ErrorWindowActivate"));
+                ShowStatus("ErrorWindowActivate");
                 return;
             }
 
@@ -814,7 +820,7 @@ public partial class MainWindow : Window
         var executablePath = app.ExecutablePath;
         if (!File.Exists(executablePath))
         {
-            ShowStatus(UiText.Get("ErrorAppFileNotFound"));
+            ShowStatus("ErrorAppFileNotFound");
             return;
         }
 
@@ -834,19 +840,19 @@ public partial class MainWindow : Window
         }
         catch (Win32Exception)
         {
-            ShowStatus(UiText.Get("ErrorAppLaunchWin32"));
+            ShowStatus("ErrorAppLaunchWin32");
         }
         catch (InvalidOperationException)
         {
-            ShowStatus(UiText.Get("ErrorAppLaunchFailed"));
+            ShowStatus("ErrorAppLaunchFailed");
         }
         catch (UnauthorizedAccessException)
         {
-            ShowStatus(UiText.Get("ErrorAppLaunchDenied"));
+            ShowStatus("ErrorAppLaunchDenied");
         }
         catch (IOException)
         {
-            ShowStatus(UiText.Get("ErrorAppFileInaccessible"));
+            ShowStatus("ErrorAppFileInaccessible");
         }
     }
 
@@ -911,7 +917,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.Hide();
         if (sourceHandle == 0 || !NativeWindowTracker.Activate(sourceHandle))
         {
-            ShowStatus(UiText.Get("ErrorPreviewActivate"));
+            ShowStatus("ErrorPreviewActivate");
             return;
         }
 
@@ -925,7 +931,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.Hide();
         if (sourceHandle == 0 || !NativeWindowTracker.RequestClose(sourceHandle))
         {
-            ShowStatus(UiText.Get("ErrorPreviewClose"));
+            ShowStatus("ErrorPreviewClose");
             return;
         }
 
@@ -1013,29 +1019,33 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowStatus(string message) => ShowStatus(message, isError: true);
+    private void ShowStatus(string localizationKey) => ShowStatus(localizationKey, isError: true);
 
-    /// <summary>Errors use the danger color; informational notes (update checks) use the secondary text color.</summary>
-    private void ShowStatus(string message, bool isError)
+    private void ShowOperationStatus(string localizationKey, bool isError) => ShowStatus(localizationKey, isError);
+
+    /// <summary>Messages appear in a popup beside the dock: errors use the danger color, update notes the secondary color.</summary>
+    private void ShowStatus(string localizationKey, bool isError, params object[] arguments)
     {
-        StatusText.SetResourceReference(TextBlock.ForegroundProperty, isError ? "DangerText" : "TextSecondary");
-        _statusMessage = message;
-        StatusText.Text = UiText.LocalizeError(message);
-        ResizeDockToContent();
-        _replacementSession?.RefreshPosition();
+        _statusMessage = localizationKey;
+        _statusIsError = isError;
+        _statusArguments = arguments;
+        _notice.Show(FormatStatus(localizationKey, arguments), isError);
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (_statusMessage is not null) StatusText.Text = UiText.LocalizeError(_statusMessage);
+        if (_statusMessage is not null && _notice.IsOpen)
+            _notice.Show(FormatStatus(_statusMessage, _statusArguments), _statusIsError);
     }
+
+    private static string FormatStatus(string localizationKey, object[] arguments) => arguments.Length == 0
+        ? UiText.Get(localizationKey)
+        : UiText.Format(localizationKey, arguments);
 
     private void ClearStatus()
     {
         _statusMessage = null;
-        StatusText.Text = string.Empty;
-        ResizeDockToContent();
-        _replacementSession?.RefreshPosition();
+        _notice.Hide();
     }
 
     private async void DockContextMenu_Opened(object sender, RoutedEventArgs e)
@@ -1147,7 +1157,7 @@ public partial class MainWindow : Window
                         var invocation = _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
                         menu.IsOpen = false;
                         if (!await invocation && IsLoaded)
-                            ShowStatus(UiText.Get("ErrorAppTaskRun"));
+                            ShowStatus("ErrorAppTaskRun");
                     };
                     items.Add(item);
                 }
@@ -1239,7 +1249,7 @@ public partial class MainWindow : Window
         var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
         if (error is not null || shortcutPath is null)
         {
-            ShowStatus(error ?? UiText.Get("ErrorAppPinFailed"));
+            ShowStatus(error ?? "ErrorAppPinFailed");
             return;
         }
 
@@ -1352,11 +1362,11 @@ public partial class MainWindow : Window
         }
         else if (closedCount == 0)
         {
-            ShowStatus(UiText.Get("ErrorAppGracefulClose"));
+            ShowStatus("ErrorAppGracefulClose");
         }
         else
         {
-            ShowStatus(UiText.Get("ErrorAppPartialGracefulClose"));
+            ShowStatus("ErrorAppPartialGracefulClose");
         }
     }
 
@@ -1376,8 +1386,8 @@ public partial class MainWindow : Window
         if (processes.Count == 0)
         {
             ShowStatus(inaccessibleCount == 0
-                ? UiText.Get("ErrorAppNoProcesses")
-                : UiText.Get("ErrorAppProcessesInaccessible"));
+                ? "ErrorAppNoProcesses"
+                : "ErrorAppProcessesInaccessible");
             return;
         }
 
@@ -1431,11 +1441,11 @@ public partial class MainWindow : Window
         }
         else if (terminatedCount == 0)
         {
-            ShowStatus(UiText.Get("ErrorAppTerminateFailed"));
+            ShowStatus("ErrorAppTerminateFailed");
         }
         else
         {
-            ShowStatus(UiText.Get("ErrorAppPartialTerminate"));
+            ShowStatus("ErrorAppPartialTerminate");
         }
     }
 
@@ -1672,8 +1682,6 @@ public partial class MainWindow : Window
 
     private void ApplyLayoutMode()
     {
-        WidgetColumn.Width = IsFullWidth ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-        WidgetIsland.HorizontalAlignment = IsFullWidth ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         ApplyDockMargin();
         ApplyDockAlignment();
         ResizeDockToContent();
@@ -1773,7 +1781,7 @@ public partial class MainWindow : Window
             DockPosition.Left => HorizontalAlignment.Left,
             DockPosition.Center => HorizontalAlignment.Center,
             DockPosition.Right => HorizontalAlignment.Right,
-            _ => throw new InvalidOperationException(UiText.Get("ErrorDockPosition"))
+            _ => throw new InvalidOperationException("ErrorDockPosition")
         };
 
         DockSurface.HorizontalAlignment = alignment;
@@ -1797,6 +1805,7 @@ public partial class MainWindow : Window
     {
         if (!suppressed) return;
         _widgetPanel.Close(restoreFocus: false);
+        _notice.Hide();
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
         if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
@@ -1840,26 +1849,23 @@ public partial class MainWindow : Window
         }
 
         DockSurface.Height = double.NaN;
-        StartButton.ToolTip = UiText.Get("Start");
-        var hasWidgets = WidgetStrip.Children.OfType<UIElement>().Any(child => child.Visibility == Visibility.Visible);
-        WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         // Measure first: the layout pass it runs can move the dock area, which is read below.
         var contentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : SystemParameters.PrimaryScreenWidth;
+        var margin = DockSurface.Margin;
+        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
+        var widgetBasis = (IsFullWidth ? null : _dockWidthOverride) ?? maximumSurfaceWidth;
+        var hasWidgets = FitWidgetArea(widgetBasis - DockHorizontalChrome);
         var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
         if (!WidgetIsland.IsMeasureValid) WidgetIsland.Measure(unbounded);
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
-        var margin = DockSurface.Margin;
-        var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
         if (IsFullWidth)
         {
-            DockLayoutRoot.MinWidth = Math.Max(0, maximumSurfaceWidth - DockHorizontalChrome);
             DockSurface.Width = double.NaN;
             if (_dockArea.Width <= 0) Width = Math.Max(16, availableWidth);
             return;
         }
 
-        DockLayoutRoot.MinWidth = 0;
         var desiredWidth = Math.Ceiling(contentWidth + widgetsWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
@@ -1929,7 +1935,7 @@ public partial class MainWindow : Window
         if (session is null) return null;
         var error = session.Stop();
         if (session.IsActive) return error;
-        session.OperationFailed -= ShowStatus;
+        session.OperationReported -= ShowOperationStatus;
         session.LayoutChanged -= ApplyTaskbarLayout;
         session.FullScreenChanged -= OnFullScreenChanged;
         session.Dispose();
@@ -1943,7 +1949,7 @@ public partial class MainWindow : Window
         if (_replacementSession?.IsActive == true)
         {
             e.Cancel = true;
-            ShowStatus(error ?? UiText.Get("ErrorTaskbarRestoreFailed"));
+            ShowStatus(error ?? "ErrorTaskbarRestoreFailed");
             return;
         }
 
@@ -1990,6 +1996,8 @@ public partial class MainWindow : Window
         _thumbnailPreview.Dispose();
         _autoHideController?.Dispose();
         _autoHideController = null;
+        _notice.Dispose();
+        DisposeWidgetOverflow();
         _widgetCoordinator.Dispose();
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();

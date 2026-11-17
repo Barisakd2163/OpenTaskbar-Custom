@@ -112,7 +112,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     public static bool HasActiveSession => Volatile.Read(ref _current)?.IsActive == true;
 
-    public event Action<string>? OperationFailed;
+    public event Action<string, bool>? OperationReported;
     public event Action<Size>? LayoutChanged;
     public event Action<bool>? FullScreenChanged;
 
@@ -240,13 +240,13 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (InvalidOperationException ex)
         {
-            OperationFailed?.Invoke(ex.Message);
+            OperationReported?.Invoke(ex.Message, true);
             return;
         }
 
         if (!SetTaskbarState(ReplacementState, _handle) || !HideNativeTaskbar())
         {
-            OperationFailed?.Invoke("ErrorTaskbarRehide");
+            OperationReported?.Invoke("ErrorTaskbarRehide", true);
             return;
         }
 
@@ -254,7 +254,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         data.uCallbackMessage = CallbackMessage;
         if (SHAppBarMessage(AbmNew, ref data) == 0)
         {
-            OperationFailed?.Invoke("ErrorAppBarRegister");
+            OperationReported?.Invoke("ErrorAppBarRegister", true);
             return;
         }
         _registered = true;
@@ -349,7 +349,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         if (!SetTaskbarState(ReplacementState, _handle))
         {
-            OperationFailed?.Invoke("ErrorTaskbarAutoHideToggle");
+            OperationReported?.Invoke("ErrorTaskbarAutoHideToggle", true);
             return;
         }
         PositionDockWindow();
@@ -632,7 +632,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         if (!SetTaskbarState(ReplacementState, _handle))
         {
-            OperationFailed?.Invoke(UiText.Get("TaskbarAutoHideReenabled"));
+            OperationReported?.Invoke("TaskbarAutoHideReenabled", false);
             return;
         }
 
@@ -658,7 +658,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 _hideRetryPending = false;
                 if (_active && attempts >= 3 && !HideNativeTaskbar())
                 {
-                    OperationFailed?.Invoke("ErrorTaskbarRehide");
+                    OperationReported?.Invoke("ErrorTaskbarRehide", true);
                 }
             }
         };

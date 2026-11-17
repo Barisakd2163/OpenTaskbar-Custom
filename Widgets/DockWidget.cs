@@ -26,6 +26,9 @@ public class DockWidget : UserControl, IDisposable
     }
 
     public Action<string>? ReportError { get; set; }
+
+    /// <summary>Raised when the widget appears or disappears, so the dock can refit its widget area.</summary>
+    public event EventHandler? AvailabilityChanged;
     protected bool IsActive { get; private set; }
     protected DockSettings Settings { get; private set; } = new();
 
@@ -77,8 +80,13 @@ public class DockWidget : UserControl, IDisposable
         if (error is not null) ReportError?.Invoke(error);
     }
 
-    private void UpdateVisibility() =>
-        Visibility = IsActive && _hasData ? Visibility.Visible : Visibility.Collapsed;
+    private void UpdateVisibility()
+    {
+        var visibility = IsActive && _hasData ? Visibility.Visible : Visibility.Collapsed;
+        if (Visibility == visibility) return;
+        Visibility = visibility;
+        AvailabilityChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void Dispose()
     {

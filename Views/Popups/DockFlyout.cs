@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -100,12 +100,16 @@ public sealed class DockFlyout
 
     public static bool IsAnyOpen => _openCount > 0;
 
+    /// <summary>Maps an anchor that lives inside another popup to a dock element that stays on screen.</summary>
+    public static Func<UIElement, UIElement>? AnchorResolver { get; set; }
+
     public event EventHandler? Closed;
 
     public bool IsOpen => _popup.IsOpen;
 
     public void Show(UIElement target, UIElement content, bool animate = true)
     {
+        target = AnchorResolver?.Invoke(target) ?? target;
         _frame.Margin = Edge switch
         {
             DockEdge.Left => new Thickness(8, 0, 0, 0),
@@ -128,6 +132,7 @@ public sealed class DockFlyout
 
     public void Toggle(UIElement target, Func<UIElement> content, bool animate = true)
     {
+        target = AnchorResolver?.Invoke(target) ?? target;
         if (_popup.IsOpen && ReferenceEquals(_popup.PlacementTarget, target))
         {
             Close();
@@ -149,7 +154,11 @@ public sealed class DockFlyout
         _popup.IsOpen = false;
     }
 
-    private static CustomPopupPlacement[] Place(Size popupSize, Size targetSize, Point offset)
+    private static CustomPopupPlacement[] Place(Size popupSize, Size targetSize, Point offset) =>
+        PlaceAwayFromEdge(popupSize, targetSize);
+
+    /// <summary>Centers the popup on the target, opening on the side that faces away from the docked screen edge.</summary>
+    internal static CustomPopupPlacement[] PlaceAwayFromEdge(Size popupSize, Size targetSize)
     {
         var point = Edge switch
         {

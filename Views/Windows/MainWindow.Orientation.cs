@@ -101,7 +101,6 @@ public partial class MainWindow
         WidgetIsland.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
         DockSheen.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
         LeftResizeThumb.Visibility = RightResizeThumb.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
-        StatusText.MaxWidth = vertical ? 0 : 280;
         foreach (var button in GetAllDockButtons())
         {
             if (GetButtonIcon(button) is { } icon) icon.RenderTransformOrigin = IconScaleOrigin;
@@ -121,8 +120,6 @@ public partial class MainWindow
         Application.Current.Resources["DockCellSize"] = Profile.Cell;
         Application.Current.Resources["DockCellHeight"] = Math.Min(Profile.Cell,
             Math.Max(DockMetrics.MinCellSize, (available - frame) / count));
-        // Status messages show as a tooltip on the Start button instead of a wide text line.
-        StartButton.ToolTip = string.IsNullOrEmpty(StatusText.Text) ? UiText.Get("Start") : StatusText.Text;
         // The surface sizes itself to its content; cells above already shrink so the content fits the screen.
         DockSurface.Width = double.NaN;
         DockSurface.Height = double.NaN;

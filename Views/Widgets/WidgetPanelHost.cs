@@ -50,7 +50,7 @@ public sealed class WidgetPanelHost : IDisposable
         Close(restoreFocus: false);
         if (!_owner.IsActive && !_owner.Activate())
         {
-            OperationFailed?.Invoke(UiText.Get("WidgetPanelFocusError"));
+            OperationFailed?.Invoke("WidgetPanelFocusError");
             return;
         }
         _anchor = anchor;
@@ -76,7 +76,7 @@ public sealed class WidgetPanelHost : IDisposable
         IsOpenChanged?.Invoke(this, EventArgs.Empty);
         _frame.UpdateLayout();
         if (_popup.IsOpen && _frame.Body is { } body && !body.MoveFocus(new TraversalRequest(FocusNavigationDirection.First)))
-            OperationFailed?.Invoke(UiText.Get("WidgetPanelFocusError"));
+            OperationFailed?.Invoke("WidgetPanelFocusError");
     }
 
     private void Popup_Closed(object? sender, EventArgs e)

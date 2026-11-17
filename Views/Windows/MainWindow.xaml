@@ -149,14 +149,14 @@
                     <DropShadowEffect Color="#05070B" BlurRadius="30" ShadowDepth="5" Direction="270" Opacity="0.5" RenderingBias="Performance" />
                 </Border.Effect>
                 <Grid x:Name="DockFrameRoot">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <views:DockScrollViewer x:Name="DockScrollViewer" Style="{StaticResource DockScrollViewerStyle}"
                                           HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
                                           ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
                         <Grid x:Name="DockLayoutRoot">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition x:Name="WidgetColumn" Width="Auto" />
-                            </Grid.ColumnDefinitions>
                             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                                         VerticalAlignment="Center">
                             <Button x:Name="StartButton" Style="{StaticResource StartDockButton}" Click="StartButton_Click"
@@ -221,34 +221,29 @@
                                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                             </ItemsControl>
-                            <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerText}" FontSize="{StaticResource TextSizeCaption}"
-                                       MaxWidth="280" VerticalAlignment="Center" Margin="8,0" TextWrapping="Wrap">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Style.Triggers>
-                                            <Trigger Property="Text" Value="">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
                         </StackPanel>
-                            <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
-                            <Border x:Name="WidgetIsland" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
-                                    Padding="0" BorderThickness="0" Background="Transparent" BorderBrush="Transparent">
-                                <StackPanel x:Name="WidgetStrip" Orientation="Horizontal" VerticalAlignment="Center"
-                                            SizeChanged="WidgetStrip_SizeChanged" />
-                            </Border>
                         </Grid>
                     </views:DockScrollViewer>
+                    <!-- Widgets stay outside the scrolling app area so they are never pushed out of view. -->
+                    <Border x:Name="WidgetIsland" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,6,0"
+                            Padding="0" BorderThickness="0" Background="Transparent" BorderBrush="Transparent">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <StackPanel x:Name="WidgetStrip" Orientation="Horizontal" VerticalAlignment="Center"
+                                        SizeChanged="WidgetStrip_SizeChanged" />
+                            <Button x:Name="WidgetOverflowButton" Visibility="Collapsed" Style="{StaticResource WidgetIconButton}" Width="28" Height="28" Margin="2,0,0,0"
+                                    Click="WidgetOverflowButton_Click"
+                                    AutomationProperties.Name="{local:Loc WidgetOverflow}" ToolTip="{local:Loc WidgetOverflow}">
+                                <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconChevronUp}" Width="16" Height="16" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
                     <!-- Dual-layer optical glass bevel refraction highlight line -->
-                    <Border x:Name="DockInnerBevel" BorderThickness="1"
+                    <Border x:Name="DockInnerBevel" Grid.ColumnSpan="2" BorderThickness="1"
                             BorderBrush="{DynamicResource DockInnerBevelMaterial}"
                             CornerRadius="{StaticResource DockInnerRadius}"
                             Margin="-9,-3,-9,-3" IsHitTestVisible="False" />
                     <!-- Specular ambient sheen curving across the top half of the glass dock -->
-                    <Border x:Name="DockSheen" Height="20" VerticalAlignment="Top" Margin="6,-3,6,0"
+                    <Border x:Name="DockSheen" Grid.ColumnSpan="2" Height="20" VerticalAlignment="Top" Margin="6,-3,6,0"
                             CornerRadius="{StaticResource DockSheenRadius}"
                             Background="{DynamicResource DockHighlight}" IsHitTestVisible="False" />
                 </Grid>

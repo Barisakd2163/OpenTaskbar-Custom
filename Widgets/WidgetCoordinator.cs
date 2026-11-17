@@ -50,6 +50,7 @@ public sealed class WidgetCoordinator : IDisposable
     private sealed record WidgetDragPayload(string WidgetId);
 
     private readonly Panel _strip;
+    private HashSet<string> _overflowIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WidgetItem> _widgets;
     private readonly DispatcherTimer _timer;
     private readonly HashSet<DockWidget> _displacedWidgets = [];
@@ -61,6 +62,14 @@ public sealed class WidgetCoordinator : IDisposable
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
+
+    /// <summary>Holds the widgets that do not fit the dock; the dock shows it in a flyout.</summary>
+    public StackPanel OverflowPanel { get; } = new() { Orientation = Orientation.Vertical };
+
+    public bool HasOverflow => _overflowIds.Count > 0;
+
+    /// <summary>Raised when a widget appears or disappears and the dock must refit its widget area.</summary>
+    public event Action? AvailabilityChanged;
 
     private static bool IsCatalogEnabled(DockSettings settings, string id) =>
         settings.Widgets?.Contains(id, StringComparer.OrdinalIgnoreCase) == true;
@@ -94,9 +103,10 @@ public sealed class WidgetCoordinator : IDisposable
             item.Widget.DragOver += Widget_DragOver;
             item.Widget.DragLeave += Widget_DragLeave;
             item.Widget.Drop += Widget_Drop;
-
-            _strip.Children.Add(item.Widget);
+            item.Widget.AvailabilityChanged += Widget_AvailabilityChanged;
         }
+
+        PlaceWidgets();
 
         _timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += Timer_Tick;
@@ -152,11 +162,7 @@ public sealed class WidgetCoordinator : IDisposable
             return indexA.CompareTo(indexB);
         });
 
-        _strip.Children.Clear();
-        foreach (var item in _widgets)
-        {
-            _strip.Children.Add(item.Widget);
-        }
+        PlaceWidgets();
     }
 
     public void ReorderWidgets(int oldIndex, int newIndex)
@@ -170,8 +176,7 @@ public sealed class WidgetCoordinator : IDisposable
         _widgets.RemoveAt(oldIndex);
         _widgets.Insert(newIndex, item);
 
-        _strip.Children.Remove(item.Widget);
-        _strip.Children.Insert(newIndex, item.Widget);
+        PlaceWidgets();
 
         var newOrder = _widgets.Select(w => w.Id).ToArray();
         OrderChanged?.Invoke(newOrder);
@@ -389,6 +394,40 @@ public sealed class WidgetCoordinator : IDisposable
         e.Handled = true;
     }
 
+    /// <summary>Puts each widget in the dock strip or the overflow panel, keeping the user's order in both.</summary>
+    private void PlaceWidgets()
+    {
+        _strip.Children.Clear();
+        OverflowPanel.Children.Clear();
+        foreach (var item in _widgets)
+        {
+            (_overflowIds.Contains(item.Id) ? OverflowPanel.Children : _strip.Children).Add(item.Widget);
+        }
+    }
+
+    /// <summary>
+    /// Moves widgets that exceed <paramref name="budget"/> (dock pixels) into the overflow panel.
+    /// Returns true when the placement changed, so the caller closes the overflow flyout and relayouts.
+    /// </summary>
+    public bool FitOverflow(double budget, double buttonWidth, double scale)
+    {
+        var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        var visible = new List<(string Id, double Width)>();
+        foreach (var item in _widgets.Where(w => w.Widget.Visibility == Visibility.Visible))
+        {
+            item.Widget.Measure(unbounded);
+            visible.Add((item.Id, item.Widget.DesiredSize.Width * scale));
+        }
+
+        var overflow = WidgetOverflowPlanner.Plan(visible, budget, buttonWidth);
+        if (overflow.SetEquals(_overflowIds)) return false;
+        _overflowIds = overflow;
+        PlaceWidgets();
+        return true;
+    }
+
+    private void Widget_AvailabilityChanged(object? sender, EventArgs e) => AvailabilityChanged?.Invoke();
+
     private void Timer_Tick(object? sender, EventArgs e)
     {
         var now = DateTime.Now;
@@ -409,6 +448,7 @@ public sealed class WidgetCoordinator : IDisposable
             item.Widget.DragOver -= Widget_DragOver;
             item.Widget.DragLeave -= Widget_DragLeave;
             item.Widget.Drop -= Widget_Drop;
+            item.Widget.AvailabilityChanged -= Widget_AvailabilityChanged;
             item.Widget.Dispose();
         }
     }
