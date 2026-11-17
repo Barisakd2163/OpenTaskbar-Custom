@@ -59,12 +59,14 @@ public sealed class DockScrollViewer : ScrollViewer
         var horizontalOnly = ScrollableHeight <= 0 && ScrollableWidth > 0;
         if (!horizontalOnly && (modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) == 0) return false;
         var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
-        var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize;
+        var multiplier = animate ? 2.0 : 1.0;
+        var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize * multiplier;
         if (!horizontalOnly && ScrollableHeight > 0)
         {
             if (animate && SystemParameters.ClientAreaAnimation)
             {
-                var baseOffset = Math.Abs(_targetVerticalOffset - VerticalOffset) > 100 ? VerticalOffset : _targetVerticalOffset;
+                var baseOffset = (Math.Sign(distance) == Math.Sign(VerticalOffset - _targetVerticalOffset))
+                    ? _targetVerticalOffset : VerticalOffset;
                 AnimateScrollVertical(baseOffset - distance);
             }
             else
@@ -78,7 +80,8 @@ public sealed class DockScrollViewer : ScrollViewer
         {
             if (animate && SystemParameters.ClientAreaAnimation)
             {
-                var baseOffset = Math.Abs(_targetHorizontalOffset - HorizontalOffset) > 100 ? HorizontalOffset : _targetHorizontalOffset;
+                var baseOffset = (Math.Sign(distance) == Math.Sign(HorizontalOffset - _targetHorizontalOffset))
+                    ? _targetHorizontalOffset : HorizontalOffset;
                 AnimateScrollHorizontal(baseOffset - distance);
             }
             else
@@ -105,8 +108,8 @@ public sealed class DockScrollViewer : ScrollViewer
         {
             From = HorizontalOffset,
             To = target,
-            Duration = TimeSpan.FromMilliseconds(220),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            Duration = TimeSpan.FromMilliseconds(100),
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
         BeginAnimation(CurrentHorizontalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
@@ -125,8 +128,8 @@ public sealed class DockScrollViewer : ScrollViewer
         {
             From = VerticalOffset,
             To = target,
-            Duration = TimeSpan.FromMilliseconds(220),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            Duration = TimeSpan.FromMilliseconds(100),
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
         BeginAnimation(CurrentVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
@@ -143,10 +146,11 @@ public sealed class DockScrollViewer : ScrollViewer
         if (e.Delta != 0 && ScrollableWidth > 0)
         {
             var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
-            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize;
+            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize * 2.0;
             if (SystemParameters.ClientAreaAnimation)
             {
-                var baseOffset = Math.Abs(_targetHorizontalOffset - HorizontalOffset) > 100 ? HorizontalOffset : _targetHorizontalOffset;
+                var baseOffset = (Math.Sign(distance) == Math.Sign(HorizontalOffset - _targetHorizontalOffset))
+                    ? _targetHorizontalOffset : HorizontalOffset;
                 AnimateScrollHorizontal(baseOffset - distance);
             }
             else
@@ -160,10 +164,11 @@ public sealed class DockScrollViewer : ScrollViewer
         if (e.Delta != 0 && ScrollableHeight > 0)
         {
             var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
-            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize;
+            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize * 2.0;
             if (SystemParameters.ClientAreaAnimation)
             {
-                var baseOffset = Math.Abs(_targetVerticalOffset - VerticalOffset) > 100 ? VerticalOffset : _targetVerticalOffset;
+                var baseOffset = (Math.Sign(distance) == Math.Sign(VerticalOffset - _targetVerticalOffset))
+                    ? _targetVerticalOffset : VerticalOffset;
                 AnimateScrollVertical(baseOffset - distance);
             }
             else
