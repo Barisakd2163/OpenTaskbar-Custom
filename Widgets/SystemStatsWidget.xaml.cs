@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
+using System.Windows.Data;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -78,21 +79,21 @@ public partial class SystemStatsWidget : DockWidget
         var meters = Settings.StatsMeters;
 
         if (meters.HasFlag(SystemMeters.Battery) && _batteryState.Present)
-            panel.Children.Add(MakeStatTile(UiText.Get("Battery"), UiText.Format("Percent", _batteryState.Percent), _batteryState.Percent / 100.0, BatteryButton));
+            panel.Children.Add(MakeStatTile(UiText.Get("Battery"), UiText.Format("Percent", _batteryState.Percent), _batteryState.Percent / 100.0, BatteryButton, BatteryRing));
         if (meters.HasFlag(SystemMeters.Cpu))
-            panel.Children.Add(MakeStatTile("CPU", $"{_cpuState.Shown}%", _cpuState.Value, CpuButton));
+            panel.Children.Add(MakeStatTile("CPU", $"{_cpuState.Shown}%", _cpuState.Value, CpuButton, CpuRing));
         if (meters.HasFlag(SystemMeters.Memory))
-            panel.Children.Add(MakeStatTile("RAM", $"{_memoryState.Shown}%", _memoryState.Value, MemoryButton));
+            panel.Children.Add(MakeStatTile("RAM", $"{_memoryState.Shown}%", _memoryState.Value, MemoryButton, MemoryRing));
         if (meters.HasFlag(SystemMeters.CpuTemperature) && _hasCpuTemp)
-            panel.Children.Add(MakeStatTile("CPU°", $"{_cpuTempState.Shown}°", _cpuTempState.Value, CpuTemperatureButton));
+            panel.Children.Add(MakeStatTile("CPU°", $"{_cpuTempState.Shown}°", _cpuTempState.Value, CpuTemperatureButton, CpuTemperatureRing));
         if (meters.HasFlag(SystemMeters.Gpu) && _hasGpu)
-            panel.Children.Add(MakeStatTile("GPU", $"{_gpuState.Shown}%", _gpuState.Value, GpuButton));
+            panel.Children.Add(MakeStatTile("GPU", $"{_gpuState.Shown}%", _gpuState.Value, GpuButton, GpuRing));
         if (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp)
-            panel.Children.Add(MakeStatTile("GPU°", $"{_gpuTempState.Shown}°", _gpuTempState.Value, GpuTemperatureButton));
+            panel.Children.Add(MakeStatTile("GPU°", $"{_gpuTempState.Shown}°", _gpuTempState.Value, GpuTemperatureButton, GpuTemperatureRing));
 
         return panel.Children.Count > 0 ? panel : null;
 
-        System.Windows.Controls.Button MakeStatTile(string caption, string valueText, double normalized, System.Windows.Controls.Button sourceButton)
+        System.Windows.Controls.Button MakeStatTile(string caption, string valueText, double normalized, System.Windows.Controls.Button sourceButton, RingMeter sourceRing)
         {
             var ring = new RingMeter
             {
@@ -106,7 +107,9 @@ public partial class SystemStatsWidget : DockWidget
             };
             ring.SetResourceReference(RingMeter.CaptionBrushProperty, "TextSecondary");
             ring.SetResourceReference(RingMeter.TrackBrushProperty, "WidgetTrack");
-            ring.SetResourceReference(RingMeter.ValueBrushProperty, "WidgetAccent");
+            ring.SetBinding(RingMeter.ValueProperty, new Binding(nameof(RingMeter.Value)) { Source = sourceRing, Mode = BindingMode.OneWay });
+            ring.SetBinding(RingMeter.TextProperty, new Binding(nameof(RingMeter.Text)) { Source = sourceRing, Mode = BindingMode.OneWay });
+            ring.SetBinding(RingMeter.ValueBrushProperty, new Binding(nameof(RingMeter.ValueBrush)) { Source = sourceRing, Mode = BindingMode.OneWay });
             ring.SetResourceReference(ForegroundProperty, "TextPrimary");
             var btn = new System.Windows.Controls.Button
             {
