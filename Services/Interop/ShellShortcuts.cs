@@ -148,7 +148,6 @@ public static class ShellShortcuts
         }
 
         var edge = DockFlyout.Edge;
-        var movedOnce = false;
 
         for (var attempt = 0; attempt < 35; attempt++)
         {
@@ -159,29 +158,130 @@ public static class ShellShortcuts
             var height = rect.Bottom - rect.Top;
             if (width < 80 || height < 80) continue;
 
-            if (!movedOnce)
-            {
-                AppLog.Info($"RepositionNotificationCenterAsync: found hwnd 0x{hwnd:X} at ({rect.Left}, {rect.Top}, {width}x{height}) on attempt {attempt}");
-                _ = Task.Run(() => EnsureCalendarCollapsed(hwnd));
-                movedOnce = true;
-            }
-
-            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, height, monitorInfo, edge);
-            var setRes = SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-            AppLog.Info($"RepositionNotificationCenterAsync: SetWindowPos to ({targetX}, {targetY}) returned {setRes}");
-
-            // Hold position across the entrance animation window
-            for (var frame = 0; frame < 5; frame++)
-            {
-                await Task.Delay(40);
-                SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-            }
-            break;
+            AppLog.Info($"RepositionNotificationCenterAsync: found hwnd 0x{hwnd:X} at ({rect.Left}, {rect.Top}, {width}x{height}) on attempt {attempt}");
+            await PositionAndClipNotificationCenterAsync(hwnd, topLeft, bottomRight, width, height, monitorInfo, edge);
+            return;
         }
 
-        if (!movedOnce)
+        AppLog.Warning("RepositionNotificationCenterAsync: notification window not found within timeout.");
+    }
+
+    private static async Task PositionAndClipNotificationCenterAsync(
+        nint hwnd, Point topLeft, Point bottomRight, int winWidth, int winHeight, MonitorInfo monitorInfo, DockEdge edge)
+    {
+        try
         {
-            AppLog.Warning("RepositionNotificationCenterAsync: notification window not found within timeout.");
+            var element = AutomationElement.FromHandle(hwnd);
+            int clipHeight = 0;
+
+            if (element is not null)
+            {
+                for (var retry = 0; retry < 10; retry++)
+                {
+                    GetWindowRect(hwnd, out var curWinRect);
+
+                    AutomationElement? calGrid = null;
+                    AutomationElement? notifGrid = null;
+                    try
+                    {
+                        calGrid = element.FindFirst(TreeScope.Descendants,
+                            new PropertyCondition(AutomationElement.AutomationIdProperty, "CalendarCenterGrid"));
+                        notifGrid = element.FindFirst(TreeScope.Descendants,
+                            new PropertyCondition(AutomationElement.AutomationIdProperty, "NotificationCenterGrid"));
+                    }
+                    catch
+                    {
+                    }
+
+                    if (calGrid is not null)
+                    {
+                        var calRect = calGrid.Current.BoundingRectangle;
+                        if (!double.IsInfinity(calRect.Top) && calRect.Height > 0)
+                        {
+                            clipHeight = (int)Math.Round(calRect.Top - curWinRect.Top);
+                            AppLog.Info($"PositionAndClip: found CalendarCenterGrid top={calRect.Top}, clipHeight={clipHeight}");
+                            break;
+                        }
+                    }
+
+                    if (notifGrid is not null)
+                    {
+                        var notifRect = notifGrid.Current.BoundingRectangle;
+                        if (!double.IsInfinity(notifRect.Bottom) && notifRect.Height > 0)
+                        {
+                            clipHeight = (int)Math.Round(notifRect.Height);
+                            AppLog.Info($"PositionAndClip: found NotificationCenterGrid height={clipHeight}");
+                            break;
+                        }
+                    }
+
+                    var buttons = element.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+
+                    foreach (AutomationElement btn in buttons)
+                    {
+                        var autoId = btn.Current.AutomationId;
+                        var name = btn.Current.Name ?? string.Empty;
+
+                        bool isCalendarButton = autoId == "ExpandCollapseButton"
+                            || autoId == "CollapseButton"
+                            || name.Contains("Takvim", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("Calendar", StringComparison.OrdinalIgnoreCase);
+
+                        if (isCalendarButton)
+                        {
+                            var btnRect = btn.Current.BoundingRectangle;
+                            if (double.IsInfinity(btnRect.Top) || btnRect.Height <= 0) continue;
+
+                            if (name.Contains("Daralt", StringComparison.OrdinalIgnoreCase)
+                                || name.Contains("Collapse", StringComparison.OrdinalIgnoreCase)
+                                || autoId == "CollapseButton")
+                            {
+                                if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
+                                {
+                                    ip.Invoke();
+                                    AppLog.Info($"PositionAndClip: invoked {autoId}/{name} to collapse");
+                                    await Task.Delay(50);
+                                    GetWindowRect(hwnd, out curWinRect);
+                                    btnRect = btn.Current.BoundingRectangle;
+                                }
+                            }
+
+                            // The calendar card starts ~52px above the expand button
+                            var headerTop = btnRect.Top - 52;
+                            clipHeight = (int)Math.Clamp(headerTop - curWinRect.Top, 200, winHeight);
+                            AppLog.Info($"PositionAndClip: derived clipHeight={clipHeight} from btnTop={btnRect.Top}");
+                            break;
+                        }
+                    }
+
+                    if (clipHeight > 0) break;
+                    await Task.Delay(40);
+                }
+            }
+
+            if (clipHeight <= 0)
+            {
+                clipHeight = Math.Min(winHeight, 420);
+                AppLog.Info($"PositionAndClip: fallback clipHeight={clipHeight}");
+            }
+
+            clipHeight = Math.Clamp(clipHeight, 180, winHeight);
+
+            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, winWidth, clipHeight, monitorInfo, edge);
+            AppLog.Info($"PositionAndClip: positioning hwnd 0x{hwnd:X} to ({targetX}, {targetY}) size {winWidth}x{clipHeight}");
+
+            for (var frame = 0; frame < 6; frame++)
+            {
+                SetWindowPos(hwnd, 0, targetX, targetY, winWidth, clipHeight, SwpNoZOrder | SwpNoActivate);
+                var rgn = CreateRoundRectRgn(0, 0, winWidth, clipHeight, 16, 16);
+                SetWindowRgn(hwnd, rgn, true);
+                await Task.Delay(40);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"PositionAndClipNotificationCenterAsync exception: {ex.Message}");
         }
     }
 
@@ -274,82 +374,6 @@ public static class ShellShortcuts
         }
 
         return 0;
-    }
-
-    private static void EnsureCalendarCollapsed(nint hwnd)
-    {
-        try
-        {
-            AppLog.Info($"EnsureCalendarCollapsed: starting for hwnd 0x{hwnd:X}");
-            var element = AutomationElement.FromHandle(hwnd);
-            if (element is null)
-            {
-                AppLog.Warning("EnsureCalendarCollapsed: AutomationElement is null");
-                return;
-            }
-
-            GetWindowRect(hwnd, out var winRect);
-            var winWidth = winRect.Right - winRect.Left;
-            var winHeight = winRect.Bottom - winRect.Top;
-
-            for (var retry = 0; retry < 8; retry++)
-            {
-                var buttons = element.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
-
-                foreach (AutomationElement btn in buttons)
-                {
-                    var autoId = btn.Current.AutomationId;
-                    var name = btn.Current.Name ?? string.Empty;
-
-                    // Filter specifically for the calendar collapse/expand button, ignoring individual notification items
-                    bool isCalendarButton = autoId == "ExpandCollapseButton"
-                        || autoId == "CollapseButton"
-                        || name.Contains("Takvim", StringComparison.OrdinalIgnoreCase)
-                        || name.Contains("Calendar", StringComparison.OrdinalIgnoreCase);
-
-                    if (isCalendarButton)
-                    {
-                        var btnRect = btn.Current.BoundingRectangle;
-                        if (double.IsInfinity(btnRect.Top) || btnRect.Height <= 0)
-                        {
-                            AppLog.Info($"EnsureCalendarCollapsed: button layout pending (btnTop is Infinity) on attempt {retry}");
-                            continue;
-                        }
-
-                        AppLog.Info($"EnsureCalendarCollapsed: found calendar button {autoId}/'{name}' at btnTop={btnRect.Top}, winTop={winRect.Top}");
-
-                        if (name.Contains("Daralt", StringComparison.OrdinalIgnoreCase)
-                            || name.Contains("Collapse", StringComparison.OrdinalIgnoreCase)
-                            || autoId == "CollapseButton")
-                        {
-                            if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
-                            {
-                                ip.Invoke();
-                                AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name} to collapse");
-                                Thread.Sleep(60);
-                                GetWindowRect(hwnd, out winRect);
-                                btnRect = btn.Current.BoundingRectangle;
-                            }
-                        }
-
-                        // Clip window region above the calendar button so the date bar and calendar are completely hidden
-                        var clipHeight = (int)Math.Clamp(btnRect.Top - winRect.Top - 2, 100, winHeight);
-                        AppLog.Info($"EnsureCalendarCollapsed: clipping window 0x{hwnd:X} to height {clipHeight} (full was {winHeight})");
-                        var rgn = CreateRectRgn(0, 0, winWidth, clipHeight);
-                        var rgnResult = SetWindowRgn(hwnd, rgn, true);
-                        AppLog.Info($"EnsureCalendarCollapsed: SetWindowRgn returned {rgnResult}");
-                        return;
-                    }
-                }
-
-                Thread.Sleep(80);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warning($"EnsureCalendarCollapsed exception: {ex.Message}");
-        }
     }
 
     public static string? OpenUri(string uri) => Start(uri, "ErrorSettingsPageOpen");
@@ -478,6 +502,9 @@ public static class ShellShortcuts
 
     [DllImport("gdi32.dll")]
     private static extern nint CreateRectRgn(int x1, int y1, int x2, int y2);
+
+    [DllImport("gdi32.dll")]
+    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
 
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(nint hWnd, nint hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
