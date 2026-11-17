@@ -160,6 +160,9 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel x:Name="DockLeadControls" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="StartButton" Style="{StaticResource StartDockButton}" Click="StartButton_Click"
+                                    PreviewMouseLeftButtonDown="StartButton_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="StartButton_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="StartButton_PreviewMouseLeftButtonUp"
                                     AutomationProperties.Name="{local:Loc Start}" ToolTip="{local:Loc Start}" ToolTipService.InitialShowDelay="650">
                                 <Grid Width="{DynamicResource DockIconSize}" Height="{DynamicResource DockIconSize}"
                                       RenderTransformOrigin="0.5,0.95">
@@ -182,7 +185,8 @@
                                               HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
                                               ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
                             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
-                                        VerticalAlignment="Center">
+                                        VerticalAlignment="Center" AllowDrop="True"
+                                        DragOver="DockContents_DragOver" Drop="DockContents_Drop">
                                 <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>

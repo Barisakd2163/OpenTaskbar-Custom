@@ -19,6 +19,7 @@ public partial class App : Application
     public bool IsPreview { get; private set; }
     public bool IsInspection { get; private set; }
     public bool OpenSettingsOnStartup { get; private set; }
+    private DevReloadService? _devReload;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -30,6 +31,9 @@ public partial class App : Application
         IsPreview = e.Args.Contains("--preview", StringComparer.Ordinal);
         IsInspection = e.Args.Contains("--inspect", StringComparer.Ordinal);
         OpenSettingsOnStartup = e.Args.Contains("--settings", StringComparer.Ordinal);
+        var devMode = e.Args.Contains("--dev", StringComparer.Ordinal);
+        var sourceArg = e.Args.FirstOrDefault(arg => arg.StartsWith("--source=", StringComparison.OrdinalIgnoreCase));
+        var sourceRoot = sourceArg?["--source=".Length..];
         if (IsPreview)
             Preferences = new ApplicationPreferences(new DockSettingsStore(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -58,6 +62,28 @@ public partial class App : Application
         mainWindow.Show();
         if (themeInstallError is not null)
             AppLog.Error($"Built-in theme installation: {themeInstallError}");
+
+        if (devMode)
+            StartDevReload(sourceRoot);
+    }
+
+    private void StartDevReload(string? sourceRoot)
+    {
+        var root = sourceRoot;
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        {
+            // Default to the project root when launched from bin/<config>/<tfm>.
+            root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        }
+
+        if (!Directory.Exists(Path.Combine(root, "Design")))
+        {
+            AppLog.Warning($"DevReload: source root '{root}' has no Design folder; reload disabled.");
+            return;
+        }
+
+        _devReload = new DevReloadService(Dispatcher, root);
+        AppLog.Info($"DevReload: watching {root}");
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -68,6 +94,8 @@ public partial class App : Application
             AppLog.Error(error);
             e.ApplicationExitCode = 1;
         }
+        _devReload?.Dispose();
+        _devReload = null;
         _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         _instanceMutex = null;

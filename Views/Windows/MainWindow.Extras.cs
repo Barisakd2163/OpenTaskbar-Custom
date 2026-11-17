@@ -187,12 +187,25 @@ public partial class MainWindow
 
     private void RecycleBin_DragOver(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = false;
+            return;
+        }
+
         e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Move : DragDropEffects.None;
         e.Handled = true;
     }
 
     private void RecycleBin_Drop(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Handled = false;
+            return;
+        }
+
         e.Handled = true;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths) return;
         // Let the drag source finish before Windows shows its own confirmation UI.
@@ -382,6 +395,13 @@ public partial class MainWindow
 
     private void StackButton_DragOver(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetDataPresent(typeof(DockStack))
             && sender is Button targetButton
             && targetButton.DataContext is DockStack targetStack
@@ -412,6 +432,12 @@ public partial class MainWindow
 
     private void StackButton_Drop(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetData(typeof(DockStack)) is DockStack sourceStack
             && sender is Button targetButton
             && targetButton.DataContext is DockStack targetStack

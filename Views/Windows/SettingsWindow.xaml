@@ -244,8 +244,8 @@
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                 <Border Style="{StaticResource LanguageBadge}" Margin="0,0,10,0">
-                                                    <TextBlock Text="{Binding Code}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                               FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                                                    <TextBlock Text="{Binding Flag}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               FontFamily="Segoe UI Emoji" FontSize="16" />
                                                 </Border>
                                                 <TextBlock Text="{Binding NativeName}" VerticalAlignment="Center" />
                                             </StackPanel>
@@ -351,10 +351,15 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
                                   HorizontalContentAlignment="Stretch">
                         <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}" HorizontalAlignment="Stretch">
-                            <TextBlock Text="{local:Loc Widgets}" Style="{StaticResource SettingsHeading}" Margin="0,0,0,16" />
-                            <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}">
-                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                            </ItemsControl>
+                            <TextBlock Text="{local:Loc Widgets}" Style="{StaticResource SettingsHeading}" Margin="0,0,0,4" />
+                            <TextBlock Text="{local:Loc WidgetsDescription}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,16" TextWrapping="Wrap" />
+
+                            <TextBlock Text="{local:Loc SectionWidgetsCatalog}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,12" />
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,16,4,4">
+                                <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </Border>
                             <Grid x:Name="WidgetPanelsPool" Visibility="Collapsed">
                                 <Border x:Name="ClockOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
                                     <StackPanel>

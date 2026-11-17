@@ -170,6 +170,13 @@ public partial class MainWindow
 
     private void DockApp_DragOver(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetDataPresent(typeof(DockApp))
             && sender is Button targetButton
             && targetButton.DataContext is DockApp targetApp
@@ -192,6 +199,12 @@ public partial class MainWindow
 
     private void DockApp_Drop(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetData(typeof(DockApp)) is DockApp sourceApp
             && sender is Button targetButton
             && targetButton.DataContext is DockApp targetApp
@@ -214,4 +227,77 @@ public partial class MainWindow
         ResetDisplacements();
         e.Handled = true;
     }
+
+    // ---- Start Button Drag & Drop ----
+
+    private Point _startDragStartPoint;
+    private bool _isStartPressing;
+
+    private void StartButton_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _startDragStartPoint = e.GetPosition(this);
+        _isStartPressing = true;
+    }
+
+    private void StartButton_PreviewMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _isStartPressing = false;
+    }
+
+    private void StartButton_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || !_isStartPressing) return;
+
+        var currentPoint = e.GetPosition(this);
+        var diff = _startDragStartPoint - currentPoint;
+        if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+        {
+            _isStartPressing = false;
+            _previewCloseTimer.Stop();
+            _thumbnailPreview.Hide();
+            ResetMagnification();
+
+            StartButton.Opacity = 0.55;
+            try
+            {
+                DragDrop.DoDragDrop(StartButton, new StartButtonDragData(), DragDropEffects.Move);
+            }
+            finally
+            {
+                StartButton.Opacity = 1.0;
+            }
+        }
+    }
+
+    private void DockContents_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+    }
+
+    private void DockContents_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(StartButtonDragData))) return;
+
+        var pos = e.GetPosition(DockContents);
+        var totalLength = IsVertical ? DockContents.ActualHeight : DockContents.ActualWidth;
+        var currentCoord = IsVertical ? pos.Y : pos.X;
+
+        var newPlacement = currentCoord > totalLength / 2 ? StartButtonPlacement.End : StartButtonPlacement.Start;
+
+        if (_preferences.Current.StartPlacement != newPlacement)
+        {
+            _preferences.Save(_preferences.Current with { StartPlacement = newPlacement });
+            ApplyStartPlacement();
+            AnimateDropSettle(StartButton);
+        }
+
+        e.Handled = true;
+    }
 }
+
+public sealed class StartButtonDragData;

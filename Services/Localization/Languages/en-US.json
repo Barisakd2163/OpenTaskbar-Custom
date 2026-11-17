@@ -312,6 +312,7 @@
   "SectionDockLayout": "Dock Layout & Sizing",
   "SectionHotkeys": "Keyboard Shortcuts",
   "SectionInteractions": "Start Button & Mouse",
+  "SectionWidgetsCatalog": "Widget Catalog",
   "WidgetWeather": "Weather",
   "WidgetWeatherDescription": "Current temperature, condition icon, and multi-day forecast.",
   "Country": "Country",

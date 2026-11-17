@@ -13,6 +13,7 @@
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding IsInstalled}" Value="True">
                         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
                     </DataTrigger>
                 </Style.Triggers>
             </Style>

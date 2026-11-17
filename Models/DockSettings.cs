@@ -25,6 +25,20 @@ public readonly record struct AppLanguage
     public CultureInfo Culture => CultureInfo.GetCultureInfo(CultureName);
     public string NativeName => Culture.NativeName;
     public string Code => Culture.TwoLetterISOLanguageName.ToUpperInvariant();
+
+    /// <summary>Regional-indicator flag for the culture's region, or the language code when there is no region.</summary>
+    public string Flag
+    {
+        get
+        {
+            var name = Culture.Name;
+            var parts = name.Split('-');
+            if (parts.Length < 2 || parts[1].Length != 2) return Code;
+            var region = parts[1].ToUpperInvariant();
+            if (region.Any(c => c is < 'A' or > 'Z')) return Code;
+            return new string(region.Select(c => (char)(0x1F1E6 + (c - 'A'))).ToArray());
+        }
+    }
 }
 public enum AutoHideMode { Disabled, Smart, Always }
 public enum DockLayout { Floating, FullWidth }
