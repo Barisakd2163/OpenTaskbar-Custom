@@ -16,7 +16,8 @@
     <Window.Resources>
         <ResourceDictionary>
             <DataTemplate x:Key="SettingsWidgetOptionTemplate">
-                <widgets:WidgetCatalogItem InstallationRequested="WidgetInstallation_Click"
+                <widgets:WidgetCatalogItem Width="Auto" HorizontalAlignment="Stretch" Margin="0,0,12,12"
+                                           InstallationRequested="WidgetInstallation_Click"
                                            SettingsRequested="WidgetSettings_Click" />
             </DataTemplate>
         </ResourceDictionary>
@@ -355,11 +356,13 @@
                             <TextBlock Text="{local:Loc WidgetsDescription}" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,16" TextWrapping="Wrap" />
 
                             <TextBlock Text="{local:Loc SectionWidgetsCatalog}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,12" />
-                            <Border Style="{StaticResource SettingsRow}" Padding="16,16,4,4">
-                                <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}">
-                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                </ItemsControl>
-                            </Border>
+                            <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="2" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
                             <Grid x:Name="WidgetPanelsPool" Visibility="Collapsed">
                                 <Border x:Name="ClockOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
                                     <StackPanel>

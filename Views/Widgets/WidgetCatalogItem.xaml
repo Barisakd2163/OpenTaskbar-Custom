@@ -3,11 +3,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:OpenTaskbar.Services"
              Focusable="False" Foreground="{DynamicResource TextPrimary}"
-             Width="{StaticResource WidgetCatalogItemWidth}" Margin="{StaticResource WidgetCatalogItemMargin}"
              FontFamily="{StaticResource InterfaceFont}" FontSize="{StaticResource TextSizeBody}">
+    <UserControl.Style>
+        <Style TargetType="UserControl">
+            <Setter Property="Width" Value="{StaticResource WidgetCatalogItemWidth}" />
+            <Setter Property="Margin" Value="{StaticResource WidgetCatalogItemMargin}" />
+        </Style>
+    </UserControl.Style>
     <Border x:Name="CardBorder" Background="{DynamicResource SurfaceSelected}"
             BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1"
-            CornerRadius="10">
+            CornerRadius="12">
         <Border.Style>
             <Style TargetType="Border">
                 <Style.Triggers>
@@ -24,23 +29,64 @@
                         AutomationProperties.Name="{Binding Label}" AutomationProperties.HelpText="{Binding Description}">
                     <Grid>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                        Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None">
-                            <ContentControl.LayoutTransform>
-                                <ScaleTransform ScaleX="1.05" ScaleY="1.05" />
-                            </ContentControl.LayoutTransform>
-                        </ContentControl>
-                        <TextBlock Grid.Row="1" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,8,0,0"
+                        <!-- Top status pill -->
+                        <Border HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="6"
+                                Padding="8,3" Margin="0,0,0,8">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" Margin="0,0,5,0" VerticalAlignment="Center" FontSize="11" />
+                                <TextBlock FontSize="11" FontWeight="Medium" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{local:Loc WidgetAvailable}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                                                    <Setter Property="Text" Value="{local:Loc WidgetInstalled}" />
+                                                    <Setter Property="Foreground" Value="White" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Preview Stage Box -->
+                        <Border Grid.Row="1" Background="{DynamicResource SurfaceSelectedStrong}"
+                                BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1"
+                                CornerRadius="8" Padding="12,12" MinHeight="70"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                            <ContentControl Content="{Binding Preview}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Focusable="False" IsHitTestVisible="False" KeyboardNavigation.TabNavigation="None">
+                                <ContentControl.LayoutTransform>
+                                    <ScaleTransform ScaleX="1.05" ScaleY="1.05" />
+                                </ContentControl.LayoutTransform>
+                            </ContentControl>
+                        </Border>
+
+                        <!-- Widget Label -->
+                        <TextBlock Grid.Row="2" Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,8,0,0"
                                    FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
                                    TextTrimming="CharacterEllipsis" IsHitTestVisible="False" />
                     </Grid>
                 </Button>
-                <TextBlock Style="{StaticResource WidgetCatalogInstallMark}" Margin="10,10,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                <!-- Settings Button on Top Right -->
                 <Button x:Name="SettingsExpandButton" Style="{StaticResource WidgetCatalogSettingsButton}"
-                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0"
                         Visibility="{Binding HasSettingsVisibility}"
                         Click="SettingsExpandButton_Click"
                         ToolTip="{local:Loc WidgetSettings}"
@@ -50,7 +96,7 @@
                 </Button>
             </Grid>
             <Border x:Name="SettingsDrawer" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource StrokeSubtle}"
-                    Padding="14,12" Background="{DynamicResource SettingsSidebarOverlay}" CornerRadius="0,0,9,9">
+                    Padding="14,12" Background="{DynamicResource SettingsSidebarOverlay}" CornerRadius="0,0,11,11">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />
