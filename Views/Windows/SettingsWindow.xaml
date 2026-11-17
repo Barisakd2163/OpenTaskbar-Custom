@@ -225,6 +225,8 @@
                                         <TextBlock Text="{local:Loc ThemePackHint}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel>
+                                <CheckBox x:Name="ThemeApplicationIconsToggle" Content="Apply theme icons to applications"
+                                          Margin="0,8,0,2" ToolTip="Turn off to keep original application icons while using theme colors and widgets." />
                                 <TextBlock x:Name="ThemePackDetails" FontSize="11" Foreground="{DynamicResource TextSecondary}"
                                            TextWrapping="Wrap" Margin="0,8,0,8" />
                                 <WrapPanel Margin="0,4,0,0">
