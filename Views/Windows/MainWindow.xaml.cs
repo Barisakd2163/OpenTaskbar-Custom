@@ -1819,6 +1819,7 @@ public partial class MainWindow : Window
                 DockContents.Children.Insert(insertAt++, element);
                 _dockItemElements[token] = element;
             }
+            InvalidateMagnificationTargets();
         }
         finally
         {

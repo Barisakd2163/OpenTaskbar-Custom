@@ -54,6 +54,23 @@ public partial class MainWindow
 
     private IEnumerable<Button> GetAllDockButtons()
     {
+        if (_dockItemElements.Count > 0)
+        {
+            foreach (var (token, element) in _dockItemElements)
+            {
+                if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)) continue;
+                if (element is Button btn)
+                {
+                    yield return btn;
+                }
+                else if (FindVisualChild<Button>(element) is { } button)
+                {
+                    yield return button;
+                }
+            }
+            yield break;
+        }
+
         yield return StartButton;
 
         // Profiles filter the pinned view, so look containers up by item rather than by index.
