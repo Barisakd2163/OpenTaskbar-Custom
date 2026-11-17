@@ -182,6 +182,14 @@ public sealed class WidgetHoverCoordinator : IDisposable
             return;
         }
 
+        // A widget may be removed or its visual tree detached while the hover card
+        // remains open. Never leave a non-focusable StaysOpen popup orphaned.
+        if (!_activeWidget.IsLoaded || !_activeWidget.IsVisible)
+        {
+            CollapseActive();
+            return;
+        }
+
         // Keep open while dragging an internal control slider or while physical cursor rests over the widget or card.
         if (IsSliderDragCaptured(_activeWidget, _activeFlyoutContent)
             || IsPointerInsideActiveSurface(_activeWidget, _activeFlyoutContent))
