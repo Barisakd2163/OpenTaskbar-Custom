@@ -25,7 +25,7 @@ public partial class MediaWidget : DockWidget
 
     private MediaSessionManager? _manager;
     private MediaSession? _session;
-    private AudioEndpointMonitor? _audio;
+    private AudioEndpointMonitor.SharedHandle? _audio;
     private int _activationVersion;
     private int _refreshVersion;
     private TimeSpan _startTime;
@@ -216,7 +216,7 @@ public partial class MediaWidget : DockWidget
 
         try
         {
-            _audio = new AudioEndpointMonitor();
+            _audio = AudioEndpointMonitor.AcquireShared();
             _audio.VolumeChanged += Audio_VolumeChanged;
             _audio.DefaultDeviceChanged += Audio_DefaultDeviceChanged;
         }
