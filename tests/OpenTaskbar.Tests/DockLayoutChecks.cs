@@ -654,7 +654,7 @@ internal static class DockLayoutChecks
         // Verify notification center anchoring support
         var dummyButton = new Button();
         var openNotifError = ShellShortcuts.OpenNotificationCenter(dummyButton);
-        Check(openNotifError is null || openNotifError == UiText.Get("ErrorShortcutSend"),
+        Check(openNotifError is null || openNotifError == "ErrorShortcutSend",
             "OpenNotificationCenter with anchor must execute without crashing.");
 
         return checks;

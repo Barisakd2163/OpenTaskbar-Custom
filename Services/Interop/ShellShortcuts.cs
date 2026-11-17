@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
@@ -110,7 +111,21 @@ public static class ShellShortcuts
 
     private static async Task RepositionNotificationCenterAsync(FrameworkElement anchor)
     {
-        if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0) return;
+        AppLog.Info("RepositionNotificationCenterAsync: invoked.");
+        HwndSource? source = PresentationSource.FromVisual(anchor) as HwndSource;
+        if (source is null || source.Handle == 0)
+        {
+            if (Application.Current?.MainWindow is Window main && PresentationSource.FromVisual(main) is HwndSource mainSource)
+            {
+                source = mainSource;
+            }
+        }
+        if (source is null || source.Handle == 0)
+        {
+            AppLog.Warning("RepositionNotificationCenterAsync: no HwndSource available.");
+            return;
+        }
+
         Point topLeft;
         Point bottomRight;
         try
@@ -118,18 +133,24 @@ public static class ShellShortcuts
             topLeft = anchor.PointToScreen(new Point(0, 0));
             bottomRight = anchor.PointToScreen(new Point(anchor.ActualWidth, anchor.ActualHeight));
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            AppLog.Warning($"RepositionNotificationCenterAsync PointToScreen failed: {ex.Message}");
             return;
         }
 
         var monitor = MonitorFromWindow(source.Handle, MonitorDefaultToNearest);
         var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo)) return;
+        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            AppLog.Warning("RepositionNotificationCenterAsync: GetMonitorInfo failed.");
+            return;
+        }
+
         var edge = DockFlyout.Edge;
         var movedOnce = false;
 
-        for (var attempt = 0; attempt < 24; attempt++)
+        for (var attempt = 0; attempt < 35; attempt++)
         {
             await Task.Delay(25);
             var hwnd = FindNotificationCenterHandle();
@@ -140,14 +161,27 @@ public static class ShellShortcuts
 
             if (!movedOnce)
             {
+                AppLog.Info($"RepositionNotificationCenterAsync: found hwnd 0x{hwnd:X} at ({rect.Left}, {rect.Top}, {width}x{height}) on attempt {attempt}");
                 _ = Task.Run(() => EnsureCalendarCollapsed(hwnd));
+                movedOnce = true;
             }
 
             var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, height, monitorInfo, edge);
-            SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-            if (movedOnce) break;
-            movedOnce = true;
-            await Task.Delay(75);
+            var setRes = SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+            AppLog.Info($"RepositionNotificationCenterAsync: SetWindowPos to ({targetX}, {targetY}) returned {setRes}");
+
+            // Hold position across the entrance animation window
+            for (var frame = 0; frame < 5; frame++)
+            {
+                await Task.Delay(40);
+                SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+            }
+            break;
+        }
+
+        if (!movedOnce)
+        {
+            AppLog.Warning("RepositionNotificationCenterAsync: notification window not found within timeout.");
         }
     }
 
@@ -178,91 +212,141 @@ public static class ShellShortcuts
 
     private static nint FindNotificationCenterHandle()
     {
-        foreach (var cls in new[] { "NotificationCenterWindow", "Shell_ActionCenter" })
+        // 1. Direct class & title lookups
+        foreach (var cls in new[] { "NotificationCenterWindow", "Shell_ActionCenter", "Windows.UI.Core.CoreWindow" })
         {
-            var h = FindWindow(cls, null);
-            if (h != 0 && IsWindowVisible(h)) return h;
-        }
-
-        nint found = 0;
-        EnumWindows((h, _) =>
-        {
-            if (!IsWindowVisible(h)) return true;
-            var sb = new StringBuilder(64);
-            GetClassName(h, sb, 64);
-            var className = sb.ToString();
-            if (className is "NotificationCenterWindow" or "Shell_ActionCenter")
+            foreach (var title in new[] { "Notification Center", "Bildirim Merkezi", "Action center", null })
             {
-                found = h;
-                return false;
-            }
-
-            if (className == "Windows.UI.Core.CoreWindow")
-            {
-                var titleSb = new StringBuilder(64);
-                GetWindowText(h, titleSb, 64);
-                var title = titleSb.ToString();
-                if (title.Contains("Notification", StringComparison.OrdinalIgnoreCase)
-                    || title.Contains("Bildirim", StringComparison.OrdinalIgnoreCase)
-                    || title.Contains("Action", StringComparison.OrdinalIgnoreCase))
+                if (cls == "Windows.UI.Core.CoreWindow" && title is null) continue;
+                var h = FindWindow(cls, title);
+                if (h != 0 && IsWindowVisible(h))
                 {
-                    found = h;
-                    return false;
+                    AppLog.Info($"FindNotificationCenterHandle found via FindWindow({cls}, '{title}') -> 0x{h:X}");
+                    return h;
                 }
             }
-            return true;
-        }, 0);
+        }
 
-        return found;
+        // 2. FindWindowEx traversal across desktop children (bypasses EnumWindows desktop band filtering)
+        nint current = 0;
+        while ((current = FindWindowEx(0, current, "Windows.UI.Core.CoreWindow", null)) != 0)
+        {
+            if (IsWindowVisible(current))
+            {
+                GetWindowRect(current, out var r);
+                var w = r.Right - r.Left;
+                var hgt = r.Bottom - r.Top;
+                if (w >= 180 && hgt >= 180)
+                {
+                    AppLog.Info($"FindNotificationCenterHandle matched CoreWindow via FindWindowEx 0x{current:X} ({w}x{hgt})");
+                    return current;
+                }
+            }
+        }
+
+        // 3. Fallback traversal: any top-level window from ShellExperienceHost or ShellHost
+        current = 0;
+        while ((current = FindWindowEx(0, current, null, null)) != 0)
+        {
+            if (!IsWindowVisible(current)) continue;
+            GetWindowThreadProcessId(current, out var pid);
+            string procName = string.Empty;
+            try { procName = Process.GetProcessById((int)pid).ProcessName; } catch { }
+
+            if (procName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase)
+                || procName.Equals("ShellHost", StringComparison.OrdinalIgnoreCase))
+            {
+                var sb = new StringBuilder(64);
+                GetClassName(current, sb, 64);
+                var className = sb.ToString();
+                if (className != "ControlCenterWindow")
+                {
+                    GetWindowRect(current, out var r);
+                    var w = r.Right - r.Left;
+                    var hgt = r.Bottom - r.Top;
+                    if (w >= 180 && hgt >= 180)
+                    {
+                        AppLog.Info($"FindNotificationCenterHandle matched {procName} ({className}) via FindWindowEx 0x{current:X} ({w}x{hgt})");
+                        return current;
+                    }
+                }
+            }
+        }
+
+        return 0;
     }
 
     private static void EnsureCalendarCollapsed(nint hwnd)
     {
         try
         {
+            AppLog.Info($"EnsureCalendarCollapsed: starting for hwnd 0x{hwnd:X}");
             var element = AutomationElement.FromHandle(hwnd);
-            if (element is null) return;
-
-            var buttons = element.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
-
-            foreach (AutomationElement btn in buttons)
+            if (element is null)
             {
-                if (btn.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var pattern)
-                    && pattern is ExpandCollapsePattern ecp)
+                AppLog.Warning("EnsureCalendarCollapsed: AutomationElement is null");
+                return;
+            }
+
+            for (var retry = 0; retry < 6; retry++)
+            {
+                var collapsibles = element.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true));
+                AppLog.Info($"EnsureCalendarCollapsed: attempt {retry}, found {collapsibles.Count} expand/collapse elements");
+
+                foreach (AutomationElement col in collapsibles)
                 {
-                    if (ecp.Current.ExpandCollapseState == ExpandCollapseState.Expanded)
+                    if (col.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var pat) && pat is ExpandCollapsePattern ecp)
                     {
-                        ecp.Collapse();
-                        return;
+                        if (ecp.Current.ExpandCollapseState == ExpandCollapseState.Expanded)
+                        {
+                            ecp.Collapse();
+                            AppLog.Info($"EnsureCalendarCollapsed: collapsed element {col.Current.AutomationId}/{col.Current.Name} via ExpandCollapsePattern");
+                            return;
+                        }
                     }
                 }
 
-                var autoId = btn.Current.AutomationId;
-                var name = btn.Current.Name;
-                if (autoId is "CollapseButton" or "ExpandCollapseButton" or "ChevronButton" or "Chevron"
-                    || name?.Contains("Collapse", StringComparison.OrdinalIgnoreCase) == true
-                    || name?.Contains("Daralt", StringComparison.OrdinalIgnoreCase) == true)
+                var buttons = element.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+                foreach (AutomationElement btn in buttons)
                 {
-                    if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv)
-                        && inv is InvokePattern ip)
+                    var autoId = btn.Current.AutomationId;
+                    var name = btn.Current.Name;
+
+                    // If the toggle already says "Expand", the calendar is already collapsed; keep it collapsed.
+                    if (name?.Contains("Genişlet", StringComparison.OrdinalIgnoreCase) == true
+                        || name?.Contains("Expand", StringComparison.OrdinalIgnoreCase) == true)
                     {
-                        ip.Invoke();
+                        AppLog.Info($"EnsureCalendarCollapsed: calendar is already collapsed ({autoId}/{name})");
                         return;
                     }
 
-                    if (btn.TryGetCurrentPattern(TogglePattern.Pattern, out var tog)
-                        && tog is TogglePattern tp && tp.Current.ToggleState == ToggleState.On)
+                    if (autoId is "CollapseButton" or "ExpandCollapseButton" or "ChevronButton" or "Chevron"
+                        || name?.Contains("Collapse", StringComparison.OrdinalIgnoreCase) == true
+                        || name?.Contains("Daralt", StringComparison.OrdinalIgnoreCase) == true)
                     {
-                        tp.Toggle();
-                        return;
+                        if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
+                        {
+                            ip.Invoke();
+                            AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name}");
+                            return;
+                        }
+                        if (btn.TryGetCurrentPattern(TogglePattern.Pattern, out var tog) && tog is TogglePattern tp && tp.Current.ToggleState == ToggleState.On)
+                        {
+                            tp.Toggle();
+                            AppLog.Info($"EnsureCalendarCollapsed: toggled {autoId}/{name}");
+                            return;
+                        }
                     }
                 }
+
+                Thread.Sleep(80);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Transient cross-process UIA failures must not throw.
+            AppLog.Warning($"EnsureCalendarCollapsed exception: {ex.Message}");
         }
     }
 
@@ -290,7 +374,7 @@ public static class ShellShortcuts
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
             AppLog.Warning($"Cannot open {target}: {ex.Message}");
-            return UiText.Get(failureKey);
+            return failureKey;
         }
     }
 
@@ -305,7 +389,7 @@ public static class ShellShortcuts
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
         if (sent == inputs.Length) return null;
         AppLog.Warning($"SendInput sent {sent}/{inputs.Length} events: {Marshal.GetLastPInvokeError()}");
-        return UiText.Get("ErrorShortcutSend");
+        return "ErrorShortcutSend";
     }
 
     private static Input KeyInput(ushort key, uint flags) => new()
@@ -354,6 +438,9 @@ public static class ShellShortcuts
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint FindWindow(string? lpClassName, string? lpWindowName);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern nint FindWindowEx(nint hWndParent, nint hWndChildAfter, string? lpszClass, string? lpszWindow);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(nint hWnd);
@@ -380,6 +467,12 @@ public static class ShellShortcuts
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(nint hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", EntryPoint = "InternalGetWindowText", CharSet = CharSet.Unicode)]
+    private static extern int InternalGetWindowText(nint hWnd, [Out] StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
