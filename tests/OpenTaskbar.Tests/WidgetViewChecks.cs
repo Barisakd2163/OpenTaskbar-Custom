@@ -44,6 +44,7 @@ internal static class WidgetViewChecks
             UiText.Current.SetLanguage(AppLanguage.Turkish);
             checks += DockLayoutChecks.Run(app);
             checks += ApplicationInteractionChecks.Run(app);
+            checks += SettingsAndAutoHideChecks.Run(app);
 
             var settingsAction = new Button { Content = UiText.Get("Apply") };
             var selectedTab = new TabItem { Header = UiText.Get("General"), Content = settingsAction };

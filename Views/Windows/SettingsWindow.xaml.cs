@@ -30,14 +30,21 @@ public partial class SettingsWindow : Window
     private DockSettings _applied;
     private bool _closingApplication;
     private bool _initializing = true;
+    private bool _closed;
     private bool _sourceReady;
     private HwndSource? _source;
+    private readonly string _radioGroupScope = Guid.NewGuid().ToString("N");
+    private readonly RoutedEventHandler _preferenceEditedHandler;
+
+    internal bool IsClosingOrClosed => _isClosing || _closed;
 
     public SettingsWindow(ApplicationPreferences preferences)
     {
         _preferences = preferences;
         _applied = preferences.Current;
+        _preferenceEditedHandler = PreferenceEdited;
         InitializeComponent();
+        ScopeRadioGroups(this);
         foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets))
         {
             _widgetOptions.Add(option);
@@ -56,6 +63,9 @@ public partial class SettingsWindow : Window
         IsVisibleChanged += Settings_IsVisibleChanged;
         Closed += (_, _) =>
         {
+            _closed = true;
+            RemoveHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
+            RemoveHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
             _autoSaveTimer.Stop();
             _widgetPreviewTimer.Stop();
             _widgetPreviewTimer.Tick -= WidgetPreviewTimer_Tick;
@@ -64,6 +74,7 @@ public partial class SettingsWindow : Window
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             ThemeManager.SetSurfaceOpacity(_preferences.Current.SurfaceOpacity);
             (Application.Current.MainWindow as MainWindow)?.SetSizePreview(null, null);
+            _widgetOptions.Clear();
         };
         DarkTheme.IsChecked = _applied.Theme == AppTheme.Dark;
         LightTheme.IsChecked = _applied.Theme == AppTheme.Light;
@@ -108,9 +119,46 @@ public partial class SettingsWindow : Window
         MinWidth = Math.Min(MinWidth, workArea.Width);
         Height = Math.Min(Height, workArea.Height);
         Width = Math.Min(Width, workArea.Width);
-        AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(PreferenceEdited));
-        AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler(PreferenceEdited));
+        AddHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
+        AddHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
         _initializing = false;
+    }
+
+    // Scope RadioButton.GroupName per window instance so closing one SettingsWindow cannot uncheck
+    // another instance's radio buttons via WPF's global group registry.
+    private void ScopeRadioGroups(DependencyObject root)
+    {
+        if (root is Visual)
+        {
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is RadioButton radio && !string.IsNullOrEmpty(radio.GroupName)
+                    && !radio.GroupName.EndsWith(_radioGroupScope, StringComparison.Ordinal))
+                {
+                    radio.GroupName = $"{radio.GroupName}_{_radioGroupScope}";
+                }
+                ScopeRadioGroups(child);
+            }
+        }
+        if (root is FrameworkElement fe)
+        {
+            foreach (var obj in LogicalTreeHelper.GetChildren(fe))
+            {
+                if (obj is DependencyObject dep && !IsVisualChild(fe, dep))
+                {
+                    if (dep is RadioButton radio && !string.IsNullOrEmpty(radio.GroupName)
+                        && !radio.GroupName.EndsWith(_radioGroupScope, StringComparison.Ordinal))
+                    {
+                        radio.GroupName = $"{radio.GroupName}_{_radioGroupScope}";
+                    }
+                    ScopeRadioGroups(dep);
+                }
+            }
+        }
+
+        static bool IsVisualChild(DependencyObject parent, DependencyObject candidate) =>
+            candidate is Visual && VisualTreeHelper.GetParent(candidate) == parent;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -690,6 +738,7 @@ public partial class SettingsWindow : Window
 
     private void SaveSettings()
     {
+        if (_closed) return;
         var startupChanged = _startupAvailable && StartupToggle.IsChecked != _startupEnabled;
         if (startupChanged && _startup.SetEnabled(StartupToggle.IsChecked == true) is { } startupError)
         {
@@ -761,7 +810,8 @@ public partial class SettingsWindow : Window
 
     private void PreferenceEdited(object sender, RoutedEventArgs e)
     {
-        if (_initializing) return;
+        if (_initializing || _closed) return;
+        if (e.OriginalSource is ToggleButton { TemplatedParent: ComboBox }) return;
         var selectedSize = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact;
         (Application.Current.MainWindow as MainWindow)?.SetSizePreview(selectedSize, Math.Round(DockScaleSlider.Value) / 100);
         UpdateWidgetOptionState();
@@ -770,7 +820,7 @@ public partial class SettingsWindow : Window
 
     private void TriggerAutoSave(bool immediate)
     {
-        if (_initializing) return;
+        if (_initializing || _closed) return;
         if (immediate)
         {
             _autoSaveTimer.Stop();

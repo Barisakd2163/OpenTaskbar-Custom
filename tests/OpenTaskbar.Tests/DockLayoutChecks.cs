@@ -523,6 +523,8 @@ internal static class DockLayoutChecks
         var autoHideMaximizedWin = new TaskbarReplacementSession.Rect(-8, -8, 1928, 1088);
         Check(!TaskbarReplacementSession.IsFullScreenBounds(autoHideMaximizedWin, wsCaption, isZoomed: true, autoHideMon, autoHideWork),
             "Captioned maximized window in auto-hide mode must not be detected as full screen.");
+        Check(!TaskbarReplacementSession.IsFullScreenBounds(autoHideMaximizedWin, 0, isZoomed: true, autoHideMon, autoHideWork),
+            "Borderless maximized Electron/Chromium window with resize overhang must not be suppressed as fullscreen.");
 
         var autoHideVideoWin = new TaskbarReplacementSession.Rect(0, 0, 1920, 1080);
         Check(TaskbarReplacementSession.IsFullScreenBounds(autoHideVideoWin, 0, isZoomed: false, autoHideMon, autoHideWork),
