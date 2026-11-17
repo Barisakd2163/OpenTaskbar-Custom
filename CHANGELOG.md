@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- Added icon pack support: packs are folders with a `pack.json` under `%LOCALAPPDATA%\OpenTaskbar\IconPacks`, selected in Settings → Appearance.
-- Icon packs map images by AppUserModelID, package name, executable path or name, or a file named after the executable, and can theme the Recycle Bin.
-- Added fallback plates (Leaf, Rounded, Circle) that place unthemed app icons on a pack-shaped, tinted background.
-- Added `docs/icon-packs.md` and a starter `pack.json` template. No icon images ship in the repository.
+- Added theme packs: folders under `%LOCALAPPDATA%\OpenTaskbar\Themes` with a `theme.json`, an optional icon pack (`icons\`) and an optional widget pack (`widgets\`), selected in Settings → Appearance → Theme.
+- Icon packs map images by AppUserModelID, package name, executable path or name, or a file named after the executable, and can theme the Start button and the Recycle Bin.
+- Added fallback plates (Leaf, Petal, Rounded, Circle) that place unthemed app icons on a theme-shaped, tinted background.
+- Widget packs replace design tokens per theme: brushes and gradients apply at once, corner radii, sizes and fonts after a restart; the dock glass keeps the surface opacity setting.
+- Added `docs/themes.md` and a starter theme in `docs/theme-template`. No icon images ship in the repository.
 
 ## 0.2.6 - 2026-11-17
 

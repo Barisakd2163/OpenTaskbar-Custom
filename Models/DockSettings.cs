@@ -84,5 +84,5 @@ public sealed record DockSettings(
     bool ClockShowSeconds = false,
     ClockDateStyle DateStyle = ClockDateStyle.DayAndShortDate,
     SystemMeters StatsMeters = SystemMeters.All,
-    // Folder name under %LOCALAPPDATA%\OpenTaskbar\IconPacks; null shows the apps' own icons.
-    string? IconPack = null);
+    // Folder name under %LOCALAPPDATA%\OpenTaskbar\Themes; null keeps the built-in look.
+    string? ThemePack = null);

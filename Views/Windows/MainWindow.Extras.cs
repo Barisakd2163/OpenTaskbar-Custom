@@ -154,7 +154,7 @@ public partial class MainWindow
     private void RefreshRecycleBinIcon()
     {
         var full = _recycleBinFull == true;
-        RecycleBinIcon.Source = IconPacks.Apply(full ? RecycleBin.FullIcon : RecycleBin.EmptyIcon, null,
+        RecycleBinIcon.Source = ThemePacks.ApplyIcon(full ? RecycleBin.FullIcon : RecycleBin.EmptyIcon, null,
             specialKey: full ? IconPack.RecycleBinFullKey : IconPack.RecycleBinKey);
     }
 
@@ -442,7 +442,7 @@ public partial class MainWindow
 
             _pinnedApps.Add(new DockApp(pin.Name, pin.ExecutablePath)
             {
-                Icon = IconPacks.Apply(ApplicationIconProvider.GetForFile(pin.ExecutablePath), pin.ExecutablePath),
+                Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(pin.ExecutablePath), pin.ExecutablePath),
                 LaunchArguments = pin.Arguments,
                 ShortcutPath = shortcutPath
             });

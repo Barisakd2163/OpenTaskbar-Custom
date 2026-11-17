@@ -74,7 +74,7 @@ public sealed class RunningAppIconCache
 
         // The icon pack is applied last, so switching packs needs no cache reset here.
         var appId = _windows.TryGetValue(window, out var lookup) ? lookup.AppId : null;
-        return IconPacks.Apply(icon, executablePath, appId);
+        return ThemePacks.ApplyIcon(icon, executablePath, appId);
     }
 
     /// <summary>Drops entries for windows and executables that are no longer tracked, so the caches stay bounded.</summary>

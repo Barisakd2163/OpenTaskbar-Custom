@@ -88,7 +88,7 @@ public partial class SettingsWindow : Window
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = _applied.FocusSessions;
         LoadFeatureSelection(_applied);
-        LoadIconPacks(_applied.IconPack);
+        LoadThemePacks(_applied.ThemePack);
         UpdateWidgetOptionState();
         var startup = _startup.Read();
         _startupEnabled = startup.Enabled;
@@ -258,35 +258,57 @@ public partial class SettingsWindow : Window
                 : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
                 : ClockDateStyle.DayAndShortDate,
             StatsMeters = ReadStatsMeters(),
-            IconPack = (IconPackBox.SelectedItem as IconPackChoice)?.Id
+            ThemePack = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id
         };
     }
 
-    private sealed record IconPackChoice(string? Id, string Name);
+    private sealed record ThemePackChoice(string? Id, string Name, string Details);
 
-    private void LoadIconPacks(string? selected)
+    private void LoadThemePacks(string? selected)
     {
-        var choices = new List<IconPackChoice> { new(null, UiText.Get("IconPackNone")) };
-        choices.AddRange(IconPacks.Discover().Select(pack => new IconPackChoice(pack.Id, pack.DisplayName)));
-        // A stored pack whose folder is gone stays listed so an unrelated edit does not silently clear it.
+        var choices = new List<ThemePackChoice> { new(null, UiText.Get("ThemePackNone"), string.Empty) };
+        choices.AddRange(ThemePacks.Discover().Select(pack => new ThemePackChoice(pack.Id, pack.DisplayName, DescribeThemePack(pack))));
+        // A stored theme whose folder is gone stays listed so an unrelated edit does not silently clear it.
         if (!string.IsNullOrWhiteSpace(selected) && !choices.Any(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase)))
         {
-            choices.Add(new IconPackChoice(selected, selected + " (?)"));
+            choices.Add(new ThemePackChoice(selected, selected + " (?)", UiText.Get("ThemePackMissing")));
         }
 
-        IconPackBox.ItemsSource = choices;
-        IconPackBox.SelectedItem = choices.FirstOrDefault(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase))
+        ThemePackBox.ItemsSource = choices;
+        ThemePackBox.SelectedItem = choices.FirstOrDefault(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase))
             ?? choices[0];
+        UpdateThemePackDetails();
     }
 
-    private void IconPackBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => PreferenceEdited(sender, e);
+    private static string DescribeThemePack(ThemePack pack)
+    {
+        var parts = new List<string>();
+        if (pack.Icons is not null) parts.Add(UiText.Get("ThemePackIcons"));
+        if (pack.Widgets is not null) parts.Add(UiText.Get("ThemePackWidgets"));
+        var contents = string.Join(" · ", parts);
+        var author = string.IsNullOrWhiteSpace(pack.Manifest.Author) ? string.Empty : " — " + pack.Manifest.Author;
+        return contents + author;
+    }
 
-    private void IconPackOpenFolder_Click(object sender, RoutedEventArgs e)
+    private void UpdateThemePackDetails()
+    {
+        var details = (ThemePackBox.SelectedItem as ThemePackChoice)?.Details ?? string.Empty;
+        ThemePackDetails.Text = details;
+        ThemePackDetails.Visibility = details.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ThemePackBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateThemePackDetails();
+        PreferenceEdited(sender, e);
+    }
+
+    private void ThemePackOpenFolder_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            System.IO.Directory.CreateDirectory(IconPacks.Root);
-            using var _ = Process.Start(new ProcessStartInfo(IconPacks.Root) { UseShellExecute = true });
+            System.IO.Directory.CreateDirectory(ThemePacks.Root);
+            using var _ = Process.Start(new ProcessStartInfo(ThemePacks.Root) { UseShellExecute = true });
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
@@ -294,13 +316,14 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void IconPackReload_Click(object sender, RoutedEventArgs e)
+    private void ThemePackReload_Click(object sender, RoutedEventArgs e)
     {
-        var selected = (IconPackBox.SelectedItem as IconPackChoice)?.Id;
+        var selected = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id;
         _initializing = true;
-        LoadIconPacks(selected);
+        LoadThemePacks(selected);
         _initializing = false;
-        IconPacks.Select(selected, reload: true);
+        ThemePacks.Select(selected, reload: true);
+        ThemePacks.ApplyWidgets(_preferences.Current.Theme);
     }
 
     private SystemMeters ReadStatsMeters() =>
@@ -635,7 +658,7 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = settings.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         UpdateDockScaleLabel();
-        LoadIconPacks(settings.IconPack);
+        LoadThemePacks(settings.ThemePack);
         foreach (var option in _widgetOptions)
         {
             option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;
