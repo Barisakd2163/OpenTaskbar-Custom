@@ -16,7 +16,7 @@
     <Window.Resources>
         <ResourceDictionary>
             <DataTemplate x:Key="SettingsWidgetOptionTemplate">
-                <widgets:WidgetCatalogItem Width="Auto" HorizontalAlignment="Stretch" Margin="0,0,12,12"
+                <widgets:WidgetCatalogItem Width="360" Margin="0,0,14,14"
                                            InstallationRequested="WidgetInstallation_Click"
                                            SettingsRequested="WidgetSettings_Click" />
             </DataTemplate>
@@ -359,7 +359,7 @@
                             <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <UniformGrid Columns="2" />
+                                        <WrapPanel />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                             </ItemsControl>
