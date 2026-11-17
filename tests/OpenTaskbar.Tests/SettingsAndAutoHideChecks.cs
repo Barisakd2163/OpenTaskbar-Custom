@@ -22,8 +22,46 @@ internal static class SettingsAndAutoHideChecks
 
         CheckSettingsSurviveReopen(application, Check);
         CheckAutoHideLifecycleAndPointerSync(application, Check);
+        CheckFlyoutState(application, Check);
         CheckTrayTransientTooltips(Check);
         return checks;
+    }
+
+    private static void CheckFlyoutState(Application application, Action<bool, string> check)
+    {
+        var anchor = new Button { Content = "Flyout anchor" };
+        var host = new Window
+        {
+            Width = 300, Height = 180, Left = -20000, Top = -20000,
+            ShowInTaskbar = false, ShowActivated = false, Content = anchor
+        };
+        var flyout = new DockFlyout();
+        try
+        {
+            host.Show();
+            PumpDispatcher(application.Dispatcher, 100);
+            flyout.Show(anchor, new TextBlock { Text = "Calendar" }, animate: false, focusable: false);
+            PumpDispatcher(application.Dispatcher, 100);
+            check(flyout.IsOpen && DockFlyout.IsAnyOpen,
+                "An open widget flyout must lock auto-hide.");
+
+            flyout.Close();
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!flyout.IsOpen && !DockFlyout.IsAnyOpen,
+                "Closing the widget flyout must release the auto-hide lock.");
+
+            flyout.Show(anchor, new TextBlock { Text = "Weather" }, animate: false, focusable: false);
+            PumpDispatcher(application.Dispatcher, 100);
+            DockFlyout.CloseAll();
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!flyout.IsOpen && !DockFlyout.IsAnyOpen,
+                "Closing all flyouts must release the auto-hide lock after reopening.");
+        }
+        finally
+        {
+            flyout.Close();
+            host.Close();
+        }
     }
 
     private static void CheckTrayTransientTooltips(Action<bool, string> check)
