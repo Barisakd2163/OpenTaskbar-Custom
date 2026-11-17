@@ -53,7 +53,11 @@ public static class WeatherService
             var codes = daily.GetProperty("weather_code").EnumerateArray().Select(code => code.GetInt32()).ToList();
             var maxima = daily.GetProperty("temperature_2m_max").EnumerateArray().Select(value => value.GetDouble()).ToList();
             var minima = daily.GetProperty("temperature_2m_min").EnumerateArray().Select(value => value.GetDouble()).ToList();
-            var days = dates.Select((date, index) => new WeatherDay(date, codes[index], minima[index], maxima[index])).ToList();
+            // A partial provider response must not index beyond the shortest daily series.
+            var dayCount = Math.Min(dates.Count, Math.Min(codes.Count, Math.Min(minima.Count, maxima.Count)));
+            var days = Enumerable.Range(0, dayCount)
+                .Select(index => new WeatherDay(dates[index], codes[index], minima[index], maxima[index]))
+                .ToList();
             double humidity = current.TryGetProperty("relative_humidity_2m", out var hProp) ? hProp.GetDouble() : 0;
             double windSpeed = current.TryGetProperty("wind_speed_10m", out var wProp) ? wProp.GetDouble() : 0;
             var report = new WeatherReport(place.Name,
