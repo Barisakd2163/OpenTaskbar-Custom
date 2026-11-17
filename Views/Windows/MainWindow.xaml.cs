@@ -152,6 +152,12 @@ public partial class MainWindow : Window
         };
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
+        _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
+        _widgetCoordinator.ConfigureWidgetMenu = menu =>
+        {
+            menu.Opened += DockContextMenu_Opened;
+            menu.Closed += DockContextMenu_Closed;
+        };
         _widgetCoordinator.HoverActiveChanged += _ => _autoHideController?.EvaluateState();
         _widgetCoordinator.ExternalLayout = true;
         _widgetCoordinator.WidgetsPlaced += () =>
@@ -1629,6 +1635,21 @@ public partial class MainWindow : Window
         {
             PositionDock();
         }
+    }
+
+    private void RemoveDockWidget(string id)
+    {
+        var settings = _preferences.Current;
+        var widgets = (settings.Widgets ?? [])
+            .Where(widget => !string.Equals(widget, id, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var order = settings.WidgetOrder?
+            .Where(widget => !string.Equals(widget, id, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (widgets.Length == (settings.Widgets?.Count ?? 0)) return;
+
+        var error = _preferences.Save(settings with { Widgets = widgets, WidgetOrder = order });
+        if (error is not null) ReportError(error);
     }
 
     private void ApplyWidgets(IReadOnlyList<string>? selected)

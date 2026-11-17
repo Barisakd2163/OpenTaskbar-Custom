@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
+using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Widgets;
 
@@ -72,6 +73,10 @@ public sealed class WidgetCoordinator : IDisposable
     public event Action? WidgetsPlaced;
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
+    public event Action<string>? WidgetRemoveRequested;
+
+    /// <summary>Lets the host wire its context-menu open/close handlers so auto-hide stays locked while the menu is up.</summary>
+    public Action<ContextMenu>? ConfigureWidgetMenu { get; set; }
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
     /// <summary>When true, the host window owns widget placement so all dock item kinds share one strip.</summary>
@@ -157,6 +162,14 @@ public sealed class WidgetCoordinator : IDisposable
         widget.DragLeave += Widget_DragLeave;
         widget.Drop += Widget_Drop;
         widget.AvailabilityChanged += Widget_AvailabilityChanged;
+
+        var removeItem = new MenuItem { Header = UiText.Get("WidgetRemove") };
+        removeItem.Click += (_, _) => WidgetRemoveRequested?.Invoke(slot.Id);
+        var menu = new ContextMenu();
+        menu.Items.Add(removeItem);
+        ConfigureWidgetMenu?.Invoke(menu);
+        widget.ContextMenu = menu;
+
         _hoverCoordinator.Attach(widget);
         slot.Widget = widget;
         return widget;
