@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
@@ -24,10 +25,9 @@ public partial class MediaWidget : DockWidget
 
     private MediaSessionManager? _manager;
     private MediaSession? _session;
-    private AudioEndpointMonitor? _audio;
+    private AudioEndpointMonitor.SharedHandle? _audio;
     private int _activationVersion;
     private int _refreshVersion;
-    private string? _artKey;
     private TimeSpan _startTime;
     private TimeSpan _endTime;
     private TimeSpan _position;
@@ -87,16 +87,15 @@ public partial class MediaWidget : DockWidget
             ClipToBounds = true
         };
         art.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "WidgetTrack");
-        if (ArtImage.Source is not null)
-        {
-            art.Child = new System.Windows.Controls.Image { Source = ArtImage.Source, Stretch = System.Windows.Media.Stretch.UniformToFill };
-        }
-        else
-        {
-            var placeholder = new System.Windows.Controls.ContentControl { Content = FindResource("IconMusic"), Width = 18, Height = 18 };
-            placeholder.SetResourceReference(StyleProperty, "WidgetIcon");
-            art.Child = placeholder;
-        }
+        var artGrid = new System.Windows.Controls.Grid();
+        var albumImage = new System.Windows.Controls.Image { Stretch = System.Windows.Media.Stretch.UniformToFill };
+        albumImage.SetBinding(System.Windows.Controls.Image.SourceProperty, new Binding("Source") { Source = ArtImage, Mode = BindingMode.OneWay });
+        var placeholder = new System.Windows.Controls.ContentControl { Content = FindResource("IconMusic"), Width = 18, Height = 18 };
+        placeholder.SetResourceReference(StyleProperty, "WidgetIcon");
+        placeholder.SetBinding(VisibilityProperty, new Binding("Visibility") { Source = ArtPlaceholder, Mode = BindingMode.OneWay });
+        artGrid.Children.Add(placeholder);
+        artGrid.Children.Add(albumImage);
+        art.Child = artGrid;
 
         var meta = new System.Windows.Controls.StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         var title = new System.Windows.Controls.TextBlock
@@ -106,6 +105,7 @@ public partial class MediaWidget : DockWidget
             TextTrimming = TextTrimming.CharacterEllipsis
         };
         title.SetResourceReference(StyleProperty, "WidgetText");
+        title.SetBinding(System.Windows.Controls.TextBlock.TextProperty, new Binding("Text") { Source = TitleText, Mode = BindingMode.OneWay });
         var artist = new System.Windows.Controls.TextBlock
         {
             Text = ArtistText.Text,
@@ -113,6 +113,7 @@ public partial class MediaWidget : DockWidget
             TextTrimming = TextTrimming.CharacterEllipsis
         };
         artist.SetResourceReference(StyleProperty, "WidgetCaption");
+        artist.SetBinding(System.Windows.Controls.TextBlock.TextProperty, new Binding("Text") { Source = ArtistText, Mode = BindingMode.OneWay });
         meta.Children.Add(title);
         meta.Children.Add(artist);
         System.Windows.Controls.Grid.SetColumn(art, 0);
@@ -130,16 +131,27 @@ public partial class MediaWidget : DockWidget
         var prevBtn = new System.Windows.Controls.Button { Width = 32, Height = 32, Content = new System.Windows.Controls.ContentControl { Content = FindResource("IconPreviousFill"), Width = 12, Height = 12 } };
         prevBtn.SetResourceReference(StyleProperty, "WidgetIconButton");
         if (prevBtn.Content is System.Windows.Controls.ContentControl pc) pc.SetResourceReference(StyleProperty, "WidgetGlyph");
+        prevBtn.SetBinding(IsEnabledProperty, new Binding("IsEnabled") { Source = PreviousButton, Mode = BindingMode.OneWay });
+        prevBtn.ToolTip = UiText.Get("MediaPrevious");
+        System.Windows.Automation.AutomationProperties.SetName(prevBtn, UiText.Get("MediaPrevious"));
         prevBtn.Click += Previous_Click;
 
         var playBtn = new System.Windows.Controls.Button { Width = 36, Height = 36, Margin = new Thickness(8, 0, 8, 0), Content = new System.Windows.Controls.ContentControl { Content = FindResource(_playing ? "IconPauseFill" : "IconPlayFill"), Width = 15, Height = 15 } };
         playBtn.SetResourceReference(StyleProperty, "WidgetIconButton");
         if (playBtn.Content is System.Windows.Controls.ContentControl plc) plc.SetResourceReference(StyleProperty, "WidgetGlyph");
+        if (playBtn.Content is System.Windows.Controls.ContentControl playGlyph)
+            playGlyph.SetBinding(System.Windows.Controls.ContentControl.ContentProperty, new Binding("Content") { Source = PlayPauseGlyph, Mode = BindingMode.OneWay });
+        playBtn.SetBinding(IsEnabledProperty, new Binding("IsEnabled") { Source = PlayPauseButton, Mode = BindingMode.OneWay });
+        playBtn.ToolTip = UiText.Get("MediaPlayPause");
+        System.Windows.Automation.AutomationProperties.SetName(playBtn, UiText.Get("MediaPlayPause"));
         playBtn.Click += PlayPause_Click;
 
         var nextBtn = new System.Windows.Controls.Button { Width = 32, Height = 32, Content = new System.Windows.Controls.ContentControl { Content = FindResource("IconNextFill"), Width = 12, Height = 12 } };
         nextBtn.SetResourceReference(StyleProperty, "WidgetIconButton");
         if (nextBtn.Content is System.Windows.Controls.ContentControl nc) nc.SetResourceReference(StyleProperty, "WidgetGlyph");
+        nextBtn.SetBinding(IsEnabledProperty, new Binding("IsEnabled") { Source = NextButton, Mode = BindingMode.OneWay });
+        nextBtn.ToolTip = UiText.Get("MediaNext");
+        System.Windows.Automation.AutomationProperties.SetName(nextBtn, UiText.Get("MediaNext"));
         nextBtn.Click += Next_Click;
 
         controls.Children.Add(prevBtn);
@@ -161,6 +173,11 @@ public partial class MediaWidget : DockWidget
             };
             muteBtn.SetResourceReference(StyleProperty, "WidgetIconButton");
             if (muteBtn.Content is System.Windows.Controls.ContentControl mc) mc.SetResourceReference(StyleProperty, "WidgetIcon");
+            if (muteBtn.Content is System.Windows.Controls.ContentControl muteGlyph)
+                muteGlyph.SetBinding(System.Windows.Controls.ContentControl.ContentProperty, new Binding("Content") { Source = VolumeIcon, Mode = BindingMode.OneWay });
+            muteBtn.SetBinding(IsEnabledProperty, new Binding("IsEnabled") { Source = MuteButton, Mode = BindingMode.OneWay });
+            muteBtn.ToolTip = UiText.Get("MuteToggle");
+            System.Windows.Automation.AutomationProperties.SetName(muteBtn, UiText.Get("MuteToggle"));
             muteBtn.Click += MuteButton_Click;
 
             var slider = new System.Windows.Controls.Slider
@@ -172,10 +189,14 @@ public partial class MediaWidget : DockWidget
                 VerticalAlignment = VerticalAlignment.Center
             };
             slider.SetResourceReference(StyleProperty, "WidgetSlider");
+            slider.SetBinding(System.Windows.Controls.Slider.ValueProperty, new Binding("Value") { Source = VolumeSlider, Mode = BindingMode.OneWay });
+            slider.SetBinding(IsEnabledProperty, new Binding("IsEnabled") { Source = VolumeSlider, Mode = BindingMode.OneWay });
+            System.Windows.Automation.AutomationProperties.SetName(slider, UiText.Get("Volume"));
             slider.ValueChanged += (_, args) =>
             {
                 if (_updatingVolume || _audio is null) return;
                 if (_audio.SetVolume((float)(args.NewValue / 100.0))) RenderVolume();
+                else Report(UiText.Get("ErrorVolumeChange"));
             };
 
             System.Windows.Controls.Grid.SetColumn(muteBtn, 0);
@@ -195,7 +216,7 @@ public partial class MediaWidget : DockWidget
 
         try
         {
-            _audio = new AudioEndpointMonitor();
+            _audio = AudioEndpointMonitor.AcquireShared();
             _audio.VolumeChanged += Audio_VolumeChanged;
             _audio.DefaultDeviceChanged += Audio_DefaultDeviceChanged;
         }
@@ -267,7 +288,6 @@ public partial class MediaWidget : DockWidget
 
     private void ClearAlbumArt()
     {
-        _artKey = null;
         ArtImage.Source = null;
         ArtPlaceholder.Visibility = Visibility.Visible;
     }
@@ -354,7 +374,6 @@ public partial class MediaWidget : DockWidget
             _session.TimelinePropertiesChanged += Session_TimelinePropertiesChanged;
         }
 
-        _artKey = null;
         Refresh(includeProperties: true);
     }
 
@@ -487,9 +506,7 @@ public partial class MediaWidget : DockWidget
 
     private async Task LoadArtAsync(GlobalSystemMediaTransportControlsSessionMediaProperties properties, int version, int activationVersion)
     {
-        var key = $"{properties.Title}|{properties.Artist}|{properties.AlbumTitle}";
-        if (key == _artKey) return;
-        // Players often publish artwork in a later event with the same title, so the key is recorded only on success.
+        // Artwork can change even when the title and artist remain the same.
         if (properties.Thumbnail is null)
         {
             ArtImage.Source = null;
@@ -522,7 +539,6 @@ public partial class MediaWidget : DockWidget
             if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive) return;
             ArtImage.Source = image;
             ArtPlaceholder.Visibility = Visibility.Collapsed;
-            _artKey = key;
         }
         catch (Exception ex) when (ex is COMException or IOException or NotSupportedException or FileFormatException)
         {

@@ -10,7 +10,7 @@ namespace OpenTaskbar.Widgets;
 
 public partial class AudioWidget : DockWidget
 {
-    private AudioEndpointMonitor? _monitor;
+    private AudioEndpointMonitor.SharedHandle? _monitor;
     private bool _updating;
     private bool? _lastHasDevice;
     private int _lastLevel = -1;
@@ -148,6 +148,7 @@ public partial class AudioWidget : DockWidget
         _flyoutLevelText = levelText;
         root.Unloaded += (_, _) =>
         {
+            if (!ReferenceEquals(_flyoutSlider, slider)) return;
             _flyoutIcon = null;
             _flyoutSlider = null;
             _flyoutLevelText = null;
@@ -161,7 +162,7 @@ public partial class AudioWidget : DockWidget
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         try
         {
-            _monitor = new AudioEndpointMonitor();
+            _monitor = AudioEndpointMonitor.AcquireShared();
             _monitor.VolumeChanged += Monitor_VolumeChanged;
             _monitor.DefaultDeviceChanged += Monitor_DefaultDeviceChanged;
         }
@@ -221,6 +222,9 @@ public partial class AudioWidget : DockWidget
             _lastLevel = -1;
             MuteButton.IsEnabled = false;
             VolumeSlider.IsEnabled = false;
+            if (_flyoutSlider is not null) _flyoutSlider.IsEnabled = false;
+            if (_flyoutLevelText is not null) _flyoutLevelText.Text = string.Empty;
+            if (_flyoutIcon is not null) _flyoutIcon.Content = FindResource("IconVolumeMute");
             DeviceText.Text = UiText.Get("NoAudioDevice");
             Card.ToolTip = DeviceText.Text;
             LevelText.Text = string.Empty;
@@ -245,6 +249,7 @@ public partial class AudioWidget : DockWidget
 
         MuteButton.IsEnabled = true;
         VolumeSlider.IsEnabled = true;
+        if (_flyoutSlider is not null) _flyoutSlider.IsEnabled = true;
         DeviceText.Text = deviceName;
         Card.ToolTip = deviceName;
         LevelText.Text = muted ? "—" : UiText.Format("Percent", level);

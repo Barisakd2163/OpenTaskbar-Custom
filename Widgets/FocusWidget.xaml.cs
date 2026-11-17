@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Data;
 using System.Windows.Media.Animation;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -60,25 +61,41 @@ public partial class FocusWidget : DockWidget
     public override UIElement? BuildHoverFlyoutContent()
     {
         var root = new StackPanel { Width = 200 };
-        root.Children.Add(DockFlyout.Heading($"{PhaseText.Text} {SessionText.Text}".Trim()));
-        var timer = new TextBlock { Text = RemainingText.Text, FontSize = 24, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 2, 0, 8) };
+        var heading = DockFlyout.Heading($"{PhaseText.Text} {SessionText.Text}".Trim());
+        var headingBinding = new MultiBinding { StringFormat = "{0}{1}" };
+        headingBinding.Bindings.Add(new Binding("Text") { Source = PhaseText });
+        headingBinding.Bindings.Add(new Binding("Text") { Source = SessionText });
+        heading.SetBinding(TextBlock.TextProperty, headingBinding);
+        root.Children.Add(heading);
+        var timer = new TextBlock { FontSize = 24, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 2, 0, 8) };
         timer.SetResourceReference(StyleProperty, "WidgetText");
+        timer.SetBinding(TextBlock.TextProperty, new Binding("Text") { Source = RemainingText, Mode = BindingMode.OneWay });
         root.Children.Add(timer);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var toggle = new Button { Width = 34, Height = 34, Content = new ContentControl { Content = FindResource(IsRunning ? "IconPauseFill" : "IconPlayFill"), Width = 14, Height = 14 } };
         toggle.SetResourceReference(StyleProperty, "WidgetIconButton");
-        if (toggle.Content is ContentControl tc) tc.SetResourceReference(StyleProperty, "WidgetGlyph");
+        if (toggle.Content is ContentControl tc)
+        {
+            tc.SetResourceReference(StyleProperty, "WidgetGlyph");
+            tc.SetBinding(ContentControl.ContentProperty, new Binding("Content") { Source = ToggleGlyph, Mode = BindingMode.OneWay });
+        }
+        toggle.SetBinding(Button.ToolTipProperty, new Binding("ToolTip") { Source = PlayButton, Mode = BindingMode.OneWay });
+        System.Windows.Automation.AutomationProperties.SetName(toggle, UiText.Get(IsRunning ? "FocusPause" : "FocusStart"));
         toggle.Click += Toggle_Click;
 
         var skip = new Button { Width = 34, Height = 34, Margin = new Thickness(6, 0, 0, 0), Content = new ContentControl { Content = FindResource("IconSkip"), Width = 14, Height = 14 } };
         skip.SetResourceReference(StyleProperty, "WidgetIconButton");
         if (skip.Content is ContentControl sc) sc.SetResourceReference(StyleProperty, "WidgetIcon");
+        skip.ToolTip = UiText.Get("FocusSkip");
+        System.Windows.Automation.AutomationProperties.SetName(skip, UiText.Get("FocusSkip"));
         skip.Click += Skip_Click;
 
         var reset = new Button { Width = 34, Height = 34, Margin = new Thickness(6, 0, 0, 0), Content = new ContentControl { Content = FindResource("IconReset"), Width = 14, Height = 14 } };
         reset.SetResourceReference(StyleProperty, "WidgetIconButton");
         if (reset.Content is ContentControl rc) rc.SetResourceReference(StyleProperty, "WidgetIcon");
+        reset.ToolTip = UiText.Get("FocusReset");
+        System.Windows.Automation.AutomationProperties.SetName(reset, UiText.Get("FocusReset"));
         reset.Click += Reset_Click;
 
         row.Children.Add(toggle);
