@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bundled six theme packs with the app and install them into `%LOCALAPPDATA%\OpenTaskbar\Themes` on launch, preserving files already in the user's theme folders.
+- Preserve the current language preference while language selection controls are between choices, preventing auto-save from switching languages during a radio-button transition.
 - Added theme packs: folders under `%LOCALAPPDATA%\OpenTaskbar\Themes` with a `theme.json`, an optional icon pack (`icons\`) and an optional widget pack (`widgets\`), selected in Settings → Appearance → Theme.
 - Icon packs map images by AppUserModelID, package name, executable path or name, or a file named after the executable, and can theme the Start button and the Recycle Bin.
 - Added fallback plates (Leaf, Petal, Rounded, Circle) that place unthemed app icons on a theme-shaped, tinted background.

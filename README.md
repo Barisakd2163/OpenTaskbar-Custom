@@ -38,7 +38,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Two-Sided Dock Resizing:** Drag either outer border to narrow or expand the dock. Overflow is smoothly handled via hidden horizontal scrolling (Shift/Ctrl + Wheel or middle-click panning).
 
 ### Theme Packs
-- **Theme Packs:** Restyle the dock with themes kept in `%LOCALAPPDATA%\OpenTaskbar\Themes`, selected in Settings → Appearance → Theme.
+- **Theme Packs:** Restyle the dock with six bundled themes installed in `%LOCALAPPDATA%\OpenTaskbar\Themes` on first launch, or add your own theme packs there. Select them in Settings → Appearance → Theme.
 - **Icon Packs:** Replace app, Start button and Recycle Bin icons; match by executable name, full path, Store app ID, or simply name a file after the executable (`firefox.png`).
 - **Fallback Plates:** Apps without a pack image are placed on a Leaf, Petal, Rounded, or Circle plate so the whole dock matches.
 - **Widget Packs:** Replace design tokens (colors, gradients, corner radii, sizes, fonts) for the dock, widgets, menus, and Settings. See [docs/themes.md](docs/themes.md).

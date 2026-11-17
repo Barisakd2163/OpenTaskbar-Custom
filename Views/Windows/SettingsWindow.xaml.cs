@@ -211,7 +211,8 @@ public partial class SettingsWindow : Window
         return _preferences.Current with
         {
             Theme = LightTheme.IsChecked == true ? AppTheme.Light : AppTheme.Dark,
-            Language = EnglishLanguage.IsChecked == true ? AppLanguage.English : AppLanguage.Turkish,
+            Language = EnglishLanguage.IsChecked == true ? AppLanguage.English
+                : TurkishLanguage.IsChecked == true ? AppLanguage.Turkish : _preferences.Current.Language,
             // Full width keeps the last floating alignment so switching back restores it.
             Position = RightPosition.IsChecked == true ? DockPosition.Right : LeftPosition.IsChecked == true ? DockPosition.Left
                 : CenterPosition.IsChecked == true ? DockPosition.Center : _preferences.Current.Position,

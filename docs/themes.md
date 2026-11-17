@@ -1,6 +1,6 @@
 # Theme Packs
 
-A theme pack restyles OpenTaskbar with an **icon pack** and a **widget pack**. No themes ship with the app: a theme is a folder you keep on your own computer.
+A theme pack restyles OpenTaskbar with an **icon pack** and a **widget pack**. OpenTaskbar installs its bundled theme library into your user theme folder on first launch. You can also add or edit your own theme folders there.
 
 ## Where themes live
 
@@ -18,7 +18,7 @@ A theme pack restyles OpenTaskbar with an **icon pack** and a **widget pack**. N
 
 Both packs are optional. Pick a theme in **Settings → Appearance → Theme → Theme pack**. **Open folder** opens the `Themes` folder; **Reload** rereads the selected theme after you change its files.
 
-A starter theme is in [theme-template](theme-template). A complete theme, **Prism**, is in [themes/prism](../themes/prism): copy that folder to `%LOCALAPPDATA%\OpenTaskbar\Themes\` to use it.
+The built-in library includes Catppuccin Mocha, Gruvbox Material, Nord, Prism, Solarized and Tokyo Night. A starter theme is in [theme-template](theme-template). Bundled themes are available in [themes](../themes).
 
 ## theme.json
 

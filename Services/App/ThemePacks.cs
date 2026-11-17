@@ -87,6 +87,7 @@ public sealed class ThemePack
 public static class ThemePacks
 {
     public const int RenderSize = 128;
+    private const string BuiltInResourcePrefix = "OpenTaskbar.BuiltInThemes/";
     private static readonly Dictionary<string, BitmapSource?> Images = new(StringComparer.OrdinalIgnoreCase);
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<BitmapSource, BitmapSource> Plated = new();
     private static readonly Dictionary<string, (ResourceDictionary Owner, object Value)> MetricOriginals = new(StringComparer.Ordinal);
@@ -95,6 +96,46 @@ public static class ThemePacks
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar", "Themes");
 
     public static ThemePack? Current { get; private set; }
+
+    /// <summary>Copies bundled theme packs into the user theme folder without replacing user files.</summary>
+    public static void InstallBuiltInThemes()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(Root);
+            var assembly = typeof(ThemePacks).Assembly;
+            var resources = assembly.GetManifestResourceNames()
+                .Where(name => name.StartsWith(BuiltInResourcePrefix, StringComparison.Ordinal))
+                .Select(name => (Name: name, RelativePath: name[BuiltInResourcePrefix.Length..]
+                    .Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar)))
+                .ToArray();
+
+            foreach (var theme in resources.GroupBy(resource => resource.RelativePath.Split(Path.DirectorySeparatorChar)[0], StringComparer.OrdinalIgnoreCase))
+            {
+                foreach (var resource in theme)
+                {
+                    var destination = Path.GetFullPath(Path.Combine(Root, resource.RelativePath));
+                    var root = Path.GetFullPath(Root) + Path.DirectorySeparatorChar;
+                    if (!destination.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                    {
+                        AppLog.Warning($"Built-in theme resource path was rejected: {resource.RelativePath}");
+                        continue;
+                    }
+
+                    if (File.Exists(destination)) continue;
+                    System.IO.Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    using var input = assembly.GetManifestResourceStream(resource.Name);
+                    if (input is null) throw new InvalidDataException($"Built-in theme resource '{resource.Name}' is missing.");
+                    using var output = File.Create(destination);
+                    input.CopyTo(output);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            AppLog.Warning($"Built-in theme packs could not be installed: {ex.Message}");
+        }
+    }
 
     /// <summary>Raised after <see cref="Select"/> changes the theme, so views can reload their icons.</summary>
     public static event EventHandler? Changed;
