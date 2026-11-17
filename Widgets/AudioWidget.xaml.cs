@@ -10,7 +10,7 @@ namespace OpenTaskbar.Widgets;
 
 public partial class AudioWidget : DockWidget
 {
-    private AudioEndpointMonitor? _monitor;
+    private AudioEndpointMonitor.SharedHandle? _monitor;
     private bool _updating;
     private bool? _lastHasDevice;
     private int _lastLevel = -1;
@@ -162,7 +162,7 @@ public partial class AudioWidget : DockWidget
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         try
         {
-            _monitor = new AudioEndpointMonitor();
+            _monitor = AudioEndpointMonitor.AcquireShared();
             _monitor.VolumeChanged += Monitor_VolumeChanged;
             _monitor.DefaultDeviceChanged += Monitor_DefaultDeviceChanged;
         }
