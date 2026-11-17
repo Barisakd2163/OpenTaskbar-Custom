@@ -12,6 +12,8 @@ public sealed class DockAutoHideController : IDisposable
     private const uint MonitorDefaultToNearest = 2;
     private const uint GaRootOwner = 3;
     private const int DwmwaExtendedFrameBounds = 9;
+    // Short safety window after a reveal or pointer entry, long enough to catch a missed MouseLeave.
+    private const int GuardTickLimit = 4;
 
     private static readonly CubicEase EaseOut = CreateFrozenEase(EasingMode.EaseOut);
     private static readonly CubicEase EaseInOut = CreateFrozenEase(EasingMode.EaseInOut);
@@ -24,6 +26,7 @@ public sealed class DockAutoHideController : IDisposable
     private readonly DispatcherTimer _hideTimer;
     private readonly DispatcherTimer _revealedGuardTimer;
     private readonly char[] _classNameBuffer = new char[64];
+    private int _revealedGuardTicks;
     private bool _disposed;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
@@ -72,15 +75,23 @@ public sealed class DockAutoHideController : IDisposable
         _revealedGuardTimer.Tick += RevealedGuardTimer_Tick;
     }
 
+    /// <summary>
+    /// Arms a bounded guard only when pointer state can have gone stale. Foreground-driven overlap changes are
+    /// handled synchronously by <see cref="CheckForegroundWindow"/>, so the timer must not poll while idle.
+    /// </summary>
+    private void ArmRevealedGuard()
+    {
+        if (_disposed || Mode == AutoHideMode.Disabled || IsHidden) return;
+        _revealedGuardTicks = GuardTickLimit;
+        if (!_revealedGuardTimer.IsEnabled) _revealedGuardTimer.Start();
+    }
+
     private void SyncRevealedGuardTimer()
     {
-        if (!_disposed && Mode != AutoHideMode.Disabled && !IsHidden)
-        {
-            if (!_revealedGuardTimer.IsEnabled) _revealedGuardTimer.Start();
-        }
-        else
+        if (_disposed || Mode == AutoHideMode.Disabled || IsHidden)
         {
             _revealedGuardTimer.Stop();
+            _revealedGuardTicks = 0;
         }
     }
 
@@ -89,6 +100,7 @@ public sealed class DockAutoHideController : IDisposable
         if (_disposed || Mode == AutoHideMode.Disabled || IsHidden)
         {
             _revealedGuardTimer.Stop();
+            _revealedGuardTicks = 0;
             return;
         }
         if (Mode == AutoHideMode.Smart)
@@ -96,6 +108,11 @@ public sealed class DockAutoHideController : IDisposable
             HasOverlap = EvaluateWindowOverlap(GetForegroundWindow());
         }
         EvaluateState();
+        if (--_revealedGuardTicks <= 0)
+        {
+            _revealedGuardTimer.Stop();
+            _revealedGuardTicks = 0;
+        }
     }
 
     public void SetMode(AutoHideMode mode)
@@ -106,6 +123,7 @@ public sealed class DockAutoHideController : IDisposable
         {
             _hideTimer.Stop();
             _revealedGuardTimer.Stop();
+            _revealedGuardTicks = 0;
             HasOverlap = false;
             if (IsHidden) AnimateReveal();
             return;
@@ -117,13 +135,14 @@ public sealed class DockAutoHideController : IDisposable
         }
 
         EvaluateState();
-        SyncRevealedGuardTimer();
+        ArmRevealedGuard();
     }
 
     public void OnMouseEnterDock()
     {
         IsMouseOverDock = true;
         _hideTimer.Stop();
+        ArmRevealedGuard();
         if (IsHidden)
         {
             AnimateReveal();
@@ -140,6 +159,7 @@ public sealed class DockAutoHideController : IDisposable
     {
         IsMouseAtEdge = true;
         _hideTimer.Stop();
+        ArmRevealedGuard();
         if (IsHidden)
         {
             AnimateReveal();
@@ -256,7 +276,7 @@ public sealed class DockAutoHideController : IDisposable
     {
         IsHidden = false;
         _hideTimer.Stop();
-        SyncRevealedGuardTimer();
+        ArmRevealedGuard();
         var duration = MotionDuration(DockMetrics.RevealMs);
         var vertical = Edge != Models.DockEdge.Bottom;
         if (duration == TimeSpan.Zero)
@@ -285,6 +305,7 @@ public sealed class DockAutoHideController : IDisposable
     {
         IsHidden = true;
         _revealedGuardTimer.Stop();
+        _revealedGuardTicks = 0;
         var vertical = Edge != Models.DockEdge.Bottom;
         double hideOffset = Math.Max(DockMetrics.HideMinimumOffset, (vertical ? _dockSurface.ActualWidth : _dockSurface.ActualHeight) + 16);
         if (Edge == Models.DockEdge.Left) hideOffset = -hideOffset;
@@ -400,6 +421,7 @@ public sealed class DockAutoHideController : IDisposable
         _hideTimer.Stop();
         _hideTimer.Tick -= HideTimer_Tick;
         _revealedGuardTimer.Stop();
+        _revealedGuardTicks = 0;
         _revealedGuardTimer.Tick -= RevealedGuardTimer_Tick;
     }
 
