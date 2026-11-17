@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 
 namespace OpenTaskbar.Views;
 
@@ -10,6 +11,29 @@ public sealed class DockScrollViewer : ScrollViewer
     private const double EdgeFadeWidth = 14;
     private Point? _panStart;
     private double _panOffset;
+    private double _targetHorizontalOffset;
+    private double _targetVerticalOffset;
+
+    public static readonly DependencyProperty CurrentHorizontalOffsetProperty = DependencyProperty.Register(
+        nameof(CurrentHorizontalOffset), typeof(double), typeof(DockScrollViewer),
+        new PropertyMetadata(0d, (d, e) => ((DockScrollViewer)d).ScrollToHorizontalOffset((double)e.NewValue)));
+
+    public static readonly DependencyProperty CurrentVerticalOffsetProperty = DependencyProperty.Register(
+        nameof(CurrentVerticalOffset), typeof(double), typeof(DockScrollViewer),
+        new PropertyMetadata(0d, (d, e) => ((DockScrollViewer)d).ScrollToVerticalOffset((double)e.NewValue)));
+
+    public double CurrentHorizontalOffset
+    {
+        get => (double)GetValue(CurrentHorizontalOffsetProperty);
+        set => SetValue(CurrentHorizontalOffsetProperty, value);
+    }
+
+    public double CurrentVerticalOffset
+    {
+        get => (double)GetValue(CurrentVerticalOffsetProperty);
+        set => SetValue(CurrentVerticalOffsetProperty, value);
+    }
+
     public static readonly DependencyProperty HoverHeadroomProperty = DependencyProperty.Register(
         nameof(HoverHeadroom), typeof(double), typeof(DockScrollViewer),
         new PropertyMetadata(0d, LayoutChanged), value => value is double height && double.IsFinite(height) && height >= 0);
@@ -28,30 +52,88 @@ public sealed class DockScrollViewer : ScrollViewer
         return part.DesiredSize.Width;
     }
 
-    public bool ScrollByWheel(int delta, ModifierKeys modifiers)
+    public bool ScrollByWheel(int delta, ModifierKeys modifiers, bool animate = false)
     {
         if (delta == 0) return false;
         // When only the horizontal axis overflows (e.g. too many dock items), a plain wheel scrolls it.
         var horizontalOnly = ScrollableHeight <= 0 && ScrollableWidth > 0;
         if (!horizontalOnly && (modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) == 0) return false;
+        var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
+        var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize;
         if (!horizontalOnly && ScrollableHeight > 0)
         {
-            var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
-            ScrollToVerticalOffset(VerticalOffset - distance);
+            if (animate && SystemParameters.ClientAreaAnimation)
+            {
+                var baseOffset = Math.Abs(_targetVerticalOffset - VerticalOffset) > 100 ? VerticalOffset : _targetVerticalOffset;
+                AnimateScrollVertical(baseOffset - distance);
+            }
+            else
+            {
+                ScrollToVerticalOffset(VerticalOffset - distance);
+                _targetVerticalOffset = VerticalOffset;
+            }
             return true;
         }
         if (ScrollableWidth > 0)
         {
-            var distance = delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
-            ScrollToHorizontalOffset(HorizontalOffset - distance);
+            if (animate && SystemParameters.ClientAreaAnimation)
+            {
+                var baseOffset = Math.Abs(_targetHorizontalOffset - HorizontalOffset) > 100 ? HorizontalOffset : _targetHorizontalOffset;
+                AnimateScrollHorizontal(baseOffset - distance);
+            }
+            else
+            {
+                ScrollToHorizontalOffset(HorizontalOffset - distance);
+                _targetHorizontalOffset = HorizontalOffset;
+            }
             return true;
         }
         return false;
     }
 
+    private void AnimateScrollHorizontal(double target)
+    {
+        target = Math.Clamp(target, 0, ScrollableWidth);
+        _targetHorizontalOffset = target;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            ScrollToHorizontalOffset(target);
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = HorizontalOffset,
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        BeginAnimation(CurrentHorizontalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void AnimateScrollVertical(double target)
+    {
+        target = Math.Clamp(target, 0, ScrollableHeight);
+        _targetVerticalOffset = target;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            ScrollToVerticalOffset(target);
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = VerticalOffset,
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        BeginAnimation(CurrentVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+    }
+
     protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
     {
-        if (ScrollByWheel(e.Delta, Keyboard.Modifiers))
+        if (ScrollByWheel(e.Delta, Keyboard.Modifiers, animate: true))
         {
             e.Handled = true;
             return;
@@ -60,15 +142,35 @@ public sealed class DockScrollViewer : ScrollViewer
         // Plain wheel (without Shift/Ctrl) also scrolls overflowing dock content directly
         if (e.Delta != 0 && ScrollableWidth > 0)
         {
-            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
-            ScrollToHorizontalOffset(HorizontalOffset - distance);
+            var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
+            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize;
+            if (SystemParameters.ClientAreaAnimation)
+            {
+                var baseOffset = Math.Abs(_targetHorizontalOffset - HorizontalOffset) > 100 ? HorizontalOffset : _targetHorizontalOffset;
+                AnimateScrollHorizontal(baseOffset - distance);
+            }
+            else
+            {
+                ScrollToHorizontalOffset(HorizontalOffset - distance);
+                _targetHorizontalOffset = HorizontalOffset;
+            }
             e.Handled = true;
             return;
         }
         if (e.Delta != 0 && ScrollableHeight > 0)
         {
-            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * (double)FindResource("DockCellSize");
-            ScrollToVerticalOffset(VerticalOffset - distance);
+            var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
+            var distance = e.Delta / (double)Mouse.MouseWheelDeltaForOneLine * cellSize;
+            if (SystemParameters.ClientAreaAnimation)
+            {
+                var baseOffset = Math.Abs(_targetVerticalOffset - VerticalOffset) > 100 ? VerticalOffset : _targetVerticalOffset;
+                AnimateScrollVertical(baseOffset - distance);
+            }
+            else
+            {
+                ScrollToVerticalOffset(VerticalOffset - distance);
+                _targetVerticalOffset = VerticalOffset;
+            }
             e.Handled = true;
             return;
         }
@@ -80,6 +182,8 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         if (e.ChangedButton == MouseButton.Middle && ScrollableWidth > 0 && CaptureMouse())
         {
+            BeginAnimation(CurrentHorizontalOffsetProperty, null);
+            BeginAnimation(CurrentVerticalOffsetProperty, null);
             _panStart = e.GetPosition(this);
             _panOffset = HorizontalOffset;
             e.Handled = true;
@@ -91,7 +195,9 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         if (_panStart is { } origin)
         {
-            ScrollToHorizontalOffset(_panOffset + origin.X - e.GetPosition(this).X);
+            var target = _panOffset + origin.X - e.GetPosition(this).X;
+            ScrollToHorizontalOffset(target);
+            _targetHorizontalOffset = HorizontalOffset;
             e.Handled = true;
         }
         base.OnMouseMove(e);
