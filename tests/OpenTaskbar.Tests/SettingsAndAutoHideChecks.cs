@@ -36,6 +36,7 @@ internal static class SettingsAndAutoHideChecks
             ShowInTaskbar = false, ShowActivated = false, Content = anchor
         };
         var flyout = new DockFlyout();
+        var secondFlyout = new DockFlyout();
         try
         {
             host.Show();
@@ -52,14 +53,19 @@ internal static class SettingsAndAutoHideChecks
 
             flyout.Show(anchor, new TextBlock { Text = "Weather" }, animate: false, focusable: false);
             PumpDispatcher(application.Dispatcher, 100);
+            secondFlyout.Show(anchor, new TextBlock { Text = "Tray" }, animate: false, focusable: false);
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!flyout.IsOpen && secondFlyout.IsOpen && DockFlyout.IsAnyOpen,
+                "Opening another widget flyout must close the old one without releasing the new lock.");
             DockFlyout.CloseAll();
             PumpDispatcher(application.Dispatcher, 100);
-            check(!flyout.IsOpen && !DockFlyout.IsAnyOpen,
-                "Closing all flyouts must release the auto-hide lock after reopening.");
+            check(!flyout.IsOpen && !secondFlyout.IsOpen && !DockFlyout.IsAnyOpen,
+                "Closing all flyouts must release the auto-hide lock after switching widgets.");
         }
         finally
         {
             flyout.Close();
+            secondFlyout.Close();
             host.Close();
         }
     }
