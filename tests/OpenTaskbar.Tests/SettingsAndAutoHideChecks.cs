@@ -325,14 +325,21 @@ internal static class SettingsAndAutoHideChecks
             PumpDispatcher(application.Dispatcher, 100);
             check(DockFlyout.IsAnyOpen, "ClockButton click must open the calendar flyout.");
 
-            // Cursor moves away from dock bounds and away from flyout
+            // Cursor moves away: flyout remains open and keeps dock visible until user dismisses or toggles
             simulatedCursor = (0, 0);
             controller.EvaluateState();
-            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
-            check(!DockFlyout.IsAnyOpen, "Moving cursor away from dock and flyout must auto-dismiss open flyout.");
-            check(controller.IsHidden, "Dock must auto-hide after open flyout is auto-dismissed on pointer departure.");
+            PumpDispatcher(application.Dispatcher, 200);
+            check(DockFlyout.IsAnyOpen, "Open flyout must remain open while viewing even if cursor leaves.");
+            check(!controller.IsHidden, "Dock must stay visible while a widget flyout is actively open.");
 
-            // 2. Reveal dock, open flyout again, then toggle closed by clicking ClockButton
+            // Toggling ClockButton closed closes the flyout and lets the dock auto-hide
+            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!DockFlyout.IsAnyOpen, "Toggling ClockButton must close the flyout.");
+            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
+            check(controller.IsHidden, "Dock must auto-hide after open flyout is closed.");
+
+            // 2. Reveal dock, open flyout again, then close via DockFlyout.CloseAll (simulating outside click/dismiss)
             simulatedCursor = (-9700, -9970);
             controller.OnMouseEnterDock();
             check(!controller.IsHidden, "Hovering dock must reveal it.");
@@ -341,15 +348,15 @@ internal static class SettingsAndAutoHideChecks
             PumpDispatcher(application.Dispatcher, 100);
             check(DockFlyout.IsAnyOpen, "Clicking clock button must reopen calendar flyout.");
 
-            // Clicking ClockButton again must toggle it closed
-            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            // Clicking outside (CloseAll) must dismiss flyout and allow auto-hide
+            DockFlyout.CloseAll();
             PumpDispatcher(application.Dispatcher, 100);
-            check(!DockFlyout.IsAnyOpen, "Clicking clock button while flyout is open must toggle it closed.");
+            check(!DockFlyout.IsAnyOpen, "Clicking outside must close the flyout.");
 
             simulatedCursor = (0, 0);
             controller.EvaluateState();
             PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
-            check(controller.IsHidden, "Dock must auto-hide after flyout was toggled closed.");
+            check(controller.IsHidden, "Dock must auto-hide after flyout was dismissed.");
         }
         finally
         {

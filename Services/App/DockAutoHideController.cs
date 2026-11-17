@@ -123,7 +123,7 @@ public sealed class DockAutoHideController : IDisposable
 
         if (Mode == AutoHideMode.Smart)
         {
-            HasOverlap = EvaluateWindowOverlap(GetForegroundWindow());
+            RefreshSmartOverlap(GetForegroundWindow());
         }
 
         EvaluateState();
@@ -176,12 +176,24 @@ public sealed class DockAutoHideController : IDisposable
     // stays revealed after dismissing the popup.
     private void RefreshSmartOverlap(nint foregroundHwnd)
     {
+        if (foregroundHwnd == 0) foregroundHwnd = NativeWindowTracker.GetForegroundApplicationWindow();
         if (foregroundHwnd == 0) return;
         var root = GetAncestor(foregroundHwnd, GaRootOwner);
         var target = root != 0 ? root : foregroundHwnd;
         if (!IsWindow(target)) return;
         GetWindowThreadProcessId(target, out var pid);
-        if (pid == Environment.ProcessId) return;
+        if (pid == Environment.ProcessId)
+        {
+            var fallback = NativeWindowTracker.GetForegroundApplicationWindow();
+            if (fallback != 0 && fallback != target)
+            {
+                target = fallback;
+            }
+            else
+            {
+                return;
+            }
+        }
         HasOverlap = EvaluateWindowOverlap(target);
     }
 
@@ -189,11 +201,6 @@ public sealed class DockAutoHideController : IDisposable
     {
         if (_disposed || Mode == AutoHideMode.Disabled) return;
         if (!IsHidden) SyncPointerState();
-
-        if (!IsHidden && !IsMouseOverDock && !IsMouseAtEdge && DockFlyout.IsAnyOpen && !DockFlyout.IsMouseOverAny)
-        {
-            DockFlyout.CloseAll();
-        }
 
         if (ShouldHide())
         {
