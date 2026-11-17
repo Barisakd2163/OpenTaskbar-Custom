@@ -38,9 +38,6 @@ public static class ShellShortcuts
     /// <summary>Optional predicate indicating whether the dock's Media widget is active.</summary>
     public static Func<bool>? IsMediaWidgetActive { get; set; }
 
-    /// <summary>Last known height of Quick Settings, used to proportion the Notification Center to match.</summary>
-    private static volatile int s_lastQuickSettingsHeight;
-
     private static bool IsExtended(ushort key) => key is VkLeft or VkRight or VkLeftWindows;
 
     /// <summary>Win+A: Quick Settings (Windows 11) or Action Center (Windows 10), anchored above the clicked button when given.</summary>
@@ -54,16 +51,9 @@ public static class ShellShortcuts
         return error;
     }
 
-    /// <summary>Win+N: notification center and calendar, anchored above the clicked button when given.</summary>
-    public static string? OpenNotificationCenter(FrameworkElement? anchor = null)
-    {
-        var error = SendWindowsShortcut(VkN);
-        if (error is null && anchor is not null)
-        {
-            _ = RepositionNotificationCenterAsync(anchor);
-        }
-        return error;
-    }
+    /// <summary>Win+N: notification center and calendar, opened natively via Windows shortcut.</summary>
+    public static string? OpenNotificationCenter(FrameworkElement? anchor = null) =>
+        SendWindowsShortcut(VkN);
 
     /// <summary>Win+P: display projection flyout, anchored above the clicked button when given.</summary>
     public static string? OpenProjection(FrameworkElement? anchor = null)
@@ -164,8 +154,6 @@ public static class ShellShortcuts
                 }
             }
 
-            s_lastQuickSettingsHeight = visibleHeight;
-
             var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, visibleHeight, monitorInfo, edge);
             int winY = targetY - topOffset;
 
@@ -186,134 +174,6 @@ public static class ShellShortcuts
                 await Task.Delay(50);
             }
             return;
-        }
-    }
-
-    private static async Task RepositionNotificationCenterAsync(FrameworkElement anchor)
-    {
-        AppLog.Info("RepositionNotificationCenterAsync: invoked.");
-        HwndSource? source = PresentationSource.FromVisual(anchor) as HwndSource;
-        if (source is null || source.Handle == 0)
-        {
-            if (Application.Current?.MainWindow is Window main && PresentationSource.FromVisual(main) is HwndSource mainSource)
-            {
-                source = mainSource;
-            }
-        }
-        if (source is null || source.Handle == 0)
-        {
-            AppLog.Warning("RepositionNotificationCenterAsync: no HwndSource available.");
-            return;
-        }
-
-        Point topLeft;
-        Point bottomRight;
-        try
-        {
-            topLeft = anchor.PointToScreen(new Point(0, 0));
-            bottomRight = anchor.PointToScreen(new Point(anchor.ActualWidth, anchor.ActualHeight));
-        }
-        catch (InvalidOperationException ex)
-        {
-            AppLog.Warning($"RepositionNotificationCenterAsync PointToScreen failed: {ex.Message}");
-            return;
-        }
-
-        var monitor = MonitorFromWindow(source.Handle, MonitorDefaultToNearest);
-        var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo))
-        {
-            AppLog.Warning("RepositionNotificationCenterAsync: GetMonitorInfo failed.");
-            return;
-        }
-
-        var edge = DockFlyout.Edge;
-
-        for (var attempt = 0; attempt < 35; attempt++)
-        {
-            await Task.Delay(25);
-            var hwnd = FindNotificationCenterHandle();
-            if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
-            var width = rect.Right - rect.Left;
-            var height = rect.Bottom - rect.Top;
-            if (width < 80 || height < 80) continue;
-
-            AppLog.Info($"RepositionNotificationCenterAsync: found hwnd 0x{hwnd:X} at ({rect.Left}, {rect.Top}, {width}x{height}) on attempt {attempt}");
-            await PositionAndClipNotificationCenterAsync(hwnd, topLeft, bottomRight, width, height, monitorInfo, edge);
-            return;
-        }
-
-        AppLog.Warning("RepositionNotificationCenterAsync: notification window not found within timeout.");
-    }
-
-    private static async Task PositionAndClipNotificationCenterAsync(
-        nint hwnd, Point topLeft, Point bottomRight, int winWidth, int winHeight, MonitorInfo monitorInfo, DockEdge edge)
-    {
-        try
-        {
-            var element = AutomationElement.FromHandle(hwnd);
-            int baseUnit = winWidth > 0 ? winWidth : 360;
-            int minHeight = (int)Math.Round(baseUnit * (320.0 / 360.0));
-            int maxHeight = (int)Math.Round(baseUnit * (450.0 / 360.0));
-            int targetHeight = s_lastQuickSettingsHeight > 0
-                ? Math.Clamp(s_lastQuickSettingsHeight, minHeight, maxHeight)
-                : (int)Math.Round(baseUnit * (390.0 / 360.0));
-
-            if (element is not null)
-            {
-                for (var retry = 0; retry < 8; retry++)
-                {
-                    var buttons = element.FindAll(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
-
-                    foreach (AutomationElement btn in buttons)
-                    {
-                        var autoId = btn.Current.AutomationId;
-                        var name = btn.Current.Name ?? string.Empty;
-
-                        bool isCalendarButton = autoId == "ExpandCollapseButton"
-                            || autoId == "CollapseButton"
-                            || name.Contains("Takvim", StringComparison.OrdinalIgnoreCase)
-                            || name.Contains("Calendar", StringComparison.OrdinalIgnoreCase);
-
-                        if (isCalendarButton)
-                        {
-                            var btnRect = btn.Current.BoundingRectangle;
-                            if (double.IsInfinity(btnRect.Top) || btnRect.Height <= 0) continue;
-
-                            if (name.Contains("Daralt", StringComparison.OrdinalIgnoreCase)
-                                || name.Contains("Collapse", StringComparison.OrdinalIgnoreCase)
-                                || autoId == "CollapseButton")
-                            {
-                                if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
-                                {
-                                    ip.Invoke();
-                                    AppLog.Info($"PositionAndClip: invoked {autoId}/{name} to collapse");
-                                }
-                            }
-                            break;
-                        }
-                    }
-
-                    await Task.Delay(40);
-                }
-            }
-
-            int clipHeight = targetHeight;
-            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, winWidth, clipHeight, monitorInfo, edge);
-            AppLog.Info($"PositionAndClip: positioning hwnd 0x{hwnd:X} to ({targetX}, {targetY}) size {winWidth}x{clipHeight}");
-
-            for (var frame = 0; frame < 6; frame++)
-            {
-                SetWindowPos(hwnd, 0, targetX, targetY, winWidth, clipHeight, SwpNoZOrder | SwpNoActivate);
-                var rgn = CreateRoundRectRgn(0, 0, winWidth, clipHeight, 16, 16);
-                SetWindowRgn(hwnd, rgn, true);
-                await Task.Delay(40);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warning($"PositionAndClipNotificationCenterAsync exception: {ex.Message}");
         }
     }
 
@@ -340,72 +200,6 @@ public static class ShellShortcuts
                     Math.Max(monitorInfo.Work.Top + 8, (int)Math.Round(topLeft.Y) - height - 12)
                 );
         }
-    }
-
-    private static nint FindNotificationCenterHandle()
-    {
-        // 1. Direct class & title lookups
-        foreach (var cls in new[] { "NotificationCenterWindow", "Shell_ActionCenter", "Windows.UI.Core.CoreWindow" })
-        {
-            foreach (var title in new[] { "Notification Center", "Bildirim Merkezi", "Action center", null })
-            {
-                if (cls == "Windows.UI.Core.CoreWindow" && title is null) continue;
-                var h = FindWindow(cls, title);
-                if (h != 0 && IsWindowVisible(h))
-                {
-                    AppLog.Info($"FindNotificationCenterHandle found via FindWindow({cls}, '{title}') -> 0x{h:X}");
-                    return h;
-                }
-            }
-        }
-
-        // 2. FindWindowEx traversal across desktop children (bypasses EnumWindows desktop band filtering)
-        nint current = 0;
-        while ((current = FindWindowEx(0, current, "Windows.UI.Core.CoreWindow", null)) != 0)
-        {
-            if (IsWindowVisible(current))
-            {
-                GetWindowRect(current, out var r);
-                var w = r.Right - r.Left;
-                var hgt = r.Bottom - r.Top;
-                if (w >= 180 && hgt >= 180)
-                {
-                    AppLog.Info($"FindNotificationCenterHandle matched CoreWindow via FindWindowEx 0x{current:X} ({w}x{hgt})");
-                    return current;
-                }
-            }
-        }
-
-        // 3. Fallback traversal: any top-level window from ShellExperienceHost or ShellHost
-        current = 0;
-        while ((current = FindWindowEx(0, current, null, null)) != 0)
-        {
-            if (!IsWindowVisible(current)) continue;
-            GetWindowThreadProcessId(current, out var pid);
-            string procName = string.Empty;
-            try { procName = Process.GetProcessById((int)pid).ProcessName; } catch { }
-
-            if (procName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase)
-                || procName.Equals("ShellHost", StringComparison.OrdinalIgnoreCase))
-            {
-                var sb = new StringBuilder(64);
-                GetClassName(current, sb, 64);
-                var className = sb.ToString();
-                if (className != "ControlCenterWindow")
-                {
-                    GetWindowRect(current, out var r);
-                    var w = r.Right - r.Left;
-                    var hgt = r.Bottom - r.Top;
-                    if (w >= 180 && hgt >= 180)
-                    {
-                        AppLog.Info($"FindNotificationCenterHandle matched {procName} ({className}) via FindWindowEx 0x{current:X} ({w}x{hgt})");
-                        return current;
-                    }
-                }
-            }
-        }
-
-        return 0;
     }
 
     public static string? OpenUri(string uri) => Start(uri, "ErrorSettingsPageOpen");
