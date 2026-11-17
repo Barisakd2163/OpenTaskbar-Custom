@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "${{ inputs.tag_name }}" }
-          if (-not $tag) { $tag = "v0.2.6" }
+          if (-not $tag) { $tag = "v0.2.7" }
           "TAG_NAME=$tag" >> $env:GITHUB_ENV
 
       - name: Package release archive

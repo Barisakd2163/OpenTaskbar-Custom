@@ -1,16 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.2.7 - 2026-11-17
 
-- Store language preferences by culture tag, select the Windows display language on first launch when translated, and use a culture-based language picker that can grow beyond two languages.
-- Use the selected language culture for clock, weather, and launcher formatting; move launcher labels and remaining hardcoded user-facing errors into the localization catalog.
-- Bundled six theme packs with the app and install them into `%LOCALAPPDATA%\OpenTaskbar\Themes` on launch, preserving files already in the user's theme folders.
-- Preserve the current language preference while language selection controls are between choices, preventing auto-save from switching languages during a radio-button transition.
-- Added theme packs: folders under `%LOCALAPPDATA%\OpenTaskbar\Themes` with a `theme.json`, an optional icon pack (`icons\`) and an optional widget pack (`widgets\`), selected in Settings → Appearance → Theme.
-- Icon packs map images by AppUserModelID, package name, executable path or name, or a file named after the executable, and can theme the Start button and the Recycle Bin.
-- Added fallback plates (Leaf, Petal, Rounded, Circle) that place unthemed app icons on a theme-shaped, tinted background.
-- Widget packs replace design tokens per theme: brushes and gradients apply at once, corner radii, sizes and fonts after a restart; the dock glass keeps the surface opacity setting.
-- Added `docs/themes.md` and a starter theme in `docs/theme-template`. Added the Prism theme in `themes/prism`: category icons (no application logos) built from Phosphor duotone glyphs (MIT) by `generate.mjs`, and a matching widget pack.
+- Added multi-monitor display selection and secondary dock app and widget scoping.
+- Added automated CI and release workflows, English contribution guidelines, and issue/PR templates.
+- Optimized dock fisheye magnification hit-testing with cached target coordinates.
+- Optimized HTTP client lifetimes and theme icon image caching.
+- Restored native Windows 11 notification center launching with automatic `ShellExperienceHost` recovery.
+- Bundled six theme packs and added custom theme and icon pack support.
+- Added culture-based language preferences and localized launcher/widget formatting.
 
 ## 0.2.6 - 2026-11-17
 
