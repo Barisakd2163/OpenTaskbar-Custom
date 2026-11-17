@@ -212,21 +212,6 @@ public partial class ClockWidget : DockWidget
 
         root.Children.Add(grid);
 
-        var divider = new Border
-        {
-            Height = 1,
-            Margin = new Thickness(0, 6, 0, 6)
-        };
-        divider.SetResourceReference(Border.BackgroundProperty, "MenuDivider");
-        root.Children.Add(divider);
-
-        var notifications = DockFlyout.FlatButton(new TextBlock { Text = UiText.Get("OpenNotifications"), FontWeight = FontWeights.SemiBold }, (_, _) =>
-        {
-            _calendar.Close();
-            Report(ShellShortcuts.OpenNotificationCenter(ClockButton));
-        });
-        root.Children.Add(notifications);
-
         return root;
     }
 
