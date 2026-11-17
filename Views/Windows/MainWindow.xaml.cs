@@ -251,8 +251,9 @@ public partial class MainWindow : Window
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
 
-        if (_isDev) PositionDock();
-        else if (!_isPreview) StartReplacementMode();
+        // Dev mode uses the real taskbar replacement so the dock sits exactly where the taskbar is,
+        // just like release. Only the data hot-reload service differs.
+        if (!_isPreview) StartReplacementMode();
         InitializeFeatures();
 #if DEBUG
         // Verifies crash recovery: the unhandled-exception handlers must restore the Windows taskbar.
@@ -304,12 +305,18 @@ public partial class MainWindow : Window
 
         var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         var workArea = targetDisplay.WorkArea;
-        if (_isPreview)
+        if (_isPreview || _isDev)
         {
             _dockArea = new Size(workArea.Width, Height);
             Width = workArea.Width;
         }
         ResizeDockToContent();
+        if (_isDev)
+        {
+            // In dev mode the window height already includes headroom, so no extra top gap is needed.
+            _dockTopGap = 0;
+            ApplyDockMargin();
+        }
         ApplyDockAlignment();
         Left = _dockPosition switch
         {

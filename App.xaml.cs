@@ -24,6 +24,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
+        {
+            TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            Shutdown(0);
+            return;
+        }
+
         AppLog.Initialize();
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
