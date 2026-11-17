@@ -2,6 +2,7 @@
 
 ## 0.2.7 - 2026-11-17
 
+- Fixed auto-hide lock when clicking the Clock/Date widget by auto-closing flyouts on cursor departure, preventing activation foreground theft, and eliminating counter desynchronization.
 - Added multi-monitor display selection and secondary dock app and widget scoping.
 - Added automated CI and release workflows, English contribution guidelines, and issue/PR templates.
 - Added adaptive responsive grid layout to the Widgets Settings catalog, automatically scaling column count to available window width.

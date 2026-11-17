@@ -103,7 +103,12 @@ public sealed class DockAutoHideController : IDisposable
         }
         if (Mode == AutoHideMode.Smart)
         {
-            HasOverlap = EvaluateWindowOverlap(GetForegroundWindow());
+            var foreground = GetForegroundWindow();
+            GetWindowThreadProcessId(foreground, out var pid);
+            if (pid != Environment.ProcessId && foreground != 0)
+            {
+                HasOverlap = EvaluateWindowOverlap(foreground);
+            }
         }
         EvaluateState();
     }
@@ -175,6 +180,11 @@ public sealed class DockAutoHideController : IDisposable
     {
         if (_disposed || Mode == AutoHideMode.Disabled) return;
         if (!IsHidden) SyncPointerState();
+
+        if (!IsHidden && !IsMouseOverDock && !IsMouseAtEdge && DockFlyout.IsAnyOpen && !DockFlyout.IsMouseOverAny)
+        {
+            DockFlyout.CloseAll();
+        }
 
         if (ShouldHide())
         {

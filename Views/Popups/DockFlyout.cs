@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -56,7 +57,7 @@ public sealed class DockFlyout
         });
     }
 
-    private static int _openCount;
+    private static readonly List<WeakReference<DockFlyout>> FlyoutRegistry = [];
     public static event Action? AnyClosed;
     private WeakReference<UIElement>? _closedTarget;
     private nint _previousForeground;
@@ -67,8 +68,52 @@ public sealed class DockFlyout
     private readonly Border _frame;
     private readonly Border _innerBevel;
 
+    private static void CleanRegistry() => FlyoutRegistry.RemoveAll(r => !r.TryGetTarget(out _));
+
+    public static bool IsAnyOpen
+    {
+        get
+        {
+            CleanRegistry();
+            for (var i = 0; i < FlyoutRegistry.Count; i++)
+            {
+                if (FlyoutRegistry[i].TryGetTarget(out var flyout) && flyout._popup.IsOpen)
+                    return true;
+            }
+            return false;
+        }
+    }
+
+    public static bool IsMouseOverAny
+    {
+        get
+        {
+            CleanRegistry();
+            for (var i = 0; i < FlyoutRegistry.Count; i++)
+            {
+                if (FlyoutRegistry[i].TryGetTarget(out var flyout) && flyout._popup.IsOpen)
+                {
+                    if (flyout._root.IsMouseOver || flyout._frame.IsMouseOver)
+                        return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    public static void CloseAll()
+    {
+        CleanRegistry();
+        for (var i = 0; i < FlyoutRegistry.Count; i++)
+        {
+            if (FlyoutRegistry[i].TryGetTarget(out var flyout) && flyout._popup.IsOpen)
+                flyout.Close();
+        }
+    }
+
     public DockFlyout()
     {
+        FlyoutRegistry.Add(new WeakReference<DockFlyout>(this));
         _innerBevel = new Border
         {
             BorderThickness = new Thickness(1),
@@ -104,27 +149,22 @@ public sealed class DockFlyout
             Placement = PlacementMode.Custom,
             CustomPopupPlacementCallback = Place
         };
-        _popup.Opened += (_, _) =>
-        {
-            _openCount++;
-            OpenFlyouts.Add(this);
-        };
         _popup.Closed += (_, _) =>
         {
-            _openCount = Math.Max(0, _openCount - 1);
-            OpenFlyouts.Remove(this);
             var target = _popup.PlacementTarget;
             _closedTarget = target is not null ? new WeakReference<UIElement>(target) : null;
             _closedAt = Environment.TickCount64;
             // Light dismiss and Esc hand the keyboard back to the app that had it before the flyout opened.
-            if (_restoreFocus && _previousForeground != 0
-                && target is not null && Window.GetWindow(target) is { IsActive: true })
+            if (_restoreFocus && _previousForeground != 0)
             {
                 NativeWindowTracker.Activate(_previousForeground);
             }
+            _restoreFocus = false;
+            _previousForeground = 0;
 
             _innerBevel.Child = null;
             _popup.PlacementTarget = null;
+            Keyboard.ClearFocus();
             Closed?.Invoke(this, EventArgs.Empty);
             AnyClosed?.Invoke();
         };
@@ -136,24 +176,14 @@ public sealed class DockFlyout
         };
     }
 
-    private static readonly List<DockFlyout> OpenFlyouts = [];
-
-    /// <summary>Closes every flyout, e.g. when the dock loses activation or another flyout opens.</summary>
-    public static void CloseAll()
-    {
-        foreach (var flyout in OpenFlyouts.ToArray()) flyout.Close();
-    }
-
     /// <summary>The dock edge the flyouts open away from.</summary>
     public static DockEdge Edge { get; set; } = DockEdge.Bottom;
-
-    public static bool IsAnyOpen => _openCount > 0;
 
     public event EventHandler? Closed;
 
     public bool IsOpen => _popup.IsOpen;
 
-    public void Show(UIElement target, UIElement content, bool animate = true, bool focusable = true)
+    public void Show(UIElement target, UIElement content, bool animate = true, bool focusable = false)
     {
         _root.Margin = Edge switch
         {
@@ -162,13 +192,19 @@ public sealed class DockFlyout
             _ => new Thickness(12, 10, 12, 14)
         };
         _innerBevel.Child = content;
-        _popup.StaysOpen = !focusable;
+        _popup.StaysOpen = false;
         _popup.PopupAnimation = animate && SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
-        foreach (var other in OpenFlyouts.Where(flyout => !ReferenceEquals(flyout, this)).ToArray()) other.Close();
+        CleanRegistry();
+        for (var i = 0; i < FlyoutRegistry.Count; i++)
+        {
+            if (FlyoutRegistry[i].TryGetTarget(out var flyout) && !ReferenceEquals(flyout, this) && flyout._popup.IsOpen)
+            {
+                flyout.Close();
+            }
+        }
         _popup.PlacementTarget = target;
         if (focusable)
         {
-            // The dock never activates on click; give it focus so the flyout gets keyboard input and closes with the dock.
             var owner = Window.GetWindow(target);
             _previousForeground = NativeWindowTracker.GetForegroundApplicationWindow();
             _restoreFocus = true;
@@ -186,7 +222,7 @@ public sealed class DockFlyout
         }
     }
 
-    public void Toggle(UIElement target, Func<UIElement> content, bool animate = true)
+    public void Toggle(UIElement target, Func<UIElement> content, bool animate = true, bool focusable = false)
     {
         if (_popup.IsOpen && ReferenceEquals(_popup.PlacementTarget, target))
         {
@@ -196,17 +232,17 @@ public sealed class DockFlyout
 
         // Clicking the anchor of an open flyout first light-dismisses it on mouse down; don't reopen on the click.
         if (RecentlyClosed(target)) return;
-        Show(target, content(), animate);
+        Show(target, content(), animate, focusable);
     }
 
     public bool RecentlyClosed(UIElement target) =>
         _closedTarget is not null && _closedTarget.TryGetTarget(out var prev) && ReferenceEquals(prev, target)
         && Environment.TickCount64 - _closedAt < 350;
 
-    /// <summary>Closes without restoring focus: used when a flyout action opens something that should get it.</summary>
-    public void Close()
+    /// <summary>Closes flyout; clears focus restoration when explicitly requested.</summary>
+    public void Close(bool restoreFocus = true)
     {
-        _restoreFocus = false;
+        if (!restoreFocus) _restoreFocus = false;
         _popup.IsOpen = false;
     }
 

@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using OpenTaskbar;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Widgets;
 
 internal static class SettingsAndAutoHideChecks
 {
@@ -22,6 +23,7 @@ internal static class SettingsAndAutoHideChecks
 
         CheckSettingsSurviveReopen(application, Check);
         CheckAutoHideLifecycleAndPointerSync(application, Check);
+        CheckClockWidgetFlyoutAndAutoHide(application, Check);
         CheckTrayTransientTooltips(Check);
         return checks;
     }
@@ -223,6 +225,90 @@ internal static class SettingsAndAutoHideChecks
         finally
         {
             controller?.Dispose();
+            host.Close();
+        }
+    }
+
+    private static void CheckClockWidgetFlyoutAndAutoHide(Application application, Action<bool, string> check)
+    {
+        var translate = new TranslateTransform();
+        var clock = new ClockWidget();
+        var surface = new Border
+        {
+            Width = 600,
+            Height = 56,
+            Child = clock,
+            RenderTransform = translate
+        };
+        var host = new Window
+        {
+            Width = 600,
+            Height = 100,
+            Content = surface,
+            ShowInTaskbar = false,
+            WindowStyle = WindowStyle.None
+        };
+
+        DockAutoHideController? controller = null;
+        try
+        {
+            var hwnd = new WindowInteropHelper(host).EnsureHandle();
+            host.Show();
+            surface.Measure(new Size(600, 76));
+            surface.Arrange(new Rect(0, 0, 600, 56));
+            surface.UpdateLayout();
+            clock.Activate();
+
+            var simulatedCursor = (X: -9700, Y: -9970);
+            var waitBudgetMs = (int)DockMetrics.AutoHideDelayMs + 800;
+            controller = new DockAutoHideController(host, hwnd, translate, surface, () => DockFlyout.IsAnyOpen)
+            {
+                AnimationsEnabled = false,
+                Edge = DockEdge.Bottom,
+                DockBoundsProvider = () => (-10000, -10000, -9400, -9944),
+                CursorPositionProvider = () => simulatedCursor
+            };
+            controller.SetMode(AutoHideMode.Always);
+
+            var clockBtn = (Button)clock.FindName("ClockButton");
+            check(!DockFlyout.IsAnyOpen, "DockFlyout must start closed.");
+
+            // 1. Click ClockButton to open calendar
+            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher(application.Dispatcher, 100);
+            check(DockFlyout.IsAnyOpen, "ClockButton click must open the calendar flyout.");
+
+            // Cursor moves away from dock bounds and away from flyout
+            simulatedCursor = (0, 0);
+            controller.EvaluateState();
+            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
+            check(!DockFlyout.IsAnyOpen, "Moving cursor away from dock and flyout must auto-dismiss open flyout.");
+            check(controller.IsHidden, "Dock must auto-hide after open flyout is auto-dismissed on pointer departure.");
+
+            // 2. Reveal dock, open flyout again, then toggle closed by clicking ClockButton
+            simulatedCursor = (-9700, -9970);
+            controller.OnMouseEnterDock();
+            check(!controller.IsHidden, "Hovering dock must reveal it.");
+            PumpDispatcher(application.Dispatcher, 400);
+            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher(application.Dispatcher, 100);
+            check(DockFlyout.IsAnyOpen, "Clicking clock button must reopen calendar flyout.");
+
+            // Clicking ClockButton again must toggle it closed
+            clockBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher(application.Dispatcher, 100);
+            check(!DockFlyout.IsAnyOpen, "Clicking clock button while flyout is open must toggle it closed.");
+
+            simulatedCursor = (0, 0);
+            controller.EvaluateState();
+            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
+            check(controller.IsHidden, "Dock must auto-hide after flyout was toggled closed.");
+        }
+        finally
+        {
+            DockFlyout.CloseAll();
+            controller?.Dispose();
+            clock.Deactivate();
             host.Close();
         }
     }
