@@ -129,9 +129,7 @@
                                           AutomationProperties.Name="{local:Loc ThemePack}"
                                           SelectionChanged="ThemePackBox_SelectionChanged" />
                                 <TextBlock x:Name="ThemePackDetails" FontSize="11" Foreground="{DynamicResource TextSecondary}"
-                                           TextWrapping="Wrap" Margin="0,6,0,0" />
-                                <TextBlock Text="{local:Loc ThemePackHint}" FontSize="11" Foreground="{DynamicResource TextSecondary}"
-                                           TextWrapping="Wrap" Margin="0,4,0,8" />
+                                           TextWrapping="Wrap" Margin="0,6,0,8" />
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="{local:Loc ThemePackOpenFolder}" Style="{StaticResource SettingsButton}" Click="ThemePackOpenFolder_Click" Margin="0,0,8,0" />
                                     <Button Content="{local:Loc ThemePackReload}" Style="{StaticResource SettingsButton}" Click="ThemePackReload_Click" />

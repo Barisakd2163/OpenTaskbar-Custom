@@ -565,6 +565,22 @@ internal static class DockLayoutChecks
             "Weather condition backgrounds must be frozen for performance and thread safety.");
         Check(!ReferenceEquals(clearBg, rainBg), "Clear and rain condition backgrounds must differ.");
 
+        // Verify ClockWidget time of day periods and themes
+        Check(OpenTaskbar.Widgets.ClockWidget.GetPeriod(8) == OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Morning, "Hour 8 must be morning period.");
+        Check(OpenTaskbar.Widgets.ClockWidget.GetPeriod(14) == OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Noon, "Hour 14 must be noon period.");
+        Check(OpenTaskbar.Widgets.ClockWidget.GetPeriod(21) == OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Evening, "Hour 21 must be evening period.");
+        Check(OpenTaskbar.Widgets.ClockWidget.GetPeriod(2) == OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Evening, "Hour 2 must be evening period.");
+
+        var morningTheme = OpenTaskbar.Widgets.ClockWidget.GetTheme(OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Morning);
+        var noonTheme = OpenTaskbar.Widgets.ClockWidget.GetTheme(OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Noon);
+        var eveningTheme = OpenTaskbar.Widgets.ClockWidget.GetTheme(OpenTaskbar.Widgets.ClockWidget.TimeOfDayPeriod.Evening);
+        Check(morningTheme.IconKey == "IconSun" && noonTheme.IconKey == "IconSun" && eveningTheme.IconKey == "IconMoon",
+            "Morning and noon must use IconSun; evening must use IconMoon.");
+        Check(morningTheme.Background.IsFrozen && noonTheme.Background.IsFrozen && eveningTheme.Background.IsFrozen,
+            "Time of day backgrounds must be frozen for performance.");
+        Check(morningTheme.Border.IsFrozen && noonTheme.Border.IsFrozen && eveningTheme.Border.IsFrozen,
+            "Time of day borders must be frozen for performance.");
+
         var testDays = new[]
         {
             new WeatherDay(DateOnly.FromDateTime(DateTime.Today), 0, 10, 20),
