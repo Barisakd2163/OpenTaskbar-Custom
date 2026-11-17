@@ -457,6 +457,10 @@ internal static class DockLayoutChecks
         Check(coordinator.CurrentOrder[0] == "Clock" && coordinator.CurrentOrder[1] == "Focus" && coordinator.CurrentOrder[2] == "Media",
             "ApplyOrder must reorder widgets per specified order.");
         Check(testStrip.Children.Count == 9, "Strip children count must remain 9 after reordering.");
+        var unspecified = coordinator.CurrentOrder.Skip(3).ToArray();
+        coordinator.ApplyOrder(["Clock", "Focus", "Media"]);
+        Check(coordinator.CurrentOrder.Skip(3).SequenceEqual(unspecified),
+            "Reapplying a partial order must preserve all unspecified widget positions.");
 
         IReadOnlyList<string>? capturedOrder = null;
         coordinator.OrderChanged = order => capturedOrder = order;
