@@ -1758,7 +1758,36 @@ public partial class MainWindow : Window
             var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
             foreach (var token in DefaultDockOrder(settings))
             {
-                if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase)) tokens.Add(token);
+                if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var lastAppIndex = tokens.FindLastIndex(t =>
+                            t.StartsWith("app:", StringComparison.OrdinalIgnoreCase)
+                            && FindDockApp(t[4..]) is not null);
+
+                        if (lastAppIndex >= 0)
+                        {
+                            tokens.Insert(lastAppIndex + 1, token);
+                        }
+                        else
+                        {
+                            var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
+                            if (startIndex >= 0)
+                            {
+                                tokens.Insert(startIndex + 1, token);
+                            }
+                            else
+                            {
+                                tokens.Insert(0, token);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        tokens.Add(token);
+                    }
+                }
             }
 
             var pairs = new List<(string Token, FrameworkElement Element)>();

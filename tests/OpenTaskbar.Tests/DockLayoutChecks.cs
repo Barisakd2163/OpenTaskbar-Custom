@@ -281,6 +281,35 @@ internal static class DockLayoutChecks
             Check(dockSurface.Width == initialWidth, "Restoring widget width must resize dock width immediately.");
         }
 
+        {
+            var grid = new AdaptiveGrid { MinItemWidth = 230, Width = 500 };
+            for (var i = 0; i < 4; i++) grid.Children.Add(new Border { Height = 100 });
+            grid.Measure(new Size(500, double.PositiveInfinity));
+            grid.Arrange(new Rect(0, 0, 500, 300));
+            grid.UpdateLayout();
+            Check(grid.Children[0].RenderSize.Width == 250, "AdaptiveGrid must divide 500 DIP width into 2 columns of 250 DIPs.");
+            Check(grid.Children[1].RenderSize.Width == 250, "AdaptiveGrid items must stretch to fill their column.");
+            Check(grid.Children[1].TranslatePoint(new Point(), grid).Y == 0, "Second item must be in row 0 at 500 DIP width.");
+            Check(grid.Children[2].TranslatePoint(new Point(), grid).Y > 0, "Third item must wrap to row 1 at 500 DIP width.");
+
+            grid.Width = 720;
+            grid.Measure(new Size(720, double.PositiveInfinity));
+            grid.Arrange(new Rect(0, 0, 720, 300));
+            grid.UpdateLayout();
+            Check(grid.Children[0].RenderSize.Width == 240, "AdaptiveGrid must adapt to 3 columns of 240 DIPs at 720 DIP width.");
+            Check(grid.Children[2].TranslatePoint(new Point(), grid).Y == 0, "Third item must fit on row 0 in 3-column mode.");
+        }
+
+        {
+            var tokens = new List<string> { "start", "app:pin1.exe", "widget:clock", "widget:media" };
+            var newToken = "app:running1.exe";
+            var lastAppIndex = tokens.FindLastIndex(t => t.StartsWith("app:", StringComparison.OrdinalIgnoreCase));
+            if (lastAppIndex >= 0) tokens.Insert(lastAppIndex + 1, newToken);
+            else tokens.Add(newToken);
+            Check(tokens.IndexOf("app:running1.exe") == 2, "Newly opened app must be inserted right after the existing app and before widgets.");
+            Check(tokens.IndexOf("widget:clock") == 3 && tokens.IndexOf("widget:media") == 4, "Widgets must remain on the right of the newly opened app.");
+        }
+
         var testWindow = new Window { ShowActivated = false, ShowInTaskbar = false, Width = 10, Height = 10, WindowStyle = WindowStyle.None };
         var helper = new System.Windows.Interop.WindowInteropHelper(testWindow);
         helper.EnsureHandle();
