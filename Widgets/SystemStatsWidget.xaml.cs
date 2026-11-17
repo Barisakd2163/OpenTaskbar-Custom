@@ -165,10 +165,7 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnSettingsChanged()
     {
-        lock (_sensorGate)
-        {
-            _sensorGeneration++;
-        }
+        Interlocked.Increment(ref _sensorGeneration);
 
         ApplyMeterSelection();
         if (IsActive)
@@ -218,7 +215,7 @@ public partial class SystemStatsWidget : DockWidget
             {
                 lock (_sensorGate)
                 {
-                    if (generation != _sensorGeneration) return;
+                    if (generation != Volatile.Read(ref _sensorGeneration)) return;
                     _sensors ??= new SystemSensors(meters);
                     _sensors.Configure(meters);
                     if (meters.HasFlag(SystemMeters.Gpu)) _sensors.SampleGpuUsage();
@@ -250,7 +247,7 @@ public partial class SystemStatsWidget : DockWidget
             {
                 lock (_sensorGate)
                 {
-                    if (generation != _sensorGeneration) return;
+                    if (generation != Volatile.Read(ref _sensorGeneration)) return;
                     _sensors ??= new SystemSensors(meters);
                     _sensors.Configure(meters);
                     if (meters.HasFlag(SystemMeters.Gpu)) gpu = _sensors.SampleGpuUsage();
