@@ -4,6 +4,10 @@
 
 - Added multi-monitor display selection and secondary dock app and widget scoping.
 - Added automated CI and release workflows, English contribution guidelines, and issue/PR templates.
+- Added adaptive responsive grid layout to the Widgets Settings catalog, automatically scaling column count to available window width.
+- Ensured immediate dock width recalculation and shrink when applications or widgets are closed or removed.
+- Placed newly launched applications dynamically alongside running apps, preserving trailing widget placement on the dock.
+- Added right-click removal support directly on dock widget items.
 - Optimized dock fisheye magnification hit-testing with cached target coordinates.
 - Optimized HTTP client lifetimes and theme icon image caching.
 - Restored native Windows 11 notification center launching with automatic `ShellExperienceHost` recovery.
