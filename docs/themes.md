@@ -18,7 +18,7 @@ A theme pack restyles OpenTaskbar with an **icon pack** and a **widget pack**. N
 
 Both packs are optional. Pick a theme in **Settings → Appearance → Theme → Theme pack**. **Open folder** opens the `Themes` folder; **Reload** rereads the selected theme after you change its files.
 
-A starter theme is in [theme-template](theme-template).
+A starter theme is in [theme-template](theme-template). A complete theme, **Prism**, is in [themes/prism](../themes/prism): copy that folder to `%LOCALAPPDATA%\OpenTaskbar\Themes\` to use it.
 
 ## theme.json
 
@@ -117,4 +117,4 @@ Token names are listed in [Design/Palettes/Dark.xaml](../Design/Palettes/Dark.xa
 
 ## Licensing
 
-Only use icons whose license allows it. Themes stay out of this repository.
+Only use icons whose license allows you to share them, and prefer category icons to application logos: a logo is its owner's trademark even when an icon set's license allows copying it. Prism follows this rule and is the only theme in this repository.
