@@ -14,6 +14,7 @@ namespace OpenTaskbar.Widgets;
 public class DockWidget : UserControl, IDisposable
 {
     private bool _hasData = true;
+    private bool _disposed;
 
     public DockWidget()
     {
@@ -80,7 +81,7 @@ public class DockWidget : UserControl, IDisposable
 
     public void Activate()
     {
-        if (IsActive) return;
+        if (IsActive || _disposed) return;
         IsActive = true;
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         UpdateVisibility();
@@ -134,6 +135,8 @@ public class DockWidget : UserControl, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         Deactivate();
         OnDisposed();
         GC.SuppressFinalize(this);
