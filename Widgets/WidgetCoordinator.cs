@@ -518,8 +518,8 @@ public sealed class WidgetCoordinator : IDisposable
     }
 
     /// <summary>
-    /// Computes which Auto-mode widgets should be compact so the widget island fits alongside the apps,
-    /// with a hysteresis margin that prevents compact/full oscillation.
+    /// Applies only the user's explicit density choice. Widgets are never auto-compacted to save space —
+    /// the dock scrolls instead, so their content is always shown at full width.
     /// </summary>
     public bool UpdateAdaptiveDensity(
         double maxTotalWidth,
@@ -528,13 +528,9 @@ public sealed class WidgetCoordinator : IDisposable
         double hysteresisMargin = 32d,
         double widgetScale = 1.0)
     {
-        if (_disposed || maxTotalWidth <= 0) return false;
+        if (_disposed) return false;
 
-        var scale = double.IsFinite(widgetScale) && widgetScale > 0 ? widgetScale : 1.0;
         var changed = false;
-        var autoCandidates = new List<DockWidget>();
-        double fixedWidgetsWidth = 0;
-
         foreach (var slot in _widgets)
         {
             if (slot.Widget is not { Visibility: Visibility.Visible } widget) continue;
@@ -543,96 +539,18 @@ public sealed class WidgetCoordinator : IDisposable
                     ? overrideMode
                     : settings.GlobalWidgetDensity;
 
-            if (!widget.SupportsCompactMode || mode == WidgetDensityMode.Full)
+            var shouldCompact = widget.SupportsCompactMode && mode == WidgetDensityMode.Compact;
+            if (widget.IsCompact != shouldCompact)
             {
-                if (widget.IsCompact)
-                {
-                    widget.SetCompactState(false);
-                    changed = true;
-                }
-                fixedWidgetsWidth += (widget.IsHoverExpanded ? widget.FullWidthEstimate : CurrentWidth(widget)) * scale;
-            }
-            else if (mode == WidgetDensityMode.Compact)
-            {
-                if (!widget.IsCompact)
-                {
-                    widget.SetCompactState(true);
-                    changed = true;
-                }
-                fixedWidgetsWidth += (widget.IsHoverExpanded ? widget.FullWidthEstimate : widget.CompactWidthEstimate) * scale;
-            }
-            else
-            {
-                autoCandidates.Add(widget);
-            }
-        }
-
-        if (autoCandidates.Count == 0) return changed;
-
-        var compactMap = new Dictionary<DockWidget, bool>(autoCandidates.Count);
-        double autoTotal = 0;
-        foreach (var w in autoCandidates)
-        {
-            compactMap[w] = w.IsCompact;
-            autoTotal += (w.IsCompact ? w.CompactWidthEstimate : w.FullWidthEstimate) * scale;
-        }
-
-        var budgetForWidgets = maxTotalWidth - appsContentWidth;
-        if (fixedWidgetsWidth + autoTotal > budgetForWidgets)
-        {
-            foreach (var w in autoCandidates.OrderBy(w => w.ShrinkPriority))
-            {
-                if (fixedWidgetsWidth + autoTotal <= budgetForWidgets) break;
-                if (compactMap[w]) continue;
-                compactMap[w] = true;
-                autoTotal -= Math.Max(0, w.FullWidthEstimate - w.CompactWidthEstimate) * scale;
-            }
-        }
-        else
-        {
-            foreach (var w in autoCandidates.OrderByDescending(w => w.ShrinkPriority))
-            {
-                if (!compactMap[w]) continue;
-                var delta = Math.Max(0, w.FullWidthEstimate - w.CompactWidthEstimate) * scale;
-                if (fixedWidgetsWidth + autoTotal + delta + hysteresisMargin <= budgetForWidgets)
-                {
-                    compactMap[w] = false;
-                    autoTotal += delta;
-                }
-            }
-        }
-
-        foreach (var (w, shouldCompact) in compactMap)
-        {
-            if (w.IsCompact != shouldCompact)
-            {
-                w.SetCompactState(shouldCompact);
+                widget.SetCompactState(shouldCompact);
                 changed = true;
             }
         }
-
         return changed;
-
-        static double CurrentWidth(DockWidget w) => w.IsCompact ? w.CompactWidthEstimate : w.FullWidthEstimate;
     }
 
-    public bool TryCompactNextAutoWidget(DockSettings settings)
-    {
-        if (_disposed) return false;
-        foreach (var slot in _widgets
-            .Where(s => s.Widget is { Visibility: Visibility.Visible, SupportsCompactMode: true, IsCompact: false })
-            .OrderBy(s => s.Widget!.ShrinkPriority))
-        {
-            var mode = settings.WidgetDensityOverrides is not null
-                && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
-                    ? overrideMode
-                    : settings.GlobalWidgetDensity;
-            if (mode != WidgetDensityMode.Auto) continue;
-            slot.Widget!.SetCompactState(true);
-            return true;
-        }
-        return false;
-    }
+    /// <summary>Kept for API compatibility; automatic compaction is intentionally disabled.</summary>
+    public bool TryCompactNextAutoWidget(DockSettings settings) => false;
 
     public void Dispose()
     {
