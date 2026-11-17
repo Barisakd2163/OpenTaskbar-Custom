@@ -199,6 +199,18 @@ internal static class SettingsAndAutoHideChecks
             check(controller.IsHidden,
                 "Dock must hide once stuck IsMouseOverDock is cleared by pointer sync.");
 
+            // Long hover beyond the old 4-tick limit (simulate hovering for 1.3s, then moving away without MouseLeave)
+            simulatedCursor = (-9700, -9970);
+            controller.OnMouseEnterDock();
+            check(!controller.IsHidden, "Dock must reveal on mouse enter.");
+            PumpDispatcher(application.Dispatcher, 1100);
+            check(!controller.IsHidden && controller.IsMouseOverDock, "Dock must stay revealed during sustained hover.");
+            // Cursor now moves away, but simulate missed MouseLeave (do NOT call controller.EvaluateState or OnMouseLeave)
+            simulatedCursor = (0, 0);
+            // The continuous guard timer must automatically detect cursor departure and hide the dock
+            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
+            check(controller.IsHidden, "Continuous guard timer must hide the dock after a long hover even if MouseLeave was dropped.");
+
             controller.SetMode(AutoHideMode.Smart);
             controller.CheckForegroundWindow(hwnd);
             check(!controller.HasOverlap && !controller.IsHidden,

@@ -39,7 +39,9 @@ public partial class MainWindow
         {
             EndKeyboardNavigation(restoreForeground: false);
             DockFlyout.CloseAll();
+            _autoHideController?.EvaluateState();
         };
+        DockFlyout.AnyClosed += () => _autoHideController?.EvaluateState();
         PreviewKeyDown += Dock_PreviewKeyDown;
         _updateTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(12) };
         _updateTimer.Tick += async (_, _) =>

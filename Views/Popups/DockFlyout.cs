@@ -57,6 +57,7 @@ public sealed class DockFlyout
     }
 
     private static int _openCount;
+    public static event Action? AnyClosed;
     private WeakReference<UIElement>? _closedTarget;
     private nint _previousForeground;
     private bool _restoreFocus;
@@ -125,6 +126,7 @@ public sealed class DockFlyout
             _innerBevel.Child = null;
             _popup.PlacementTarget = null;
             Closed?.Invoke(this, EventArgs.Empty);
+            AnyClosed?.Invoke();
         };
         _popup.KeyDown += (_, args) =>
         {
