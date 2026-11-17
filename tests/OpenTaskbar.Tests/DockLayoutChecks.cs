@@ -661,14 +661,14 @@ internal static class DockLayoutChecks
         // Verify notification center and quick settings anchoring support
         var dummyButton = new Button();
         var openNotifError = ShellShortcuts.OpenNotificationCenter(dummyButton);
-        Check(openNotifError is null || openNotifError == "ErrorShortcutSend",
+        Check(openNotifError is null || openNotifError == "ErrorShortcutSend" || openNotifError == UiText.Get("ErrorShortcutSend"),
             "OpenNotificationCenter with anchor must execute without crashing.");
 
         ShellShortcuts.IsMediaWidgetActive = () => true;
         Check(ShellShortcuts.IsMediaWidgetActive() == true, "IsMediaWidgetActive predicate must report active state.");
 
         var openQuickError = ShellShortcuts.OpenQuickSettings(dummyButton);
-        Check(openQuickError is null || openQuickError == "ErrorShortcutSend",
+        Check(openQuickError is null || openQuickError == "ErrorShortcutSend" || openQuickError == UiText.Get("ErrorShortcutSend"),
             "OpenQuickSettings with anchor must execute without crashing.");
         ShellShortcuts.IsMediaWidgetActive = null;
 

@@ -19,6 +19,7 @@
     <InternalsVisibleTo Include="OpenTaskbar.Tests" />
     <EmbeddedResource Include="themes\**\*.*" LogicalName="OpenTaskbar.BuiltInThemes/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="Services\Localization\Languages\*.json" LogicalName="OpenTaskbar.Localization.Languages.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Services\Localization\Flags\*.png" LogicalName="OpenTaskbar.Localization.Flags.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

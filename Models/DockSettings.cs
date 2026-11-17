@@ -26,19 +26,8 @@ public readonly record struct AppLanguage
     public string NativeName => Culture.NativeName;
     public string Code => Culture.TwoLetterISOLanguageName.ToUpperInvariant();
 
-    /// <summary>Regional-indicator flag for the culture's region, or the language code when there is no region.</summary>
-    public string Flag
-    {
-        get
-        {
-            var name = Culture.Name;
-            var parts = name.Split('-');
-            if (parts.Length < 2 || parts[1].Length != 2) return Code;
-            var region = parts[1].ToUpperInvariant();
-            if (region.Any(c => c is < 'A' or > 'Z')) return Code;
-            return new string(region.Select(c => (char)(0x1F1E6 + (c - 'A'))).ToArray());
-        }
-    }
+    /// <summary>Embedded country flag image for this culture, or null when no flag is bundled.</summary>
+    public System.Windows.Media.ImageSource? FlagImage => Services.CountryFlag.Load(this);
 }
 public enum AutoHideMode { Disabled, Smart, Always }
 public enum DockLayout { Floating, FullWidth }
@@ -46,7 +35,7 @@ public enum DockSize { Compact, Medium, Large }
 public enum DockEdge { Bottom, Left, Right }
 public enum HotkeyChoice { Disabled, AltSpace, CtrlSpace, CtrlAltSpace, CtrlAltD, WinAltD }
 public enum StartButtonAction { WindowsStart, Launcher }
-public enum StartButtonPlacement { Start, End, Hidden }
+public enum StartButtonPlacement { Start, End, Hidden, InWidgets }
 public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
 public enum SecondaryAppScope { CurrentMonitorOnly, AllMonitors }
 public enum WidgetDensityMode { Auto, Compact, Full }
@@ -98,6 +87,7 @@ public sealed record DockSettings(
     HotkeyChoice DockHotkey = HotkeyChoice.CtrlAltD,
     StartButtonAction StartAction = StartButtonAction.WindowsStart,
     StartButtonPlacement StartPlacement = StartButtonPlacement.Start,
+    int StartWidgetIndex = 0,
     bool WheelVolume = true,
     bool CheckUpdates = true,
     bool ShowWeather = false,

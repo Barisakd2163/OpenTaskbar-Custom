@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shell;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
@@ -311,7 +312,11 @@ public partial class SettingsWindow : Window
                 : LauncherCtrlAltSpace.IsChecked == true ? HotkeyChoice.CtrlAltSpace : HotkeyChoice.Disabled,
             DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : DockWinAltD.IsChecked == true ? HotkeyChoice.WinAltD : HotkeyChoice.Disabled,
             StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
-            StartPlacement = StartLast.IsChecked == true ? StartButtonPlacement.End : StartHidden.IsChecked == true ? StartButtonPlacement.Hidden : StartButtonPlacement.Start,
+            StartPlacement = StartHidden.IsChecked == true ? StartButtonPlacement.Hidden
+                : StartLast.IsChecked == true ? StartButtonPlacement.End
+                : StartFirst.IsChecked == true ? StartButtonPlacement.Start
+                : _preferences.Current.StartPlacement,
+            StartWidgetIndex = _preferences.Current.StartWidgetIndex,
             WheelVolume = WheelVolumeToggle.IsChecked == true,
             Clock24Hour = Clock12HourRadio.IsChecked != true,
             ClockShowSeconds = ClockSecondsToggle.IsChecked == true,
@@ -551,11 +556,23 @@ public partial class SettingsWindow : Window
             UpdateWidgetPreviewRefresh();
             if (_preferences.Current.AnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
             {
-                var fade = new System.Windows.Media.Animation.DoubleAnimation(0.4, 1.0, TimeSpan.FromMilliseconds(150))
-                {
-                    EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
-                };
+                var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+                easing.Freeze();
+
+                var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = easing };
+                fade.Completed += (_, _) => host.BeginAnimation(UIElement.OpacityProperty, null);
                 host.BeginAnimation(UIElement.OpacityProperty, fade);
+
+                // A short upward slide gives page changes a sense of direction without moving the sidebar.
+                var transform = host.RenderTransform as TranslateTransform ?? new TranslateTransform();
+                host.RenderTransform = transform;
+                var slide = new DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(220)) { EasingFunction = easing };
+                slide.Completed += (_, _) =>
+                {
+                    transform.BeginAnimation(TranslateTransform.YProperty, null);
+                    transform.Y = 0;
+                };
+                transform.BeginAnimation(TranslateTransform.YProperty, slide);
             }
         }
     }

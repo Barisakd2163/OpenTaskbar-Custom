@@ -69,6 +69,7 @@ public sealed class WidgetCoordinator : IDisposable
     private bool _disposed;
 
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
+    public event Action? WidgetsPlaced;
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
@@ -412,6 +413,11 @@ public sealed class WidgetCoordinator : IDisposable
             e.Handled = true;
             UpdateWidgetDisplacement(targetWidget, e);
         }
+        else if (e.Data.GetDataPresent(typeof(StartButtonDragData)) || e.Data.GetDataPresent("OpenTaskbar.StartButtonDragData"))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = false;
+        }
         else
         {
             e.Effects = DragDropEffects.None;
@@ -429,6 +435,12 @@ public sealed class WidgetCoordinator : IDisposable
 
     private void Widget_Drop(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(typeof(StartButtonDragData)) || e.Data.GetDataPresent("OpenTaskbar.StartButtonDragData"))
+        {
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetData(typeof(WidgetDragPayload)) is WidgetDragPayload payload
             && sender is DockWidget targetWidget)
         {
@@ -455,6 +467,7 @@ public sealed class WidgetCoordinator : IDisposable
         {
             if (item.Widget is { } widget) _strip.Children.Add(widget);
         }
+        WidgetsPlaced?.Invoke();
     }
 
     private void Widget_AvailabilityChanged(object? sender, EventArgs e) => AvailabilityChanged?.Invoke();
