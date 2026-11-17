@@ -83,7 +83,6 @@ public static class TrayIcons
     private static List<CandidateEntry> ReadCandidateEntries()
     {
         var candidates = new List<CandidateEntry>();
-        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
             using var root = Registry.CurrentUser.OpenSubKey(SettingsKey);
@@ -93,7 +92,7 @@ public static class TrayIcons
                 using var entry = root.OpenSubKey(name);
                 if (entry?.GetValue("ExecutablePath") is not string rawPath) continue;
                 var path = ResolveKnownFolderPath(rawPath);
-                if (path is null || !seenPaths.Add(path)) continue;
+                if (path is null) continue;
                 var fileName = Path.GetFileName(path);
                 if (string.IsNullOrEmpty(fileName) || fileName.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) continue;
 
@@ -109,15 +108,39 @@ public static class TrayIcons
             AppLog.Warning($"Tray icon settings unavailable: {ex.Message}");
         }
 
-        return candidates;
+        return candidates
+            .OrderByDescending(candidate => candidate.IsPromoted)
+            .ThenBy(candidate => candidate.PreferExeIcon)
+            .GroupBy(candidate => candidate.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
     }
 
-    /// <summary>Starting a running tray app again brings up its window for most single-instance apps.</summary>
+    /// <summary>Focus an existing app window when possible; otherwise use the application's normal launch behavior.</summary>
     public static string? Open(TrayApp app)
     {
         try
         {
-            using var _ = Process.Start(new ProcessStartInfo(app.ExecutablePath) { UseShellExecute = true });
+            // Many tray apps are already running. Prefer their existing window to launching a second copy.
+            foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(app.ExecutablePath)))
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (!string.Equals(process.MainModule?.FileName, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        var window = process.MainWindowHandle;
+                        if (window != 0 && NativeWindowTracker.Activate(window)) return null;
+                    }
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+                    {
+                        // Elevated processes may not expose MainModule; use the normal launch fallback.
+                    }
+                }
+            }
+
+            using var launched = Process.Start(new ProcessStartInfo(app.ExecutablePath) { UseShellExecute = true });
             return null;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -200,7 +223,15 @@ public static class TrayIcons
     private static string DescribeExecutable(string path)
     {
         if (DescriptionCache.TryGetValue(path, out var cached)) return cached;
-        var description = FileVersionInfo.GetVersionInfo(path).FileDescription;
+        string? description;
+        try
+        {
+            description = FileVersionInfo.GetVersionInfo(path).FileDescription;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            description = null;
+        }
         var resolved = string.IsNullOrWhiteSpace(description) ? Path.GetFileNameWithoutExtension(path) : description.Trim();
         if (DescriptionCache.Count >= MaxCacheEntries) DescriptionCache.Clear();
         DescriptionCache[path] = resolved;
@@ -246,7 +277,7 @@ public static class TrayIcons
 
     private static BitmapSource? DecodeSnapshot(byte[]? png)
     {
-        if (png is not { Length: > 0 }) return null;
+        if (png is not { Length: > 0 and <= 524288 }) return null;
         try
         {
             using var stream = new MemoryStream(png);
@@ -277,7 +308,8 @@ public static class TrayIcons
         if (bytes.Length < 24 || bytes[0] != 0x89 || bytes[1] != 0x50 || bytes[2] != 0x4E || bytes[3] != 0x47)
             return false;
         width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.Slice(16, 4));
-        return width > 0;
+        var height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.Slice(20, 4));
+        return width is > 0 and <= 2048 && height is > 0 and <= 2048;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
