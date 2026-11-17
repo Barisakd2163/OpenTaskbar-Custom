@@ -49,95 +49,153 @@
             </Grid>
             <TabControl x:Name="SettingsTabs" Grid.Row="1" TabStripPlacement="Left" SelectedIndex="0" SelectionChanged="SettingsTabs_SelectionChanged">
                 <TabItem Header="{local:Loc General}" Tag="&#xE713;">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
-                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" HorizontalContentAlignment="Stretch">
+                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}" HorizontalAlignment="Stretch">
                             <TextBlock Text="{local:Loc General}" Style="{StaticResource SettingsHeading}" />
+
+                            <!-- System & Startup -->
+                            <TextBlock Text="{local:Loc SectionSystem}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <CheckBox x:Name="StartupToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                           AutomationProperties.Name="{local:Loc Startup}" AutomationProperties.HelpText="{local:Loc StartupDescription}" />
-                                <TextBlock Text="{local:Loc Startup}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="AnimationsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc Animations}" AutomationProperties.HelpText="{local:Loc AnimationsDescription}" />
-                                <TextBlock Text="{local:Loc Animations}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="MagnificationToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc Magnification}" AutomationProperties.HelpText="{local:Loc MagnificationDescription}" />
-                                <TextBlock Text="{local:Loc Magnification}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="PreviewsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc Previews}" AutomationProperties.HelpText="{local:Loc PreviewsDescription}" />
-                                <TextBlock Text="{local:Loc Previews}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="BadgesToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc Badges}" AutomationProperties.HelpText="{local:Loc BadgesDescription}" />
-                                <TextBlock Text="{local:Loc Badges}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="RecycleBinToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc ShowRecycleBin}" />
-                                <TextBlock Text="{local:Loc ShowRecycleBin}" Style="{StaticResource SettingsRowLabel}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
-                                <TextBlock Text="{local:Loc TargetDisplay}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc TargetDisplayDescription}" />
-                                <ComboBox x:Name="TargetDisplayBox" DisplayMemberPath="DisplayName"
-                                          AutomationProperties.Name="{local:Loc TargetDisplay}"
-                                          SelectionChanged="TargetDisplayBox_SelectionChanged" />
-                            </StackPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="AllMonitorsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc AllMonitors}" AutomationProperties.HelpText="{local:Loc AllMonitorsDescription}" />
-                                <TextBlock Text="{local:Loc AllMonitors}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc AllMonitorsDescription}" />
-                            </DockPanel></Border>
-                            <Border x:Name="SecondaryAppsRow" Style="{StaticResource SettingsChoiceRow}"><StackPanel>
-                                <TextBlock Text="{local:Loc SecondaryApps}" Style="{StaticResource SettingsChoiceLabel}" ToolTip="{local:Loc SecondaryAppsDescription}" />
-                                <ComboBox x:Name="SecondaryAppsBox" DisplayMemberPath="DisplayName"
-                                          AutomationProperties.Name="{local:Loc SecondaryApps}"
-                                          SelectionChanged="SecondaryAppsBox_SelectionChanged" />
-                            </StackPanel></Border>
-                            <Border x:Name="SecondaryWidgetsRow" Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="SecondaryWidgetsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc SecondaryWidgets}" AutomationProperties.HelpText="{local:Loc SecondaryWidgetsDescription}" />
-                                <TextBlock Text="{local:Loc SecondaryWidgets}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc SecondaryWidgetsDescription}" />
-                            </DockPanel></Border>
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <CheckBox x:Name="CurrentDesktopToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
-                                          AutomationProperties.Name="{local:Loc CurrentDesktopOnly}" AutomationProperties.HelpText="{local:Loc CurrentDesktopOnlyDescription}" />
-                                <TextBlock Text="{local:Loc CurrentDesktopOnly}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc CurrentDesktopOnlyDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc Startup}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc StartupDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
                             </DockPanel></Border>
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <CheckBox x:Name="UpdatesToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                           AutomationProperties.Name="{local:Loc CheckUpdatesSetting}" />
-                                <TextBlock Text="{local:Loc CheckUpdatesSetting}" Style="{StaticResource SettingsRowLabel}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc CheckUpdatesSetting}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc CheckUpdatesSettingDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
                             </DockPanel></Border>
-                            <StackPanel Margin="0,18,0,0">
-                                <TextBlock Text="{local:Loc AutoHide}" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                <RadioButton x:Name="AutoHideDisabled" GroupName="AutoHide" Content="{local:Loc AutoHideDisabled}" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="AutoHideSmart" GroupName="AutoHide" Content="{local:Loc AutoHideSmart}" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="AutoHideAlways" GroupName="AutoHide" Content="{local:Loc AutoHideAlways}" Style="{StaticResource SettingsListChoice}" />
-                            </StackPanel>
-                            <StackPanel Margin="0,22,0,0">
-                                <TextBlock Text="{local:Loc Backup}" FontWeight="SemiBold" Margin="0,0,0,4" />
-                                <TextBlock Text="{local:Loc BackupDescription}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,10" />
-                                <StackPanel Orientation="Horizontal">
+
+                            <!-- Dock & Behavior -->
+                            <TextBlock Text="{local:Loc SectionBehavior}" Style="{StaticResource SettingsSectionHeading}" />
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="AnimationsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc Animations}" AutomationProperties.HelpText="{local:Loc AnimationsDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc Animations}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc AnimationsDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="MagnificationToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc Magnification}" AutomationProperties.HelpText="{local:Loc MagnificationDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc Magnification}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc MagnificationDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="PreviewsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc Previews}" AutomationProperties.HelpText="{local:Loc PreviewsDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc Previews}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc PreviewsDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="BadgesToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc Badges}" AutomationProperties.HelpText="{local:Loc BadgesDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc Badges}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc BadgesDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="RecycleBinToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc ShowRecycleBin}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc ShowRecycleBin}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc ShowRecycleBinDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="CurrentDesktopToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc CurrentDesktopOnly}" AutomationProperties.HelpText="{local:Loc CurrentDesktopOnlyDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc CurrentDesktopOnly}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc CurrentDesktopOnlyDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+
+                            <!-- Displays -->
+                            <TextBlock Text="{local:Loc SectionDisplays}" Style="{StaticResource SettingsSectionHeading}" />
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <ComboBox x:Name="TargetDisplayBox" DockPanel.Dock="Right" Width="220" VerticalAlignment="Center"
+                                          DisplayMemberPath="DisplayName"
+                                          AutomationProperties.Name="{local:Loc TargetDisplay}"
+                                          SelectionChanged="TargetDisplayBox_SelectionChanged" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc TargetDisplay}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc TargetDisplayDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="AllMonitorsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc AllMonitors}" AutomationProperties.HelpText="{local:Loc AllMonitorsDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc AllMonitors}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc AllMonitorsDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border x:Name="SecondaryAppsRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                <ComboBox x:Name="SecondaryAppsBox" DockPanel.Dock="Right" Width="220" VerticalAlignment="Center"
+                                          DisplayMemberPath="DisplayName"
+                                          AutomationProperties.Name="{local:Loc SecondaryApps}"
+                                          SelectionChanged="SecondaryAppsBox_SelectionChanged" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc SecondaryApps}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc SecondaryAppsDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border x:Name="SecondaryWidgetsRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                <CheckBox x:Name="SecondaryWidgetsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                          AutomationProperties.Name="{local:Loc SecondaryWidgets}" AutomationProperties.HelpText="{local:Loc SecondaryWidgetsDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc SecondaryWidgets}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc SecondaryWidgetsDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+
+                            <!-- Auto-Hide -->
+                            <TextBlock Text="{local:Loc AutoHide}" Style="{StaticResource SettingsSectionHeading}" />
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,12">
+                                <StackPanel>
+                                    <RadioButton x:Name="AutoHideDisabled" GroupName="AutoHide" Content="{local:Loc AutoHideDisabled}" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="AutoHideSmart" GroupName="AutoHide" Content="{local:Loc AutoHideSmart}" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="AutoHideAlways" GroupName="AutoHide" Content="{local:Loc AutoHideAlways}" Style="{StaticResource SettingsListChoice}" Margin="0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Backup & Diagnostics -->
+                            <TextBlock Text="{local:Loc Backup}" Style="{StaticResource SettingsSectionHeading}" />
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,14"><DockPanel>
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
                                     <Button Content="{local:Loc ExportSettings}" Style="{StaticResource SettingsButton}" Click="ExportSettings_Click" Margin="0,0,8,0" />
                                     <Button Content="{local:Loc ImportSettings}" Style="{StaticResource SettingsButton}" Click="ImportSettings_Click" />
                                 </StackPanel>
-                            </StackPanel>
-                            <StackPanel Margin="0,22,0,0">
-                                <TextBlock Text="{local:Loc Diagnostics}" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                <Button Content="{local:Loc OpenLogFile}" Style="{StaticResource SettingsButton}" Click="OpenLogFile_Click" HorizontalAlignment="Left" />
-                            </StackPanel>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc Backup}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc BackupDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+
+                            <TextBlock Text="{local:Loc Diagnostics}" Style="{StaticResource SettingsSectionHeading}" />
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,14"><DockPanel>
+                                <Button Content="{local:Loc OpenLogFile}" DockPanel.Dock="Right" Style="{StaticResource SettingsButton}" Click="OpenLogFile_Click" VerticalAlignment="Center" />
+                                <TextBlock Text="{local:Loc Diagnostics}" Style="{StaticResource SettingsRowLabel}" VerticalAlignment="Center" />
+                            </DockPanel></Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
                 <TabItem Header="{local:Loc Appearance}" Tag="&#xE790;">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
-                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" HorizontalContentAlignment="Stretch">
+                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}" HorizontalAlignment="Stretch">
                             <TextBlock Text="{local:Loc Appearance}" Style="{StaticResource SettingsHeading}" />
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc Theme}" Style="{StaticResource SettingsChoiceLabel}" />
@@ -342,30 +400,40 @@
                     </ScrollViewer>
                 </TabItem>
                 <TabItem Header="{local:Loc Shortcuts}" Tag="&#xE765;">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
-                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" HorizontalContentAlignment="Stretch">
+                        <StackPanel Margin="{StaticResource SettingsPageInset}" MaxWidth="{StaticResource SettingsReadingWidth}" HorizontalAlignment="Stretch">
                             <TextBlock Text="{local:Loc Shortcuts}" Style="{StaticResource SettingsHeading}" />
-                            <StackPanel>
-                                <TextBlock Text="{local:Loc LauncherHotkey}" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                <RadioButton x:Name="LauncherAltSpace" GroupName="LauncherHotkey" Content="Alt + Space" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="LauncherCtrlSpace" GroupName="LauncherHotkey" Content="Ctrl + Space" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="LauncherCtrlAltSpace" GroupName="LauncherHotkey" Content="Ctrl + Alt + Space" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="LauncherOff" GroupName="LauncherHotkey" Content="{local:Loc HotkeyDisabled}" Style="{StaticResource SettingsListChoice}" />
-                            </StackPanel>
-                            <StackPanel Margin="0,18,0,0">
-                                <TextBlock Text="{local:Loc DockHotkey}" FontWeight="SemiBold" Margin="0,0,0,4" />
-                                <TextBlock Text="{local:Loc DockHotkeyDescription}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,10" />
-                                <RadioButton x:Name="DockCtrlAltD" GroupName="DockHotkey" Content="Ctrl + Alt + D" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="DockWinAltD" GroupName="DockHotkey" Content="Win + Alt + D" Style="{StaticResource SettingsListChoice}" />
-                                <RadioButton x:Name="DockOff" GroupName="DockHotkey" Content="{local:Loc HotkeyDisabled}" Style="{StaticResource SettingsListChoice}" />
-                            </StackPanel>
-                            <Border Style="{StaticResource SettingsChoiceRow}" Margin="0,18,0,0"><StackPanel>
+
+                            <!-- Hotkeys -->
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="{local:Loc LauncherHotkey}" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                    <RadioButton x:Name="LauncherAltSpace" GroupName="LauncherHotkey" Content="Alt + Space" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="LauncherCtrlSpace" GroupName="LauncherHotkey" Content="Ctrl + Space" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="LauncherCtrlAltSpace" GroupName="LauncherHotkey" Content="Ctrl + Alt + Space" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="LauncherOff" GroupName="LauncherHotkey" Content="{local:Loc HotkeyDisabled}" Style="{StaticResource SettingsListChoice}" Margin="0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,14">
+                                <StackPanel>
+                                    <TextBlock Text="{local:Loc DockHotkey}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                    <TextBlock Text="{local:Loc DockHotkeyDescription}" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                    <RadioButton x:Name="DockCtrlAltD" GroupName="DockHotkey" Content="Ctrl + Alt + D" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="DockWinAltD" GroupName="DockHotkey" Content="Win + Alt + D" Style="{StaticResource SettingsListChoice}" />
+                                    <RadioButton x:Name="DockOff" GroupName="DockHotkey" Content="{local:Loc HotkeyDisabled}" Style="{StaticResource SettingsListChoice}" Margin="0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Start Button & Interactions -->
+                            <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc StartButton}" Style="{StaticResource SettingsChoiceLabel}" />
                                 <UniformGrid Columns="2" Margin="-3,0">
                                     <RadioButton x:Name="StartOpensWindows" GroupName="StartAction" Content="{local:Loc StartWindows}" Style="{StaticResource SettingsChoice}" />
                                     <RadioButton x:Name="StartOpensLauncher" GroupName="StartAction" Content="{local:Loc StartLauncher}" Style="{StaticResource SettingsChoice}" />
                                 </UniformGrid>
                             </StackPanel></Border>
+
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc StartPlacement}" Style="{StaticResource SettingsChoiceLabel}" />
                                 <UniformGrid Columns="3" Margin="-3,0">
@@ -374,10 +442,14 @@
                                     <RadioButton x:Name="StartHidden" GroupName="StartPlacement" Content="{local:Loc PlacementHidden}" Style="{StaticResource SettingsChoice}" />
                                 </UniformGrid>
                             </StackPanel></Border>
+
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <CheckBox x:Name="WheelVolumeToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                           AutomationProperties.Name="{local:Loc WheelVolume}" AutomationProperties.HelpText="{local:Loc WheelVolumeDescription}" />
-                                <TextBlock Text="{local:Loc WheelVolume}" Style="{StaticResource SettingsRowLabel}" ToolTip="{local:Loc WheelVolumeDescription}" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc WheelVolume}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc WheelVolumeDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
                             </DockPanel></Border>
                         </StackPanel>
                     </ScrollViewer>
