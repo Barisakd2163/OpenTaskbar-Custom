@@ -113,4 +113,7 @@ public sealed record DockSettings(
     // Folder name under %LOCALAPPDATA%\OpenTaskbar\Themes; null keeps the built-in look.
     string? ThemePack = null,
     WidgetDensityMode GlobalWidgetDensity = WidgetDensityMode.Auto,
-    IReadOnlyDictionary<string, WidgetDensityMode>? WidgetDensityOverrides = null);
+    IReadOnlyDictionary<string, WidgetDensityMode>? WidgetDensityOverrides = null,
+    // Free-form dock order: "start", "app:<path>", "stack:<path>", "widget:<id>", "bin".
+    // Null keeps the legacy grouped layout until the user drags an item.
+    IReadOnlyList<string>? DockItemOrder = null);

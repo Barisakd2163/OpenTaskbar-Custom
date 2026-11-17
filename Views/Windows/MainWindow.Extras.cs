@@ -187,6 +187,13 @@ public partial class MainWindow
 
     private void RecycleBin_DragOver(object sender, DragEventArgs e)
     {
+        if (TryGetDockItemToken(e, out _))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
         {
             e.Effects = DragDropEffects.Move;
@@ -200,9 +207,10 @@ public partial class MainWindow
 
     private void RecycleBin_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        if (TryGetDockItemToken(e, out var droppedToken))
         {
-            e.Handled = false;
+            MoveDockItem(droppedToken, GetDockInsertionIndex(e));
+            e.Handled = true;
             return;
         }
 
@@ -395,6 +403,13 @@ public partial class MainWindow
 
     private void StackButton_DragOver(object sender, DragEventArgs e)
     {
+        if (TryGetDockItemToken(e, out _))
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
         {
             e.Effects = DragDropEffects.Move;
@@ -432,9 +447,10 @@ public partial class MainWindow
 
     private void StackButton_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        if (TryGetDockItemToken(e, out var droppedToken))
         {
-            e.Handled = false;
+            MoveDockItem(droppedToken, GetDockInsertionIndex(e));
+            e.Handled = true;
             return;
         }
 

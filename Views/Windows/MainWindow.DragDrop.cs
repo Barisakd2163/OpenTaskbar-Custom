@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using OpenTaskbar.Models;
+using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar;
 
@@ -170,10 +171,10 @@ public partial class MainWindow
 
     private void DockApp_DragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        if (TryGetDockItemToken(e, out _))
         {
             e.Effects = DragDropEffects.Move;
-            e.Handled = false;
+            e.Handled = true;
             return;
         }
 
@@ -198,9 +199,12 @@ public partial class MainWindow
 
     private void DockApp_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        // In the unified model every drop is an insert into the single item order.
+        if (TryGetDockItemToken(e, out var droppedToken))
         {
-            e.Handled = false;
+            ResetDisplacements();
+            MoveDockItem(droppedToken, GetDockInsertionIndex(e));
+            e.Handled = true;
             return;
         }
 
@@ -303,9 +307,51 @@ public partial class MainWindow
         }
     }
 
-    private void DockContents_DragOver(object sender, DragEventArgs e)
+    private static bool TryGetDockItemToken(DragEventArgs e, out string token)
     {
         if (e.Data.GetDataPresent(typeof(StartButtonDragData)))
+        {
+            token = "start";
+            return true;
+        }
+        if (e.Data.GetData(typeof(DockApp)) is DockApp app)
+        {
+            token = "app:" + app.ExecutablePath;
+            return true;
+        }
+        if (e.Data.GetData(typeof(DockStack)) is DockStack stack)
+        {
+            token = "stack:" + stack.Path;
+            return true;
+        }
+        if (e.Data.GetData(typeof(WidgetCoordinator.WidgetDragPayload)) is WidgetCoordinator.WidgetDragPayload widget)
+        {
+            token = "widget:" + widget.WidgetId;
+            return true;
+        }
+        token = string.Empty;
+        return false;
+    }
+
+    private int GetDockInsertionIndex(DragEventArgs e)
+    {
+        var point = e.GetPosition(DockContents);
+        var cursor = IsVertical ? point.Y : point.X;
+        var index = 0;
+        foreach (var element in _dockItemElements.Values)
+        {
+            var origin = element.TranslatePoint(default, DockContents);
+            var center = (IsVertical ? origin.Y : origin.X)
+                + (IsVertical ? element.ActualHeight : element.ActualWidth) / 2;
+            if (cursor > center) index++;
+            else break;
+        }
+        return index;
+    }
+
+    private void DockContents_DragOver(object sender, DragEventArgs e)
+    {
+        if (TryGetDockItemToken(e, out _))
         {
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
@@ -314,21 +360,9 @@ public partial class MainWindow
 
     private void DockContents_Drop(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(typeof(StartButtonDragData))) return;
-
-        var pos = e.GetPosition(DockContents);
-        var totalLength = IsVertical ? DockContents.ActualHeight : DockContents.ActualWidth;
-        var currentCoord = IsVertical ? pos.Y : pos.X;
-
-        var newPlacement = currentCoord > totalLength / 2 ? StartButtonPlacement.End : StartButtonPlacement.Start;
-
-        if (_preferences.Current.StartPlacement != newPlacement)
-        {
-            _preferences.Save(_preferences.Current with { StartPlacement = newPlacement });
-            ApplyStartPlacement();
-            AnimateDropSettle(StartButton);
-        }
-
+        if (!TryGetDockItemToken(e, out var token)) return;
+        ResetDisplacements();
+        MoveDockItem(token, GetDockInsertionIndex(e));
         e.Handled = true;
     }
 

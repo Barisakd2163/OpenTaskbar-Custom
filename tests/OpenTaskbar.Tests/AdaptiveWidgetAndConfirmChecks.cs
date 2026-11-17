@@ -20,6 +20,7 @@ internal static class AdaptiveWidgetAndConfirmChecks
         CheckTwoStepConfirm(application.Dispatcher, Check);
         CheckPreviewDimensions(application, Check);
         CheckDensityPersistence(Check);
+        CheckDockItemOrderPersistence(Check);
         CheckAdaptiveDensityAndHysteresis(application.Dispatcher, Check);
         CheckVisualBalanceAndTrayFiltering(application, Check);
         return checks;
@@ -81,6 +82,26 @@ internal static class AdaptiveWidgetAndConfirmChecks
                 && loaded.Settings.WidgetDensityOverrides?["Audio"] == WidgetDensityMode.Full
                 && loaded.Settings.WidgetDensityOverrides?["SystemStats"] == WidgetDensityMode.Auto,
                 "Global and per-widget density settings must persist and reload accurately.");
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(path + ".tmp");
+        }
+    }
+
+    private static void CheckDockItemOrderPersistence(Action<bool, string> check)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"opentaskbar-dock-order-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(path);
+            var order = new[] { "widget:Media", "start", "app:C:\\Tools\\app.exe", "stack:C:\\Docs", "bin" };
+            check(store.Save(new DockSettings(DockItemOrder: order)) is null,
+                "Free-form dock order must save cleanly.");
+            var loaded = store.Load();
+            check(loaded.Error is null && loaded.Settings.DockItemOrder?.SequenceEqual(order) == true,
+                "Free-form dock order must round-trip exactly.");
         }
         finally
         {

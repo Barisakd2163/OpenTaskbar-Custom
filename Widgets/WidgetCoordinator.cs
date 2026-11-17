@@ -56,7 +56,7 @@ public sealed class WidgetCoordinator : IDisposable
         public DockWidget? Widget { get; set; }
     }
 
-    private sealed record WidgetDragPayload(string WidgetId);
+    public sealed record WidgetDragPayload(string WidgetId);
 
     private readonly Panel _strip;
     private readonly Action<string> _reportError;
@@ -73,6 +73,13 @@ public sealed class WidgetCoordinator : IDisposable
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
+
+    /// <summary>When true, the host window owns widget placement so all dock item kinds share one strip.</summary>
+    public bool ExternalLayout { get; set; }
+
+    public IReadOnlyDictionary<string, DockWidget> ActiveWidgets => _widgets
+        .Where(slot => slot.Widget is not null)
+        .ToDictionary(slot => slot.Id, slot => slot.Widget!);
 
     /// <summary>Raised when a widget appears or disappears and the dock must refit its layout.</summary>
     public event Action? AvailabilityChanged;
@@ -407,6 +414,13 @@ public sealed class WidgetCoordinator : IDisposable
 
     private void Widget_DragOver(object sender, DragEventArgs e)
     {
+        if (ExternalLayout)
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetDataPresent(typeof(WidgetDragPayload)) && sender is DockWidget targetWidget)
         {
             e.Effects = DragDropEffects.Move;
@@ -435,6 +449,12 @@ public sealed class WidgetCoordinator : IDisposable
 
     private void Widget_Drop(object sender, DragEventArgs e)
     {
+        if (ExternalLayout)
+        {
+            e.Handled = false;
+            return;
+        }
+
         if (e.Data.GetDataPresent(typeof(StartButtonDragData)) || e.Data.GetDataPresent("OpenTaskbar.StartButtonDragData"))
         {
             e.Handled = false;
@@ -462,6 +482,12 @@ public sealed class WidgetCoordinator : IDisposable
     /// <summary>Puts each active widget in the dock strip in the user's configured order.</summary>
     private void PlaceWidgets()
     {
+        if (ExternalLayout)
+        {
+            WidgetsPlaced?.Invoke();
+            return;
+        }
+
         _strip.Children.Clear();
         foreach (var item in _widgets)
         {

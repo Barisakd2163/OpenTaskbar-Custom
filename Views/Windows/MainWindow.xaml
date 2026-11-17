@@ -180,7 +180,7 @@
                                           Data="M0,0 H10 V10 H0 Z M12,0 H22 V10 H12 Z M0,12 H10 V22 H0 Z M12,12 H22 V22 H12 Z" />
                                 </Grid>
                             </Button>
-                            <Border x:Name="StartDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="3,0,4,0" />
+                            <Border x:Name="StartDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="3,0,4,0" IsHitTestVisible="False" />
                         </StackPanel>
                         <views:DockScrollViewer x:Name="DockScrollViewer" Grid.Column="1" Style="{StaticResource DockScrollViewerStyle}"
                                               HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
@@ -188,19 +188,20 @@
                             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
                                         VerticalAlignment="Center" AllowDrop="True"
                                         DragOver="DockContents_DragOver" Drop="DockContents_Drop">
-                                <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                                <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}" Visibility="Collapsed">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
-                                <Border x:Name="RunningAppsDivider" Width="0" Height="22" Background="Transparent" Margin="0" Visibility="Collapsed" />
-                                <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}">
+                                <Border x:Name="RunningAppsDivider" Width="0" Height="22" Background="Transparent" Margin="0" Visibility="Collapsed" IsHitTestVisible="False" />
+                                <ItemsControl x:Name="RunningApps" ItemTemplate="{StaticResource DockAppIconTemplate}" Visibility="Collapsed">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
-                                <Border x:Name="ExtrasDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="4,0,4,0" Visibility="Collapsed" />
-                                <ItemsControl x:Name="StackItems" ItemTemplate="{StaticResource StackIconTemplate}">
+                                <!-- Kept in the tree for layout code, but invisible and transparent to dragging so apps and folder stacks can be moved freely across the whole strip. -->
+                                <Border x:Name="ExtrasDivider" Width="0" Height="22" Background="Transparent" Margin="0" Visibility="Collapsed" IsHitTestVisible="False" />
+                                <ItemsControl x:Name="StackItems" ItemTemplate="{StaticResource StackIconTemplate}" Visibility="Collapsed">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
@@ -242,7 +243,7 @@
                                     <Image x:Name="RecycleBinIcon" Margin="2.5" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
                                 </Grid>
                             </Button>
-                            <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" />
+                            <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" IsHitTestVisible="False" />
                             <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged"
                                           widgets:TimedWidgetTile.DetailsRequested="TimedWidget_DetailsRequested">
                                 <ItemsControl.ItemsPanel>

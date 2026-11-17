@@ -33,10 +33,16 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint CallbackMessage = 0x8000 + 0x52;
     private const uint MonitorDefaultToNearest = 2;
     private const uint GaRootOwner = 3;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
+    private const uint SwpShowWindow = 0x0040;
     private const uint SwpNoOwnerZOrder = 0x0200;
     private const int SwHide = 0;
     private const int SwShowNoActivate = 4;
+    private const int SwShow = 5;
     private static readonly nint HwndTopmost = new(-1);
 
     private readonly Window _window;
@@ -145,6 +151,30 @@ public sealed class TaskbarReplacementSession : IDisposable
     /// Restores the Windows taskbar from any thread. Used by crash handlers, where the UI thread may be unusable.
     /// </summary>
     public static string? EmergencyRestore() => Volatile.Read(ref _current)?.Stop();
+
+    /// <summary>
+    /// Forcefully restores the Windows taskbar and unhides all tray windows, even if no session is active.
+    /// Can be called directly from CLI (--restore).
+    /// </summary>
+    public static void ForceRestoreNativeTaskbar()
+    {
+        uint state = 0;
+        if (File.Exists(JournalPath))
+        {
+            try
+            {
+                state = ReadJournal();
+            }
+            catch
+            {
+                state = 0;
+            }
+        }
+
+        ShowNativeTaskbar();
+        SetTaskbarState(state, 0);
+        DeleteJournal();
+    }
 
     public static bool HasActiveSession => Volatile.Read(ref _current)?.IsActive == true;
 
@@ -378,11 +408,12 @@ public sealed class TaskbarReplacementSession : IDisposable
 
             var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
             var taskbarShown = ShowNativeTaskbar();
+            _stateChangeStarted = false;
+            var deleteError = DeleteJournal();
             if (!stateRestored || !taskbarShown)
                 return "ErrorTaskbarRestoreFailed";
 
-            _stateChangeStarted = false;
-            return DeleteJournal();
+            return deleteError;
         }
         finally
         {
@@ -687,13 +718,18 @@ public sealed class TaskbarReplacementSession : IDisposable
             return false;
         }
 
-        ShowWindow(taskbarHandle, SwShowNoActivate);
+        ShowWindow(taskbarHandle, SwShow);
+        SetWindowPos(taskbarHandle, 0, 0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpShowWindow | SwpFrameChanged);
+
         foreach (var secondary in FindSecondaryTaskbars())
         {
-            ShowWindow(secondary, SwShowNoActivate);
+            ShowWindow(secondary, SwShow);
+            SetWindowPos(secondary, 0, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpShowWindow | SwpFrameChanged);
         }
 
-        return IsWindowVisible(taskbarHandle);
+        return true;
     }
 
     private void EnforceNativeTaskbarHidden()
