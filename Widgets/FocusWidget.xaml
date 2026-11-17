@@ -10,13 +10,13 @@
             </ContextMenu>
         </Border.ContextMenu>
         <StackPanel Orientation="Horizontal">
-            <StackPanel VerticalAlignment="Center" MinWidth="64">
-                <TextBlock Style="{StaticResource WidgetCaption}">
+            <StackPanel VerticalAlignment="Center" MinWidth="54">
+                <TextBlock x:Name="PhaseRow" Style="{StaticResource WidgetCaption}">
                     <Run x:Name="PhaseText" FontWeight="SemiBold" Foreground="{DynamicResource WidgetFocusAccent}" />
                     <Run x:Name="SessionText" />
                 </TextBlock>
                 <TextBlock x:Name="RemainingText" Style="{StaticResource WidgetText}" FontSize="20" Margin="0,-3,0,0"
-                           Typography.NumeralAlignment="Tabular" />
+                           MinWidth="54" Typography.NumeralAlignment="Tabular" />
             </StackPanel>
             <Button x:Name="SkipButton" Style="{StaticResource WidgetIconButton}" Margin="8,0,2,0" Click="Skip_Click"
                     ToolTip="{local:Loc FocusSkip}" AutomationProperties.Name="{local:Loc FocusSkip}">

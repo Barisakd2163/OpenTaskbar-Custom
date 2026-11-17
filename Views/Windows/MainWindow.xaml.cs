@@ -137,12 +137,17 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(1)
         };
         _timedWidgetRefreshTimer.Tick += TimedWidgetRefreshTimer_Tick;
-        _widgetCoordinator = new WidgetCoordinator(WidgetStrip, Dispatcher, ReportError, lazy: true)
+        _widgetCoordinator = new WidgetCoordinator(
+            WidgetStrip, Dispatcher, ReportError, lazy: true,
+            canExpandInline: CanExpandWidgetInline,
+            onHoverLayoutChanged: _ => ResizeDockToContent())
         {
             OrderChanged = OnWidgetOrderChanged
         };
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
+        _widgetCoordinator.HoverActiveChanged += _ => _autoHideController?.EvaluateState();
+        Deactivated += (_, _) => _widgetCoordinator.CollapseHover();
         _widgetCoordinator.AvailabilityChanged += () =>
         {
             ResizeDockToContent();
@@ -1850,6 +1855,7 @@ public partial class MainWindow : Window
     private void OnFullScreenChanged(bool suppressed)
     {
         if (!suppressed) return;
+        _widgetCoordinator.CollapseHover();
         _widgetPanel.Close(restoreFocus: false);
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
@@ -1885,6 +1891,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool CanExpandWidgetInline(OpenTaskbar.Widgets.DockWidget widget)
+    {
+        if (!IsVisible || _dockArea.Width <= 0) return false;
+        var margin = DockSurface.Margin;
+        var available = Math.Max(1, _dockArea.Width - margin.Left - margin.Right - DockHorizontalChrome);
+        var widgetsWidth = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
+        return widgetsWidth + Math.Max(0, widget.FullWidthEstimate - widget.ActualWidth) <= available - 2;
+    }
+
     private void FitDockToContent()
     {
         if (IsVertical)
@@ -1905,6 +1920,20 @@ public partial class MainWindow : Window
         var widgetsWidth = hasWidgets ? WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right : 0;
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
+        var maxLayoutWidth = Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome);
+        _widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentWidth, _preferences.Current, widgetScale: Profile.WidgetScale);
+        if (hasWidgets)
+        {
+            WidgetIsland.Measure(unbounded);
+            var measured = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
+            for (var step = 0; step < 9 && contentWidth + measured > maxLayoutWidth - 2; step++)
+            {
+                if (!_widgetCoordinator.TryCompactNextAutoWidget(_preferences.Current)) break;
+                WidgetIsland.Measure(unbounded);
+                measured = WidgetIsland.DesiredSize.Width + WidgetIsland.Margin.Left + WidgetIsland.Margin.Right;
+            }
+            widgetsWidth = measured;
+        }
         if (IsFullWidth)
         {
             DockLayoutRoot.MinWidth = Math.Max(0, maximumSurfaceWidth - DockHorizontalChrome);

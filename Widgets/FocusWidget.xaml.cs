@@ -1,6 +1,11 @@
+using System.ComponentModel;
 using System.Media;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media.Animation;
+using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Widgets;
@@ -20,10 +25,67 @@ public partial class FocusWidget : DockWidget
     private DateTime? _endsAt;
     private bool _initialized;
 
+    private int _renderedSeconds = -1;
+    private Phase? _renderedPhase;
+    private int _renderedSession = -1;
+    private int _renderedSessionsTotal = -1;
+    private bool? _renderedRunning;
+    private AppLanguage? _renderedLanguage;
+
+    public override bool SupportsCompactMode => true;
+    public override int ShrinkPriority => 50;
+    public override double FullWidthEstimate => 162;
+    public override double CompactWidthEstimate => 100;
+
     public FocusWidget()
     {
         InitializeComponent();
     }
+
+    protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
+    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void ApplyDensityLayout()
+    {
+        var compact = IsCompact && !IsHoverExpanded;
+        PhaseRow.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        SkipButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        Card.Padding = compact ? new Thickness(10, 0, 6, 0) : new Thickness(12, 0, 8, 0);
+    }
+
+    public override UIElement? BuildHoverFlyoutContent()
+    {
+        var root = new StackPanel { Width = 200 };
+        root.Children.Add(DockFlyout.Heading($"{PhaseText.Text} {SessionText.Text}".Trim()));
+        var timer = new TextBlock { Text = RemainingText.Text, FontSize = 24, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 2, 0, 8) };
+        timer.SetResourceReference(StyleProperty, "WidgetText");
+        root.Children.Add(timer);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var toggle = new Button { Width = 34, Height = 34, Content = new ContentControl { Content = FindResource(IsRunning ? "IconPauseFill" : "IconPlayFill"), Width = 14, Height = 14 } };
+        toggle.SetResourceReference(StyleProperty, "WidgetIconButton");
+        if (toggle.Content is ContentControl tc) tc.SetResourceReference(StyleProperty, "WidgetGlyph");
+        toggle.Click += Toggle_Click;
+
+        var skip = new Button { Width = 34, Height = 34, Margin = new Thickness(6, 0, 0, 0), Content = new ContentControl { Content = FindResource("IconSkip"), Width = 14, Height = 14 } };
+        skip.SetResourceReference(StyleProperty, "WidgetIconButton");
+        if (skip.Content is ContentControl sc) sc.SetResourceReference(StyleProperty, "WidgetIcon");
+        skip.Click += Skip_Click;
+
+        var reset = new Button { Width = 34, Height = 34, Margin = new Thickness(6, 0, 0, 0), Content = new ContentControl { Content = FindResource("IconReset"), Width = 14, Height = 14 } };
+        reset.SetResourceReference(StyleProperty, "WidgetIconButton");
+        if (reset.Content is ContentControl rc) rc.SetResourceReference(StyleProperty, "WidgetIcon");
+        reset.Click += Reset_Click;
+
+        row.Children.Add(toggle);
+        row.Children.Add(skip);
+        row.Children.Add(reset);
+        root.Children.Add(row);
+        return root;
+    }
+
+    private TimeSpan PhaseLength => TimeSpan.FromMinutes(_phase == Phase.Focus ? Settings.FocusMinutes : Settings.FocusBreakMinutes);
+    private bool IsRunning => _endsAt is not null;
 
     protected override void OnActivated()
     {
@@ -34,12 +96,19 @@ public partial class FocusWidget : DockWidget
     protected override void OnDeactivated()
     {
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+        if (IsRunning)
+        {
+            _remaining = _endsAt!.Value - DateTime.Now;
+            if (_remaining < TimeSpan.Zero) _remaining = TimeSpan.Zero;
+            _endsAt = null;
+        }
+        Card.BeginAnimation(OpacityProperty, null);
     }
 
-    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Render();
-
-    private TimeSpan PhaseLength => TimeSpan.FromMinutes(_phase == Phase.Focus ? Settings.FocusMinutes : Settings.FocusBreakMinutes);
-    private bool IsRunning => _endsAt is not null;
+    private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (IsActive) Render();
+    }
 
     protected override void OnSettingsChanged()
     {
@@ -130,16 +199,56 @@ public partial class FocusWidget : DockWidget
         var remaining = _remaining < TimeSpan.Zero ? TimeSpan.Zero : _remaining;
         // Round up so the display reads 25:00 at the start and 00:00 only at the end.
         var seconds = (int)Math.Ceiling(remaining.TotalSeconds);
-        RemainingText.Text = $"{seconds / 60:00}:{seconds % 60:00}";
-        PhaseText.Text = UiText.Get(_phase == Phase.Focus ? "Focus" : "Break");
-        SessionText.Text = $" {_session}/{Settings.FocusSessions}";
-        ToggleGlyph.Content = FindResource(IsRunning ? "IconPauseFill" : "IconPlayFill");
-        PlayButton.ToolTip = UiText.Get(IsRunning ? "FocusPause" : "FocusStart");
-        System.Windows.Automation.AutomationProperties.SetName(PlayButton, (string)PlayButton.ToolTip);
-        Card.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty,
-            IsRunning ? (_phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent") : "WidgetTrack");
-        PhaseText.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,
-            _phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent");
+        if (_renderedSeconds != seconds)
+        {
+            _renderedSeconds = seconds;
+            RemainingText.Text = $"{seconds / 60:00}:{seconds % 60:00}";
+        }
+
+        var lang = UiText.Current.Language;
+        var phaseChanged = _renderedPhase != _phase;
+        var runningChanged = _renderedRunning != IsRunning;
+        var langChanged = _renderedLanguage != lang;
+
+        if (phaseChanged || langChanged)
+        {
+            PhaseText.Text = UiText.Get(_phase == Phase.Focus ? "Focus" : "Break");
+        }
+
+        if (_renderedSession != _session || _renderedSessionsTotal != Settings.FocusSessions)
+        {
+            _renderedSession = _session;
+            _renderedSessionsTotal = Settings.FocusSessions;
+            SessionText.Text = $" {_session}/{Settings.FocusSessions}";
+        }
+
+        if (runningChanged)
+        {
+            ToggleGlyph.Content = FindResource(IsRunning ? "IconPauseFill" : "IconPlayFill");
+        }
+
+        if (runningChanged || langChanged)
+        {
+            var playLabel = UiText.Get(IsRunning ? "FocusPause" : "FocusStart");
+            PlayButton.ToolTip = playLabel;
+            AutomationProperties.SetName(PlayButton, playLabel);
+        }
+
+        if (runningChanged || phaseChanged)
+        {
+            Card.SetResourceReference(Border.BorderBrushProperty,
+                IsRunning ? (_phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent") : "WidgetTrack");
+        }
+
+        if (phaseChanged)
+        {
+            PhaseText.SetResourceReference(TextElement.ForegroundProperty,
+                _phase == Phase.Focus ? "WidgetFocusAccent" : "WidgetAccent");
+        }
+
+        _renderedPhase = _phase;
+        _renderedRunning = IsRunning;
+        _renderedLanguage = lang;
     }
 
     private void Pulse()
@@ -150,6 +259,7 @@ public partial class FocusWidget : DockWidget
             AutoReverse = true,
             RepeatBehavior = new RepeatBehavior(3)
         };
+        pulse.Completed += (_, _) => Card.BeginAnimation(OpacityProperty, null);
         Card.BeginAnimation(OpacityProperty, pulse);
     }
 }

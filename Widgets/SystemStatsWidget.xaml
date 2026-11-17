@@ -4,15 +4,24 @@
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
               xmlns:local="clr-namespace:OpenTaskbar.Services">
     <StackPanel Orientation="Horizontal">
+        <Button x:Name="CompactSummaryButton" Style="{StaticResource WidgetCardButton}" Width="82" Padding="7,2"
+                Visibility="Collapsed" Click="TaskManager_Click">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="CompactCpuText" Style="{StaticResource WidgetText}" FontSize="11"
+                           Typography.NumeralAlignment="Tabular" Text="CPU —" />
+                <TextBlock x:Name="CompactRamText" Style="{StaticResource WidgetCaption}" FontSize="10.5"
+                           Typography.NumeralAlignment="Tabular" Text="RAM —" Margin="0,-1,0,0" />
+            </StackPanel>
+        </Button>
         <Button x:Name="BatteryButton" Style="{StaticResource WidgetCardButton}" Width="{StaticResource WidgetHeight}"
-                Padding="0" BorderThickness="0" Background="{DynamicResource WidgetAccentFill}" Visibility="Collapsed"
-                Click="BatteryButton_Click">
+                Padding="3" Visibility="Collapsed" Click="BatteryButton_Click">
             <Grid>
-                <TextBlock x:Name="BatteryText" Style="{StaticResource WidgetText}" Foreground="{DynamicResource WidgetAccentText}"
-                           FontSize="14" HorizontalAlignment="Center" />
+                <w:RingMeter x:Name="BatteryRing" Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="BAT"
+                             CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
+                             ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
                 <ContentControl x:Name="ChargingIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconZap}"
-                                Width="9" Height="9" Foreground="{DynamicResource WidgetAccentText}"
-                                HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,-11" Visibility="Collapsed" />
+                                Width="9" Height="9" Foreground="{DynamicResource WidgetAccent}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0" Visibility="Collapsed" />
             </Grid>
         </Button>
         <Button x:Name="CpuButton" Style="{StaticResource WidgetCardButton}" Width="{StaticResource WidgetHeight}" Padding="3"

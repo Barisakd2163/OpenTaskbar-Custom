@@ -12,12 +12,7 @@
                     <Border Background="Transparent" Width="{TemplateBinding Width}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                         <Border x:Name="GripIndicator" Width="3" Height="14" CornerRadius="1.5"
                                 HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Background="{DynamicResource IndicatorBrush}" Opacity="0"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform>
-                                <ScaleTransform x:Name="GripScale" ScaleX="1" ScaleY="1" />
-                            </Border.RenderTransform>
-                        </Border>
+                                Background="{DynamicResource IndicatorBrush}" Opacity="0" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -61,6 +56,9 @@
                                      Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             <!-- Running apps get a refined luminous dot; the foreground app a vibrant glowing mini capsule. -->
+                            <Rectangle x:Name="ActiveIndicatorGlow" Grid.Row="1" Height="6" Width="14" RadiusX="3" RadiusY="3"
+                                       Fill="#4538BDF8" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                       Visibility="Collapsed" IsHitTestVisible="False" />
                             <Rectangle x:Name="ActiveIndicator" Grid.Row="1" Height="4" Width="4" RadiusX="2" RadiusY="2"
                                        Fill="{DynamicResource IndicatorBrush}" VerticalAlignment="Center"
                                        HorizontalAlignment="Center" Visibility="Collapsed" />
@@ -86,6 +84,7 @@
                         </DataTrigger>
                         <DataTrigger Binding="{Binding IsForeground}" Value="True">
                             <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceSelectedStrong}" />
+                            <Setter TargetName="ActiveIndicatorGlow" Property="Visibility" Value="Visible" />
                             <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
                             <Setter TargetName="ActiveIndicator" Property="Opacity" Value="1.0" />
                             <Setter TargetName="ActiveIndicator" Property="Width" Value="8" />
@@ -93,11 +92,6 @@
                             <Setter TargetName="ActiveIndicator" Property="RadiusX" Value="2" />
                             <Setter TargetName="ActiveIndicator" Property="RadiusY" Value="2" />
                             <Setter TargetName="ActiveIndicator" Property="Fill" Value="{DynamicResource IndicatorForegroundBrush}" />
-                            <Setter TargetName="ActiveIndicator" Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="#38BDF8" BlurRadius="6" ShadowDepth="0" Opacity="0.95" />
-                                </Setter.Value>
-                            </Setter>
                         </DataTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -111,7 +105,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Grid Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
-                        <Border x:Name="StartTile" Margin="4,4,4,4"
+                        <Border x:Name="StartTile" Margin="3,3,3,3"
                                 CornerRadius="10"
                                 Background="{DynamicResource StartTileBackground}"
                                 BorderBrush="{DynamicResource StartTileBorder}"

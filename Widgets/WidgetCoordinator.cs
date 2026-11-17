@@ -62,6 +62,7 @@ public sealed class WidgetCoordinator : IDisposable
     private readonly Action<string> _reportError;
     private readonly List<WidgetSlot> _widgets;
     private readonly DispatcherTimer _timer;
+    private readonly WidgetHoverCoordinator _hoverCoordinator;
     private readonly HashSet<DockWidget> _displacedWidgets = [];
     private Point _dragStartPoint;
     private DockWidget? _draggedWidget;
@@ -75,13 +76,31 @@ public sealed class WidgetCoordinator : IDisposable
     /// <summary>Raised when a widget appears or disappears and the dock must refit its layout.</summary>
     public event Action? AvailabilityChanged;
 
+    public bool IsHoverActive => _hoverCoordinator.IsHoverActive;
+    public event Action<bool>? HoverActiveChanged
+    {
+        add => _hoverCoordinator.HoverActiveChanged += value;
+        remove => _hoverCoordinator.HoverActiveChanged -= value;
+    }
+    public void CollapseHover() => _hoverCoordinator.CollapseActive();
+
     private static bool IsCatalogEnabled(DockSettings settings, string id) =>
         settings.Widgets?.Contains(id, StringComparer.OrdinalIgnoreCase) == true;
 
-    public WidgetCoordinator(Panel strip, Dispatcher dispatcher, Action<string> reportError, bool lazy = false)
+    public WidgetCoordinator(
+        Panel strip,
+        Dispatcher dispatcher,
+        Action<string> reportError,
+        bool lazy = false,
+        Func<DockWidget, bool>? canExpandInline = null,
+        Action<bool>? onHoverLayoutChanged = null)
     {
         _strip = strip;
         _reportError = reportError;
+        _hoverCoordinator = new WidgetHoverCoordinator(
+            dispatcher,
+            canExpandInline ?? (_ => false),
+            onHoverLayoutChanged ?? (_ => { }));
         _widgets =
         [
             new("Media", "WidgetMedia", () => new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
@@ -130,6 +149,7 @@ public sealed class WidgetCoordinator : IDisposable
         widget.DragLeave += Widget_DragLeave;
         widget.Drop += Widget_Drop;
         widget.AvailabilityChanged += Widget_AvailabilityChanged;
+        _hoverCoordinator.Attach(widget);
         slot.Widget = widget;
         return widget;
     }
@@ -445,10 +465,128 @@ public sealed class WidgetCoordinator : IDisposable
         foreach (var item in _widgets) item.Widget?.Tick(now);
     }
 
+    /// <summary>
+    /// Computes which Auto-mode widgets should be compact so the widget island fits alongside the apps,
+    /// with a hysteresis margin that prevents compact/full oscillation.
+    /// </summary>
+    public bool UpdateAdaptiveDensity(
+        double maxTotalWidth,
+        double appsContentWidth,
+        DockSettings settings,
+        double hysteresisMargin = 32d,
+        double widgetScale = 1.0)
+    {
+        if (_disposed || maxTotalWidth <= 0) return false;
+
+        var scale = double.IsFinite(widgetScale) && widgetScale > 0 ? widgetScale : 1.0;
+        var changed = false;
+        var autoCandidates = new List<DockWidget>();
+        double fixedWidgetsWidth = 0;
+
+        foreach (var slot in _widgets)
+        {
+            if (slot.Widget is not { Visibility: Visibility.Visible } widget) continue;
+            var mode = settings.WidgetDensityOverrides is not null
+                && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
+                    ? overrideMode
+                    : settings.GlobalWidgetDensity;
+
+            if (!widget.SupportsCompactMode || mode == WidgetDensityMode.Full)
+            {
+                if (widget.IsCompact)
+                {
+                    widget.SetCompactState(false);
+                    changed = true;
+                }
+                fixedWidgetsWidth += (widget.IsHoverExpanded ? widget.FullWidthEstimate : CurrentWidth(widget)) * scale;
+            }
+            else if (mode == WidgetDensityMode.Compact)
+            {
+                if (!widget.IsCompact)
+                {
+                    widget.SetCompactState(true);
+                    changed = true;
+                }
+                fixedWidgetsWidth += (widget.IsHoverExpanded ? widget.FullWidthEstimate : widget.CompactWidthEstimate) * scale;
+            }
+            else
+            {
+                autoCandidates.Add(widget);
+            }
+        }
+
+        if (autoCandidates.Count == 0) return changed;
+
+        var compactMap = new Dictionary<DockWidget, bool>(autoCandidates.Count);
+        double autoTotal = 0;
+        foreach (var w in autoCandidates)
+        {
+            compactMap[w] = w.IsCompact;
+            autoTotal += (w.IsCompact ? w.CompactWidthEstimate : w.FullWidthEstimate) * scale;
+        }
+
+        var budgetForWidgets = maxTotalWidth - appsContentWidth;
+        if (fixedWidgetsWidth + autoTotal > budgetForWidgets)
+        {
+            foreach (var w in autoCandidates.OrderBy(w => w.ShrinkPriority))
+            {
+                if (fixedWidgetsWidth + autoTotal <= budgetForWidgets) break;
+                if (compactMap[w]) continue;
+                compactMap[w] = true;
+                autoTotal -= Math.Max(0, w.FullWidthEstimate - w.CompactWidthEstimate) * scale;
+            }
+        }
+        else
+        {
+            foreach (var w in autoCandidates.OrderByDescending(w => w.ShrinkPriority))
+            {
+                if (!compactMap[w]) continue;
+                var delta = Math.Max(0, w.FullWidthEstimate - w.CompactWidthEstimate) * scale;
+                if (fixedWidgetsWidth + autoTotal + delta + hysteresisMargin <= budgetForWidgets)
+                {
+                    compactMap[w] = false;
+                    autoTotal += delta;
+                }
+            }
+        }
+
+        foreach (var (w, shouldCompact) in compactMap)
+        {
+            if (w.IsCompact != shouldCompact)
+            {
+                w.SetCompactState(shouldCompact);
+                changed = true;
+            }
+        }
+
+        return changed;
+
+        static double CurrentWidth(DockWidget w) => w.IsCompact ? w.CompactWidthEstimate : w.FullWidthEstimate;
+    }
+
+    public bool TryCompactNextAutoWidget(DockSettings settings)
+    {
+        if (_disposed) return false;
+        foreach (var slot in _widgets
+            .Where(s => s.Widget is { Visibility: Visibility.Visible, SupportsCompactMode: true, IsCompact: false })
+            .OrderBy(s => s.Widget!.ShrinkPriority))
+        {
+            var mode = settings.WidgetDensityOverrides is not null
+                && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
+                    ? overrideMode
+                    : settings.GlobalWidgetDensity;
+            if (mode != WidgetDensityMode.Auto) continue;
+            slot.Widget!.SetCompactState(true);
+            return true;
+        }
+        return false;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _hoverCoordinator.Dispose();
         _timer.Stop();
         _timer.Tick -= Timer_Tick;
         foreach (var item in _widgets)

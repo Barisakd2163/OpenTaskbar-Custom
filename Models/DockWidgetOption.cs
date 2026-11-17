@@ -21,7 +21,11 @@ public sealed class DockWidgetOption(string id, string label, string description
     public bool HasSettings => string.Equals(Id, "Clock", StringComparison.OrdinalIgnoreCase)
         || string.Equals(Id, "Weather", StringComparison.OrdinalIgnoreCase)
         || string.Equals(Id, "Focus", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "SystemStats", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(Id, "SystemStats", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "Media", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "Audio", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "QuickSettings", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Id, "Desktops", StringComparison.OrdinalIgnoreCase);
 
     public Visibility HasSettingsVisibility => HasSettings ? Visibility.Visible : Visibility.Collapsed;
 

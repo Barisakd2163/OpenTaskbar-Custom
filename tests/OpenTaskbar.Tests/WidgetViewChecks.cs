@@ -47,6 +47,7 @@ internal static class WidgetViewChecks
             checks += VisualParityChecks.Run(app);
             checks += FeatureAndMemoryChecks.Run(app);
             checks += SettingsAndAutoHideChecks.Run(app);
+            checks += AdaptiveWidgetAndConfirmChecks.Run(app);
 
             var settingsAction = new Button { Content = UiText.Get("Apply") };
             var selectedTab = new TabItem { Header = UiText.Get("General"), Content = settingsAction };
@@ -343,9 +344,9 @@ internal static class WidgetViewChecks
                     Check(RequiredName<FrameworkElement>(settings, "ClockOptions").Visibility == Visibility.Collapsed,
                         "Collapsing settings must set ClockOptions visibility to Collapsed.");
 
-                    var mediaCard = Descendants<WidgetCatalogItem>(list).Single(card => ((DockWidgetOption)card.DataContext).Id == DockWidgetService.MediaId);
-                    var mediaOption = (DockWidgetOption)mediaCard.DataContext;
-                    Check(!mediaOption.HasSettings && RequiredName<Button>(mediaCard, "SettingsExpandButton").Visibility == Visibility.Collapsed,
+                    var trayCard = Descendants<WidgetCatalogItem>(list).Single(card => ((DockWidgetOption)card.DataContext).Id == DockWidgetService.TrayId);
+                    var trayOption = (DockWidgetOption)trayCard.DataContext;
+                    Check(!trayOption.HasSettings && RequiredName<Button>(trayCard, "SettingsExpandButton").Visibility == Visibility.Collapsed,
                         "Widgets without custom settings must hide the settings expand button.");
 
                     var weatherCard = Descendants<WidgetCatalogItem>(list).Single(card => ((DockWidgetOption)card.DataContext).Id == DockWidgetService.WeatherId);

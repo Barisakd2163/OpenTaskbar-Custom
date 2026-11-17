@@ -177,6 +177,12 @@
                                         IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10" Style="{StaticResource SettingsOpacitySlider}"
                                         AutomationProperties.Name="{local:Loc DockScale}" AutomationProperties.HelpText="{local:Loc DockScaleHelp}"
                                         ValueChanged="DockScaleSlider_ValueChanged" />
+                                <TextBlock Text="{local:Loc WidgetDensity}" Style="{StaticResource SettingsChoiceLabel}" Margin="0,14,0,8" />
+                                <UniformGrid Columns="3" Margin="-3,0">
+                                    <RadioButton x:Name="DensityAuto" GroupName="WidgetDensity" Content="{local:Loc WidgetDensityAuto}" Style="{StaticResource SettingsChoice}" />
+                                    <RadioButton x:Name="DensityCompact" GroupName="WidgetDensity" Content="{local:Loc WidgetDensityCompact}" Style="{StaticResource SettingsChoice}" />
+                                    <RadioButton x:Name="DensityFull" GroupName="WidgetDensity" Content="{local:Loc WidgetDensityFull}" Style="{StaticResource SettingsChoice}" />
+                                </UniformGrid>
                             </StackPanel></Border>
                             <Border Style="{StaticResource SettingsChoiceRow}"><StackPanel>
                                 <TextBlock Text="{local:Loc DockEdge}" Style="{StaticResource SettingsChoiceLabel}" />

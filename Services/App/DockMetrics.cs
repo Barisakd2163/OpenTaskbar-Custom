@@ -79,7 +79,7 @@ public static class DockMetrics
         {
             Models.DockSize.Compact => new DockSizeProfile(Shelf: 48, BottomGap: 3, Cell: 38, VerticalPadding: 2, Icon: 28, Radius: 16),
             Models.DockSize.Medium => new DockSizeProfile(Shelf: 58, BottomGap: 5, Cell: 44, VerticalPadding: 3, Icon: 34, Radius: 19),
-            _ => new DockSizeProfile(Shelf: ShelfHeight, BottomGap: BottomGap, Cell: 50, VerticalPadding: 4, Icon: IconSize, Radius: 22)
+            _ => new DockSizeProfile(Shelf: ShelfHeight, BottomGap: BottomGap, Cell: 50, VerticalPadding: 4, Icon: 38, Radius: 22)
         };
         if (Math.Abs(clamped - 1.0) < 0.001) return baseProfile;
         var cell = Math.Round(baseProfile.Cell * clamped);

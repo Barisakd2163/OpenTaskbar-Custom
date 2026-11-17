@@ -2,11 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Automation;
 using System.Windows.Interop;
 using OpenTaskbar.Models;
 
@@ -34,8 +31,7 @@ public static class ShellShortcuts
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const int ErrorCancelled = 1223;
-
-    /// <summary>Optional predicate indicating whether the dock's Media widget is active.</summary>
+    private static CancellationTokenSource? _repositionCts;
     public static Func<bool>? IsMediaWidgetActive { get; set; }
 
     private static bool IsExtended(ushort key) => key is VkLeft or VkRight or VkLeftWindows;
@@ -43,10 +39,23 @@ public static class ShellShortcuts
     /// <summary>Win+A: Quick Settings (Windows 11) or Action Center (Windows 10), anchored above the clicked button when given.</summary>
     public static string? OpenQuickSettings(FrameworkElement? anchor = null)
     {
+        var wasVisible = IsControlCenterVisible();
         var error = SendWindowsShortcut(VkA);
-        if (error is null && anchor is not null)
+        if (error is null && anchor is not null && !wasVisible)
         {
-            _ = RepositionControlCenterAsync(anchor);
+            ScheduleControlCenterReposition(anchor);
+        }
+        return error;
+    }
+
+    /// <summary>Opens Windows' native available Wi-Fi networks flyout without throwing the user into full Settings.</summary>
+    public static string? OpenAvailableNetworks(FrameworkElement? anchor = null)
+    {
+        var wasVisible = IsControlCenterVisible();
+        var error = Start("ms-availablenetworks:", "ErrorSettingsPageOpen");
+        if (error is null && anchor is not null && !wasVisible)
+        {
+            ScheduleControlCenterReposition(anchor);
         }
         return error;
     }
@@ -80,15 +89,31 @@ public static class ShellShortcuts
     /// <summary>Win+P: display projection flyout, anchored above the clicked button when given.</summary>
     public static string? OpenProjection(FrameworkElement? anchor = null)
     {
+        var wasVisible = IsControlCenterVisible();
         var error = SendWindowsShortcut(VkP);
-        if (error is null && anchor is not null)
+        if (error is null && anchor is not null && !wasVisible)
         {
-            _ = RepositionControlCenterAsync(anchor);
+            ScheduleControlCenterReposition(anchor);
         }
         return error;
     }
 
-    private static async Task RepositionControlCenterAsync(FrameworkElement anchor)
+    private static bool IsControlCenterVisible()
+    {
+        var hwnd = FindWindow("ControlCenterWindow", null);
+        return hwnd != 0 && IsWindowVisible(hwnd);
+    }
+
+    private static void ScheduleControlCenterReposition(FrameworkElement anchor)
+    {
+        var next = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _repositionCts, next);
+        previous?.Cancel();
+        previous?.Dispose();
+        _ = RepositionControlCenterAsync(anchor, next.Token);
+    }
+
+    private static async Task RepositionControlCenterAsync(FrameworkElement anchor, CancellationToken cancellation)
     {
         if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0) return;
         Point topLeft;
@@ -107,120 +132,53 @@ public static class ShellShortcuts
         var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo)) return;
         var edge = DockFlyout.Edge;
+        var movedOnce = false;
 
-        for (var attempt = 0; attempt < 24; attempt++)
+        try
         {
-            await Task.Delay(25);
-            var hwnd = FindWindow("ControlCenterWindow", null);
-            if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
-            var width = rect.Right - rect.Left;
-            var height = rect.Bottom - rect.Top;
-            if (width < 80 || height < 80) continue;
-
-            bool hideMedia = IsMediaWidgetActive?.Invoke() == true;
-            int topOffset = 0;
-            int visibleHeight = height;
-
-            if (hideMedia)
+            for (var attempt = 0; attempt < 24; attempt++)
             {
-                try
-                {
-                    var element = AutomationElement.FromHandle(hwnd);
-                    if (element is not null)
-                    {
-                        AutomationElement? mediaElem = element.FindFirst(TreeScope.Descendants,
-                            new PropertyCondition(AutomationElement.AutomationIdProperty, "MediaTransportControls"));
-                        mediaElem ??= element.FindFirst(TreeScope.Descendants,
-                            new PropertyCondition(AutomationElement.ClassNameProperty, "ControlCenter.MediaTransportControls"));
-                        if (mediaElem is null)
-                        {
-                            var all = element.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
-                            foreach (AutomationElement el in all)
-                            {
-                                var id = el.Current.AutomationId;
-                                var cls = el.Current.ClassName;
-                                if (id.Contains("MediaTransportControls", StringComparison.OrdinalIgnoreCase)
-                                    || cls.Contains("MediaTransportControls", StringComparison.OrdinalIgnoreCase)
-                                    || id.Contains("MediaControls", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    mediaElem = el;
-                                    break;
-                                }
-                            }
-                        }
+                await Task.Delay(25, cancellation);
+                if (cancellation.IsCancellationRequested) return;
+                var hwnd = FindWindow("ControlCenterWindow", null);
+                if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
+                var width = rect.Right - rect.Left;
+                var height = rect.Bottom - rect.Top;
+                if (width < 80 || height < 80) continue;
 
-                        if (mediaElem is not null)
-                        {
-                            var mediaRect = mediaElem.Current.BoundingRectangle;
-                            if (!double.IsInfinity(mediaRect.Height) && mediaRect.Height > 20)
-                            {
-                                bool isAtTop = (mediaRect.Top - rect.Top) < (rect.Bottom - mediaRect.Bottom);
-                                if (isAtTop)
-                                {
-                                    topOffset = (int)Math.Clamp(Math.Round(mediaRect.Bottom - rect.Top), 0, height - 120);
-                                    visibleHeight = height - topOffset;
-                                    AppLog.Info($"RepositionControlCenterAsync: hiding media at top (height={mediaRect.Height}, topOffset={topOffset}, visibleHeight={visibleHeight})");
-                                }
-                                else
-                                {
-                                    visibleHeight = (int)Math.Clamp(Math.Round(mediaRect.Top - rect.Top), 120, height);
-                                    AppLog.Info($"RepositionControlCenterAsync: hiding media at bottom (height={mediaRect.Height}, visibleHeight={visibleHeight})");
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
+                var centerX = (int)Math.Round((topLeft.X + bottomRight.X) / 2);
+                var centerY = (int)Math.Round((topLeft.Y + bottomRight.Y) / 2);
+                int targetX;
+                int targetY;
+                var minY = monitorInfo.Work.Top + 8;
+                var maxY = Math.Max(minY, monitorInfo.Work.Bottom - height - 8);
+                switch (edge)
                 {
-                    AppLog.Warning($"RepositionControlCenterAsync media detection failed: {ex.Message}");
+                    case DockEdge.Left:
+                        targetX = (int)Math.Round(bottomRight.X) + 12;
+                        targetY = Math.Clamp(centerY - height / 2, minY, maxY);
+                        break;
+                    case DockEdge.Right:
+                        targetX = (int)Math.Round(topLeft.X) - width - 12;
+                        targetY = Math.Clamp(centerY - height / 2, minY, maxY);
+                        break;
+                    default:
+                        var minX = monitorInfo.Work.Left + 8;
+                        var maxX = Math.Max(minX, monitorInfo.Work.Right - width - 8);
+                        targetX = Math.Clamp(centerX - width / 2, minX, maxX);
+                        targetY = Math.Clamp((int)Math.Round(topLeft.Y) - height - 12, minY, maxY);
+                        break;
                 }
+
+                SetWindowPos(hwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+                if (movedOnce) break;
+                movedOnce = true;
+                // Re-apply once more after ShellHost finishes its entrance animation.
+                await Task.Delay(75, cancellation);
             }
-
-            var (targetX, targetY) = CalculateTargetPosition(topLeft, bottomRight, width, visibleHeight, monitorInfo, edge);
-            int winY = targetY - topOffset;
-
-            for (var frame = 0; frame < 3; frame++)
-            {
-                SetWindowPos(hwnd, 0, targetX, winY, width, height, SwpNoZOrder | SwpNoActivate);
-                if (topOffset > 0 || visibleHeight < height)
-                {
-                    var rgn = topOffset > 0
-                        ? CreateRoundRectRgn(0, topOffset, width, height, 16, 16)
-                        : CreateRoundRectRgn(0, 0, width, visibleHeight, 16, 16);
-                    SetWindowRgn(hwnd, rgn, true);
-                }
-                else
-                {
-                    SetWindowRgn(hwnd, 0, true);
-                }
-                await Task.Delay(50);
-            }
-            return;
         }
-    }
-
-    private static (int TargetX, int TargetY) CalculateTargetPosition(
-        Point topLeft, Point bottomRight, int width, int height, MonitorInfo monitorInfo, DockEdge edge)
-    {
-        var centerX = (int)Math.Round((topLeft.X + bottomRight.X) / 2);
-        var centerY = (int)Math.Round((topLeft.Y + bottomRight.Y) / 2);
-        switch (edge)
+        catch (OperationCanceledException)
         {
-            case DockEdge.Left:
-                return (
-                    (int)Math.Round(bottomRight.X) + 12,
-                    Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8)
-                );
-            case DockEdge.Right:
-                return (
-                    (int)Math.Round(topLeft.X) - width - 12,
-                    Math.Clamp(centerY - height / 2, monitorInfo.Work.Top + 8, monitorInfo.Work.Bottom - height - 8)
-                );
-            default:
-                return (
-                    Math.Clamp(centerX - width / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - width - 8),
-                    Math.Max(monitorInfo.Work.Top + 8, (int)Math.Round(topLeft.Y) - height - 12)
-                );
         }
     }
 
@@ -248,7 +206,7 @@ public static class ShellShortcuts
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
             AppLog.Warning($"Cannot open {target}: {ex.Message}");
-            return failureKey;
+            return UiText.Get(failureKey);
         }
     }
 
@@ -257,13 +215,24 @@ public static class ShellShortcuts
     /// <summary>Presses the keys in order and releases them in reverse, like a user typing the chord.</summary>
     public static string? SendChord(params ushort[] keys)
     {
-        var inputs = keys.Select(key => KeyInput(key, IsExtended(key) ? KeyEventExtended : 0))
-            .Concat(keys.Reverse().Select(key => KeyInput(key, KeyEventKeyUp | (IsExtended(key) ? KeyEventExtended : 0))))
-            .ToArray();
+        if (keys.Length == 0) return null;
+        var inputs = new Input[keys.Length * 2];
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var key = keys[i];
+            inputs[i] = KeyInput(key, IsExtended(key) ? KeyEventExtended : 0);
+        }
+
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var key = keys[keys.Length - 1 - i];
+            inputs[keys.Length + i] = KeyInput(key, KeyEventKeyUp | (IsExtended(key) ? KeyEventExtended : 0));
+        }
+
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
         if (sent == inputs.Length) return null;
         AppLog.Warning($"SendInput sent {sent}/{inputs.Length} events: {Marshal.GetLastPInvokeError()}");
-        return "ErrorShortcutSend";
+        return UiText.Get("ErrorShortcutSend");
     }
 
     private static Input KeyInput(ushort key, uint flags) => new()
@@ -312,9 +281,6 @@ public static class ShellShortcuts
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint FindWindow(string? lpClassName, string? lpWindowName);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern nint FindWindowEx(nint hWndParent, nint hWndChildAfter, string? lpszClass, string? lpszWindow);
-
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(nint hWnd);
@@ -329,33 +295,6 @@ public static class ShellShortcuts
     [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
-
-    private delegate bool EnumWindowsProc(nint hWnd, nint lParam);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, nint lParam);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(nint hWnd, StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll", EntryPoint = "InternalGetWindowText", CharSet = CharSet.Unicode)]
-    private static extern int InternalGetWindowText(nint hWnd, [Out] StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
-
-    [DllImport("gdi32.dll")]
-    private static extern nint CreateRectRgn(int x1, int y1, int x2, int y2);
-
-    [DllImport("gdi32.dll")]
-    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
-
-    [DllImport("user32.dll")]
-    private static extern int SetWindowRgn(nint hWnd, nint hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

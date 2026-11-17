@@ -124,6 +124,9 @@ public partial class SettingsWindow : Window
         Width = Math.Min(Width, workArea.Width);
         AddHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
         AddHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
+        DensityAuto.Checked += (_, _) => TriggerAutoSave(immediate: true);
+        DensityCompact.Checked += (_, _) => TriggerAutoSave(immediate: true);
+        DensityFull.Checked += (_, _) => TriggerAutoSave(immediate: true);
         _initializing = false;
     }
 
@@ -270,6 +273,8 @@ public partial class SettingsWindow : Window
             PreviewsEnabled = PreviewsToggle.IsChecked == true,
             NotificationBadgesEnabled = BadgesToggle.IsChecked == true,
             AutoHide = AutoHideAlways.IsChecked == true ? AutoHideMode.Always : AutoHideSmart.IsChecked == true ? AutoHideMode.Smart : AutoHideMode.Disabled,
+            GlobalWidgetDensity = DensityCompact.IsChecked == true ? WidgetDensityMode.Compact
+                : DensityFull.IsChecked == true ? WidgetDensityMode.Full : WidgetDensityMode.Auto,
             SurfaceOpacity = Math.Round(OpacitySlider.Value) / 100,
             Widgets = enabledWidgets,
             InstalledWidgets = installedWidgets,
@@ -577,6 +582,9 @@ public partial class SettingsWindow : Window
     private void LoadFeatureSelection(DockSettings settings)
     {
         RecycleBinToggle.IsChecked = settings.ShowRecycleBin;
+        DensityAuto.IsChecked = settings.GlobalWidgetDensity == WidgetDensityMode.Auto;
+        DensityCompact.IsChecked = settings.GlobalWidgetDensity == WidgetDensityMode.Compact;
+        DensityFull.IsChecked = settings.GlobalWidgetDensity == WidgetDensityMode.Full;
         LoadDisplayChoices(settings.TargetDisplay);
         AllMonitorsToggle.IsChecked = settings.ShowOnAllMonitors;
         LoadSecondaryAppChoices(settings.SecondaryApps);

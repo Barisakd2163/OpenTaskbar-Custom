@@ -23,12 +23,13 @@
                     </Image>
                 </Grid>
             </Border>
-            <StackPanel Grid.Column="1" Margin="8,0,6,0" VerticalAlignment="Center">
+            <StackPanel x:Name="InfoPanel" Grid.Column="1" Margin="8,0,6,0" VerticalAlignment="Center">
                 <TextBlock x:Name="TitleText" Style="{StaticResource WidgetText}" FontSize="11" />
                 <TextBlock x:Name="ArtistText" Style="{StaticResource WidgetCaption}" FontSize="10" Margin="0,-1,0,0" />
                 <Slider x:Name="ProgressSlider" Style="{StaticResource MediaProgressSlider}" Minimum="0" Maximum="100" Value="0"
                         Margin="0,2,0,0" PreviewMouseLeftButtonDown="ProgressSlider_PreviewMouseLeftButtonDown"
                         PreviewMouseLeftButtonUp="ProgressSlider_PreviewMouseLeftButtonUp"
+                        LostMouseCapture="ProgressSlider_LostMouseCapture"
                         ValueChanged="ProgressSlider_ValueChanged" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -45,7 +46,7 @@
                     <ContentControl Style="{StaticResource WidgetGlyph}" Content="{StaticResource IconNextFill}" Width="11" Height="11" />
                 </Button>
             </StackPanel>
-            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Background="Transparent" MouseWheel="Volume_MouseWheel">
+            <StackPanel x:Name="VolumePanel" Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Background="Transparent" MouseWheel="Volume_MouseWheel">
                 <Rectangle Width="1" Height="20" Fill="{DynamicResource StrokeSubtle}" Margin="4,0,4,0" />
                 <Button x:Name="MuteButton" Style="{StaticResource WidgetIconButton}" Width="24" Height="24" Click="MuteButton_Click"
                         ToolTip="{local:Loc MuteToggle}" AutomationProperties.Name="{local:Loc MuteToggle}">
