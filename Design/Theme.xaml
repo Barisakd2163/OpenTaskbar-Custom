@@ -44,8 +44,9 @@
     <CornerRadius x:Key="DockInnerRadius">17</CornerRadius>
     <CornerRadius x:Key="DockSheenRadius">17,17,0,0</CornerRadius>
     <CornerRadius x:Key="ControlRadius">12</CornerRadius>
-    <CornerRadius x:Key="DockWidgetRadius">10</CornerRadius>
-    <CornerRadius x:Key="PopupRadius">10</CornerRadius>
+    <CornerRadius x:Key="DockWidgetRadius">12</CornerRadius>
+    <CornerRadius x:Key="PopupRadius">12</CornerRadius>
+    <CornerRadius x:Key="PopupInnerRadius">11</CornerRadius>
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{DynamicResource SurfacePopup}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
