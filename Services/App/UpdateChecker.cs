@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 
@@ -18,7 +19,7 @@ public static class UpdateChecker
 
     public static Version CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0);
 
-    public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null);
+    public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null, string? Sha256 = null);
 
     private static readonly HttpClient ApiClient = CreateApiClient();
     private static readonly HttpClient DownloadClient = CreateDownloadClient();
@@ -71,6 +72,7 @@ public static class UpdateChecker
 
         string? downloadUrl = null;
         long? size = null;
+        string? sha256 = null;
         if (document.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
         {
             foreach (var asset in assets.EnumerateArray())
@@ -80,17 +82,19 @@ public static class UpdateChecker
                 {
                     downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
                     size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
+                    sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
                     break;
                 }
                 if (downloadUrl is null && name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
                     size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
+                    sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
                 }
             }
         }
 
-        return Normalize(version) > Normalize(currentVersion) ? new Release(version, tag, url, downloadUrl, size) : null;
+        return Normalize(version) > Normalize(currentVersion) ? new Release(version, tag, url, downloadUrl, size, sha256) : null;
     }
 
     /// <summary>Finds the currently running executable path on disk.</summary>
@@ -129,6 +133,13 @@ public static class UpdateChecker
         {
             ShellShortcuts.OpenUri(release.Url);
             return (false, "ErrorUpdateBinaryMissing", null);
+        }
+
+        // GitHub release asset digests are the minimum integrity requirement for unattended replacement.
+        // Older releases without a digest can still be installed manually from the release page.
+        if (!IsValidSha256Digest(release.Sha256))
+        {
+            return (false, "ErrorUpdateExecutableInvalid", null);
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), "OpenTaskbar", "update");
@@ -178,6 +189,17 @@ public static class UpdateChecker
                 return (false, "ErrorUpdateExecutableInvalid", null);
             }
 
+            await using (var fileStream = File.OpenRead(partFile))
+            {
+                var actualHash = await SHA256.HashDataAsync(fileStream, cancellation);
+                var expectedHash = Convert.FromHexString(release.Sha256![7..]);
+                if (!CryptographicOperations.FixedTimeEquals(actualHash, expectedHash))
+                {
+                    TryDelete(partFile);
+                    return (false, "ErrorUpdateExecutableInvalid", null);
+                }
+            }
+
             if (File.Exists(tempExe)) File.Delete(tempExe);
             File.Move(partFile, tempExe);
 
@@ -192,6 +214,10 @@ public static class UpdateChecker
             return (false, "ErrorUpdateFailed", null);
         }
     }
+
+    internal static bool IsValidSha256Digest(string? digest) =>
+        digest is { Length: 71 } && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+        && digest.AsSpan(7).IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
 
     internal static string GenerateUpdaterScript(string tempExe, string targetExe)
     {
