@@ -106,7 +106,7 @@ public sealed class DockAutoHideController : IDisposable
         }
         if (Mode == AutoHideMode.Smart)
         {
-            RefreshSmartOverlap(ForegroundWindowOverride ?? GetForegroundWindow());
+            RefreshSmartOverlap(GetForegroundWindow());
         }
         EvaluateState();
     }
@@ -182,11 +182,10 @@ public sealed class DockAutoHideController : IDisposable
         if (foregroundHwnd == 0) return;
         var root = GetAncestor(foregroundHwnd, GaRootOwner);
         var target = root != 0 ? root : foregroundHwnd;
-        if (OwnForegroundProvider?.Invoke(target) == true) return;
         if (!IsWindow(target)) return;
         GetWindowThreadProcessId(target, out var pid);
         if (pid == Environment.ProcessId) return;
-        HasOverlap = WindowOverlapProvider?.Invoke(target) ?? EvaluateWindowOverlap(target);
+        HasOverlap = EvaluateWindowOverlap(target);
     }
 
     public void EvaluateState()
