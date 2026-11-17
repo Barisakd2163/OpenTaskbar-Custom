@@ -18,6 +18,7 @@ public partial class App : Application
     public ApplicationPreferences Preferences { get; private set; } = new(new DockSettingsStore());
     public bool IsPreview { get; private set; }
     public bool IsInspection { get; private set; }
+    public bool IsDev { get; private set; }
     public bool OpenSettingsOnStartup { get; private set; }
     private DevReloadService? _devReload;
 
@@ -31,7 +32,7 @@ public partial class App : Application
         IsPreview = e.Args.Contains("--preview", StringComparer.Ordinal);
         IsInspection = e.Args.Contains("--inspect", StringComparer.Ordinal);
         OpenSettingsOnStartup = e.Args.Contains("--settings", StringComparer.Ordinal);
-        var devMode = e.Args.Contains("--dev", StringComparer.Ordinal);
+        IsDev = e.Args.Contains("--dev", StringComparer.Ordinal);
         var sourceArg = e.Args.FirstOrDefault(arg => arg.StartsWith("--source=", StringComparison.OrdinalIgnoreCase));
         var sourceRoot = sourceArg?["--source=".Length..];
         if (IsPreview)
@@ -41,7 +42,7 @@ public partial class App : Application
         UiText.Current.SetLanguage(Preferences.Current.Language);
         ThemeManager.Apply(Preferences.Current.Theme, Preferences.Current.SurfaceOpacity);
         _instanceMutex = new Mutex(initiallyOwned: true,
-            name: IsPreview ? "Local\\OpenTaskbar.Preview" : "Local\\OpenTaskbar.Singleton", out var createdNew);
+            name: IsDev ? "Local\\OpenTaskbar.Dev" : IsPreview ? "Local\\OpenTaskbar.Preview" : "Local\\OpenTaskbar.Singleton", out var createdNew);
         if (!createdNew)
         {
             AppLog.ReportError("AlreadyRunning");
@@ -63,7 +64,7 @@ public partial class App : Application
         if (themeInstallError is not null)
             AppLog.Error($"Built-in theme installation: {themeInstallError}");
 
-        if (devMode)
+        if (IsDev)
             StartDevReload(sourceRoot);
     }
 

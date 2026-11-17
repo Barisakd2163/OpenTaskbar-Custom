@@ -244,8 +244,8 @@
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                 <Border Style="{StaticResource LanguageBadge}" Margin="0,0,10,0">
-                                                    <TextBlock Text="{Binding Flag}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                               FontFamily="Segoe UI Emoji" FontSize="16" />
+                                                    <Image Source="{Binding FlagImage}" Width="22" Height="15"
+                                                           Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                                 </Border>
                                                 <TextBlock Text="{Binding NativeName}" VerticalAlignment="Center" />
                                             </StackPanel>
