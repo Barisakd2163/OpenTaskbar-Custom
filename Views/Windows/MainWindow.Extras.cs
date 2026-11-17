@@ -265,7 +265,7 @@ public partial class MainWindow
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or FileNotFoundException)
         {
             AppLog.Warning($"Cannot open {path}: {ex.Message}");
-            ShowStatus(UiText.Get("ErrorOpenFileOrFolder"));
+            ShowStatus("ErrorOpenFileOrFolder");
         }
     }
 

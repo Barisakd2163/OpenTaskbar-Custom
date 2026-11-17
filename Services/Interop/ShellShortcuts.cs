@@ -312,31 +312,40 @@ public static class ShellShortcuts
                 foreach (AutomationElement btn in buttons)
                 {
                     var autoId = btn.Current.AutomationId;
-                    var name = btn.Current.Name;
+                    var name = btn.Current.Name ?? string.Empty;
 
-                    // If the toggle already says "Expand", the calendar is already collapsed; keep it collapsed.
-                    if (name?.Contains("Genişlet", StringComparison.OrdinalIgnoreCase) == true
-                        || name?.Contains("Expand", StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        AppLog.Info($"EnsureCalendarCollapsed: calendar is already collapsed ({autoId}/{name})");
-                        return;
-                    }
+                    // Filter specifically for the calendar collapse/expand button, ignoring individual notification items
+                    bool isCalendarButton = autoId == "ExpandCollapseButton"
+                        || autoId == "CollapseButton"
+                        || name.Contains("Takvim", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains("Calendar", StringComparison.OrdinalIgnoreCase);
 
-                    if (autoId is "CollapseButton" or "ExpandCollapseButton" or "ChevronButton" or "Chevron"
-                        || name?.Contains("Collapse", StringComparison.OrdinalIgnoreCase) == true
-                        || name?.Contains("Daralt", StringComparison.OrdinalIgnoreCase) == true)
+                    if (isCalendarButton)
                     {
-                        if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
+                        if (name.Contains("Genişlet", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("Expand", StringComparison.OrdinalIgnoreCase))
                         {
-                            ip.Invoke();
-                            AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name}");
+                            AppLog.Info($"EnsureCalendarCollapsed: calendar is already collapsed ({autoId} / '{name}')");
                             return;
                         }
-                        if (btn.TryGetCurrentPattern(TogglePattern.Pattern, out var tog) && tog is TogglePattern tp && tp.Current.ToggleState == ToggleState.On)
+
+                        if (name.Contains("Daralt", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("Collapse", StringComparison.OrdinalIgnoreCase)
+                            || autoId == "ExpandCollapseButton"
+                            || autoId == "CollapseButton")
                         {
-                            tp.Toggle();
-                            AppLog.Info($"EnsureCalendarCollapsed: toggled {autoId}/{name}");
-                            return;
+                            if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
+                            {
+                                ip.Invoke();
+                                AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name}");
+                                return;
+                            }
+                            if (btn.TryGetCurrentPattern(TogglePattern.Pattern, out var tog) && tog is TogglePattern tp && tp.Current.ToggleState == ToggleState.On)
+                            {
+                                tp.Toggle();
+                                AppLog.Info($"EnsureCalendarCollapsed: toggled {autoId}/{name}");
+                                return;
+                            }
                         }
                     }
                 }

@@ -74,7 +74,7 @@ public sealed class NativeWindowTracker : IDisposable
         _windowHook = SetWinEventHook(EventObjectCreate, EventObjectHide, 0, _eventCallback, 0, 0, WineventOutOfContext);
         if (_windowHook == 0)
         {
-            throw new InvalidOperationException(UiText.Get("ErrorWindowEvents"));
+            throw new InvalidOperationException("ErrorWindowEvents");
         }
 
         _nameChangeHook = SetWinEventHook(EventObjectLocationChange, EventObjectNameChange, 0, _eventCallback, 0, 0, WineventOutOfContext);
@@ -82,7 +82,7 @@ public sealed class NativeWindowTracker : IDisposable
         {
             UnhookWinEvent(_windowHook);
             _windowHook = 0;
-            throw new InvalidOperationException(UiText.Get("ErrorWindowTitleHook"));
+            throw new InvalidOperationException("ErrorWindowTitleHook");
         }
 
         _systemEventHook = SetWinEventHook(EventSystemAlert, EventSystemForeground, 0, _eventCallback, 0, 0, WineventOutOfContext);

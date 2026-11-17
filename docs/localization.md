@@ -7,9 +7,9 @@ On first launch, the app selects a translation matching the Windows UI language.
 ## Add a language
 
 1. Copy `en-US.json` to a file named with the new culture tag, such as `fr-FR.json`.
-2. Translate the values while keeping every key and any format placeholders such as `{0}` unchanged.
+2. Translate the values while keeping every symbolic key and any format placeholders such as `{0}` unchanged. Keys are stable identifiers and must not contain translated text.
 3. The project embeds JSON files in this folder automatically. The language picker uses the culture's native name, so no language enum, switch statement, or UI control needs editing.
-4. Translate launcher labels and error messages too. If a key is not ready yet, English is shown until its translation is added.
+4. Keep error and status results as localization keys in services and resolve them in the UI. Translate launcher labels, errors, and status messages too. If a key is not ready yet, English is shown until its translation is added.
 
 ## Existing fixed text
 

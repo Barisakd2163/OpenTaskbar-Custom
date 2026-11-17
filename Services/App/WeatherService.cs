@@ -37,8 +37,8 @@ public static class WeatherService
             if (location is not { } place)
             {
                 return (null, string.IsNullOrWhiteSpace(city)
-                    ? UiText.Get("ErrorWeatherLocation")
-                    : UiText.Get("ErrorWeatherCityNotFound"));
+                    ? "ErrorWeatherLocation"
+                    : "ErrorWeatherCityNotFound");
             }
 
             var invariant = CultureInfo.InvariantCulture;
@@ -69,7 +69,7 @@ public static class WeatherService
             or TimeoutException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
             AppLog.Info($"Weather unavailable: {ex.Message}");
-            return (null, UiText.Get("ErrorWeatherLoad"));
+            return (null, "ErrorWeatherLoad");
         }
     }
 

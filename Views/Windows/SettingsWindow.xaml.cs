@@ -96,12 +96,12 @@ public partial class SettingsWindow : Window
         StartupToggle.IsEnabled = _startupAvailable;
         if (startup.Error is not null)
         {
-            StartupToggle.ToolTip = startup.Error;
+            StartupToggle.ToolTip = UiText.Get(startup.Error);
             System.Windows.Controls.ToolTipService.SetShowOnDisabled(StartupToggle, true);
         }
         StartupToggle.IsChecked = _startupEnabled;
         var errors = new[] { preferences.LoadError, startup.Error }.OfType<string>();
-        var message = string.Join(" ", errors.Select(UiText.LocalizeError));
+        var message = string.Join(" ", errors.Select(UiText.Get));
         if (message.Length > 0) Trace.TraceWarning("Settings initialization warning: {0}", message);
         var workArea = SystemParameters.WorkArea;
         MinHeight = Math.Min(MinHeight, workArea.Height);
@@ -626,14 +626,14 @@ public partial class SettingsWindow : Window
         var (settings, pins, error) = SettingsBackup.Read(dialog.FileName);
         if (settings is null)
         {
-            MessageBox.Show(this, error ?? UiText.Get("ErrorSettingsFileInvalid"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, UiText.Get(error ?? "ErrorSettingsFileInvalid"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         if (_preferences.Save(settings with { PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder }) is { } saveError)
         {
-            MessageBox.Show(this, saveError, "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, UiText.Get(saveError), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

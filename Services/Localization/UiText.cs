@@ -29,13 +29,6 @@ public sealed class UiText : INotifyPropertyChanged
     public static string Format(string key, params object[] values) =>
         string.Format(Current._language.Culture, Get(key), values);
 
-    public static string LocalizeError(string message)
-    {
-        if (!LanguageCatalog.ContainsKey(message) && !LanguageCatalog.TryFindKey(message, out message))
-            return message;
-        return Get(message);
-    }
-
     public void SetLanguage(AppLanguage language)
     {
         if (!LanguageCatalog.IsSupported(language))

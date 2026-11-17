@@ -122,7 +122,7 @@ public partial class MainWindow
             }
         }
 
-        if (failed) ShowStatus(UiText.Get("ErrorHotkeyRegister"));
+        if (failed) ShowStatus("ErrorHotkeyRegister");
     }
 
     private void UnregisterHotkeys()
@@ -298,7 +298,7 @@ public partial class MainWindow
         var profiles = (_preferences.Current.Profiles ?? []).ToList();
         if (profiles.Any(profile => string.Equals(profile.Name, name, StringComparison.CurrentCultureIgnoreCase)))
         {
-            ShowStatus(UiText.Get("ErrorProfileExists"));
+            ShowStatus("ErrorProfileExists");
             return;
         }
 
@@ -391,11 +391,16 @@ public partial class MainWindow
 
         try
         {
-            var (success, error) = await Task.Run(() => UpdateChecker.DownloadAndApplyAsync(release));
+            var (success, errorKey, httpStatusCode) = await Task.Run(() => UpdateChecker.DownloadAndApplyAsync(release));
             if (!success)
             {
                 _isUpdating = false;
-                NotificationService.ShowInfoToast(error ?? UiText.Get("UpdateFailed"));
+                var error = errorKey is null
+                    ? UiText.Get("UpdateFailed")
+                    : httpStatusCode is { } statusCode
+                        ? UiText.Format(errorKey, statusCode)
+                        : UiText.Get(errorKey);
+                NotificationService.ShowInfoToast(error);
             }
         }
         catch (Exception ex)

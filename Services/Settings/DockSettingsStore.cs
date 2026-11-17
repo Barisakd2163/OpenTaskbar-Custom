@@ -49,22 +49,22 @@ public sealed class DockSettingsStore
                 };
             if (settings is null || !IsValid(settings))
             {
-                return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsInvalid"));
+                return (CreateDefaultSettings(), "ErrorDockSettingsInvalid");
             }
 
             return (settings, null);
         }
         catch (JsonException)
         {
-            return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsRead"));
+            return (CreateDefaultSettings(), "ErrorDockSettingsRead");
         }
         catch (IOException)
         {
-            return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsDisk"));
+            return (CreateDefaultSettings(), "ErrorDockSettingsDisk");
         }
         catch (UnauthorizedAccessException)
         {
-            return (CreateDefaultSettings(), UiText.Get("ErrorDockSettingsAccess"));
+            return (CreateDefaultSettings(), "ErrorDockSettingsAccess");
         }
     }
 
@@ -73,13 +73,13 @@ public sealed class DockSettingsStore
     public string? Save(DockSettings settings)
     {
         if (!IsValid(settings))
-            return UiText.Get("ErrorSettingsValuesInvalid");
+            return "ErrorSettingsValuesInvalid";
         try
         {
             var directory = Path.GetDirectoryName(_path);
             if (directory is null)
             {
-                return UiText.Get("ErrorDockSettingsPath");
+                return "ErrorDockSettingsPath";
             }
 
             Directory.CreateDirectory(directory);
@@ -90,11 +90,11 @@ public sealed class DockSettingsStore
         }
         catch (IOException)
         {
-            return UiText.Get("ErrorDockSettingsSave");
+            return "ErrorDockSettingsSave";
         }
         catch (UnauthorizedAccessException)
         {
-            return UiText.Get("ErrorDockSettingsWriteAccess");
+            return "ErrorDockSettingsWriteAccess";
         }
     }
 

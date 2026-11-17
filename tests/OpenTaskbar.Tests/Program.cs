@@ -13,6 +13,7 @@ SettingsChecks();
 InitialLanguageChecks();
 checks += RunningAppChecks.Run();
 checks += WidgetViewChecks.Run();
+checks += WidgetOverflowChecks.Run();
 checks += ThemePackChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 
@@ -144,12 +145,11 @@ void LocalizationChecks()
 
     UiText.Current.SetLanguage(AppLanguage.English);
     Check(UiText.Current.IsEnglish && UiText.Current.Language == AppLanguage.English, "UiText must reflect English language selection.");
-    Check(UiText.LocalizeError("ErrorDockAttach") == "Cannot connect the dock window to Windows.", "Key-based error lookup must resolve to English.");
-    Check(UiText.LocalizeError("Dock penceresi Windows'a bağlanamadı.") == "Cannot connect the dock window to Windows.", "Legacy Turkish error string lookup must resolve to English.");
+    Check(UiText.Get("ErrorDockAttach") == "Cannot connect the dock window to Windows.", "Error keys must resolve to English.");
 
     UiText.Current.SetLanguage(AppLanguage.Turkish);
     Check(!UiText.Current.IsEnglish && UiText.Current.Language == AppLanguage.Turkish, "UiText must reflect Turkish language selection.");
-    Check(UiText.LocalizeError("ErrorDockAttach") == "Dock penceresi Windows'a bağlanamadı.", "Key-based error lookup must resolve to Turkish.");
+    Check(UiText.Get("ErrorDockAttach") == "Dock penceresi Windows'a bağlanamadı.", "Error keys must resolve to Turkish.");
 }
 
 void TaskManagerTextChecks()
@@ -161,10 +161,8 @@ void TaskManagerTextChecks()
         Check(UiText.Get("ErrorTaskManagerOpen") == "Görev Yöneticisi açılamadı.", "The Task Manager failure must have Turkish text.");
         UiText.Current.SetLanguage(AppLanguage.English);
         Check(UiText.Get("TaskManager") == "Task Manager", "The Task Manager menu item must have an English label.");
-        Check(UiText.LocalizeError("ErrorTaskManagerOpen") == "Cannot open Task Manager.",
-            "Key-based Task Manager failure lookup must resolve to English.");
-        Check(UiText.LocalizeError("Görev Yöneticisi açılamadı.") == "Cannot open Task Manager.",
-            "A Task Manager failure shown in Turkish must be translated after switching to English.");
+        Check(UiText.Get("ErrorTaskManagerOpen") == "Cannot open Task Manager.",
+            "Task Manager error keys must resolve to English.");
     }
     finally
     {
@@ -216,6 +214,7 @@ void InitialLanguageChecks()
     var turkish = new DockSettingsStore(path, CultureInfo.GetCultureInfo("tr-TR"));
     var english = new DockSettingsStore(path, CultureInfo.GetCultureInfo("en-US"));
     var german = new DockSettingsStore(path, CultureInfo.GetCultureInfo("de-DE"));
+    var unsupported = new DockSettingsStore(path, CultureInfo.GetCultureInfo("is-IS"));
     bool LoadsLanguage(DockSettingsStore store, AppLanguage language)
     {
         var result = store.Load();
@@ -231,7 +230,8 @@ void InitialLanguageChecks()
     {
         Check(LoadsLanguage(turkish, AppLanguage.Turkish), "First launch must follow Turkish system UI language.");
         Check(LoadsLanguage(english, AppLanguage.English), "First launch must follow English system UI language.");
-        Check(LoadsLanguage(german, AppLanguage.English), "Unsupported system languages must use the documented English default.");
+        Check(LoadsLanguage(german, new AppLanguage("de-DE")), "First launch must follow German system UI language.");
+        Check(LoadsLanguage(unsupported, AppLanguage.English), "Unsupported system languages must use the documented English default.");
         File.WriteAllText(path, "{}");
         Check(LoadsLanguage(turkish, AppLanguage.Turkish), "A legacy file without a language must follow Turkish system UI language.");
         Check(LoadsLanguage(english, AppLanguage.English), "A legacy file without a language must follow English system UI language.");

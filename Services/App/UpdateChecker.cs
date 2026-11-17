@@ -95,25 +95,25 @@ public static class UpdateChecker
     /// <summary>
     /// Downloads the updated binary from the release asset, validates it, and executes the replacement script before shutdown.
     /// </summary>
-    public static async Task<(bool Success, string? Error)> DownloadAndApplyAsync(
+    public static async Task<(bool Success, string? ErrorKey, int? HttpStatusCode)> DownloadAndApplyAsync(
         Release release,
         CancellationToken cancellation = default)
     {
         var targetPath = GetExecutablePath();
         if (string.IsNullOrEmpty(targetPath) || !File.Exists(targetPath))
         {
-            return (false, UiText.Get("ErrorUpdatePath"));
+            return (false, "ErrorUpdatePath", null);
         }
 
         if (string.Equals(Path.GetFileName(targetPath), "dotnet.exe", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, UiText.Get("ErrorUpdateDeveloperMode"));
+            return (false, "ErrorUpdateDeveloperMode", null);
         }
 
         if (string.IsNullOrEmpty(release.DownloadUrl))
         {
             ShellShortcuts.OpenUri(release.Url);
-            return (false, UiText.Get("ErrorUpdateBinaryMissing"));
+            return (false, "ErrorUpdateBinaryMissing", null);
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), "OpenTaskbar", "update");
@@ -131,7 +131,9 @@ public static class UpdateChecker
             using var response = await client.GetAsync(release.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellation);
             if (!response.IsSuccessStatusCode)
             {
-                return (false, UiText.Format("ErrorUpdateHttp", (int)response.StatusCode));
+                var statusCode = (int)response.StatusCode;
+                AppLog.Warning($"Update server returned HTTP {statusCode}.");
+                return (false, "ErrorUpdateHttp", statusCode);
             }
 
             await using (var contentStream = await response.Content.ReadAsStreamAsync(cancellation))
@@ -144,13 +146,13 @@ public static class UpdateChecker
             if (fileInfo.Length < 1_000_000)
             {
                 TryDelete(partFile);
-                return (false, UiText.Get("ErrorUpdateSizeInvalid"));
+                return (false, "ErrorUpdateSizeInvalid", null);
             }
 
             if (release.Size.HasValue && release.Size.Value > 0 && fileInfo.Length != release.Size.Value)
             {
                 TryDelete(partFile);
-                return (false, UiText.Get("ErrorUpdateSizeMismatch"));
+                return (false, "ErrorUpdateSizeMismatch", null);
             }
 
             byte[] header = new byte[2];
@@ -161,7 +163,7 @@ public static class UpdateChecker
             if (header[0] != 0x4D || header[1] != 0x5A) // 'M', 'Z'
             {
                 TryDelete(partFile);
-                return (false, UiText.Get("ErrorUpdateExecutableInvalid"));
+                return (false, "ErrorUpdateExecutableInvalid", null);
             }
 
             if (File.Exists(tempExe)) File.Delete(tempExe);
@@ -169,13 +171,13 @@ public static class UpdateChecker
 
             AppLog.Info($"Downloaded update to {tempExe}. Applying to {targetPath}...");
             LaunchUpdaterAndRestart(tempExe, targetPath);
-            return (true, null);
+            return (true, null, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException)
         {
             TryDelete(partFile);
             AppLog.Error($"Update download/apply error: {ex.Message}");
-            return (false, UiText.Get("ErrorUpdateFailed"));
+            return (false, "ErrorUpdateFailed", null);
         }
     }
 

@@ -143,15 +143,15 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (InvalidDataException)
         {
-            error = UiText.Get("ErrorTaskbarJournalInvalid");
+            error = "ErrorTaskbarJournalInvalid";
         }
         catch (IOException)
         {
-            error = UiText.Get("ErrorTaskbarJournalRead");
+            error = "ErrorTaskbarJournalRead";
         }
         catch (UnauthorizedAccessException)
         {
-            error = UiText.Get("ErrorTaskbarJournalAccess");
+            error = "ErrorTaskbarJournalAccess";
         }
 
         return false;
@@ -182,11 +182,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (IOException ex)
         {
-            throw new InvalidOperationException(UiText.Get("ErrorTaskbarJournalWrite"), ex);
+            throw new InvalidOperationException("ErrorTaskbarJournalWrite", ex);
         }
         catch (UnauthorizedAccessException ex)
         {
-            throw new InvalidOperationException(UiText.Get("ErrorTaskbarJournalWriteAccess"), ex);
+            throw new InvalidOperationException("ErrorTaskbarJournalWriteAccess", ex);
         }
 
         try
@@ -195,19 +195,19 @@ public sealed class TaskbarReplacementSession : IDisposable
             Volatile.Write(ref _current, this);
             if (!SetTaskbarState(ReplacementState, _handle))
             {
-                throw new InvalidOperationException(UiText.Get("ErrorTaskbarEdgeTrigger"));
+                throw new InvalidOperationException("ErrorTaskbarEdgeTrigger");
             }
 
             if (!HideNativeTaskbar())
             {
-                throw new InvalidOperationException(UiText.Get("ErrorTaskbarHide"));
+                throw new InvalidOperationException("ErrorTaskbarHide");
             }
 
             var data = CreateData();
             data.uCallbackMessage = CallbackMessage;
             if (SHAppBarMessage(AbmNew, ref data) == 0)
             {
-                throw new InvalidOperationException(UiText.Get("ErrorAppBarRegister"));
+                throw new InvalidOperationException("ErrorAppBarRegister");
             }
 
             _registered = true;
@@ -246,7 +246,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         if (!SetTaskbarState(ReplacementState, _handle) || !HideNativeTaskbar())
         {
-            OperationFailed?.Invoke(UiText.Get("ErrorTaskbarRehide"));
+            OperationFailed?.Invoke("ErrorTaskbarRehide");
             return;
         }
 
@@ -254,7 +254,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         data.uCallbackMessage = CallbackMessage;
         if (SHAppBarMessage(AbmNew, ref data) == 0)
         {
-            OperationFailed?.Invoke(UiText.Get("ErrorAppBarRegister"));
+            OperationFailed?.Invoke("ErrorAppBarRegister");
             return;
         }
         _registered = true;
@@ -307,7 +307,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         if (Interlocked.CompareExchange(ref _stopInProgress, 1, 0) != 0)
         {
-            return UiText.Get("ErrorTaskbarRestoreInProgress");
+            return "ErrorTaskbarRestoreInProgress";
         }
 
         try
@@ -327,7 +327,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             var stateRestored = SetTaskbarState(_previousTaskbarState, _handle);
             var taskbarShown = ShowNativeTaskbar();
             if (!stateRestored || !taskbarShown)
-                return UiText.Get("ErrorTaskbarRestoreFailed");
+                return "ErrorTaskbarRestoreFailed";
 
             _stateChangeStarted = false;
             return DeleteJournal();
@@ -349,7 +349,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
         if (!SetTaskbarState(ReplacementState, _handle))
         {
-            OperationFailed?.Invoke(UiText.Get("ErrorTaskbarAutoHideToggle"));
+            OperationFailed?.Invoke("ErrorTaskbarAutoHideToggle");
             return;
         }
         PositionDockWindow();
@@ -380,11 +380,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         var monitorInfo = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(monitor, ref monitorInfo))
         {
-            throw new InvalidOperationException(UiText.Get("ErrorDisplayDimensions"));
+            throw new InvalidOperationException("ErrorDisplayDimensions");
         }
 
         var dpi = GetDpiForWindow(_handle);
-        if (dpi == 0) throw new InvalidOperationException(UiText.Get("ErrorDisplayDimensions"));
+        if (dpi == 0) throw new InvalidOperationException("ErrorDisplayDimensions");
         if (IsVertical)
         {
             PositionSideDock(monitorInfo.rcMonitor, dpi);
@@ -421,7 +421,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             _lastWindowPos = null;
-            throw new InvalidOperationException(UiText.Get("ErrorDockPosition"));
+            throw new InvalidOperationException("ErrorDockPosition");
         }
     }
 
@@ -430,10 +430,10 @@ public sealed class TaskbarReplacementSession : IDisposable
         var taskbar = FindWindow("Shell_TrayWnd", null);
         var data = CreateData();
         if (taskbar == 0 || SHAppBarMessage(AbmGetTaskbarPos, ref data) == 0)
-            throw new InvalidOperationException(UiText.Get("ErrorTaskbarDimensions"));
+            throw new InvalidOperationException("ErrorTaskbarDimensions");
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0 || data.rc.Bottom <= data.rc.Top || data.rc.Right <= data.rc.Left)
-            throw new InvalidOperationException(UiText.Get("ErrorTaskbarDimensions"));
+            throw new InvalidOperationException("ErrorTaskbarDimensions");
         _nativeBottomTaskbarHeight = data.uEdge == AbeBottom ? (data.rc.Bottom - data.rc.Top) * 96d / dpi : 0;
     }
 
@@ -495,7 +495,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, monitor.Top, total, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
-            throw new InvalidOperationException(UiText.Get("ErrorDockPosition"));
+            throw new InvalidOperationException("ErrorDockPosition");
         }
     }
 
@@ -658,7 +658,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 _hideRetryPending = false;
                 if (_active && attempts >= 3 && !HideNativeTaskbar())
                 {
-                    OperationFailed?.Invoke(UiText.Get("ErrorTaskbarRehide"));
+                    OperationFailed?.Invoke("ErrorTaskbarRehide");
                 }
             }
         };
@@ -697,7 +697,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         var directory = Path.GetDirectoryName(path);
         if (directory is null)
         {
-            throw new IOException(UiText.Get("ErrorTaskbarJournalPath"));
+            throw new IOException("ErrorTaskbarJournalPath");
         }
 
         Directory.CreateDirectory(directory);
@@ -712,7 +712,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var state)
             || (state & ~SupportedTaskbarState) != 0)
         {
-            throw new InvalidDataException(UiText.Get("ErrorTaskbarJournalInvalid"));
+            throw new InvalidDataException("ErrorTaskbarJournalInvalid");
         }
 
         return state;
@@ -731,11 +731,11 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
         catch (IOException)
         {
-            return UiText.Get("ErrorTaskbarJournalDelete");
+            return "ErrorTaskbarJournalDelete";
         }
         catch (UnauthorizedAccessException)
         {
-            return UiText.Get("ErrorTaskbarJournalAccess");
+            return "ErrorTaskbarJournalAccess";
         }
     }
 

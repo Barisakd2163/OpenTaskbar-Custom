@@ -116,7 +116,7 @@ public partial class ClockWidget : DockWidget
                     DateColumn.Visibility = Visibility.Visible;
                     DayOfWeekText.Visibility = Visibility.Visible;
                     DayOfWeekText.Text = now.ToString("dddd", culture).ToUpper(culture);
-                    DateText.Text = now.ToString("m", culture);
+                    DateText.Text = now.ToString(culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM"), culture);
                     break;
                 case ClockDateStyle.ShortDateOnly:
                     DateColumn.Visibility = Visibility.Visible;

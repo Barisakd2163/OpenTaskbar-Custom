@@ -56,22 +56,6 @@ public static class LanguageCatalog
         .Select(catalog => catalog[key])
         .ToArray();
 
-    public static bool ContainsKey(string key) => Catalogs.Values.Any(catalog => catalog.ContainsKey(key));
-
-    public static bool TryFindKey(string text, out string key)
-    {
-        foreach (var catalog in Catalogs.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase).Select(entry => entry.Value))
-        {
-            var match = catalog.FirstOrDefault(entry => string.Equals(entry.Value, text, StringComparison.Ordinal));
-            if (match.Key is null) continue;
-            key = match.Key;
-            return true;
-        }
-
-        key = string.Empty;
-        return false;
-    }
-
     private static IEnumerable<IReadOnlyDictionary<string, string>> GetLanguageFallbacks(CultureInfo culture) =>
         Catalogs
             .Where(entry => string.Equals(CultureInfo.GetCultureInfo(entry.Key).TwoLetterISOLanguageName,

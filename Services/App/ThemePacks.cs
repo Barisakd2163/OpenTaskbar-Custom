@@ -137,7 +137,7 @@ public static class ThemePacks
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             AppLog.Warning($"Built-in theme packs could not be installed: {ex.Message}");
-            return UiText.Get("ErrorThemeInstall");
+            return "ErrorThemeInstall";
         }
     }
 

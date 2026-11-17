@@ -18,7 +18,7 @@ public sealed class StartupRegistration
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
         {
-            return (false, UiText.Get("StartupReadError"));
+            return (false, "StartupReadError");
         }
     }
 
@@ -27,7 +27,7 @@ public sealed class StartupRegistration
         var executable = Environment.ProcessPath;
         if (enabled && (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable)
             || !string.Equals(Path.GetFileName(executable), "OpenTaskbar.exe", StringComparison.OrdinalIgnoreCase)
-            || executable.Length + 2 > 260)) return UiText.Get("StartupPathError");
+            || executable.Length + 2 > 260)) return "StartupPathError";
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(RunKey, writable: true);
@@ -37,7 +37,7 @@ public sealed class StartupRegistration
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
         {
-            return UiText.Get("StartupWriteError");
+            return "StartupWriteError";
         }
     }
 }

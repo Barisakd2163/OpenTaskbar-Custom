@@ -7,7 +7,7 @@ namespace OpenTaskbar.Services;
 
 public static class WindowsTaskbarPinImporter
 {
-    public static (IReadOnlyList<DockApp> Apps, string? Error) Import()
+    public static (IReadOnlyList<DockApp> Apps, string? ErrorKey, int SkippedCount) Import()
     {
         var taskbarPinsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -19,7 +19,7 @@ public static class WindowsTaskbarPinImporter
 
         if (!Directory.Exists(taskbarPinsPath))
         {
-            return ([], null);
+            return ([], null, 0);
         }
 
         List<string> shortcutPaths;
@@ -31,16 +31,16 @@ public static class WindowsTaskbarPinImporter
         }
         catch (IOException)
         {
-            return ([], UiText.Get("ErrorTaskbarPinsRead"));
+            return ([], "ErrorTaskbarPinsRead", 0);
         }
         catch (UnauthorizedAccessException)
         {
-            return ([], UiText.Get("ErrorTaskbarPinsAccess"));
+            return ([], "ErrorTaskbarPinsAccess", 0);
         }
 
         if (shortcutPaths.Count == 0)
         {
-            return ([], null);
+            return ([], null, 0);
         }
 
         Type? shellType;
@@ -52,16 +52,16 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return ([], UiText.Get("ErrorShortcutServiceImport"));
+            return ([], "ErrorShortcutServiceImport", 0);
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return ([], UiText.Get("ErrorShortcutServiceImport"));
+            return ([], "ErrorShortcutServiceImport", 0);
         }
 
         if (shellType is null || shell is null)
         {
-            return ([], UiText.Get("ErrorShortcutServiceImport"));
+            return ([], "ErrorShortcutServiceImport", 0);
         }
 
         var apps = new List<DockApp>();
@@ -132,11 +132,11 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return (apps, UiText.Get("ErrorShortcutServiceStopped"));
+            return (apps, "ErrorShortcutServiceStopped", skippedCount);
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return (apps, UiText.Get("ErrorShortcutServiceStopped"));
+            return (apps, "ErrorShortcutServiceStopped", skippedCount);
         }
         finally
         {
@@ -146,10 +146,7 @@ public static class WindowsTaskbarPinImporter
             }
         }
 
-        var error = skippedCount == 0
-            ? null
-            : UiText.Format("SkippedPins", skippedCount);
-        return (apps, error);
+        return (apps, null, skippedCount);
     }
 
     public static (string? ShortcutPath, string? Error) AddPin(string appName, string executablePath, string? launchArguments = null)
@@ -168,7 +165,7 @@ public static class WindowsTaskbarPinImporter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return (null, UiText.Get("ErrorTaskbarPinFolderCreate"));
+            return (null, "ErrorTaskbarPinFolderCreate");
         }
 
         var invalidChars = Path.GetInvalidFileNameChars();
@@ -189,16 +186,16 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return (null, UiText.Get("ErrorShortcutServicePin"));
+            return (null, "ErrorShortcutServicePin");
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return (null, UiText.Get("ErrorShortcutServicePin"));
+            return (null, "ErrorShortcutServicePin");
         }
 
         if (shellType is null || shell is null)
         {
-            return (null, UiText.Get("ErrorShortcutServicePin"));
+            return (null, "ErrorShortcutServicePin");
         }
 
         try
@@ -212,7 +209,7 @@ public static class WindowsTaskbarPinImporter
 
             if (shortcut is null)
             {
-                return (null, UiText.Get("ErrorShortcutCreate"));
+                return (null, "ErrorShortcutCreate");
             }
 
             try
@@ -241,7 +238,7 @@ public static class WindowsTaskbarPinImporter
         }
         catch (Exception ex) when (ex is COMException or TargetInvocationException or IOException or UnauthorizedAccessException)
         {
-            return (null, UiText.Get("ErrorTaskbarPin"));
+            return (null, "ErrorTaskbarPin");
         }
         finally
         {
@@ -265,7 +262,7 @@ public static class WindowsTaskbarPinImporter
         if (!string.Equals(Path.GetDirectoryName(fullPath), pinDirectory, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(Path.GetExtension(fullPath), ".lnk", StringComparison.OrdinalIgnoreCase))
         {
-            return UiText.Get("ErrorTaskbarPinPath");
+            return "ErrorTaskbarPinPath";
         }
 
         try
@@ -275,11 +272,11 @@ public static class WindowsTaskbarPinImporter
         }
         catch (IOException)
         {
-            return UiText.Get("ErrorTaskbarUnpin");
+            return "ErrorTaskbarUnpin";
         }
         catch (UnauthorizedAccessException)
         {
-            return UiText.Get("ErrorTaskbarUnpinAccess");
+            return "ErrorTaskbarUnpinAccess";
         }
     }
 

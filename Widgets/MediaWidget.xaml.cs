@@ -333,12 +333,12 @@ public partial class MediaWidget : DockWidget
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_updatingVolume || _audio is null) return;
-        if (!_audio.SetVolume((float)(e.NewValue / 100))) Report(UiText.Get("ErrorVolumeChange"));
+        if (!_audio.SetVolume((float)(e.NewValue / 100))) Report("ErrorVolumeChange");
     }
 
     private void MuteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_audio is not null && !_audio.ToggleMute()) Report(UiText.Get("ErrorVolumeChange"));
+        if (_audio is not null && !_audio.ToggleMute()) Report("ErrorVolumeChange");
     }
 
     private void Volume_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -353,12 +353,12 @@ public partial class MediaWidget : DockWidget
         if (_session is null) return;
         try
         {
-            if (!await command(_session)) Report(UiText.Get("ErrorMediaControl"));
+            if (!await command(_session)) Report("ErrorMediaControl");
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
             AppLog.Warning($"Media command failed: {ex.Message}");
-            Report(UiText.Get("ErrorMediaControl"));
+            Report("ErrorMediaControl");
         }
     }
 }
