@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -115,17 +116,52 @@ public sealed class WidgetPanelHost : IDisposable
         IsOpenChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint pt);
+
     private static bool IsCursorOver(UIElement? element)
     {
         if (element is null || !element.IsVisible) return false;
         if (element.IsMouseOver) return true;
+        if (element is FrameworkElement fe && TryGetScreenBounds(fe, padding: 6, out var bounds))
+        {
+            if (GetCursorPos(out var pt))
+            {
+                return pt.X >= bounds.Left && pt.X <= bounds.Right && pt.Y >= bounds.Top && pt.Y <= bounds.Bottom;
+            }
+        }
+        return false;
+    }
+
+    private static bool TryGetScreenBounds(FrameworkElement element, double padding, out (double Left, double Top, double Right, double Bottom) bounds)
+    {
+        bounds = default;
+        var source = PresentationSource.FromVisual(element);
+        if (source?.CompositionTarget is null || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return false;
+        }
+
         try
         {
-            var pos = Mouse.GetPosition(element);
-            var size = element.RenderSize;
-            return pos.X >= 0 && pos.Y >= 0 && pos.X <= size.Width && pos.Y <= size.Height;
+            var dpiX = source.CompositionTarget.TransformToDevice.M11;
+            var dpiY = source.CompositionTarget.TransformToDevice.M22;
+            var padX = padding * dpiX;
+            var padY = padding * dpiY;
+            var tl = element.PointToScreen(new Point(0, 0));
+            var br = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+            bounds = (Math.Min(tl.X, br.X) - padX, Math.Min(tl.Y, br.Y) - padY, Math.Max(tl.X, br.X) + padX, Math.Max(tl.Y, br.Y) + padY);
+            return true;
         }
-        catch
+        catch (InvalidOperationException)
         {
             return false;
         }

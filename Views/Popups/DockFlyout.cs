@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.Runtime.InteropServices;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -157,6 +158,7 @@ public sealed class DockFlyout
         {
             var target = _currentTarget ?? _popup.PlacementTarget;
             var isClosingTargetClick = !_explicitClose && target is not null && (_suppressNextClick || IsCursorOver(target));
+            AppLog.Info($"[DockFlyout.Closed] target={target?.GetType().Name}, explicit={_explicitClose}, isClosingTargetClick={isClosingTargetClick}, cursorOver={IsCursorOver(target)}");
             if (target is not null)
             {
                 _closedTarget = new WeakReference<UIElement>(target);
@@ -200,6 +202,7 @@ public sealed class DockFlyout
 
     private void Target_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        AppLog.Info($"[DockFlyout.PreviewMouseDown] sender={sender.GetType().Name}, IsOpen={_popup.IsOpen}");
         if (_popup.IsOpen)
         {
             _suppressNextClick = true;
@@ -207,17 +210,52 @@ public sealed class DockFlyout
         }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint pt);
+
     private static bool IsCursorOver(UIElement? element)
     {
         if (element is null || !element.IsVisible) return false;
         if (element.IsMouseOver) return true;
+        if (element is FrameworkElement fe && TryGetScreenBounds(fe, padding: 6, out var bounds))
+        {
+            if (GetCursorPos(out var pt))
+            {
+                return pt.X >= bounds.Left && pt.X <= bounds.Right && pt.Y >= bounds.Top && pt.Y <= bounds.Bottom;
+            }
+        }
+        return false;
+    }
+
+    private static bool TryGetScreenBounds(FrameworkElement element, double padding, out (double Left, double Top, double Right, double Bottom) bounds)
+    {
+        bounds = default;
+        var source = PresentationSource.FromVisual(element);
+        if (source?.CompositionTarget is null || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return false;
+        }
+
         try
         {
-            var pos = Mouse.GetPosition(element);
-            var size = element.RenderSize;
-            return pos.X >= 0 && pos.Y >= 0 && pos.X <= size.Width && pos.Y <= size.Height;
+            var dpiX = source.CompositionTarget.TransformToDevice.M11;
+            var dpiY = source.CompositionTarget.TransformToDevice.M22;
+            var padX = padding * dpiX;
+            var padY = padding * dpiY;
+            var tl = element.PointToScreen(new Point(0, 0));
+            var br = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+            bounds = (Math.Min(tl.X, br.X) - padX, Math.Min(tl.Y, br.Y) - padY, Math.Max(tl.X, br.X) + padX, Math.Max(tl.Y, br.Y) + padY);
+            return true;
         }
-        catch
+        catch (InvalidOperationException)
         {
             return false;
         }
@@ -225,6 +263,7 @@ public sealed class DockFlyout
 
     public void Show(UIElement target, UIElement content, bool animate = true, bool focusable = false)
     {
+        AppLog.Info($"[DockFlyout.Show] target={target.GetType().Name}");
         _explicitClose = false;
         _suppressNextClick = false;
         _closedTarget = null;
@@ -274,14 +313,17 @@ public sealed class DockFlyout
 
     public void Toggle(UIElement target, Func<UIElement> content, bool animate = true, bool focusable = false)
     {
+        AppLog.Info($"[DockFlyout.Toggle] target={target.GetType().Name}, IsOpen={_popup.IsOpen}, suppressNextClick={_suppressNextClick}");
         if (_popup.IsOpen && ReferenceEquals(_popup.PlacementTarget ?? _currentTarget, target))
         {
+            AppLog.Info("[DockFlyout.Toggle] Closing via IsOpen && ReferenceEquals");
             Close();
             return;
         }
 
         if (_suppressNextClick && (_closedTarget is null || (_closedTarget.TryGetTarget(out var prev) && ReferenceEquals(prev, target))))
         {
+            AppLog.Info("[DockFlyout.Toggle] Suppressing click via _suppressNextClick");
             _suppressNextClick = false;
             _closedTarget = null;
             return;
