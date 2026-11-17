@@ -1,0 +1,1 @@
+Temporary visual baseline capture in CI. Remove after updating test hashes.
