@@ -288,27 +288,15 @@ public static class ShellShortcuts
                 return;
             }
 
+            GetWindowRect(hwnd, out var winRect);
+            var winWidth = winRect.Right - winRect.Left;
+            var winHeight = winRect.Bottom - winRect.Top;
+
             for (var retry = 0; retry < 6; retry++)
             {
-                var collapsibles = element.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true));
-                AppLog.Info($"EnsureCalendarCollapsed: attempt {retry}, found {collapsibles.Count} expand/collapse elements");
-
-                foreach (AutomationElement col in collapsibles)
-                {
-                    if (col.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var pat) && pat is ExpandCollapsePattern ecp)
-                    {
-                        if (ecp.Current.ExpandCollapseState == ExpandCollapseState.Expanded)
-                        {
-                            ecp.Collapse();
-                            AppLog.Info($"EnsureCalendarCollapsed: collapsed element {col.Current.AutomationId}/{col.Current.Name} via ExpandCollapsePattern");
-                            return;
-                        }
-                    }
-                }
-
                 var buttons = element.FindAll(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+
                 foreach (AutomationElement btn in buttons)
                 {
                     var autoId = btn.Current.AutomationId;
@@ -322,31 +310,27 @@ public static class ShellShortcuts
 
                     if (isCalendarButton)
                     {
-                        if (name.Contains("Genişlet", StringComparison.OrdinalIgnoreCase)
-                            || name.Contains("Expand", StringComparison.OrdinalIgnoreCase))
-                        {
-                            AppLog.Info($"EnsureCalendarCollapsed: calendar is already collapsed ({autoId} / '{name}')");
-                            return;
-                        }
+                        var btnRect = btn.Current.BoundingRectangle;
+                        AppLog.Info($"EnsureCalendarCollapsed: found calendar button {autoId}/'{name}' at btnTop={btnRect.Top}, winTop={winRect.Top}");
 
                         if (name.Contains("Daralt", StringComparison.OrdinalIgnoreCase)
                             || name.Contains("Collapse", StringComparison.OrdinalIgnoreCase)
-                            || autoId == "ExpandCollapseButton"
                             || autoId == "CollapseButton")
                         {
                             if (btn.TryGetCurrentPattern(InvokePattern.Pattern, out var inv) && inv is InvokePattern ip)
                             {
                                 ip.Invoke();
-                                AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name}");
-                                return;
-                            }
-                            if (btn.TryGetCurrentPattern(TogglePattern.Pattern, out var tog) && tog is TogglePattern tp && tp.Current.ToggleState == ToggleState.On)
-                            {
-                                tp.Toggle();
-                                AppLog.Info($"EnsureCalendarCollapsed: toggled {autoId}/{name}");
-                                return;
+                                AppLog.Info($"EnsureCalendarCollapsed: invoked {autoId}/{name} to collapse");
                             }
                         }
+
+                        // Clip window region above the calendar button so the date bar is not drawn at all
+                        var clipHeight = (int)Math.Max(100, btnRect.Top - winRect.Top);
+                        AppLog.Info($"EnsureCalendarCollapsed: clipping window 0x{hwnd:X} to height {clipHeight} (full was {winHeight})");
+                        var rgn = CreateRectRgn(0, 0, winWidth, clipHeight);
+                        var rgnResult = SetWindowRgn(hwnd, rgn, true);
+                        AppLog.Info($"EnsureCalendarCollapsed: SetWindowRgn returned {rgnResult}");
+                        return;
                     }
                 }
 
@@ -482,6 +466,12 @@ public static class ShellShortcuts
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
+
+    [DllImport("gdi32.dll")]
+    private static extern nint CreateRectRgn(int x1, int y1, int x2, int y2);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(nint hWnd, nint hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
