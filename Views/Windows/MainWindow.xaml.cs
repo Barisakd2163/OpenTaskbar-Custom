@@ -202,6 +202,17 @@ public partial class MainWindow : Window
             ReportError(_preferences.LoadError);
         }
 
+        var startupTrimTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        startupTrimTimer.Tick += (_, _) =>
+        {
+            startupTrimTimer.Stop();
+            NativeMemoryMethods.TrimWorkingSet(force: true);
+        };
+        startupTrimTimer.Start();
+
         _widgetCoordinator.Apply(_preferences.Current);
         InitializeExtras();
         RebuildDockOrder();
@@ -1639,6 +1650,7 @@ public partial class MainWindow : Window
                     _autoHideController.CheckForegroundWindow(NativeWindowTracker.GetForegroundApplicationWindow());
                     _autoHideController.EvaluateState();
                 }
+                NativeMemoryMethods.TrimWorkingSet(force: true);
             };
             _settingsWindow.Show();
         }
@@ -2026,10 +2038,10 @@ public partial class MainWindow : Window
     {
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
         ResizeDockToContent();
-        if (++_memoryTrimCounter >= 20)
+        if (++_memoryTrimCounter >= 12)
         {
             _memoryTrimCounter = 0;
-            GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
+            NativeMemoryMethods.TrimWorkingSet();
         }
     }
 
@@ -2391,11 +2403,16 @@ public partial class MainWindow : Window
         var maxLayoutWidth = Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome);
         if (!IsFullWidth && _dockWidthOverride is { } fixedWidth)
             maxLayoutWidth = Math.Min(maxLayoutWidth, Math.Max(1, fixedWidth - DockHorizontalChrome));
-        var contentFixedWidth = leadWidth + appsContentWidth + trailWidth + widgetsWidth;
+        // App icons can scroll inside DockScrollViewer, so their natural (unscrolled) width must not be
+        // treated as overflow when deciding whether widgets need to compact. Only the width widgets would
+        // actually have to give up should trigger density changes; otherwise a small dock resize makes
+        // widgets shrink while apps could simply scroll instead.
+        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
+        var visibleAppsWidth = Math.Min(appsContentWidth, maxAppsWidth);
+        var contentFixedWidth = leadWidth + visibleAppsWidth + trailWidth + widgetsWidth;
         if (_widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale))
             _resizePending = true; // Measure again after the widget templates switch to compact mode.
 
-        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
         DockScrollViewer.MaxWidth = maxAppsWidth;
         if (appsContentWidth <= maxAppsWidth + 0.5 && DockScrollViewer.HorizontalOffset > 0)
             DockScrollViewer.ScrollToHorizontalOffset(0);
