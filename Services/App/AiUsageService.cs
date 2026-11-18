@@ -4,7 +4,9 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using System.Security;
+using System.Text;
 using System.Text.Json;
 using OpenTaskbar.Models;
 
@@ -43,22 +45,28 @@ public static class AiUsageService
 
     internal static async Task<LoadResult> LoadWithPolicyAsync(AiProviders provider, CancellationToken cancellation)
     {
-        if (provider is not (AiProviders.Claude or AiProviders.Codex)) return new(null, "ErrorAiUsageLoad");
+        if (provider is not (AiProviders.Claude or AiProviders.Codex or AiProviders.Antigravity)) return new(null, "ErrorAiUsageLoad");
         int? status = null;
         try
         {
             cancellation.ThrowIfCancellationRequested();
             if (!await Task.Run(NetworkInterface.GetIsNetworkAvailable, cancellation).ConfigureAwait(false))
                 return new(null, "ErrorAiUsageLoad");
-            var credential = await Task.Run(() => ReadCredential(provider, CredentialPath(provider)), cancellation).ConfigureAwait(false);
+            var credential = await Task.Run(() => ReadCredential(provider), cancellation).ConfigureAwait(false);
             if (credential is null) return new(null, "ErrorAiUsageSignIn");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             timeout.CancelAfter(TimeSpan.FromSeconds(20));
-            using var request = new HttpRequestMessage(HttpMethod.Get, provider == AiProviders.Claude
-                ? "https://api.anthropic.com/api/oauth/usage"
-                : "https://chatgpt.com/backend-api/wham/usage");
+            using var request = provider == AiProviders.Antigravity
+                ? new HttpRequestMessage(HttpMethod.Post, "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota")
+                {
+                    Content = new StringContent("{}", Encoding.UTF8, "application/json")
+                }
+                : new HttpRequestMessage(HttpMethod.Get, provider == AiProviders.Claude
+                    ? "https://api.anthropic.com/api/oauth/usage"
+                    : "https://chatgpt.com/backend-api/wham/usage");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
             if (provider == AiProviders.Claude) request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
+            else if (provider == AiProviders.Antigravity) request.Headers.UserAgent.ParseAdd("antigravity");
             else if (!string.IsNullOrWhiteSpace(credential.Account)) request.Headers.Add("ChatGPT-Account-Id", credential.Account);
             using var response = await Client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             status = (int)response.StatusCode;
@@ -68,7 +76,12 @@ public static class AiUsageService
                 return HttpFailure(response.StatusCode, response.Headers.RetryAfter);
             }
             var json = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
-            var (report, error) = provider == AiProviders.Claude ? ParseClaude(json, credential.Plan) : ParseCodex(json);
+            var (report, error) = provider switch
+            {
+                AiProviders.Claude => ParseClaude(json, credential.Plan),
+                AiProviders.Codex => ParseCodex(json),
+                _ => ParseAntigravity(json, credential.Plan)
+            };
             return new(report, error);
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or TimeoutException
@@ -90,29 +103,49 @@ public static class AiUsageService
 
     internal static string CredentialPath(AiProviders provider)
     {
-        var directory = Environment.GetEnvironmentVariable(provider == AiProviders.Claude ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME");
-        if (string.IsNullOrWhiteSpace(directory)) directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), provider == AiProviders.Claude ? ".claude" : ".codex");
-        return Path.Combine(directory, provider == AiProviders.Claude ? ".credentials.json" : "auth.json");
+        var (envVar, folder, file) = provider switch
+        {
+            AiProviders.Claude => ("CLAUDE_CONFIG_DIR", ".claude", ".credentials.json"),
+            AiProviders.Codex => ("CODEX_HOME", ".codex", "auth.json"),
+            _ => ("GEMINI_CONFIG_DIR", ".gemini", "oauth_creds.json")
+        };
+        var directory = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(directory))
+            directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), folder);
+        return Path.Combine(directory, file);
     }
 
     internal static DateTime CredentialStamp(AiProviders provider)
     {
-        try { return File.GetLastWriteTimeUtc(CredentialPath(provider)); }
+        var stamp = DateTime.MinValue;
+        if (provider == AiProviders.Antigravity && ReadKeyringCredential("gemini:antigravity", out var keyringStamp) is not null)
+            stamp = keyringStamp;
+        try
+        {
+            var fileStamp = File.GetLastWriteTimeUtc(CredentialPath(provider));
+            return fileStamp > stamp ? fileStamp : stamp;
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
-            or NotSupportedException or SecurityException) { return DateTime.MinValue; }
+            or NotSupportedException or SecurityException) { return stamp; }
     }
 
     internal static string? ReadClaudeToken(string? path = null) => ReadCredential(AiProviders.Claude, path ?? CredentialPath(AiProviders.Claude))?.Token;
     internal static string? ReadCodexToken(string? path = null) => ReadCredential(AiProviders.Codex, path ?? CredentialPath(AiProviders.Codex))?.Token;
+    internal static string? ReadAntigravityToken(string? path = null) => ReadCredential(AiProviders.Antigravity, path)?.Token;
 
-    private static Credential? ReadCredential(AiProviders provider, string path)
+    private static Credential? ReadCredential(AiProviders provider, string? path = null)
     {
+        if (provider == AiProviders.Antigravity && path is null
+            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GEMINI_CONFIG_DIR"))
+            && ReadKeyringCredential("gemini:antigravity", out var unusedLastWritten) is { } keyringJson
+            && ParseAntigravityCredential(keyringJson) is { } keyringCred)
+            return keyringCred;
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var stream = new FileStream(path ?? CredentialPath(provider), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var document = JsonDocument.Parse(stream);
             var root = document.RootElement;
+            if (provider == AiProviders.Antigravity) return ParseAntigravityCredential(root);
             var auth = root.GetProperty(provider == AiProviders.Claude ? "claudeAiOauth" : "tokens");
             var token = auth.GetProperty(provider == AiProviders.Claude ? "accessToken" : "access_token").GetString();
             if (string.IsNullOrWhiteSpace(token)) return null;
@@ -129,8 +162,32 @@ public static class AiUsageService
             or NotSupportedException or SecurityException) { return null; }
     }
 
+    private static Credential? ParseAntigravityCredential( string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return ParseAntigravityCredential(document.RootElement);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static Credential? ParseAntigravityCredential(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        var auth = Property(root, "token") ?? root;
+        var token = Text(auth, "access_token") ?? Text(auth, "accessToken");
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        if (Property(auth, "expiry_date") is { ValueKind: JsonValueKind.Number } expiryMs
+            && expiryMs.TryGetInt64(out var ms)
+            && DateTimeOffset.FromUnixTimeMilliseconds(ms) <= DateTimeOffset.UtcNow)
+            return null;
+        return new(token, Plan: Text(root, "plan") ?? Text(root, "tier"));
+    }
+
     internal static (AiUsageReport? Report, string? Error) ParseClaude(string json, string? plan) => Parse(json, AiProviders.Claude, plan);
     internal static (AiUsageReport? Report, string? Error) ParseCodex(string json) => Parse(json, AiProviders.Codex, null);
+    internal static (AiUsageReport? Report, string? Error) ParseAntigravity(string json, string? plan = null) => Parse(json, AiProviders.Antigravity, plan);
 
     private static (AiUsageReport? Report, string? Error) Parse(string json, AiProviders provider, string? plan)
     {
@@ -169,6 +226,50 @@ public static class AiUsageService
                         if (Text(row, "display_name") is { Length: > 0 } name && Property(row, "percent_of_limit") is { } share
                             && Percent(share) is { } part && Math.Round(part * 100) >= 1) breakdown.Add(new(name, part));
                 report = new(provider, PlanLabel(plan), windows, now) { Breakdown = breakdown, Spend = ParseSpend(root) };
+            }
+            else if (provider == AiProviders.Antigravity)
+            {
+                plan ??= Text(root, "plan") ?? Text(root, "tier");
+                var pools = new Dictionary<string, (double Used, DateTimeOffset? ResetsAt)>(StringComparer.Ordinal);
+                void CollectBucket(string? modelId, JsonElement quota)
+                {
+                    if (AntigravityPool(modelId) is not { } pool || quota.ValueKind != JsonValueKind.Object) return;
+                    DateTimeOffset? resetAt = Text(quota, "resetTime") is { } resetText
+                        && DateTimeOffset.TryParse(resetText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+                        ? parsed : null;
+                    double used;
+                    if (Property(quota, "remainingFraction") is { } rem)
+                    {
+                        if (Number(rem) is not { } fraction || !double.IsFinite(fraction)) return;
+                        used = Math.Clamp(1.0 - fraction, 0.0, 1.0);
+                    }
+                    else if (resetAt is not null) used = 1.0;
+                    else return;
+                    if (!pools.TryGetValue(pool, out var existing) || used > existing.Used
+                        || (Math.Abs(used - existing.Used) < 1e-6 && existing.ResetsAt is null && resetAt is not null))
+                        pools[pool] = (used, resetAt ?? existing.ResetsAt);
+                }
+                if (Property(root, "buckets") is { ValueKind: JsonValueKind.Array } buckets)
+                    foreach (var bucket in buckets.EnumerateArray())
+                        CollectBucket(Text(bucket, "modelId"), bucket);
+                if (Property(root, "models") is { ValueKind: JsonValueKind.Object } models)
+                    foreach (var prop in models.EnumerateObject())
+                        if (Property(prop.Value, "quotaInfo") is { } quotaInfo)
+                            CollectBucket(prop.Name, quotaInfo);
+                // When GPT-OSS shares the exact same partner quota pool as Claude, avoid repeating an identical row.
+                if (pools.TryGetValue("Claude", out var claudePool) && pools.TryGetValue("GPT-OSS", out var gptPool)
+                    && Math.Abs(claudePool.Used - gptPool.Used) < 1e-4 && claudePool.ResetsAt == gptPool.ResetsAt)
+                    pools.Remove("GPT-OSS");
+                foreach (var name in new[] { "Gemini Pro", "Gemini Flash", "Claude", "GPT-OSS" })
+                {
+                    if (!pools.TryGetValue(name, out var pool)) continue;
+                    long windowSeconds = pool.ResetsAt is { } r && (r - now).TotalSeconds > 18000 ? 604800L : 18000L;
+                    windows.Add(new("AiUsagePool:" + name, pool.Used, pool.ResetsAt, windowSeconds));
+                }
+                report = new(provider, PlanLabel(plan), windows, now)
+                {
+                    LimitReached = windows.Count > 0 && windows.All(window => window.Used >= 1.0)
+                };
             }
             else
             {
@@ -270,5 +371,61 @@ public static class AiUsageService
         { Timeout = TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = 1 << 20 };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenTaskbar");
         return client;
+    }
+
+    private static string? AntigravityPool(string? modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        if (modelId.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase))
+            return modelId.Contains("pro", StringComparison.OrdinalIgnoreCase)
+                || modelId.Contains("argon", StringComparison.OrdinalIgnoreCase)
+                || modelId.Contains("hydrogen", StringComparison.OrdinalIgnoreCase)
+                || modelId.Contains("ultra", StringComparison.OrdinalIgnoreCase)
+                ? "Gemini Pro" : "Gemini Flash";
+        if (modelId.StartsWith("claude-", StringComparison.OrdinalIgnoreCase)) return "Claude";
+        if (modelId.StartsWith("gpt-", StringComparison.OrdinalIgnoreCase)) return "GPT-OSS";
+        return null;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct NativeCredential
+    {
+        public uint Flags;
+        public uint Type;
+        public nint TargetName;
+        public nint Comment;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+        public uint CredentialBlobSize;
+        public nint CredentialBlob;
+        public uint Persist;
+        public uint AttributeCount;
+        public nint Attributes;
+        public nint TargetAlias;
+        public nint UserName;
+    }
+
+    [DllImport("advapi32.dll", EntryPoint = "CredReadW", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CredRead(string target, uint type, uint reservedFlag, out nint credentialPtr);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern void CredFree(nint credentialPtr);
+
+    private static string? ReadKeyringCredential(string target, out DateTime lastWrittenUtc)
+    {
+        lastWrittenUtc = DateTime.MinValue;
+        if (!CredRead(target, 1, 0, out var ptr) || ptr == 0) return null;
+        try
+        {
+            var cred = Marshal.PtrToStructure<NativeCredential>(ptr);
+            var fileTime = ((long)cred.LastWritten.dwHighDateTime << 32) | (uint)cred.LastWritten.dwLowDateTime;
+            if (fileTime > 0) lastWrittenUtc = DateTime.FromFileTimeUtc(fileTime);
+            if (cred.CredentialBlob == 0 || cred.CredentialBlobSize is 0 or > (1 << 16)) return null;
+            var bytes = new byte[cred.CredentialBlobSize];
+            Marshal.Copy(cred.CredentialBlob, bytes, 0, bytes.Length);
+            return Encoding.UTF8.GetString(bytes);
+        }
+        catch (Exception ex) when (ex is ArgumentException or OverflowException or SecurityException) { return null; }
+        finally { CredFree(ptr); }
     }
 }

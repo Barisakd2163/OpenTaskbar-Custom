@@ -55,7 +55,7 @@ public enum SystemMeters
 }
 
 [Flags]
-public enum AiProviders { None = 0, Claude = 1, Codex = 2, All = Claude | Codex }
+public enum AiProviders { None = 0, Claude = 1, Codex = 2, Antigravity = 4, All = Claude | Codex | Antigravity }
 
 /// <summary>Which quota window the AI usage ring shows; Highest follows whichever window is closest to its limit.</summary>
 public enum AiUsageRing { Highest, Session, Weekly }

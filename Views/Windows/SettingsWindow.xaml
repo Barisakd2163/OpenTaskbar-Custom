@@ -498,6 +498,10 @@
                                             <CheckBox x:Name="AiUsageCodexToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}" AutomationProperties.Name="Codex" />
                                             <TextBlock Text="Codex" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
                                         </DockPanel></Border>
+                                        <Border Style="{StaticResource CompactSettingsRow}"><DockPanel>
+                                            <CheckBox x:Name="AiUsageAntigravityToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}" AutomationProperties.Name="Antigravity" />
+                                            <TextBlock Text="Antigravity" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
+                                        </DockPanel></Border>
                                         <Border Style="{StaticResource CompactSettingsRow}"><StackPanel>
                                             <TextBlock Text="{local:Loc AiUsageRingLabel}" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
                                             <UniformGrid Columns="1" Margin="-2,0">

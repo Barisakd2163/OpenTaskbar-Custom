@@ -14,7 +14,7 @@ namespace OpenTaskbar.Widgets;
 /// <summary>Opt-in CLI quota meters; only active, enabled providers may poll.</summary>
 public sealed class AiUsageWidget : DockWidget
 {
-    private static readonly AiProviders[] Providers = [AiProviders.Claude, AiProviders.Codex];
+    private static readonly AiProviders[] Providers = [AiProviders.Claude, AiProviders.Codex, AiProviders.Antigravity];
     private readonly Func<AiProviders, CancellationToken, Task<(AiUsageReport?, string?)>>? _loader;
     private readonly Dictionary<AiProviders, AiUsageReport> _reports = [];
     private readonly Dictionary<AiProviders, string> _errors = [];
@@ -30,6 +30,7 @@ public sealed class AiUsageWidget : DockWidget
     private readonly Card _summary;
     private readonly Card _claude;
     private readonly Card _codex;
+    private readonly Card _antigravity;
     private readonly DockFlyout _flyout = new();
     private CancellationTokenSource? _loading;
     private AiProviders _loadingProvider;
@@ -44,6 +45,7 @@ public sealed class AiUsageWidget : DockWidget
         _summary = AddCard("AI", null);
         _claude = AddCard("Claude", "LogoClaude");
         _codex = AddCard("Codex", "LogoCodex");
+        _antigravity = AddCard("Antigravity", "LogoAntigravity");
         _flyout.Closed += (_, _) => _countdowns.Clear();
         Content = _cards;
         Render();
@@ -51,7 +53,7 @@ public sealed class AiUsageWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 40;
-    // Card layout: padding and border, logo, fixed-width name, ring; the compact summary card has no logo.
+    // Card layout: padding and border, logo, name, ring; the compact summary card has no logo.
     private const double LogoSize = 16, NameWidth = 44, RingSize = 34, Gap = 6;
     private const double CardPaddingAndBorder = 22;
     public override double FullWidthEstimate => Math.Max(1, EnabledProviders.Count()) * (CardWidth(true) + CardSpacing);
@@ -205,13 +207,19 @@ public sealed class AiUsageWidget : DockWidget
         return TimeSpan.FromMinutes(Math.Min(30, minutes * Math.Pow(2, Math.Clamp(failures - 1, 0, 10))));
     }
 
-    private static string ProviderName(AiProviders provider) => provider == AiProviders.Claude ? "Claude Code" : "Codex";
+    private static string ProviderName(AiProviders provider) => provider switch
+    {
+        AiProviders.Claude => "Claude Code",
+        AiProviders.Codex => "Codex",
+        _ => "Antigravity"
+    };
     private string ErrorText(AiProviders provider, string key) => key == "ErrorAiUsageSignIn"
-        ? UiText.Format(key, provider == AiProviders.Claude ? "claude" : "codex login") : UiText.Get(key);
+        ? UiText.Format(key, provider == AiProviders.Claude ? "claude" : provider == AiProviders.Codex ? "codex login" : "agy") : UiText.Get(key);
     private CultureInfo Culture => Settings.Language.Culture;
     private static bool IsModel(AiUsageWindow window) => window.LabelKey.StartsWith("AiUsageWeeklyModel:", StringComparison.Ordinal);
+    private static bool IsPool(AiUsageWindow window) => window.LabelKey.StartsWith("AiUsagePool:", StringComparison.Ordinal);
     private static bool IsLimitReached(AiUsageReport report) => report.LimitReached
-        || report.Windows.Any(window => window.Used >= 1 && !IsModel(window));
+        || (report.Provider != AiProviders.Antigravity && report.Windows.Any(window => window.Used >= 1 && !IsModel(window)));
     private static string Percent(double value) => UiText.Format("Percent",
         ((int)Math.Round(value * 100)).ToString(CultureInfo.InvariantCulture));
 
@@ -274,6 +282,7 @@ public sealed class AiUsageWidget : DockWidget
 
     private string Label(AiUsageWindow window)
     {
+        if (IsPool(window)) return window.LabelKey[12..];
         if (!IsModel(window)) return UiText.Get(window.LabelKey);
         var model = window.LabelKey.Split(':', 2)[1].Replace('_', ' ');
         return UiText.Format("AiUsageWeeklyModel", model.Length == 0 ? model : char.ToUpper(model[0], Culture) + model[1..]);
@@ -329,8 +338,6 @@ public sealed class AiUsageWidget : DockWidget
         logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "TextPrimary");
         var label = Text(name, 12, "TextPrimary");
         label.FontWeight = FontWeights.SemiBold;
-        label.Width = NameWidth;
-        label.TextTrimming = TextTrimming.CharacterEllipsis;
         label.Margin = new Thickness(0, 0, Gap, 0);
         var ring = new RingMeter { Width = RingSize, Height = RingSize, StrokeThickness = 3, FontSize = 10.5, Text = "—", IsHitTestVisible = false };
         ring.SetResourceReference(RingMeter.TrackBrushProperty, "TextMuted");
@@ -362,7 +369,7 @@ public sealed class AiUsageWidget : DockWidget
                 providers.Length == 0 ? UiText.Get("AiUsageNoProviders") : string.Join("\n", providers.Select(Summary)));
         }
         _summary.Button.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var (provider, card) in new[] { (AiProviders.Claude, _claude), (AiProviders.Codex, _codex) })
+        foreach (var (provider, card) in new[] { (AiProviders.Claude, _claude), (AiProviders.Codex, _codex), (AiProviders.Antigravity, _antigravity) })
         {
             var visible = !summary && _enabled.HasFlag(provider);
             card.Button.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
@@ -613,8 +620,13 @@ public sealed class AiUsageWidget : DockWidget
     {
         try
         {
-            Process.Start(new ProcessStartInfo(provider == AiProviders.Claude
-                ? "https://claude.ai/settings/usage" : "https://chatgpt.com/codex/settings/usage") { UseShellExecute = true });
+            var url = provider switch
+            {
+                AiProviders.Claude => "https://claude.ai/settings/usage",
+                AiProviders.Codex => "https://chatgpt.com/codex/settings/usage",
+                _ => "https://antigravity.google/docs"
+            };
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         { AppLog.Info($"AI usage ({provider}) dashboard unavailable: {ex.GetType().Name}"); }

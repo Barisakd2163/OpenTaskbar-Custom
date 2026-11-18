@@ -199,7 +199,29 @@ internal static class AiUsageChecks
         {
             Check(AiUsageService.ParseClaude(json, null).Error == "ErrorAiUsageLoad", "Invalid Claude responses must return a localization key.");
             Check(AiUsageService.ParseCodex(json).Error == "ErrorAiUsageLoad", "Invalid Codex responses must return a localization key.");
+            Check(AiUsageService.ParseAntigravity(json).Error == "ErrorAiUsageLoad", "Invalid Antigravity responses must return a localization key.");
         }
+
+        var agy = AiUsageService.ParseAntigravity("""
+            {"buckets":[
+                {"modelId":"chat_20706","remainingFraction":1},
+                {"modelId":"gemini-2.5-pro","remainingFraction":0.6,"resetTime":"2026-11-18T20:30:00Z"},
+                {"modelId":"gemini-4-hydrogen-sonar","remainingFraction":0.55,"resetTime":"2026-11-18T20:30:00Z"},
+                {"modelId":"gemini-3-flash","remainingFraction":0.8,"resetTime":"2026-11-18T20:30:00Z"},
+                {"modelId":"claude-sonnet-5-5-medium","remainingFraction":0.05,"resetTime":"2026-11-18T21:20:00Z"},
+                {"modelId":"gpt-oss-120b-medium","remainingFraction":0.05,"resetTime":"2026-11-18T21:20:00Z"}
+            ]}
+            """, "Google AI Pro").Report!;
+        Check(agy.Provider == AiProviders.Antigravity && agy.Plan == "Google AI Pro" && agy.Windows.Count == 3
+            && agy.Windows[0] is { LabelKey: "AiUsagePool:Gemini Pro" } && Math.Abs(agy.Windows[0].Used - 0.45) < 1e-6
+            && agy.Windows[1] is { LabelKey: "AiUsagePool:Gemini Flash" } && Math.Abs(agy.Windows[1].Used - 0.2) < 1e-6
+            && agy.Windows[2] is { LabelKey: "AiUsagePool:Claude" } && Math.Abs(agy.Windows[2].Used - 0.95) < 1e-6,
+            "Antigravity must group model buckets into Gemini Pro, Gemini Flash and Claude pools and deduplicate shared GPT-OSS quota.");
+        var agyExhausted = AiUsageService.ParseAntigravity("""
+            {"buckets":[{"modelId":"claude-opus-5-5-high","resetTime":"2026-11-18T21:20:00Z"}]}
+            """).Report!;
+        Check(agyExhausted.LimitReached && agyExhausted.Windows is [{ LabelKey: "AiUsagePool:Claude", Used: 1.0 }],
+            "Antigravity buckets that omit remainingFraction when resetTime is set must register as 100% used.");
 
         var path = Path.Combine(Path.GetTempPath(), $"ot-ai-fixture-{Guid.NewGuid():N}.json");
         try
@@ -216,6 +238,10 @@ internal static class AiUsageChecks
             }
             File.WriteAllText(path, """{"tokens":{"access_token":"fixture-codex","account_id":"fixture-account"}}""");
             Check(AiUsageService.ReadCodexToken(path) == "fixture-codex", "Codex must read its nested CLI token.");
+            File.WriteAllText(path, """{"token":{"access_token":"fixture-agy"}}""");
+            Check(AiUsageService.ReadAntigravityToken(path) == "fixture-agy", "Antigravity must read its nested keyring token.");
+            File.WriteAllText(path, """{"access_token":"fixture-agy-flat","expiry_date":1}""");
+            Check(AiUsageService.ReadAntigravityToken(path) is null, "Expired Antigravity oauth_creds must not be used.");
             File.WriteAllText(path, "null");
             Check(AiUsageService.ReadClaudeToken(path) is null && AiUsageService.ReadCodexToken(path) is null,
                 "Malformed credential files must fail closed.");

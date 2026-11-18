@@ -335,7 +335,7 @@
   "WidgetTray": "Arka plan uygulamaları",
   "WidgetTrayDescription": "Sistem tepsisinde çalışan arka plan uygulamalarını listeler.",
   "WidgetAiUsage": "Yapay zekâ kullanımı",
-  "WidgetAiUsageDescription": "Claude Code ve Codex için oturumluk ve haftalık kullanım.",
+  "WidgetAiUsageDescription": "Claude Code, Codex ve Antigravity için oturumluk ve haftalık kullanım.",
   "AiUsageSettingsHeading": "Yapay zekâ kullanım sağlayıcıları",
   "AiUsageProviderHint": "Yalnızca etkin sağlayıcıların CLI oturum dosyaları okunur. Gerektiğinde CLI üzerinden yeniden oturum açın.",
   "AiUsageUnofficialNote": "Resmî olmayan veri kaynakları kullanılır; kullanılabilirlik değişebilir.",
