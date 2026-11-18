@@ -351,6 +351,8 @@
   "SpeedTestCancel": "Cancel",
   "SpeedTestFailed": "Speed test could not be completed.",
   "SpeedTestRetry": "Retry",
+  "SpeedTestPoweredByOokla": "Speedtest by Ookla®",
+  "SpeedTestOpenResult": "View Detailed Result",
   "NetworkSettings": "Windows Network Settings",
   "WidgetBluetoothBattery": "Bluetooth Batteries",
   "WidgetBluetoothBatteryDescription": "Displays battery levels for connected Bluetooth devices.",

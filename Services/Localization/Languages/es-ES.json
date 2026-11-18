@@ -312,6 +312,8 @@
   "SpeedTestCancel": "Cancelar",
   "SpeedTestFailed": "No se pudo completar la prueba de velocidad.",
   "SpeedTestRetry": "Reintentar",
+  "SpeedTestPoweredByOokla": "Speedtest by Ookla®",
+  "SpeedTestOpenResult": "Ver resultado detallado",
   "NetworkSettings": "Configuración de red de Windows",
   "WidgetBluetoothBattery": "Baterías Bluetooth",
   "WidgetBluetoothBatteryDescription": "Muestra el nivel de batería de los dispositivos Bluetooth conectados.",

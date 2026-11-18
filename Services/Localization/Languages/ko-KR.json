@@ -312,6 +312,8 @@
   "SpeedTestCancel": "취소",
   "SpeedTestFailed": "속도 측정을 완료할 수 없습니다.",
   "SpeedTestRetry": "다시 시도",
+  "SpeedTestPoweredByOokla": "Speedtest by Ookla®",
+  "SpeedTestOpenResult": "자세한 결과 보기",
   "NetworkSettings": "Windows 네트워크 설정",
   "WidgetBluetoothBattery": "Bluetooth 배터리",
   "WidgetBluetoothBatteryDescription": "연결된 Bluetooth 기기의 배터리 잔량을 표시합니다.",

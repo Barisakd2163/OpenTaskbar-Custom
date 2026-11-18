@@ -351,6 +351,8 @@
   "SpeedTestCancel": "İptal Et",
   "SpeedTestFailed": "Hız testi tamamlanamadı.",
   "SpeedTestRetry": "Tekrar Dene",
+  "SpeedTestPoweredByOokla": "Ookla® Speedtest",
+  "SpeedTestOpenResult": "Detaylı Sonucu Aç",
   "NetworkSettings": "Windows Ağ Ayarları",
   "WidgetBluetoothBattery": "Bluetooth Pilleri",
   "WidgetBluetoothBatteryDescription": "Bağlı Bluetooth cihazlarının pil seviyelerini gösterir.",

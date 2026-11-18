@@ -312,6 +312,8 @@
   "SpeedTestCancel": "取消",
   "SpeedTestFailed": "测速未完成。",
   "SpeedTestRetry": "重试",
+  "SpeedTestPoweredByOokla": "Speedtest by Ookla®",
+  "SpeedTestOpenResult": "查看详细结果",
   "NetworkSettings": "Windows 网络设置",
   "WidgetBluetoothBattery": "蓝牙电量",
   "WidgetBluetoothBatteryDescription": "显示已连接蓝牙设备的电池电量。",

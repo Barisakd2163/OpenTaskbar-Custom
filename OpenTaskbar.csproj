@@ -30,6 +30,7 @@
     <EmbeddedResource Include="Services\Localization\Languages\*.json" LogicalName="OpenTaskbar.Localization.Languages.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Services\Localization\Flags\*.png" LogicalName="OpenTaskbar.Localization.Flags.%(Filename)%(Extension)" />
     <EmbeddedResource Include="tools\watchdog\OpenTaskbarWatchdog.exe" LogicalName="OpenTaskbar.Resources.OpenTaskbarWatchdog.exe" />
+    <EmbeddedResource Include="tools\speedtest\speedtest.exe" LogicalName="OpenTaskbar.Resources.speedtest.exe" />
   </ItemGroup>
 
 </Project>

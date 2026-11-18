@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -20,11 +22,18 @@ public enum SpeedTestStatus
 }
 
 public sealed record SpeedTestProgress(string StatusText, double CurrentMbps, double Percent);
-public sealed record SpeedTestResult(int PingMs, double DownloadMbps, double UploadMbps);
+public sealed record SpeedTestResult(
+    int PingMs,
+    double DownloadMbps,
+    double UploadMbps,
+    string? Server = null,
+    string? Isp = null,
+    string? ResultUrl = null
+);
 
 /// <summary>
 /// A dock widget that displays real-time internet download and upload speeds side-by-side.
-/// Clicking it opens an interactive flyout allowing the user to run a network speed test.
+/// Clicking it opens an interactive flyout allowing the user to run an official Ookla Speedtest.
 /// Conforms to the Widget Height Uniformity Rule (46 DIP).
 /// </summary>
 public sealed class NetSpeedWidget : DockWidget
@@ -70,7 +79,7 @@ public sealed class NetSpeedWidget : DockWidget
     };
 
     internal Func<(long Received, long Sent, string PrimaryInterfaceName)> NetworkReader { get; set; } = ReadNetworkBytes;
-    internal Func<IProgress<SpeedTestProgress>, CancellationToken, Task<SpeedTestResult>> SpeedTestRunner { get; set; } = DefaultRunSpeedTestAsync;
+    internal Func<IProgress<SpeedTestProgress>, CancellationToken, Task<SpeedTestResult>> SpeedTestRunner { get; set; } = RunOoklaSpeedTestAsync;
     internal Action OpenSettingsAction { get; set; } = DefaultOpenSettings;
 
     public NetSpeedWidget()
@@ -307,7 +316,7 @@ public sealed class NetSpeedWidget : DockWidget
 
     internal UIElement BuildClickFlyoutContent()
     {
-        _flyoutPanel = new StackPanel { Width = 270 };
+        _flyoutPanel = new StackPanel { Width = 280 };
         _flyoutPanel.Children.Add(DockFlyout.Heading(UiText.Get("WidgetNetSpeed")));
 
         if (!string.IsNullOrEmpty(_primaryInterfaceName))
@@ -422,7 +431,19 @@ public sealed class NetSpeedWidget : DockWidget
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center
         };
+
+        var ooklaBadge = new TextBlock
+        {
+            Text = UiText.Get("SpeedTestPoweredByOokla"),
+            FontSize = 9.5,
+            Foreground = (Brush)FindResource("TextSecondary"),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        Grid.SetColumn(titleBlock, 0);
+        Grid.SetColumn(ooklaBadge, 1);
         headerRow.Children.Add(titleBlock);
+        headerRow.Children.Add(ooklaBadge);
         _speedTestContainer.Children.Add(headerRow);
 
         switch (_testStatus)
@@ -532,10 +553,14 @@ public sealed class NetSpeedWidget : DockWidget
 
     private Grid CreateResultsGrid(SpeedTestResult result)
     {
-        var grid = new Grid { Margin = new Thickness(0, 4, 0, 6) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var mainGrid = new Grid { Margin = new Thickness(0, 4, 0, 6) };
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var statGrid = new Grid();
+        statGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var pingStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
         pingStack.Children.Add(new TextBlock
@@ -598,10 +623,55 @@ public sealed class NetSpeedWidget : DockWidget
         Grid.SetColumn(downStack, 1);
         Grid.SetColumn(upStack, 2);
 
-        grid.Children.Add(pingStack);
-        grid.Children.Add(downStack);
-        grid.Children.Add(upStack);
-        return grid;
+        statGrid.Children.Add(pingStack);
+        statGrid.Children.Add(downStack);
+        statGrid.Children.Add(upStack);
+        Grid.SetRow(statGrid, 0);
+        mainGrid.Children.Add(statGrid);
+
+        // Server, ISP and Link details
+        if (!string.IsNullOrEmpty(result.Server) || !string.IsNullOrEmpty(result.Isp) || !string.IsNullOrEmpty(result.ResultUrl))
+        {
+            var metaStack = new StackPanel { Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+            if (!string.IsNullOrEmpty(result.Isp) || !string.IsNullOrEmpty(result.Server))
+            {
+                var infoParts = new List<string>();
+                if (!string.IsNullOrEmpty(result.Isp)) infoParts.Add(result.Isp);
+                if (!string.IsNullOrEmpty(result.Server)) infoParts.Add(result.Server);
+
+                metaStack.Children.Add(new TextBlock
+                {
+                    Text = string.Join(" · ", infoParts),
+                    FontSize = 9.5,
+                    Foreground = (Brush)FindResource("TextSecondary"),
+                    TextAlignment = TextAlignment.Center
+                });
+            }
+
+            if (!string.IsNullOrEmpty(result.ResultUrl))
+            {
+                var linkBtn = DockFlyout.FlatButton(
+                    new TextBlock
+                    {
+                        Text = UiText.Get("SpeedTestOpenResult"),
+                        FontSize = 9.5,
+                        Foreground = (Brush)FindResource("WidgetAccent")
+                    },
+                    (_, _) =>
+                    {
+                        try { Process.Start(new ProcessStartInfo(result.ResultUrl) { UseShellExecute = true }); } catch { }
+                    }
+                );
+                linkBtn.Padding = new Thickness(4, 2, 4, 2);
+                linkBtn.HorizontalAlignment = HorizontalAlignment.Center;
+                metaStack.Children.Add(linkBtn);
+            }
+
+            Grid.SetRow(metaStack, 1);
+            mainGrid.Children.Add(metaStack);
+        }
+
+        return mainGrid;
     }
 
     internal async Task StartSpeedTestAsync()
@@ -667,7 +737,180 @@ public sealed class NetSpeedWidget : DockWidget
         UpdateSpeedTestView();
     }
 
-    private static async Task<SpeedTestResult> DefaultRunSpeedTestAsync(IProgress<SpeedTestProgress> progress, CancellationToken ct)
+    private static string EnsureSpeedtestBinary()
+    {
+        var localDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar");
+        Directory.CreateDirectory(localDir);
+        var targetExe = Path.Combine(localDir, "speedtest.exe");
+
+        if (File.Exists(targetExe))
+        {
+            return targetExe;
+        }
+
+        var projectExe = Path.Combine(AppContext.BaseDirectory, "tools", "speedtest", "speedtest.exe");
+        if (File.Exists(projectExe))
+        {
+            try { File.Copy(projectExe, targetExe, true); return targetExe; } catch { return projectExe; }
+        }
+
+        using var stream = typeof(NetSpeedWidget).Assembly.GetManifestResourceStream("OpenTaskbar.Resources.speedtest.exe");
+        if (stream is not null)
+        {
+            try
+            {
+                using var fs = File.Create(targetExe);
+                stream.CopyTo(fs);
+                return targetExe;
+            }
+            catch
+            {
+            }
+        }
+
+        return targetExe;
+    }
+
+    private static async Task<SpeedTestResult> RunOoklaSpeedTestAsync(IProgress<SpeedTestProgress> progress, CancellationToken ct)
+    {
+        var exePath = EnsureSpeedtestBinary();
+        if (!File.Exists(exePath))
+        {
+            return await RunFallbackSpeedTestAsync(progress, ct).ConfigureAwait(false);
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = exePath,
+            Arguments = "--accept-license --accept-gdpr -f jsonl",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var tcs = new TaskCompletionSource<bool>();
+        using var reg = ct.Register(() =>
+        {
+            try { if (!process.HasExited) process.Kill(); } catch { }
+            tcs.TrySetCanceled(ct);
+        });
+
+        int pingMs = -1;
+        double downloadMbps = 0;
+        double uploadMbps = 0;
+        string? server = null;
+        string? isp = null;
+        string? resultUrl = null;
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(e.Data)) return;
+            try
+            {
+                using var doc = JsonDocument.Parse(e.Data);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("type", out var typeProp)) return;
+                var type = typeProp.GetString();
+
+                switch (type)
+                {
+                    case "testStart":
+                        if (root.TryGetProperty("isp", out var ispProp)) isp = ispProp.GetString();
+                        if (root.TryGetProperty("server", out var srvProp))
+                        {
+                            var sName = srvProp.TryGetProperty("name", out var sn) ? sn.GetString() : null;
+                            var sLoc = srvProp.TryGetProperty("location", out var sl) ? sl.GetString() : null;
+                            server = string.IsNullOrEmpty(sLoc) ? sName : $"{sName} ({sLoc})";
+                        }
+                        break;
+
+                    case "ping":
+                        if (root.TryGetProperty("ping", out var pingElem))
+                        {
+                            if (pingElem.TryGetProperty("latency", out var latProp))
+                            {
+                                pingMs = (int)Math.Round(latProp.GetDouble());
+                            }
+                            var prog = pingElem.TryGetProperty("progress", out var pr) ? pr.GetDouble() : 0.5;
+                            progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingPing"), 0, prog * 15.0));
+                        }
+                        break;
+
+                    case "download":
+                        if (root.TryGetProperty("download", out var dlElem))
+                        {
+                            if (dlElem.TryGetProperty("bandwidth", out var bwProp))
+                            {
+                                var bwBytes = bwProp.GetDouble();
+                                downloadMbps = (bwBytes * 8.0) / 1_000_000.0;
+                            }
+                            var prog = dlElem.TryGetProperty("progress", out var pr) ? pr.GetDouble() : 0.5;
+                            progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingDownload"), downloadMbps, 15.0 + (prog * 45.0)));
+                        }
+                        break;
+
+                    case "upload":
+                        if (root.TryGetProperty("upload", out var ulElem))
+                        {
+                            if (ulElem.TryGetProperty("bandwidth", out var bwProp))
+                            {
+                                var bwBytes = bwProp.GetDouble();
+                                uploadMbps = (bwBytes * 8.0) / 1_000_000.0;
+                            }
+                            var prog = ulElem.TryGetProperty("progress", out var pr) ? pr.GetDouble() : 0.5;
+                            progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingUpload"), uploadMbps, 60.0 + (prog * 40.0)));
+                        }
+                        break;
+
+                    case "result":
+                        if (root.TryGetProperty("ping", out var finalPing) && finalPing.TryGetProperty("latency", out var fpLat))
+                        {
+                            pingMs = (int)Math.Round(fpLat.GetDouble());
+                        }
+                        if (root.TryGetProperty("download", out var finalDl) && finalDl.TryGetProperty("bandwidth", out var fdBw))
+                        {
+                            downloadMbps = (fdBw.GetDouble() * 8.0) / 1_000_000.0;
+                        }
+                        if (root.TryGetProperty("upload", out var finalUl) && finalUl.TryGetProperty("bandwidth", out var fuBw))
+                        {
+                            uploadMbps = (fuBw.GetDouble() * 8.0) / 1_000_000.0;
+                        }
+                        if (root.TryGetProperty("isp", out var fIsp)) isp = fIsp.GetString();
+                        if (root.TryGetProperty("server", out var fSrv))
+                        {
+                            var sName = fSrv.TryGetProperty("name", out var sn) ? sn.GetString() : null;
+                            var sLoc = fSrv.TryGetProperty("location", out var sl) ? sl.GetString() : null;
+                            server = string.IsNullOrEmpty(sLoc) ? sName : $"{sName} ({sLoc})";
+                        }
+                        if (root.TryGetProperty("result", out var resElem) && resElem.TryGetProperty("url", out var urlProp))
+                        {
+                            resultUrl = urlProp.GetString();
+                        }
+                        break;
+                }
+            }
+            catch
+            {
+            }
+        };
+
+        process.Exited += (_, _) => tcs.TrySetResult(true);
+
+        if (!process.Start())
+        {
+            return await RunFallbackSpeedTestAsync(progress, ct).ConfigureAwait(false);
+        }
+
+        process.BeginOutputReadLine();
+        await tcs.Task.ConfigureAwait(false);
+
+        progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingUpload"), uploadMbps, 100.0));
+        return new SpeedTestResult(pingMs, downloadMbps, uploadMbps, server, isp, resultUrl);
+    }
+
+    private static async Task<SpeedTestResult> RunFallbackSpeedTestAsync(IProgress<SpeedTestProgress> progress, CancellationToken ct)
     {
         // 1. Measure latency
         progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingPing"), 0, 10));
@@ -718,7 +961,6 @@ public sealed class NetSpeedWidget : DockWidget
     {
         try
         {
-            // Download 5 MB payload from Cloudflare speed test CDN
             var url = "https://speed.cloudflare.com/__down?bytes=5000000";
             using var response = await SharedHttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
@@ -758,7 +1000,6 @@ public sealed class NetSpeedWidget : DockWidget
     {
         try
         {
-            // Upload 2 MB payload to Cloudflare speed test endpoint
             var payload = new byte[2 * 1024 * 1024];
             using var content = new ByteArrayContent(payload);
             var sw = Stopwatch.StartNew();
