@@ -269,6 +269,22 @@ internal static class AiUsageChecks
                     "Expired Claude credentials must not be used.");
                 Check(hash.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))), "Credential reads must leave fixture bytes unchanged.");
             }
+            File.WriteAllText(path, """{"claudeAiOauth":{"accessToken":"","refreshToken":"fixture-refresh-desktop","scopes":["user:profile"],"subscriptionType":"pro","rateLimitTier":"default_claude_ai"}}""");
+            Check(AiUsageService.ReadClaudeToken(path) is null, "A desktop credential without an accessToken must trigger refresh on load.");
+            var refreshedToken = AiUsageService.TryRefreshClaudeTokenAsync(path, (refresh, _) =>
+                Task.FromResult<string?>(refresh == "fixture-refresh-desktop"
+                    ? """{"access_token":"fixture-refreshed-access","refresh_token":"fixture-rotated-refresh","expires_in":28800}"""
+                    : null)).GetAwaiter().GetResult();
+            Check(refreshedToken == "fixture-refreshed-access" && AiUsageService.ReadClaudeToken(path) == "fixture-refreshed-access",
+                "Claude refresh must exchange refreshToken and persist the new accessToken and expiresAt back to .credentials.json.");
+            using (var refreshedDoc = JsonDocument.Parse(File.ReadAllText(path)))
+            {
+                var oauth = refreshedDoc.RootElement.GetProperty("claudeAiOauth");
+                Check(oauth.GetProperty("refreshToken").GetString() == "fixture-rotated-refresh"
+                    && oauth.GetProperty("subscriptionType").GetString() == "pro"
+                    && oauth.GetProperty("scopes").GetArrayLength() == 1,
+                    "Claude refresh must persist the rotated refreshToken and preserve existing OAuth metadata.");
+            }
             File.WriteAllText(path, """{"tokens":{"access_token":"fixture-codex","account_id":"fixture-account"}}""");
             Check(AiUsageService.ReadCodexToken(path) == "fixture-codex", "Codex must read its nested CLI token.");
             File.WriteAllText(path, """{"token":{"access_token":"fixture-agy"}}""");

@@ -219,7 +219,7 @@ public sealed class AiUsageWidget : DockWidget
     private string ErrorText(AiProviders provider, string key) => key == "ErrorAiUsageSignIn"
         ? UiText.Format(key, provider switch
         {
-            AiProviders.Claude => "claude",
+            AiProviders.Claude => "claude auth login",
             AiProviders.Codex => "codex login",
             AiProviders.OpenCode => "opencode auth login",
             _ => "agy"

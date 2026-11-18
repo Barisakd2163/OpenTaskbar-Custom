@@ -35,8 +35,9 @@ public static class AiUsageService
 {
     private static readonly HttpClient Client = CreateClient();
     private const double MaxResetSeconds = 4e9;
+    private const string ClaudeOAuthClientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
     internal sealed record LoadResult(AiUsageReport? Report, string? Error, TimeSpan? RetryAfter = null);
-    private sealed record Credential(string Token, string? Account = null, string? Plan = null);
+    private sealed record Credential(string Token, string? Account = null, string? Plan = null, string? RefreshToken = null, string? FilePath = null);
 
     public static async Task<(AiUsageReport? Report, string? Error)> LoadAsync(AiProviders provider, CancellationToken cancellation)
     {
@@ -58,35 +59,41 @@ public static class AiUsageService
             if (credential is null) return new(null, "ErrorAiUsageSignIn");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            if (provider == AiProviders.Claude && string.IsNullOrWhiteSpace(credential.Token))
+            {
+                credential = await RefreshClaudeCredentialAsync(credential, null, timeout.Token).ConfigureAwait(false);
+                if (credential is null || string.IsNullOrWhiteSpace(credential.Token)) return new(null, "ErrorAiUsageSignIn");
+            }
             if (provider == AiProviders.Antigravity && await TryLoadAntigravityCliAsync(credential.Plan, timeout.Token).ConfigureAwait(false) is { } cliReport)
                 return new(cliReport, null);
-            using var request = new HttpRequestMessage(HttpMethod.Get, provider switch
+            var response = await SendUsageRequestAsync(provider, credential, timeout.Token).ConfigureAwait(false);
+            try
             {
-                AiProviders.Claude => "https://api.anthropic.com/api/oauth/usage",
-                AiProviders.Codex => "https://chatgpt.com/backend-api/wham/usage",
-                AiProviders.OpenCode => "https://opencode.ai/zen/go/v1/usage",
-                _ => "https://aicode.googleapis.com/v1alpha:fetchQuotaStatus"
-            });
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
-            if (provider == AiProviders.Claude) request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
-            else if (provider == AiProviders.Antigravity) request.Headers.UserAgent.ParseAdd("antigravity");
-            else if (!string.IsNullOrWhiteSpace(credential.Account)) request.Headers.Add("ChatGPT-Account-Id", credential.Account);
-            using var response = await Client.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            status = (int)response.StatusCode;
-            if (!response.IsSuccessStatusCode)
-            {
-                AppLog.Info($"AI usage ({provider}) unavailable: {status}");
-                return HttpFailure(response.StatusCode, response.Headers.RetryAfter);
+                if (provider == AiProviders.Claude && response.StatusCode == HttpStatusCode.Unauthorized
+                    && !string.IsNullOrWhiteSpace(credential.RefreshToken)
+                    && await RefreshClaudeCredentialAsync(credential, null, timeout.Token).ConfigureAwait(false) is { Token.Length: > 0 } refreshed)
+                {
+                    credential = refreshed;
+                    response.Dispose();
+                    response = await SendUsageRequestAsync(provider, credential, timeout.Token).ConfigureAwait(false);
+                }
+                status = (int)response.StatusCode;
+                if (!response.IsSuccessStatusCode)
+                {
+                    AppLog.Info($"AI usage ({provider}) unavailable: {status}");
+                    return HttpFailure(response.StatusCode, response.Headers.RetryAfter);
+                }
+                var json = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                var (report, error) = provider switch
+                {
+                    AiProviders.Claude => ParseClaude(json, credential.Plan),
+                    AiProviders.Codex => ParseCodex(json),
+                    AiProviders.OpenCode => ParseOpenCode(json, credential.Plan),
+                    _ => ParseAntigravity(json, credential.Plan)
+                };
+                return new(report, error);
             }
-            var json = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
-            var (report, error) = provider switch
-            {
-                AiProviders.Claude => ParseClaude(json, credential.Plan),
-                AiProviders.Codex => ParseCodex(json),
-                AiProviders.OpenCode => ParseOpenCode(json, credential.Plan),
-                _ => ParseAntigravity(json, credential.Plan)
-            };
-            return new(report, error);
+            finally { response.Dispose(); }
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or TimeoutException
             or IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException
@@ -125,6 +132,8 @@ public static class AiUsageService
         var stamp = DateTime.MinValue;
         if (provider == AiProviders.Antigravity && ReadKeyringCredential("gemini:antigravity", out var keyringStamp) is not null)
             stamp = keyringStamp;
+        else if (provider == AiProviders.Claude && ReadKeyringCredential("Claude Code-credentials", out var claudeKeyringStamp) is not null)
+            stamp = claudeKeyringStamp;
         try
         {
             var fileStamp = File.GetLastWriteTimeUtc(CredentialPath(provider));
@@ -141,10 +150,37 @@ public static class AiUsageService
             or NotSupportedException or SecurityException) { return stamp; }
     }
 
-    internal static string? ReadClaudeToken(string? path = null) => ReadCredential(AiProviders.Claude, path ?? CredentialPath(AiProviders.Claude))?.Token;
+    internal static string? ReadClaudeToken(string? path = null) =>
+        ReadCredential(AiProviders.Claude, path ?? CredentialPath(AiProviders.Claude)) is { Token.Length: > 0 } cred ? cred.Token : null;
     internal static string? ReadCodexToken(string? path = null) => ReadCredential(AiProviders.Codex, path ?? CredentialPath(AiProviders.Codex))?.Token;
     internal static string? ReadAntigravityToken(string? path = null) => ReadCredential(AiProviders.Antigravity, path)?.Token;
     internal static string? ReadOpenCodeToken(string? path = null) => ReadCredential(AiProviders.OpenCode, path)?.Token;
+
+    internal static async Task<string?> TryRefreshClaudeTokenAsync(
+        string path,
+        Func<string, CancellationToken, Task<string?>>? exchange = null,
+        CancellationToken cancellation = default)
+    {
+        if (ReadCredential(AiProviders.Claude, path) is not { } credential) return null;
+        if (!string.IsNullOrWhiteSpace(credential.Token)) return credential.Token;
+        return (await RefreshClaudeCredentialAsync(credential, exchange, cancellation).ConfigureAwait(false))?.Token;
+    }
+
+    private static async Task<HttpResponseMessage> SendUsageRequestAsync(AiProviders provider, Credential credential, CancellationToken cancellation)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, provider switch
+        {
+            AiProviders.Claude => "https://api.anthropic.com/api/oauth/usage",
+            AiProviders.Codex => "https://chatgpt.com/backend-api/wham/usage",
+            AiProviders.OpenCode => "https://opencode.ai/zen/go/v1/usage",
+            _ => "https://aicode.googleapis.com/v1alpha:fetchQuotaStatus"
+        });
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
+        if (provider == AiProviders.Claude) request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
+        else if (provider == AiProviders.Antigravity) request.Headers.UserAgent.ParseAdd("antigravity");
+        else if (!string.IsNullOrWhiteSpace(credential.Account)) request.Headers.Add("ChatGPT-Account-Id", credential.Account);
+        return await Client.SendAsync(request, cancellation).ConfigureAwait(false);
+    }
 
     private static Credential? ReadCredential(AiProviders provider, string? path = null)
     {
@@ -162,6 +198,11 @@ public static class AiUsageService
         try
         {
             var targetPath = path ?? CredentialPath(provider);
+            if (provider == AiProviders.Claude && path is null && !File.Exists(targetPath)
+                && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR"))
+                && ReadKeyringCredential("Claude Code-credentials", out _) is { } claudeKeyringJson
+                && ParseClaudeCredential(claudeKeyringJson, null) is { } claudeKeyringCred)
+                return claudeKeyringCred;
             if (provider == AiProviders.OpenCode && path is null && !File.Exists(targetPath))
             {
                 var legacyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".opencode", "auth.json");
@@ -173,20 +214,149 @@ public static class AiUsageService
             var root = document.RootElement;
             if (provider == AiProviders.Antigravity) return ParseAntigravityCredential(root);
             if (provider == AiProviders.OpenCode) return ParseOpenCodeCredential(root);
-            var auth = root.GetProperty(provider == AiProviders.Claude ? "claudeAiOauth" : "tokens");
-            var token = auth.GetProperty(provider == AiProviders.Claude ? "accessToken" : "access_token").GetString();
-            if (string.IsNullOrWhiteSpace(token)) return null;
             if (provider == AiProviders.Claude)
             {
-                if (auth.TryGetProperty("expiresAt", out var expiry)
-                    && DateTimeOffset.FromUnixTimeMilliseconds(expiry.GetInt64()) <= DateTimeOffset.UtcNow) return null;
-                return new(token, Plan: Text(auth, "subscriptionType") ?? Text(auth, "rateLimitTier"));
+                var fileCred = ParseClaudeCredential(root, targetPath);
+                if (fileCred is { Token.Length: > 0 }) return fileCred;
+                if (path is null && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR"))
+                    && ReadKeyringCredential("Claude Code-credentials", out _) is { } fallbackKeyringJson
+                    && ParseClaudeCredential(fallbackKeyringJson, targetPath) is { } fallbackKeyringCred
+                    && (!string.IsNullOrWhiteSpace(fallbackKeyringCred.Token) || fileCred is null))
+                    return fallbackKeyringCred;
+                return fileCred;
             }
+            var auth = root.GetProperty("tokens");
+            var token = auth.GetProperty("access_token").GetString();
+            if (string.IsNullOrWhiteSpace(token)) return null;
             return new(token, Text(auth, "account_id"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
             or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException
             or NotSupportedException or SecurityException) { return null; }
+    }
+
+    private static Credential? ParseClaudeCredential(string json, string? filePath)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return ParseClaudeCredential(document.RootElement, filePath);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static Credential? ParseClaudeCredential(JsonElement root, string? filePath)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        var auth = Property(root, "claudeAiOauth") ?? root;
+        if (auth.ValueKind != JsonValueKind.Object) return null;
+        var token = Text(auth, "accessToken") ?? Text(auth, "access_token");
+        var refresh = Text(auth, "refreshToken") ?? Text(auth, "refresh_token");
+        var plan = Text(auth, "subscriptionType") ?? Text(auth, "rateLimitTier");
+        var expired = Property(auth, "expiresAt") is { ValueKind: JsonValueKind.Number } expiry
+            && expiry.TryGetInt64(out var ms)
+            && DateTimeOffset.FromUnixTimeMilliseconds(ms) <= DateTimeOffset.UtcNow;
+        var usableToken = !string.IsNullOrWhiteSpace(token) && !expired ? token : string.Empty;
+        if (usableToken.Length == 0 && string.IsNullOrWhiteSpace(refresh)) return null;
+        return new(usableToken, Plan: plan, RefreshToken: string.IsNullOrWhiteSpace(refresh) ? null : refresh, FilePath: filePath);
+    }
+
+    private static async Task<Credential?> RefreshClaudeCredentialAsync(
+        Credential credential,
+        Func<string, CancellationToken, Task<string?>>? exchange,
+        CancellationToken cancellation)
+    {
+        if (string.IsNullOrWhiteSpace(credential.RefreshToken)) return null;
+        try
+        {
+            string? responseJson;
+            if (exchange is not null)
+            {
+                responseJson = await exchange(credential.RefreshToken, cancellation).ConfigureAwait(false);
+            }
+            else
+            {
+                var payload = JsonSerializer.Serialize(new
+                {
+                    grant_type = "refresh_token",
+                    refresh_token = credential.RefreshToken,
+                    client_id = ClaudeOAuthClientId
+                });
+                using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/oauth/token")
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+                using var response = await Client.SendAsync(request, cancellation).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode) return null;
+                responseJson = await response.Content.ReadAsStringAsync(cancellation).ConfigureAwait(false);
+            }
+            if (string.IsNullOrWhiteSpace(responseJson)) return null;
+            using var document = JsonDocument.Parse(responseJson);
+            var root = document.RootElement;
+            var newAccess = Text(root, "access_token") ?? Text(root, "accessToken");
+            if (string.IsNullOrWhiteSpace(newAccess)) return null;
+            var newRefresh = Text(root, "refresh_token") ?? Text(root, "refreshToken") ?? credential.RefreshToken;
+            var expiresIn = (Property(root, "expires_in") ?? Property(root, "expiresIn")) is { } exp && Number(exp) is { } sec && sec > 0
+                ? sec : 28800;
+            var newExpiresAt = DateTimeOffset.UtcNow.AddSeconds(expiresIn).ToUnixTimeMilliseconds();
+            if (!string.IsNullOrWhiteSpace(credential.FilePath))
+                WriteClaudeCredential(credential.FilePath, newAccess, newRefresh, newExpiresAt);
+            return credential with { Token = newAccess, RefreshToken = newRefresh };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or TimeoutException
+            or IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static void WriteClaudeCredential(string path, string accessToken, string refreshToken, long expiresAt)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            using var existing = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (existing.RootElement.ValueKind != JsonValueKind.Object) return;
+            var tmpPath = path + ".tmp";
+            using (var stream = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            {
+                writer.WriteStartObject();
+                var wroteOauth = false;
+                foreach (var prop in existing.RootElement.EnumerateObject())
+                {
+                    if (prop.Name == "claudeAiOauth" && prop.Value.ValueKind == JsonValueKind.Object)
+                    {
+                        wroteOauth = true;
+                        writer.WritePropertyName("claudeAiOauth");
+                        writer.WriteStartObject();
+                        writer.WriteString("accessToken", accessToken);
+                        writer.WriteString("refreshToken", refreshToken);
+                        writer.WriteNumber("expiresAt", expiresAt);
+                        foreach (var child in prop.Value.EnumerateObject())
+                        {
+                            if (child.Name is "accessToken" or "access_token" or "refreshToken" or "refresh_token" or "expiresAt")
+                                continue;
+                            child.WriteTo(writer);
+                        }
+                        writer.WriteEndObject();
+                    }
+                    else prop.WriteTo(writer);
+                }
+                if (!wroteOauth)
+                {
+                    writer.WritePropertyName("claudeAiOauth");
+                    writer.WriteStartObject();
+                    writer.WriteString("accessToken", accessToken);
+                    writer.WriteString("refreshToken", refreshToken);
+                    writer.WriteNumber("expiresAt", expiresAt);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndObject();
+            }
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
     }
 
     private static Credential? ParseAntigravityCredential( string json)
