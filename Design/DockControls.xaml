@@ -107,8 +107,8 @@
                     <Grid Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
                         <Border x:Name="StartTile" Margin="3,3,3,3"
                                 CornerRadius="10"
-                                Background="{DynamicResource StartTileBackground}"
-                                BorderBrush="{DynamicResource StartTileBorder}"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
                                 BorderThickness="1">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
