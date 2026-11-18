@@ -8,6 +8,7 @@
   "WidgetSettings": "ウィジェットの設定",
   "WidgetInstall": "インストール",
   "WidgetRemove": "削除",
+  "RemoveWidget": "ウィジェットを削除",
   "WidgetSearch": "ウィジェットを検索",
   "WidgetNoResults": "検索に一致するウィジェットがありません。",
   "WidgetAvailable": "未インストール",

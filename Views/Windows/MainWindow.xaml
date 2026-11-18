@@ -47,6 +47,21 @@
             <Separator />
             <MenuItem Header="{local:Loc Exit}" Icon="{StaticResource IconExit}" Click="ExitOpenTaskbar_Click" />
         </ContextMenu>
+        <ContextMenu x:Key="WidgetContextMenu" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+            <MenuItem Header="{local:Loc RemoveWidget}" Icon="{StaticResource IconTrash}" Tag="RemoveWidgetMenu" Click="RemoveWidgetMenu_Click" />
+            <Separator />
+            <MenuItem Header="{local:Loc OpenLauncher}" Icon="{StaticResource IconSearch}" Click="OpenLauncher_Click" />
+            <MenuItem Header="{local:Loc AddStack}" Icon="{StaticResource IconFolderPlus}" Click="AddStack_Click" />
+            <MenuItem Header="{local:Loc Profiles}" Icon="{StaticResource IconLayers}" Tag="ProfilesMenu">
+                <MenuItem Header="…" />
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="{local:Loc CheckForUpdates}" Icon="{StaticResource IconRefresh}" Tag="UpdateMenu" Click="CheckUpdates_Click" />
+            <MenuItem Header="{local:Loc TaskManager}" Icon="{StaticResource IconTaskManager}" Click="OpenTaskManager_Click" />
+            <MenuItem Header="{local:Loc Settings}" Icon="{StaticResource IconSettings}" Click="OpenSettings_Click" />
+            <Separator />
+            <MenuItem Header="{local:Loc Exit}" Icon="{StaticResource IconExit}" Click="ExitOpenTaskbar_Click" />
+        </ContextMenu>
 
         <Style x:Key="PreviewCloseButton" TargetType="Button">
             <Setter Property="Width" Value="28" />

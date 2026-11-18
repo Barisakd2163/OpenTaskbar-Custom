@@ -470,6 +470,14 @@ internal static class DockLayoutChecks
         Check(capturedOrder != null && capturedOrder[0] == "Focus" && capturedOrder[1] == "Clock",
             "OrderChanged callback must trigger with updated order.");
 
+        // Verify widget context menu and removal item
+        var firstWidget = coordinator.ActiveWidgets.Values.First();
+        Check(coordinator.GetWidgetId(firstWidget) != null, "GetWidgetId must resolve widget id.");
+        Check(firstWidget.ContextMenu?.Items.Count > 0, "Widget must have a context menu.");
+        var removeItem = firstWidget.ContextMenu?.Items.OfType<MenuItem>().FirstOrDefault();
+        Check(removeItem?.Header?.ToString() == UiText.Get("RemoveWidget"), "Widget context menu must have RemoveWidget header.");
+        Check(removeItem?.Icon != null, "Widget remove item must have an icon.");
+
         // Verify DockSettingsStore validation for WidgetOrder
         var validSettings = new DockSettings(WidgetOrder: ["Clock", "Weather", "Media"]);
         Check(DockSettingsStore.Validate(validSettings), "Valid WidgetOrder must pass settings validation.");

@@ -8,6 +8,7 @@
   "WidgetSettings": "위젯 설정",
   "WidgetInstall": "추가",
   "WidgetRemove": "제거",
+  "RemoveWidget": "위젯 제거",
   "WidgetSearch": "위젯 검색",
   "WidgetNoResults": "일치하는 위젯이 없습니다.",
   "WidgetAvailable": "미설치",

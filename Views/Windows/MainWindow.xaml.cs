@@ -58,6 +58,7 @@ public partial class MainWindow : Window
     private nint _foregroundWindow;
     private readonly List<FrameworkElement> _magnifiedIcons = [];
     private ContextMenu? _openContextMenu;
+    private OpenTaskbar.Widgets.DockWidget? _contextTargetWidget;
     private bool _contextTargetWasForeground;
     private nint _foregroundAtMenuOpen;
     private DateTime _contextMenuOpenedAtUtc;
@@ -159,6 +160,7 @@ public partial class MainWindow : Window
             menu.Opened += DockContextMenu_Opened;
             menu.Closed += DockContextMenu_Closed;
         };
+        _widgetCoordinator.CreateWidgetContextMenu = _ => (ContextMenu)FindResource("WidgetContextMenu");
         _widgetCoordinator.HoverActiveChanged += _ => _autoHideController?.EvaluateState();
         _widgetCoordinator.ExternalLayout = true;
         _widgetCoordinator.WidgetsPlaced += () =>
@@ -1174,6 +1176,8 @@ public partial class MainWindow : Window
             SetForegroundWindow(_source.Handle);
         }
 
+        _contextTargetWidget = (contextMenu.PlacementTarget as FrameworkElement) as OpenTaskbar.Widgets.DockWidget
+            ?? FindVisualParent<OpenTaskbar.Widgets.DockWidget>(contextMenu.PlacementTarget);
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
         contextMenu.DataContext = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext;
         _contextTargetWasForeground = pinnedApp?.IsForeground == true;
@@ -1334,6 +1338,7 @@ public partial class MainWindow : Window
         }
         if (!ReferenceEquals(sender, _openContextMenu)) return;
         _openContextMenu = null;
+        _contextTargetWidget = null;
         _autoHideController?.EvaluateState();
         _jumpListLoad?.Cancel();
         if (_jumpListSession is { } session)
@@ -1341,6 +1346,30 @@ public partial class MainWindow : Window
             _jumpListSession = null;
             await _jumpLists.ReleaseAsync(session);
         }
+    }
+
+    private void RemoveWidgetMenu_Click(object sender, RoutedEventArgs e)
+    {
+        var target = (sender as MenuItem)?.Parent is ContextMenu menu ? menu.PlacementTarget : null;
+        var widget = target as OpenTaskbar.Widgets.DockWidget ?? FindVisualParent<OpenTaskbar.Widgets.DockWidget>(target) ?? _contextTargetWidget;
+        if (widget?.Tag is string widgetId)
+        {
+            RemoveDockWidget(widgetId);
+        }
+        else if (widget is not null && _widgetCoordinator.GetWidgetId(widget) is { } id)
+        {
+            RemoveDockWidget(id);
+        }
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T parent) return parent;
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
     }
 
     private void DockAppContextMenu_Click(object sender, RoutedEventArgs e)

@@ -77,6 +77,7 @@ public sealed class WidgetCoordinator : IDisposable
 
     /// <summary>Lets the host wire its context-menu open/close handlers so auto-hide stays locked while the menu is up.</summary>
     public Action<ContextMenu>? ConfigureWidgetMenu { get; set; }
+    public Func<string, ContextMenu>? CreateWidgetContextMenu { get; set; }
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
     /// <summary>When true, the host window owns widget placement so all dock item kinds share one strip.</summary>
@@ -149,10 +150,14 @@ public sealed class WidgetCoordinator : IDisposable
         return tray;
     }
 
+    public string? GetWidgetId(DockWidget widget) =>
+        (widget.Tag as string) ?? _widgets.FirstOrDefault(s => ReferenceEquals(s.Widget, widget))?.Id;
+
     private DockWidget EnsureWidget(WidgetSlot slot)
     {
         if (slot.Widget is { } existing) return existing;
         var widget = slot.Factory();
+        widget.Tag = slot.Id;
         widget.ReportError = _reportError;
         widget.AllowDrop = true;
         widget.PreviewMouseLeftButtonDown += Widget_PreviewMouseLeftButtonDown;
@@ -163,16 +168,25 @@ public sealed class WidgetCoordinator : IDisposable
         widget.Drop += Widget_Drop;
         widget.AvailabilityChanged += Widget_AvailabilityChanged;
 
-        var removeItem = new MenuItem { Header = UiText.Get("WidgetRemove") };
-        removeItem.Click += (_, _) => WidgetRemoveRequested?.Invoke(slot.Id);
-        var menu = new ContextMenu();
-        menu.Items.Add(removeItem);
-        ConfigureWidgetMenu?.Invoke(menu);
-        widget.ContextMenu = menu;
+        widget.ContextMenu = CreateWidgetContextMenu?.Invoke(slot.Id) ?? CreateDefaultWidgetMenu(slot.Id);
 
         _hoverCoordinator.Attach(widget);
         slot.Widget = widget;
         return widget;
+    }
+
+    private ContextMenu CreateDefaultWidgetMenu(string widgetId)
+    {
+        var removeItem = new MenuItem { Header = UiText.Get("RemoveWidget") };
+        if (Application.Current?.TryFindResource("IconTrash") is Geometry icon)
+        {
+            removeItem.Icon = icon;
+        }
+        removeItem.Click += (_, _) => WidgetRemoveRequested?.Invoke(widgetId);
+        var menu = new ContextMenu();
+        menu.Items.Add(removeItem);
+        ConfigureWidgetMenu?.Invoke(menu);
+        return menu;
     }
 
     public void Apply(DockSettings settings)

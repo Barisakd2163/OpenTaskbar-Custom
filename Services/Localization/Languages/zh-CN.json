@@ -8,6 +8,7 @@
   "WidgetSettings": "小组件设置",
   "WidgetInstall": "安装",
   "WidgetRemove": "移除",
+  "RemoveWidget": "移除小组件",
   "WidgetSearch": "搜索小组件",
   "WidgetNoResults": "未找到匹配的小组件。",
   "WidgetAvailable": "未安装",

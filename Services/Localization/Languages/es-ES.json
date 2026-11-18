@@ -8,6 +8,7 @@
   "WidgetSettings": "Configuración de widgets",
   "WidgetInstall": "Instalar",
   "WidgetRemove": "Desinstalar",
+  "RemoveWidget": "Quitar widget",
   "WidgetSearch": "Buscar widgets",
   "WidgetNoResults": "No se encontraron widgets coincidentes.",
   "WidgetAvailable": "No instalado",
