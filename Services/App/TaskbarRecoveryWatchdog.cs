@@ -176,28 +176,56 @@ internal static class TaskbarRecoveryWatchdog
     {
         try
         {
-            var appDir = Path.GetDirectoryName(mainExecutablePath) ?? string.Empty;
-            var isSingleFile = !File.Exists(Path.Combine(appDir, "OpenTaskbar.dll"));
-            var targetDir = isSingleFile
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar")
-                : appDir;
-
+            var targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar");
             Directory.CreateDirectory(targetDir);
             var watchdogExe = Path.Combine(targetDir, "OpenTaskbarWatchdog.exe");
 
-            var sourceInfo = new FileInfo(mainExecutablePath);
-            var targetInfo = new FileInfo(watchdogExe);
+            using var resourceStream = typeof(TaskbarRecoveryWatchdog).Assembly
+                .GetManifestResourceStream("OpenTaskbar.Resources.OpenTaskbarWatchdog.exe");
 
-            if (!targetInfo.Exists || targetInfo.Length != sourceInfo.Length || targetInfo.LastWriteTimeUtc != sourceInfo.LastWriteTimeUtc)
+            if (resourceStream is not null)
             {
-                File.Copy(mainExecutablePath, watchdogExe, overwrite: true);
+                try
+                {
+                    var resourceBytes = new byte[resourceStream.Length];
+                    var totalRead = 0;
+                    while (totalRead < resourceBytes.Length)
+                    {
+                        var read = resourceStream.Read(resourceBytes, totalRead, resourceBytes.Length - totalRead);
+                        if (read == 0) break;
+                        totalRead += read;
+                    }
+
+                    var needsWrite = true;
+                    if (File.Exists(watchdogExe))
+                    {
+                        var existing = File.ReadAllBytes(watchdogExe);
+                        if (existing.AsSpan().SequenceEqual(resourceBytes))
+                        {
+                            needsWrite = false;
+                        }
+                    }
+
+                    if (needsWrite)
+                    {
+                        File.WriteAllBytes(watchdogExe, resourceBytes);
+                    }
+                }
+                catch (IOException)
+                {
+                }
+                return watchdogExe;
             }
 
-            return watchdogExe;
+            var appDir = Path.GetDirectoryName(mainExecutablePath) ?? string.Empty;
+            var localExe = Path.Combine(appDir, "OpenTaskbarWatchdog.exe");
+            if (File.Exists(localExe)) return localExe;
+
+            return mainExecutablePath;
         }
         catch (Exception ex)
         {
-            Trace.TraceWarning($"Could not prepare isolated watchdog binary: {ex}");
+            Trace.TraceWarning($"Could not prepare native watchdog binary: {ex}");
             return mainExecutablePath;
         }
     }

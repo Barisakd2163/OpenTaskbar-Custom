@@ -126,6 +126,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        TaskbarRecoveryWatchdog.NotifyCleanExit();
         SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
         var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
         if (error is not null)
@@ -158,6 +159,7 @@ public partial class App : Application
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
+        TaskbarRecoveryWatchdog.NotifyCleanExit();
         var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
         if (error is not null) AppLog.Error(error);
         if (TaskbarReplacementSession.HasPendingRecovery)

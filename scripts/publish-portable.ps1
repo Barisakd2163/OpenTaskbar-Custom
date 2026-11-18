@@ -44,6 +44,11 @@ public class PortableRestorer {
 
 Write-Host "Publishing OpenTaskbar as self-contained portable executable..." -ForegroundColor Cyan
 
+$watchdogScript = "$PSScriptRoot\..\tools\watchdog\build.ps1"
+if (Test-Path $watchdogScript) {
+    & powershell -ExecutionPolicy Bypass -File $watchdogScript
+}
+
 $projectPath = "$PSScriptRoot\..\OpenTaskbar.csproj"
 
 dotnet publish $projectPath `

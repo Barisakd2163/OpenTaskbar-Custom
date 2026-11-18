@@ -297,6 +297,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             _lastWindowPos = null;
             _active = true;
             PositionDockWindow(throwOnFailure: true);
+            TaskbarRecoveryWatchdog.Start(Environment.ProcessId);
         }
         catch
         {
@@ -426,6 +427,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
             var restoreError = RestoreWithVerification(_previousTaskbarState, _handle);
             _stateChangeStarted = false;
+            TaskbarRecoveryWatchdog.NotifyCleanExit();
             if (restoreError is not null) return restoreError;
 
             return DeleteJournal();
@@ -851,7 +853,13 @@ public sealed class TaskbarReplacementSession : IDisposable
     private static bool SetTaskbarState(uint state, nint windowHandle)
     {
         // Explorer can notify us about our own update; an identical state must not publish another one.
-        if ((GetTaskbarState() & SupportedTaskbarState) == (state & SupportedTaskbarState)) return true;
+        var current = GetTaskbarState();
+        if ((current & SupportedTaskbarState) == (state & SupportedTaskbarState) ||
+            (current & AbsAutoHide) == (state & AbsAutoHide))
+        {
+            return true;
+        }
+
         var taskbarHandle = FindWindow("Shell_TrayWnd", null);
         var data = new AppBarData
         {
@@ -860,7 +868,9 @@ public sealed class TaskbarReplacementSession : IDisposable
             lParam = unchecked((nint)state)
         };
         SHAppBarMessage(AbmSetState, ref data);
-        return (GetTaskbarState() & SupportedTaskbarState) == (state & SupportedTaskbarState);
+        current = GetTaskbarState();
+        return (current & SupportedTaskbarState) == (state & SupportedTaskbarState) ||
+               (current & AbsAutoHide) == (state & AbsAutoHide);
     }
 
     private AppBarData CreateData() => new()
