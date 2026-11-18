@@ -25,6 +25,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     public const string BatteryId = "Battery";
     public const string StopwatchId = "Stopwatch";
     public const string CountdownId = "Countdown";
+    public const string SearchId = "Search";
 
     private sealed record WidgetDefinition(string Id, string LabelKey, Func<CultureInfo, string>? Read);
 
@@ -43,6 +44,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new("Storage", "WidgetStorage", SystemWidgetData.ReadStorage),
         new("DayProgress", "WidgetDayProgress", culture =>
             (DateTime.Now.TimeOfDay.TotalSeconds / TimeSpan.FromDays(1).TotalSeconds).ToString("P0", culture)),
+        new(SearchId, "WidgetLauncher", _ => "Alt+Space"),
         new(StopwatchId, "WidgetStopwatch", null),
         new(CountdownId, "WidgetCountdown", null)
     ];

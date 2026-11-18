@@ -114,7 +114,7 @@ internal static class AdaptiveWidgetAndConfirmChecks
     {
         var strip = new StackPanel { Orientation = Orientation.Horizontal };
         using var coordinator = new WidgetCoordinator(strip, dispatcher, _ => { }, lazy: false);
-        var widgets = new[] { "Media", "QuickSettings", "SystemStats", "Audio", "Focus", "Desktops", "Clock" };
+        var widgets = new[] { "Search", "Media", "QuickSettings", "SystemStats", "Audio", "Focus", "Desktops", "Clock" };
         var settings = new DockSettings(
             Widgets: widgets,
             InstalledWidgets: widgets,

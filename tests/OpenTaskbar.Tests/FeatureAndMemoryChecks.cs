@@ -42,14 +42,14 @@ internal static class FeatureAndMemoryChecks
                 var reordered = false;
                 lazyCoordinator.OrderChanged = _ => reordered = true;
                 lazyCoordinator.ReorderWidgets(0, 1);
-                Check(reordered && lazyCoordinator.CurrentOrder[0] != "Media",
+                Check(reordered && lazyCoordinator.CurrentOrder[0] != "Search",
                     "Lazy WidgetCoordinator must support drag reordering.");
 
-                // Enable all 9 live widgets + SystemMeters.All
+                // Enable all 10 live widgets + SystemMeters.All
                 lazyCoordinator.Apply(new DockSettings(
                     Widgets: WidgetCoordinator.DefaultWidgetOrder,
                     StatsMeters: SystemMeters.All));
-                Check(strip.Children.Count == 9, "Enabling all 9 live widgets must materialize all 9 controls.");
+                Check(strip.Children.Count == 10, "Enabling all 10 live widgets must materialize all 10 controls.");
             }
 
             // 2. SystemStats + on-demand SystemSensors parity & disposal
@@ -126,6 +126,21 @@ internal static class FeatureAndMemoryChecks
             var launcher = new LauncherWindow(_ => { });
             launcher.Close();
             Check(true, "LauncherWindow must initialize and close cleanly.");
+
+            var search = new SearchWidget();
+            FrameworkElement? searchAnchor = null;
+            search.LauncherRequested += anchor => searchAnchor = anchor;
+            search.Activate();
+            if (search.Content is Button searchButton)
+            {
+                searchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(ReferenceEquals(searchAnchor, searchButton),
+                    "The search widget must request the launcher with its own button as the anchor.");
+                Check(search.BuildHoverFlyoutContent() is not null,
+                    "The compact-capable search widget must provide hover content.");
+            }
+            search.Deactivate();
+
 
             // 8. Heavy DockSettingsStore validation & round-trip
             var tempSettings = Path.Combine(Path.GetTempPath(), $"ot-heavy-{Guid.NewGuid():N}.json");

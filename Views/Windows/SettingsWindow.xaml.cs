@@ -746,7 +746,7 @@ public partial class SettingsWindow : Window
             AttachDensityRow("SystemStats", StatsOptions);
             stats.SettingsView = StatsOptions;
         }
-        foreach (var id in new[] { "Media", "Audio", "QuickSettings", "Desktops" })
+        foreach (var id in new[] { "Media", "Audio", "QuickSettings", "Desktops", "Search" })
         {
             if (_widgetOptions.FirstOrDefault(o => o.Id == id) is not { } option) continue;
             var panel = new StackPanel();
