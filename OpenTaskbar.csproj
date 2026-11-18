@@ -18,6 +18,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" SubType="Designer" Generator="MSBuild:Compile" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
     <Compile Remove="tmp/**/*.cs" />
     <InternalsVisibleTo Include="OpenTaskbar.Tests" />
