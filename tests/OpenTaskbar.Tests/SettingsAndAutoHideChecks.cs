@@ -262,7 +262,11 @@ internal static class SettingsAndAutoHideChecks
             check(controller.IsHidden, "Continuous guard timer must hide the dock after a long hover even if MouseLeave was dropped.");
 
             controller.SetMode(AutoHideMode.Smart);
+            // Keep the same-process rule independent of whatever real window happens to be foreground on the CI box.
+            controller.ForegroundProvider = () => hwnd;
             controller.CheckForegroundWindow(hwnd);
+            // A hide tick queued by the previous phase can still run after the mode switch; let it settle.
+            PumpUntil(application.Dispatcher, () => !controller.IsHidden, waitBudgetMs);
             check(!controller.HasOverlap && !controller.IsHidden,
                 "Smart mode must ignore same-process foreground windows and stay visible without foreign overlap.");
 

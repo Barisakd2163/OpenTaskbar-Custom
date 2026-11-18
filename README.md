@@ -72,7 +72,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Interactive Catalog:** Built-in widget catalog with live previews and expandable configuration drawers with instant auto-save.
 
 ### Extras and Integration
-- **Search Widget:** An optional dock widget that opens native Windows Search (Win+S), with a compact icon-only mode for narrow docks.
+- **Search Widget:** An optional dock search bar that integrates directly with native Windows Search (Win+S), with text input and compact icon-only mode for narrow docks.
 - **Folder Stacks:** Quick access to folders (such as Downloads) with 2x2 miniature icon previews.
 - **Recycle Bin Integration:** Live recycle bin icon supporting drag-and-drop file deletion and one-click emptying.
 - **Dock Menu:** Right-click the dock for Windows Search, folder stacks, profiles, Task Manager, update checks, and settings.
@@ -139,9 +139,14 @@ dotnet run --project OpenTaskbar.csproj -- --preview --settings
 # Build self-contained portable executable (outputs to dist\OpenTaskbar.exe)
 powershell -ExecutionPolicy Bypass -File ".\scripts\publish-portable.ps1"
 
-# Run automated behavior and visual verification tests
+# Run automated behavior and visual verification tests (full suite, used by CI)
 dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj
+
+# Run only pure logic checks: no windows, no synthetic input, no desktop side effects
+dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj -- --headless
 ```
+
+The full suite verifies WPF controls and therefore needs a Windows desktop session. The `--headless` mode skips those visual checks and runs the fast, side-effect-free logic tests.
 
 ---
 

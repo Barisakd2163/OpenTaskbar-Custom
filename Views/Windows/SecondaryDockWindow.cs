@@ -138,15 +138,24 @@ public sealed class SecondaryDockWindow : Window
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(_monitor, ref info)) return;
         var dpi = GetDpiForMonitor(_monitor);
-        var stripHeight = info.Monitor.Bottom - info.Work.Bottom;
+        // The work-area strip includes our own app-bar reservation. Subtract it before deciding
+        // whether Explorer has reserved enough room, otherwise we release and reclaim our
+        // shelf on alternating work-area notifications.
+        var stripHeight = Math.Max(0, info.Monitor.Bottom - info.Work.Bottom);
         int height;
 
         var metrics = DockLayoutMetrics.Calculate(DockMetrics.ShelfHeight, 0, 0, dpi);
-        var additional = metrics.AdditionalReservation(stripHeight, autoHide: false);
+        var additional = MissingShelfPixels(stripHeight, _reservation?.Height ?? 0, dpi);
         if (additional == 0)
         {
             // Explorer still reserves enough space here: reuse it and drop any shelf we reserved earlier.
-            if (_reservation is not null) ReleaseReservation();
+            if (_reservation is not null)
+            {
+                ReleaseReservation();
+                // Re-read the work area after removing our own shelf.
+                if (!GetMonitorInfo(_monitor, ref info)) return;
+                stripHeight = Math.Max(0, info.Monitor.Bottom - info.Work.Bottom);
+            }
             height = stripHeight;
         }
         else
@@ -167,8 +176,10 @@ public sealed class SecondaryDockWindow : Window
                 };
                 SHAppBarMessage(AbmQueryPos, ref data);
                 data.rc.Top = data.rc.Bottom - additional;
-                SHAppBarMessage(AbmSetPos, ref data);
-                _reservation = (info.Monitor.Left, info.Monitor.Right, additional);
+                if (SHAppBarMessage(AbmSetPos, ref data) != 0)
+                    _reservation = (info.Monitor.Left, info.Monitor.Right, additional);
+                else
+                    AppLog.Warning("Could not reserve the secondary dock shelf.");
             }
 
             // Re-read the work area: the reservation may have moved the bottom edge.
@@ -181,12 +192,20 @@ public sealed class SecondaryDockWindow : Window
         _stripAvailable = true;
         ApplyVisibility();
         SetWindowPos(_handle, new nint(-1), info.Monitor.Left, info.Monitor.Bottom - height,
-            info.Monitor.Right - info.Monitor.Left, height, 0x0010 | 0x0040);
+            info.Monitor.Right - info.Monitor.Left, height, PositionFlags(_stripAvailable && !_fullScreen));
     }
 
     /// <summary>True when Explorer released the secondary taskbar strip and the dock must reserve its own shelf.</summary>
-    internal static bool NeedsOwnShelf(int stripHeight, uint dpi) =>
-        DockLayoutMetrics.Calculate(DockMetrics.ShelfHeight, 0, 0, dpi).AdditionalReservation(stripHeight, false) > 0;
+    internal static bool NeedsOwnShelf(int stripHeight, uint dpi) => MissingShelfPixels(stripHeight, 0, dpi) > 0;
+
+    // A monitor's work-area strip contains both the Explorer reservation and our own shelf.
+    // Only the external portion should determine whether our shelf is still needed.
+    internal static int MissingShelfPixels(int totalStripHeight, int ownReservedHeight, uint dpi) =>
+        DockLayoutMetrics.Calculate(DockMetrics.ShelfHeight, 0, 0, dpi)
+            .AdditionalReservation(Math.Max(0, totalStripHeight - Math.Max(0, ownReservedHeight)), false);
+
+    // A hidden fullscreen dock must not be re-shown by a subsequent position refresh.
+    internal static uint PositionFlags(bool visible) => 0x0010u | (visible ? 0x0040u : 0u);
 
     private AppBarData CreateData() => new()
     {

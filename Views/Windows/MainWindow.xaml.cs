@@ -1276,9 +1276,11 @@ public partial class MainWindow : Window
                     item.Click += async (_, args) =>
                     {
                         args.Handled = true;
-                        var invocation = _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
+                        // Await before closing: closing raises ContextMenu.Closed -> ReleaseAsync, and racing both
+                        // on the COM worker can dispose the session before the invocation is dispatched.
+                        var launched = await _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
                         menu.IsOpen = false;
-                        if (!await invocation && IsLoaded)
+                        if (!launched && IsLoaded)
                             ReportError("ErrorAppTaskRun");
                     };
                     items.Add(item);
@@ -2325,6 +2327,45 @@ public partial class MainWindow : Window
         _dockTopGap = Math.Max(0.0, thickness - profile.SurfaceHeight - profile.BottomGap);
         ApplyDockMargin();
         ResizeDockToContent();
+    }
+
+    /// <summary>
+    /// Lock/unlock leaves the secure desktop in charge of focus and input for a while. Clear every cached window
+    /// handle and transient popup so the first click or keystroke after returning cannot activate a stale window
+    /// or land on a flyout action such as a Windows settings link.
+    /// </summary>
+    internal void ResetTransientUiStateForSessionSwitch(bool unlocking)
+    {
+        if (unlocking) _widgetCoordinator.SuppressHover(TimeSpan.FromMilliseconds(1200));
+        else _widgetCoordinator.CollapseHover();
+
+        _widgetPanel.Close(restoreFocus: false);
+        _previewHoverTimer.Stop();
+        _previewCloseTimer.Stop();
+        _pendingPreviewButton = null;
+        _thumbnailPreview.Hide();
+        if (_openContextMenu is not null) _openContextMenu.IsOpen = false;
+        _openContextMenu = null;
+        DockFlyout.CloseAll(restoreFocus: false);
+        ResetMagnification();
+
+        _foregroundWindow = 0;
+        _foregroundAtMenuOpen = 0;
+        _foregroundAtAppPress = null;
+        _contextTargetWasForeground = false;
+        _contextMenuOpenedAtUtc = default;
+        _keyboardNavigationActive = false;
+        _foregroundBeforeKeyboard = 0;
+
+        if (!unlocking) return;
+
+        // A Win keydown synthesized just before the lock may have lost its keyup on the secure desktop.
+        ShellShortcuts.ReleaseStuckModifiers();
+        _windowTracker?.ResyncForeground();
+        UnregisterHotkeys();
+        RegisterHotkeys();
+        _replacementSession?.UpdateForeground(NativeWindowTracker.GetForegroundApplicationWindow());
+        _autoHideController?.EvaluateState();
     }
 
     private void OnFullScreenChanged(bool suppressed)

@@ -315,7 +315,7 @@ public partial class SettingsWindow : Window
             ShowWeather = IsEnabled("Weather"),
             WeatherCity = WeatherCityBox.Text.Trim(),
             LauncherHotkey = _preferences.Current.LauncherHotkey,
-            DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : DockWinAltD.IsChecked == true ? HotkeyChoice.WinAltD : HotkeyChoice.Disabled,
+            DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : HotkeyChoice.Disabled,
             StartAction = StartButtonAction.WindowsStart,
             StartPlacement = StartHidden.IsChecked == true ? StartButtonPlacement.Hidden
                 : StartLast.IsChecked == true ? StartButtonPlacement.End
@@ -719,8 +719,8 @@ public partial class SettingsWindow : Window
         StatsCpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.CpuTemperature);
         StatsGpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Gpu);
         StatsGpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.GpuTemperature);
-        DockCtrlAltD.IsChecked = settings.DockHotkey == HotkeyChoice.CtrlAltD;
-        DockWinAltD.IsChecked = settings.DockHotkey == HotkeyChoice.WinAltD;
+        // WinAltD is retired: existing selections fall back to the equivalent Ctrl+Alt+D.
+        DockCtrlAltD.IsChecked = settings.DockHotkey is HotkeyChoice.CtrlAltD or HotkeyChoice.WinAltD;
         DockOff.IsChecked = settings.DockHotkey is not (HotkeyChoice.CtrlAltD or HotkeyChoice.WinAltD);
         StartFirst.IsChecked = settings.StartPlacement == StartButtonPlacement.Start;
         StartLast.IsChecked = settings.StartPlacement == StartButtonPlacement.End;
@@ -745,7 +745,7 @@ public partial class SettingsWindow : Window
             AttachDensityRow("SystemStats", StatsOptions);
             stats.SettingsView = StatsOptions;
         }
-        foreach (var id in new[] { "Media", "Audio", "QuickSettings", "Desktops" })
+        foreach (var id in new[] { "Media", "Audio", "QuickSettings", "Desktops", "Search" })
         {
             if (_widgetOptions.FirstOrDefault(o => o.Id == id) is not { } option) continue;
             var panel = new StackPanel();

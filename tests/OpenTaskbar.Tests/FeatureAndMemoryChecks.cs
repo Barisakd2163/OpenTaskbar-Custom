@@ -132,6 +132,9 @@ internal static class FeatureAndMemoryChecks
             search.Deactivate();
 
 
+
+
+
             // 8. Heavy DockSettingsStore validation & round-trip
             var tempSettings = Path.Combine(Path.GetTempPath(), $"ot-heavy-{Guid.NewGuid():N}.json");
             try

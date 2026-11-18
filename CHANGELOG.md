@@ -2,6 +2,8 @@
 
 ## 0.2.8 - 2026-11-18
 
+## 0.2.8 - 2026-11-18
+
 - Added an active dock-integrated Search capsule widget with embedded text input, live watermark, clear button, and direct two-way synchronization with Windows Search (`SearchHost.exe`).
 - Forwarded `Enter`, `Up`, `Down`, and `Escape` keyboard navigation from dock search input directly to Windows Search.
 - Positioned Windows Search flyout dynamically centered above the Search widget trigger button and suppressed rogue Explorer taskbar search boxes.
@@ -13,6 +15,10 @@
 - Disabled `PublishReadyToRun` to drastically reduce build times and single-file publish artifact sizes.
 - Added right-click context menu with widget removal support directly on dock widget items.
 - Fixed native taskbar recovery journaling, verified repeated state restore, and hardened recovery across crashes.
+- Fixed application-specific jump list tasks (e.g. LibreWolf private window) launching their shell link target and arguments directly.
+- Fixed Windows Settings opening after lock transitions with synthetic Win chord release guarantees.
+- Fixed secondary dock shelf measurement in multi-monitor setups.
+- Added `--headless` test mode for pure logic checks.
 
 ## 0.2.7 - 2026-11-17
 

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using OpenTaskbar.Services;
 
 namespace OpenTaskbar;
@@ -52,6 +53,7 @@ public partial class App : Application
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        SystemEvents.SessionSwitch += SystemEvents_SessionSwitch;
 
         IsPreview = e.Args.Contains("--preview", StringComparer.Ordinal);
         IsInspection = e.Args.Contains("--inspect", StringComparer.Ordinal);
@@ -92,6 +94,17 @@ public partial class App : Application
             StartDevReload(sourceRoot);
     }
 
+    private void SystemEvents_SessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        var unlocking = e.Reason is SessionSwitchReason.SessionUnlock or SessionSwitchReason.SessionLogon;
+        var locking = e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionLogoff;
+        if (!unlocking && !locking) return;
+
+        // SystemEvents raises this on a thread-pool thread; every UI state change must happen on the dispatcher.
+        Dispatcher.BeginInvoke(new Action(() =>
+            (MainWindow as OpenTaskbar.MainWindow)?.ResetTransientUiStateForSessionSwitch(unlocking)));
+    }
+
     private void StartDevReload(string? sourceRoot)
     {
         var root = sourceRoot;
@@ -113,6 +126,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
         var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
         if (error is not null)
         {
