@@ -102,13 +102,13 @@ internal static class FeatureAndMemoryChecks
                 ai.Activate();
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
                 var cards = AiCards(ai);
-                Check(cards.Length == 2 && cards.All(card => card.Content is StackPanel { Children: [System.Windows.Shapes.Path { Data: not null }, TextBlock, UsageBar, TextBlock] })
-                    && cards[0].Content is StackPanel { Children: [_, TextBlock { Text: "Claude" }, UsageBar { Value: 0.42 }, TextBlock { Text: "42%" }] }
-                    && cards[1].Content is StackPanel { Children: [_, TextBlock { Text: "Codex" }, UsageBar { Value: 0.9 }, TextBlock] }
+                Check(cards.Length == 2 && cards.All(card => card.Content is StackPanel { Children: [System.Windows.Shapes.Path { Data: not null }, TextBlock, RingMeter] })
+                    && cards[0].Content is StackPanel { Children: [_, TextBlock { Text: "Claude" }, RingMeter { Value: 0.42, Text: "42" }] }
+                    && cards[1].Content is StackPanel { Children: [_, TextBlock { Text: "Codex" }, RingMeter { Value: 0.9 }] }
                     && cards[0].ToolTip is string claudeTip && claudeTip.StartsWith("Claude Code 42%", StringComparison.Ordinal)
                     && claudeTip.Contains("Weekly 29%", StringComparison.Ordinal) && claudeTip.Contains("Resets in", StringComparison.Ordinal)
                     && cards[1].ToolTip is string codexTip && codexTip.Contains(UiText.Get("AiUsageLimitReached"), StringComparison.Ordinal),
-                    "AI Usage must show one card per provider with logo, name, used/remaining bar and a one-line summary.");
+                    "AI Usage must show one card per provider with logo, name, usage ring and a one-line summary.");
                 ai.ApplySettings(new DockSettings(AiUsageProviders: AiProviders.All, AiUsageRing: AiUsageRing.Weekly));
                 Check(AiCards(ai)[0].ToolTip is string weeklyTip && weeklyTip.StartsWith("Claude Code 29%", StringComparison.Ordinal),
                     "The ring setting must choose the window the dock shows.");
