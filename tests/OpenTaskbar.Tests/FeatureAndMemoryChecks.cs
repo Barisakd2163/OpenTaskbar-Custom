@@ -128,9 +128,16 @@ internal static class FeatureAndMemoryChecks
             var search = new SearchWidget();
             search.Activate();
             Check(search.BuildHoverFlyoutContent() is not null,
-                "The compact-capable search widget must provide hover content.");
-            Check(search.SupportsCompactMode && search.FullWidthEstimate > search.CompactWidthEstimate,
-                "Search widget must provide valid width estimates for compact and expanded modes.");
+                "Search widget must provide hover content.");
+            var tray = new TrayWidget();
+            tray.Activate();
+            search.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            tray.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Check(Math.Abs(search.DesiredSize.Height - tray.DesiredSize.Height) < 0.001,
+                $"Search widget ({search.DesiredSize.Height}) and Tray widget ({tray.DesiredSize.Height}) must have identical desired heights.");
+            Check(Math.Abs(search.DesiredSize.Width - tray.DesiredSize.Width) < 0.001,
+                $"Search widget ({search.DesiredSize.Width}) and Tray widget ({tray.DesiredSize.Width}) must have identical desired widths.");
+            tray.Deactivate();
             search.Deactivate();
 
 
