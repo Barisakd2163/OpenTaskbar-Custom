@@ -13,8 +13,17 @@ public sealed record AppAudioSession(
     BitmapSource? Icon,
     float Volume,
     bool IsMuted,
-    Action<float> SetVolume,
-    Action<bool> SetMute);
+    Func<float, bool> SetVolume,
+    Func<bool, bool> SetMute,
+    Action? Release = null) : IDisposable
+{
+    private int _disposed;
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) Release?.Invoke();
+    }
+}
 
 /// <summary>
 /// Tracks default playback and recording devices, lists endpoints, and controls app audio sessions
@@ -279,6 +288,7 @@ public sealed class AudioEndpointMonitor : IDisposable
                         for (var i = 0; i < count; i++)
                         {
                             if (sessionEnum.GetSession(i, out var control) != 0 || control is null) continue;
+                            var retainedForMixer = false;
                             try
                             {
                                 if (control is not IAudioSessionControl2 ctl2 || control is not ISimpleAudioVolume simpleVolume) continue;
@@ -330,31 +340,13 @@ public sealed class AudioEndpointMonitor : IDisposable
                                 simpleVolume.GetMasterVolume(out var vol);
                                 simpleVolume.GetMute(out var muted);
 
+                                // The slider must retain its COM session until the mixer is closed.
+                                // Releasing it here makes later volume writes fail against a disconnected RCW.
+                                var handle = new AppSessionVolumeHandle(control, simpleVolume);
                                 sessions.Add(new AppAudioSession(
-                                    pid,
-                                    appName,
-                                    appIcon,
-                                    vol,
-                                    muted,
-                                    level =>
-                                    {
-                                        try
-                                        {
-                                            var ctx = Guid.NewGuid();
-                                            simpleVolume.SetMasterVolume(Math.Clamp(level, 0f, 1f), ref ctx);
-                                        }
-                                        catch (Exception ex) { AppLog.Warning($"Session volume change failed: {ex.Message}"); }
-                                    },
-                                    mute =>
-                                    {
-                                        try
-                                        {
-                                            var ctx = Guid.NewGuid();
-                                            simpleVolume.SetMute(mute, ref ctx);
-                                        }
-                                        catch (Exception ex) { AppLog.Warning($"Session mute change failed: {ex.Message}"); }
-                                    }
-                                ));
+                                    pid, appName, appIcon, vol, muted,
+                                    handle.SetVolume, handle.SetMute, handle.Dispose));
+                                retainedForMixer = true;
                             }
                             catch (Exception ex)
                             {
@@ -362,7 +354,7 @@ public sealed class AudioEndpointMonitor : IDisposable
                             }
                             finally
                             {
-                                Marshal.ReleaseComObject(control);
+                                if (!retainedForMixer) Marshal.ReleaseComObject(control);
                             }
                         }
                     }
@@ -421,6 +413,48 @@ public sealed class AudioEndpointMonitor : IDisposable
         }
 
         return sessions;
+    }
+
+    // Owns one audio session for as long as its mixer controls are on screen.
+    private sealed class AppSessionVolumeHandle(IAudioSessionControl control, ISimpleAudioVolume volume) : IDisposable
+    {
+        private IAudioSessionControl? _control = control;
+        private readonly ISimpleAudioVolume _volume = volume;
+        private Guid _eventContext = Guid.NewGuid();
+
+        public bool SetVolume(float level)
+        {
+            if (_control is null) return false;
+            try
+            {
+                var result = _volume.SetMasterVolume(Math.Clamp(level, 0f, 1f), ref _eventContext);
+                if (result == 0) return true;
+                AppLog.Warning($"Session volume change failed: HRESULT 0x{result:X8}");
+            }
+            catch (Exception ex) { AppLog.Warning($"Session volume change failed: {ex.Message}"); }
+            return false;
+        }
+
+        public bool SetMute(bool muted)
+        {
+            if (_control is null) return false;
+            try
+            {
+                var result = _volume.SetMute(muted, ref _eventContext);
+                if (result == 0) return true;
+                AppLog.Warning($"Session mute change failed: HRESULT 0x{result:X8}");
+            }
+            catch (Exception ex) { AppLog.Warning($"Session mute change failed: {ex.Message}"); }
+            return false;
+        }
+
+        public void Dispose()
+        {
+            var control = _control;
+            if (control is null) return;
+            _control = null;
+            Marshal.ReleaseComObject(control);
+        }
     }
 
     private static string? ReadFriendlyName(IMMDevice device)
