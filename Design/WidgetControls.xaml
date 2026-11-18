@@ -316,28 +316,33 @@
                 </Border>
             </StackPanel>
 
-            <!-- AI usage widget taskbar preview (one ring per provider; the thin inner arc is the other window) -->
+            <!-- AI usage widget taskbar preview (one card per provider: logo, name, used/remaining bar, percent) -->
             <StackPanel x:Name="AiUsagePreview" Orientation="Horizontal" Visibility="Collapsed">
-                <Border Style="{StaticResource WidgetCardBorder}" Width="{StaticResource WidgetHeight}" Padding="3">
-                    <Grid>
-                        <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="Claude" Value="0.42" Text="42"
-                                     CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
-                                     ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
-                        <w:RingMeter Width="30" Height="30" StrokeThickness="1.5" Value="0.29"
-                                     TrackBrush="{DynamicResource WidgetTrack}" ValueBrush="{DynamicResource TextSecondary}" />
-                    </Grid>
+                <Border Style="{StaticResource WidgetCardBorder}" Padding="10,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path Data="{StaticResource LogoClaude}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,6,0"
+                              Fill="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                        <TextBlock Text="Claude" Width="44" Margin="0,0,6,0" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                        <w:UsageBar Width="56" Height="6" Value="0.42" UsedBrush="{DynamicResource WidgetAccent}"
+                                    RemainingBrush="{DynamicResource WidgetTrack}" VerticalAlignment="Center" />
+                        <TextBlock Text="42%" Width="32" Margin="6,0,0,0" FontSize="11.5" TextAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimary}" />
+                    </StackPanel>
                 </Border>
-                <Border Style="{StaticResource WidgetCardBorder}" Width="{StaticResource WidgetHeight}" Padding="3">
-                    <Grid>
-                        <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="Codex" Value="0.78" Text="78"
-                                     CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
-                                     ValueBrush="{DynamicResource WidgetWarning}" Foreground="{DynamicResource TextPrimary}" />
-                        <w:RingMeter Width="30" Height="30" StrokeThickness="1.5" Value="0.31"
-                                     TrackBrush="{DynamicResource WidgetTrack}" ValueBrush="{DynamicResource TextSecondary}" />
-                    </Grid>
+                <Border Style="{StaticResource WidgetCardBorder}" Padding="10,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path Data="{StaticResource LogoCodex}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,6,0"
+                              Fill="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                        <TextBlock Text="Codex" Width="44" Margin="0,0,6,0" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                        <w:UsageBar Width="56" Height="6" Value="0.78" UsedBrush="{DynamicResource WidgetWarning}"
+                                    RemainingBrush="{DynamicResource WidgetTrack}" VerticalAlignment="Center" />
+                        <TextBlock Text="78%" Width="32" Margin="6,0,0,0" FontSize="11.5" TextAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimary}" />
+                    </StackPanel>
                 </Border>
             </StackPanel>
-
             <!-- Focus (Pomodoro) widget taskbar preview -->
             <Border x:Name="FocusPreview" Style="{StaticResource WidgetCardBorder}" BorderThickness="1.5" Padding="12,0,8,0" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

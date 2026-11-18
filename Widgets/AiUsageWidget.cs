@@ -36,14 +36,14 @@ public sealed class AiUsageWidget : DockWidget
     private AiProviders _enabled;
     private int _renderedMinute = -1;
 
-    private sealed record Card(Button Button, RingMeter Ring, RingMeter Inner);
+    private sealed record Card(Button Button, System.Windows.Shapes.Path Logo, TextBlock Name, UsageBar Bar, TextBlock Percent);
 
     public AiUsageWidget(Func<AiProviders, CancellationToken, Task<(AiUsageReport?, string?)>>? loader = null)
     {
         _loader = loader;
-        _summary = AddCard("AI");
-        _claude = AddCard("Claude");
-        _codex = AddCard("Codex");
+        _summary = AddCard("AI", null);
+        _claude = AddCard("Claude", "LogoClaude");
+        _codex = AddCard("Codex", "LogoCodex");
         _flyout.Closed += (_, _) => _countdowns.Clear();
         Content = _cards;
         Render();
@@ -51,10 +51,13 @@ public sealed class AiUsageWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 40;
-    public override double FullWidthEstimate => Math.Max(1, EnabledProviders.Count()) * CardWidth;
-    public override double CompactWidthEstimate => CardWidth;
-    private double CardWidth => (TryFindResource("WidgetHeight") is double size ? size : 46)
-        + (TryFindResource("WidgetSpacing") is Thickness spacing ? spacing.Left + spacing.Right : 0);
+    // Card layout: padding and border, logo, fixed-width name, bar, fixed-width percent; the compact summary card has no logo.
+    private const double LogoSize = 16, NameWidth = 44, BarWidth = 56, PercentWidth = 32, Gap = 6;
+    private const double CardPaddingAndBorder = 22;
+    public override double FullWidthEstimate => Math.Max(1, EnabledProviders.Count()) * (CardWidth(true) + CardSpacing);
+    public override double CompactWidthEstimate => CardWidth(false) + CardSpacing;
+    private static double CardWidth(bool logo) => CardPaddingAndBorder + (logo ? LogoSize + Gap : 0) + NameWidth + Gap + BarWidth + Gap + PercentWidth;
+    private double CardSpacing => TryFindResource("WidgetSpacing") is Thickness spacing ? spacing.Left + spacing.Right : 0;
     private IEnumerable<AiProviders> EnabledProviders => Providers.Where(provider => _enabled.HasFlag(provider));
 
     protected override void OnActivated()
@@ -317,26 +320,36 @@ public sealed class AiUsageWidget : DockWidget
         return string.Join(" · ", parts);
     }
 
-    private Card AddCard(string caption)
+    private Card AddCard(string name, string? logoKey)
     {
-        var ring = new RingMeter { Width = 38, Height = 38, StrokeThickness = 3, FontSize = 11.5, Caption = caption };
-        ring.SetResourceReference(RingMeter.CaptionBrushProperty, "TextSecondary");
-        ring.SetResourceReference(RingMeter.TrackBrushProperty, "WidgetTrack");
-        // A thin inner arc carries the other window, so one glance shows both session and weekly use.
-        var inner = new RingMeter { Width = 30, Height = 30, StrokeThickness = 1.5, IsHitTestVisible = false };
-        inner.SetResourceReference(RingMeter.TrackBrushProperty, "WidgetTrack");
-        var button = new Button { Content = new Grid { Children = { ring, inner } }, Padding = new Thickness(3) };
+        var logo = new System.Windows.Shapes.Path { Width = LogoSize, Height = LogoSize, Stretch = Stretch.Uniform,
+            Margin = new Thickness(0, 0, Gap, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        if (logoKey is null) logo.Visibility = Visibility.Collapsed;
+        else logo.Data = (Geometry)TryFindResource(logoKey);
+        logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "TextPrimary");
+        var label = Text(name, 12, "TextPrimary");
+        label.FontWeight = FontWeights.SemiBold;
+        label.Width = NameWidth;
+        label.TextTrimming = TextTrimming.CharacterEllipsis;
+        label.Margin = new Thickness(0, 0, Gap, 0);
+        var bar = new UsageBar { Width = BarWidth, Height = 6, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        bar.SetResourceReference(UsageBar.RemainingBrushProperty, "WidgetTrack");
+        var percent = Text("—", 11.5, "TextPrimary");
+        percent.Width = PercentWidth;
+        percent.TextAlignment = TextAlignment.Right;
+        percent.Margin = new Thickness(Gap, 0, 0, 0);
+        Typography.SetNumeralAlignment(percent, FontNumeralAlignment.Tabular);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Children = { logo, label, bar, percent } };
+        var button = new Button { Content = row };
         button.SetResourceReference(StyleProperty, "WidgetCardButton");
-        button.SetResourceReference(WidthProperty, "WidgetHeight");
         button.Click += (_, _) => _flyout.Toggle(button, () =>
         {
             _flyoutHost.Content = BuildFlyout(_countdowns);
             return _flyoutHost;
         });
         _cards.Children.Add(button);
-        return new(button, ring, inner);
+        return new(button, logo, label, bar, percent);
     }
-
     private void Render()
     {
         HasData = true;
@@ -350,7 +363,7 @@ public sealed class AiUsageWidget : DockWidget
             // MaxBy over reference types returns null for an empty sequence, so nothing loaded yet shows a dash.
             var highest = reports.Select(report => RingWindow(report, Settings.AiUsageRing)).OfType<AiUsageWindow>()
                 .MaxBy(window => window.Used);
-            UpdateCard(_summary, highest, null, reports.Any(IsStale),
+            UpdateCard(_summary, highest, reports.Any(IsStale),
                 providers.Length == 0 ? UiText.Get("AiUsageNoProviders") : string.Join("\n", providers.Select(Summary)));
         }
         _summary.Button.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
@@ -361,31 +374,25 @@ public sealed class AiUsageWidget : DockWidget
             if (!visible) continue;
             if (!_reports.TryGetValue(provider, out var report) || RingWindow(report, Settings.AiUsageRing) is not { } main)
             {
-                UpdateCard(card, null, null, false, Summary(provider));
+                UpdateCard(card, null, false, Summary(provider));
                 continue;
             }
-            var other = report.Windows.FirstOrDefault(window => window.LabelKey == (main.LabelKey == "AiUsageSession" ? "AiUsageWeekly" : "AiUsageSession"));
-            UpdateCard(card, main, other, IsStale(report), Summary(provider));
+            UpdateCard(card, main, IsStale(report), Summary(provider));
         }
     }
 
-    private void UpdateCard(Card card, AiUsageWindow? main, AiUsageWindow? other, bool stale, string toolTip)
+    private void UpdateCard(Card card, AiUsageWindow? main, bool stale, string toolTip)
     {
-        card.Ring.Value = main?.Used ?? 0;
-        card.Ring.Text = main is null ? "—" : ((int)Math.Round(main.Used * 100)).ToString(CultureInfo.InvariantCulture);
-        card.Ring.SetResourceReference(RingMeter.ValueBrushProperty, main is null ? "TextMuted" : Accent(main.Used, main.Severity));
-        card.Ring.SetResourceReference(RingMeter.ForegroundProperty, stale ? "TextMuted" : "TextPrimary");
-        card.Inner.Visibility = other is null ? Visibility.Collapsed : Visibility.Visible;
-        card.Inner.Value = other?.Used ?? 0;
-        if (other is not null)
-        {
-            var accent = Accent(other.Used, other.Severity);
-            card.Inner.SetResourceReference(RingMeter.ValueBrushProperty, accent == "WidgetAccent" ? "TextSecondary" : accent);
-        }
+        card.Bar.Value = main?.Used ?? 0;
+        card.Bar.SetResourceReference(UsageBar.UsedBrushProperty, main is null ? "TextMuted" : Accent(main.Used, main.Severity));
+        card.Percent.Text = main is null ? "—" : Percent(main.Used);
+        var foreground = stale ? "TextMuted" : "TextPrimary";
+        card.Percent.SetResourceReference(TextBlock.ForegroundProperty, foreground);
+        card.Name.SetResourceReference(TextBlock.ForegroundProperty, foreground);
+        card.Logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, foreground);
         card.Button.ToolTip = toolTip;
         AutomationProperties.SetName(card.Button, $"{UiText.Get("WidgetAiUsage")}: {toolTip}");
     }
-
     private UIElement BuildFlyout(List<(TextBlock Block, DateTimeOffset Reset)> countdowns)
     {
         countdowns.Clear();
