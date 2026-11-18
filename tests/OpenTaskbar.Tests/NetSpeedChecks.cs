@@ -109,7 +109,7 @@ internal static class NetSpeedChecks
         widget.SpeedTestRunner = (progress, ct) =>
         {
             progress.Report(new SpeedTestProgress("Testing", 50.0, 50));
-            return Task.FromResult(new SpeedTestResult(2, 941.5, 856.2, "Teknosos DC (Istanbul)", "TurkNet", "https://www.speedtest.net/result/c/test"));
+            return Task.FromResult(new SpeedTestResult(2, 941.5, 856.2));
         };
 
         var flyout = widget.BuildClickFlyoutContent();
