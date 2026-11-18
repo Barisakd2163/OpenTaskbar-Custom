@@ -362,13 +362,15 @@ public sealed class DockFlyout
         _popup.IsOpen = false;
     }
 
+    private const double FlyoutGap = 10;
+
     private static CustomPopupPlacement[] Place(Size popupSize, Size targetSize, Point offset)
     {
         var point = Edge switch
         {
-            DockEdge.Left => new Point(targetSize.Width, (targetSize.Height - popupSize.Height) / 2),
-            DockEdge.Right => new Point(-popupSize.Width, (targetSize.Height - popupSize.Height) / 2),
-            _ => new Point((targetSize.Width - popupSize.Width) / 2, -popupSize.Height)
+            DockEdge.Left => new Point(targetSize.Width + FlyoutGap, (targetSize.Height - popupSize.Height) / 2),
+            DockEdge.Right => new Point(-popupSize.Width - FlyoutGap, (targetSize.Height - popupSize.Height) / 2),
+            _ => new Point((targetSize.Width - popupSize.Width) / 2, -popupSize.Height - FlyoutGap)
         };
         return [new CustomPopupPlacement(point, PopupPrimaryAxis.None)];
     }

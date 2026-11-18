@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -24,6 +23,9 @@ public partial class AudioWidget : DockWidget
     private string? _lastIconKey;
     private AppLanguage _lastLanguage;
 
+    private bool _outputDevicesExpanded;
+    private bool _inputDevicesExpanded;
+
     private Border? _flyoutContainer;
     private Slider? _flyoutSlider;
     private TextBlock? _flyoutLevelText;
@@ -34,8 +36,8 @@ public partial class AudioWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 40;
-    public override double FullWidthEstimate => 190;
-    public override double CompactWidthEstimate => 54;
+    public override double FullWidthEstimate => 140;
+    public override double CompactWidthEstimate => 48;
 
     public AudioWidget()
     {
@@ -48,41 +50,22 @@ public partial class AudioWidget : DockWidget
     private void ApplyDensityLayout()
     {
         var compact = IsCompact && !IsHoverExpanded;
-        Card.Width = compact ? 48 : 184;
-        Card.Padding = compact ? new Thickness(4, 2, 4, 2) : new Thickness(6, 0, 12, 0);
+        Card.Width = compact ? 48 : 140;
+        Card.Padding = compact ? new Thickness(4, 2, 4, 2) : new Thickness(8, 0, 10, 0);
         DeviceText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        VolumeSlider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
         if (compact)
         {
-            Grid.SetRow(MuteButton, 0);
-            Grid.SetRowSpan(MuteButton, 1);
-            Grid.SetColumn(MuteButton, 0);
-            Grid.SetColumnSpan(MuteButton, 3);
-            MuteButton.Width = 24;
+            MuteButton.Margin = new Thickness(0);
+            MuteButton.Width = 22;
             MuteButton.Height = 20;
-            MuteButton.HorizontalAlignment = HorizontalAlignment.Center;
-
-            Grid.SetRow(LevelText, 1);
-            Grid.SetColumn(LevelText, 0);
-            Grid.SetColumnSpan(LevelText, 3);
-            LevelText.HorizontalAlignment = HorizontalAlignment.Center;
-            LevelText.FontSize = 10.5;
+            LevelText.FontSize = 10;
         }
         else
         {
-            Grid.SetRow(MuteButton, 0);
-            Grid.SetRowSpan(MuteButton, 2);
-            Grid.SetColumn(MuteButton, 0);
-            Grid.SetColumnSpan(MuteButton, 1);
-            MuteButton.Width = 28;
-            MuteButton.Height = 28;
-            MuteButton.HorizontalAlignment = HorizontalAlignment.Left;
-
-            Grid.SetRow(LevelText, 0);
-            Grid.SetColumn(LevelText, 2);
-            Grid.SetColumnSpan(LevelText, 1);
-            LevelText.HorizontalAlignment = HorizontalAlignment.Right;
+            MuteButton.Margin = new Thickness(0, 0, 4, 0);
+            MuteButton.Width = 24;
+            MuteButton.Height = 24;
             LevelText.ClearValue(TextBlock.FontSizeProperty);
         }
     }
@@ -103,6 +86,8 @@ public partial class AudioWidget : DockWidget
             _flyoutMicSlider = null;
             _flyoutMicLevelText = null;
             _flyoutMicIcon = null;
+            _outputDevicesExpanded = false;
+            _inputDevicesExpanded = false;
         };
 
         PopulateFlyout(container);
@@ -113,22 +98,23 @@ public partial class AudioWidget : DockWidget
     {
         var root = new StackPanel { Margin = new Thickness(0) };
 
-        // 1. Header (Volume Center)
-        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 8) };
+        // Header: Ses Denetimi
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 10) };
         var headerIcon = new ContentControl
         {
-            Width = 16,
-            Height = 16,
+            Width = 15,
+            Height = 15,
             Content = FindResource("IconSliders"),
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         headerIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+
         var headerTitle = new TextBlock
         {
             Text = UiText.Get("Volume"),
             FontWeight = FontWeights.SemiBold,
-            FontSize = 13,
+            FontSize = 12.5,
             VerticalAlignment = VerticalAlignment.Center
         };
         headerTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
@@ -136,107 +122,160 @@ public partial class AudioWidget : DockWidget
         header.Children.Add(headerTitle);
         root.Children.Add(header);
 
-        // 2. Playback / Output Device Section
-        var outHeader = new TextBlock
-        {
-            Text = UiText.Get("AudioOutputDevices"),
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(4, 0, 4, 4)
-        };
-        outHeader.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        root.Children.Add(outHeader);
+        // 1. Çıkış Sesi Kartı (Output Card)
+        var outCard = CreateSectionCard();
+        var outCardPanel = new StackPanel();
 
         var outDevices = _monitor?.GetPlaybackDevices() ?? [];
+        var activeOutDev = outDevices.FirstOrDefault(d => d.IsDefault) ?? (outDevices.Count > 0 ? outDevices[0] : null);
+
+        var isHeadphone = activeOutDev is not null && (
+            activeOutDev.Name.Contains("headphone", StringComparison.OrdinalIgnoreCase)
+            || activeOutDev.Name.Contains("kulaklık", StringComparison.OrdinalIgnoreCase)
+            || activeOutDev.Name.Contains("headset", StringComparison.OrdinalIgnoreCase)
+            || activeOutDev.Name.Contains("buds", StringComparison.OrdinalIgnoreCase)
+            || activeOutDev.Name.Contains("airpod", StringComparison.OrdinalIgnoreCase));
+
+        // Active device header row (clickable to expand if multiple devices)
+        var outDevRow = new Grid
+        {
+            Cursor = outDevices.Count > 1 ? Cursors.Hand : Cursors.Arrow,
+            Background = Brushes.Transparent,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        outDevRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        outDevRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        outDevRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var outDevIcon = new ContentControl
+        {
+            Width = 14,
+            Height = 14,
+            Content = FindResource(isHeadphone ? "IconHeadphones" : "IconVolume"),
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        outDevIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+
+        var outDevName = new TextBlock
+        {
+            Text = activeOutDev?.Name ?? UiText.Get("NoAudioDevice"),
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        outDevName.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+
+        Grid.SetColumn(outDevIcon, 0);
+        Grid.SetColumn(outDevName, 1);
+        outDevRow.Children.Add(outDevIcon);
+        outDevRow.Children.Add(outDevName);
+
         if (outDevices.Count > 1)
         {
-            var devPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+            var chevron = new ContentControl
+            {
+                Width = 12,
+                Height = 12,
+                Content = FindResource(_outputDevicesExpanded ? "IconChevronDown" : "IconChevronNext"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            chevron.SetResourceReference(StyleProperty, "WidgetIcon");
+            Grid.SetColumn(chevron, 2);
+            outDevRow.Children.Add(chevron);
+
+            outDevRow.MouseLeftButtonUp += (_, _) =>
+            {
+                _outputDevicesExpanded = !_outputDevicesExpanded;
+                if (_flyoutContainer is not null) PopulateFlyout(_flyoutContainer);
+            };
+        }
+
+        outCardPanel.Children.Add(outDevRow);
+
+        // Expanded device list
+        if (_outputDevicesExpanded && outDevices.Count > 1)
+        {
+            var devList = new StackPanel { Margin = new Thickness(0, 2, 0, 6) };
             foreach (var dev in outDevices)
             {
                 var isSelected = dev.IsDefault;
-                var isHeadphone = dev.Name.Contains("headphone", StringComparison.OrdinalIgnoreCase)
-                    || dev.Name.Contains("kulaklık", StringComparison.OrdinalIgnoreCase)
-                    || dev.Name.Contains("headset", StringComparison.OrdinalIgnoreCase)
-                    || dev.Name.Contains("buds", StringComparison.OrdinalIgnoreCase)
-                    || dev.Name.Contains("airpod", StringComparison.OrdinalIgnoreCase);
+                var itemBtn = new Button { Cursor = Cursors.Hand, Margin = new Thickness(0, 1, 0, 1), Padding = new Thickness(6, 4, 6, 4) };
+                itemBtn.SetResourceReference(StyleProperty, "FlyoutButton");
 
-                var devIcon = new ContentControl
+                var itemGrid = new Grid();
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20, GridUnitType.Pixel) });
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                if (isSelected)
                 {
-                    Width = 14,
-                    Height = 14,
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Content = FindResource(isHeadphone ? "IconHeadphones" : "IconVolume")
-                };
-                devIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+                    var check = new ContentControl
+                    {
+                        Width = 12,
+                        Height = 12,
+                        Content = FindResource("IconCheck"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    check.SetResourceReference(ContentControl.ForegroundProperty, "WidgetAccent");
+                    Grid.SetColumn(check, 0);
+                    itemGrid.Children.Add(check);
+                }
 
-                var devText = new TextBlock
+                var label = new TextBlock
                 {
                     Text = dev.Name,
-                    MaxWidth = 180,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    FontSize = 11.5,
                     VerticalAlignment = VerticalAlignment.Center,
-                    FontSize = 11.5
+                    TextTrimming = TextTrimming.CharacterEllipsis
                 };
-
-                var chipContent = new StackPanel { Orientation = Orientation.Horizontal };
-                chipContent.Children.Add(devIcon);
-                chipContent.Children.Add(devText);
-
-                var pill = new ToggleButton
+                if (isSelected)
                 {
-                    Content = chipContent,
-                    IsChecked = isSelected,
-                    Height = 28,
-                    Margin = new Thickness(0, 2, 4, 2),
-                    Padding = new Thickness(8, 0, 8, 0),
-                    ToolTip = dev.Name
-                };
-                pill.SetResourceReference(StyleProperty, "WidgetPill");
-                var capturedId = dev.Id;
-                pill.Click += (_, _) =>
+                    label.FontWeight = FontWeights.SemiBold;
+                    label.SetResourceReference(TextBlock.ForegroundProperty, "WidgetAccent");
+                }
+                else
                 {
-                    pill.IsChecked = true;
+                    label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+                }
+                Grid.SetColumn(label, 1);
+                itemGrid.Children.Add(label);
+
+                itemBtn.Content = itemGrid;
+                var devId = dev.Id;
+                itemBtn.Click += (_, _) =>
+                {
                     if (_monitor is null) return;
-                    _monitor.SelectDefaultDevice(capturedId);
+                    _monitor.SelectDefaultDevice(devId);
                     _monitor.BindDefaultDevice();
+                    _outputDevicesExpanded = false;
                     Render();
                     if (_flyoutContainer is not null) PopulateFlyout(_flyoutContainer);
                 };
-                devPanel.Children.Add(pill);
+                devList.Children.Add(itemBtn);
             }
-            root.Children.Add(devPanel);
-        }
-        else if (outDevices.Count == 1)
-        {
-            var devText = new TextBlock
-            {
-                Text = outDevices[0].Name,
-                FontSize = 11.5,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Margin = new Thickness(4, 0, 4, 4)
-            };
-            devText.SetResourceReference(TextBlock.ForegroundProperty, "TextMuted");
-            root.Children.Add(devText);
+            outCardPanel.Children.Add(devList);
         }
 
+        // Master Volume Slider Row
         var hasOutDevice = _monitor?.HasDevice == true;
         var outLevel = hasOutDevice ? (int)Math.Round(_monitor!.Volume * 100) : 0;
         var outMuted = _monitor?.Muted == true;
 
-        var outRow = new Grid { Margin = new Thickness(0, 2, 0, 6) };
-        outRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        outRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        outRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var outSliderRow = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+        outSliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        outSliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        outSliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var outIconKey = outMuted || outLevel == 0 ? "IconVolumeMute" : outLevel < 50 ? "IconVolumeLow" : "IconVolume";
-        var outIcon = new ContentControl { Width = 16, Height = 16, Content = FindResource(outIconKey) };
+        var outIcon = new ContentControl { Width = 15, Height = 15, Content = FindResource(outIconKey) };
         outIcon.SetResourceReference(StyleProperty, "WidgetIcon");
 
         var outMuteBtn = new Button
         {
-            Width = 28,
-            Height = 28,
+            Width = 26,
+            Height = 26,
             Content = outIcon,
             IsEnabled = hasOutDevice,
             ToolTip = UiText.Get("MuteToggle")
@@ -265,7 +304,9 @@ public partial class AudioWidget : DockWidget
         {
             Text = hasOutDevice ? (outMuted ? "—" : UiText.Format("Percent", outLevel)) : string.Empty,
             VerticalAlignment = VerticalAlignment.Center,
-            MinWidth = 36,
+            MinWidth = 34,
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 11.5,
             TextAlignment = TextAlignment.Right
         };
         outLevelText.SetResourceReference(StyleProperty, "WidgetCaption");
@@ -273,131 +314,170 @@ public partial class AudioWidget : DockWidget
         Grid.SetColumn(outMuteBtn, 0);
         Grid.SetColumn(outSlider, 1);
         Grid.SetColumn(outLevelText, 2);
-        outRow.Children.Add(outMuteBtn);
-        outRow.Children.Add(outSlider);
-        outRow.Children.Add(outLevelText);
-        root.Children.Add(outRow);
+        outSliderRow.Children.Add(outMuteBtn);
+        outSliderRow.Children.Add(outSlider);
+        outSliderRow.Children.Add(outLevelText);
+        outCardPanel.Children.Add(outSliderRow);
 
         _flyoutIcon = outIcon;
         _flyoutSlider = outSlider;
         _flyoutLevelText = outLevelText;
 
-        // 3. Microphone / Recording Device Section
-        var micDivider = new Border { Height = 1, Margin = new Thickness(0, 6, 0, 8) };
-        micDivider.SetResourceReference(Border.BackgroundProperty, "StrokeSubtle");
-        root.Children.Add(micDivider);
+        outCard.Child = outCardPanel;
+        root.Children.Add(outCard);
 
-        var micHeader = new TextBlock
-        {
-            Text = UiText.Get("AudioInputDevices"),
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(4, 0, 4, 4)
-        };
-        micHeader.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        root.Children.Add(micHeader);
+        // 2. Giriş Sesi / Mikrofon Kartı (Microphone Card)
+        var micCard = CreateSectionCard();
+        var micCardPanel = new StackPanel();
 
         var inDevices = _monitor?.GetRecordingDevices() ?? [];
+        var activeInDev = inDevices.FirstOrDefault(d => d.IsDefault) ?? (inDevices.Count > 0 ? inDevices[0] : null);
+        var hasMic = _monitor?.HasMicDevice == true;
+
+        var inDevRow = new Grid
+        {
+            Cursor = inDevices.Count > 1 ? Cursors.Hand : Cursors.Arrow,
+            Background = Brushes.Transparent,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        inDevRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inDevRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        inDevRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var inDevIcon = new ContentControl
+        {
+            Width = 14,
+            Height = 14,
+            Content = FindResource("IconMic"),
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        inDevIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+
+        var inDevName = new TextBlock
+        {
+            Text = activeInDev?.Name ?? UiText.Get("NoMicDevice"),
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        inDevName.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+
+        Grid.SetColumn(inDevIcon, 0);
+        Grid.SetColumn(inDevName, 1);
+        inDevRow.Children.Add(inDevIcon);
+        inDevRow.Children.Add(inDevName);
+
         if (inDevices.Count > 1)
         {
-            var inDevPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+            var chevron = new ContentControl
+            {
+                Width = 12,
+                Height = 12,
+                Content = FindResource(_inputDevicesExpanded ? "IconChevronDown" : "IconChevronNext"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            chevron.SetResourceReference(StyleProperty, "WidgetIcon");
+            Grid.SetColumn(chevron, 2);
+            inDevRow.Children.Add(chevron);
+
+            inDevRow.MouseLeftButtonUp += (_, _) =>
+            {
+                _inputDevicesExpanded = !_inputDevicesExpanded;
+                if (_flyoutContainer is not null) PopulateFlyout(_flyoutContainer);
+            };
+        }
+
+        micCardPanel.Children.Add(inDevRow);
+
+        // Expanded mic list
+        if (_inputDevicesExpanded && inDevices.Count > 1)
+        {
+            var devList = new StackPanel { Margin = new Thickness(0, 2, 0, 6) };
             foreach (var dev in inDevices)
             {
                 var isSelected = dev.IsDefault;
-                var devIcon = new ContentControl
-                {
-                    Width = 14,
-                    Height = 14,
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Content = FindResource("IconMic")
-                };
-                devIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+                var itemBtn = new Button { Cursor = Cursors.Hand, Margin = new Thickness(0, 1, 0, 1), Padding = new Thickness(6, 4, 6, 4) };
+                itemBtn.SetResourceReference(StyleProperty, "FlyoutButton");
 
-                var devText = new TextBlock
+                var itemGrid = new Grid();
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20, GridUnitType.Pixel) });
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                if (isSelected)
+                {
+                    var check = new ContentControl
+                    {
+                        Width = 12,
+                        Height = 12,
+                        Content = FindResource("IconCheck"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    check.SetResourceReference(ContentControl.ForegroundProperty, "WidgetAccent");
+                    Grid.SetColumn(check, 0);
+                    itemGrid.Children.Add(check);
+                }
+
+                var label = new TextBlock
                 {
                     Text = dev.Name,
-                    MaxWidth = 180,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    FontSize = 11.5,
                     VerticalAlignment = VerticalAlignment.Center,
-                    FontSize = 11.5
+                    TextTrimming = TextTrimming.CharacterEllipsis
                 };
-
-                var chipContent = new StackPanel { Orientation = Orientation.Horizontal };
-                chipContent.Children.Add(devIcon);
-                chipContent.Children.Add(devText);
-
-                var pill = new ToggleButton
+                if (isSelected)
                 {
-                    Content = chipContent,
-                    IsChecked = isSelected,
-                    Height = 28,
-                    Margin = new Thickness(0, 2, 4, 2),
-                    Padding = new Thickness(8, 0, 8, 0),
-                    ToolTip = dev.Name
-                };
-                pill.SetResourceReference(StyleProperty, "WidgetPill");
-                var capturedId = dev.Id;
-                pill.Click += (_, _) =>
+                    label.FontWeight = FontWeights.SemiBold;
+                    label.SetResourceReference(TextBlock.ForegroundProperty, "WidgetAccent");
+                }
+                else
                 {
-                    pill.IsChecked = true;
+                    label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+                }
+                Grid.SetColumn(label, 1);
+                itemGrid.Children.Add(label);
+
+                itemBtn.Content = itemGrid;
+                var devId = dev.Id;
+                itemBtn.Click += (_, _) =>
+                {
                     if (_monitor is null) return;
-                    _monitor.SelectDefaultDevice(capturedId);
+                    _monitor.SelectDefaultDevice(devId);
                     _monitor.BindDefaultMicDevice();
+                    _inputDevicesExpanded = false;
                     RenderMic();
                     if (_flyoutContainer is not null) PopulateFlyout(_flyoutContainer);
                 };
-                inDevPanel.Children.Add(pill);
+                devList.Children.Add(itemBtn);
             }
-            root.Children.Add(inDevPanel);
-        }
-        else if (inDevices.Count == 1)
-        {
-            var devText = new TextBlock
-            {
-                Text = inDevices[0].Name,
-                FontSize = 11.5,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Margin = new Thickness(4, 0, 4, 4)
-            };
-            devText.SetResourceReference(TextBlock.ForegroundProperty, "TextMuted");
-            root.Children.Add(devText);
+            micCardPanel.Children.Add(devList);
         }
 
-        var hasMic = _monitor?.HasMicDevice == true;
-        var micLevel = hasMic ? (int)Math.Round(_monitor!.MicVolume * 100) : 0;
-        var micMuted = _monitor?.MicMuted == true;
+        // Mic Volume Slider Row
+        if (hasMic)
+        {
+            var micLevel = (int)Math.Round(_monitor!.MicVolume * 100);
+            var micMuted = _monitor.MicMuted;
 
-        if (!hasMic)
-        {
-            var noMic = new TextBlock
-            {
-                Text = UiText.Get("NoMicDevice"),
-                Margin = new Thickness(4, 2, 4, 4),
-                FontSize = 11.5
-            };
-            noMic.SetResourceReference(TextBlock.ForegroundProperty, "TextMuted");
-            root.Children.Add(noMic);
-        }
-        else
-        {
-            var micRow = new Grid { Margin = new Thickness(0, 2, 0, 6) };
-            micRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            micRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            micRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var micSliderRow = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            micSliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            micSliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            micSliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var micIcon = new ContentControl
             {
-                Width = 16,
-                Height = 16,
+                Width = 15,
+                Height = 15,
                 Content = FindResource(micMuted ? "IconMicMute" : "IconMic")
             };
             micIcon.SetResourceReference(StyleProperty, "WidgetIcon");
 
             var micMuteBtn = new Button
             {
-                Width = 28,
-                Height = 28,
+                Width = 26,
+                Height = 26,
                 Content = micIcon,
                 ToolTip = UiText.Get("MicMuteToggle")
             };
@@ -427,7 +507,9 @@ public partial class AudioWidget : DockWidget
             {
                 Text = micMuted ? "—" : UiText.Format("Percent", micLevel),
                 VerticalAlignment = VerticalAlignment.Center,
-                MinWidth = 36,
+                MinWidth = 34,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 11.5,
                 TextAlignment = TextAlignment.Right
             };
             micLevelText.SetResourceReference(StyleProperty, "WidgetCaption");
@@ -435,30 +517,33 @@ public partial class AudioWidget : DockWidget
             Grid.SetColumn(micMuteBtn, 0);
             Grid.SetColumn(micSlider, 1);
             Grid.SetColumn(micLevelText, 2);
-            micRow.Children.Add(micMuteBtn);
-            micRow.Children.Add(micSlider);
-            micRow.Children.Add(micLevelText);
-            root.Children.Add(micRow);
+            micSliderRow.Children.Add(micMuteBtn);
+            micSliderRow.Children.Add(micSlider);
+            micSliderRow.Children.Add(micLevelText);
+            micCardPanel.Children.Add(micSliderRow);
 
             _flyoutMicIcon = micIcon;
             _flyoutMicSlider = micSlider;
             _flyoutMicLevelText = micLevelText;
         }
 
-        // 4. Per-App Volume Mixer Section
-        var appDivider = new Border { Height = 1, Margin = new Thickness(0, 6, 0, 8) };
-        appDivider.SetResourceReference(Border.BackgroundProperty, "StrokeSubtle");
-        root.Children.Add(appDivider);
+        micCard.Child = micCardPanel;
+        root.Children.Add(micCard);
+
+        // 3. Uygulama Sesleri Kartı (App Mixer Card)
+        var appCard = CreateSectionCard();
+        appCard.Margin = new Thickness(0);
+        var appCardPanel = new StackPanel();
 
         var appHeader = new TextBlock
         {
             Text = UiText.Get("AppVolumeMixer"),
-            FontSize = 11,
+            FontSize = 11.5,
             FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(4, 0, 4, 4)
+            Margin = new Thickness(0, 0, 0, 6)
         };
         appHeader.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        root.Children.Add(appHeader);
+        appCardPanel.Children.Add(appHeader);
 
         var sessions = _monitor?.GetAppSessions() ?? [];
         if (sessions.Count == 0)
@@ -467,10 +552,10 @@ public partial class AudioWidget : DockWidget
             {
                 Text = UiText.Get("NoActiveAudioApps"),
                 FontSize = 11.5,
-                Margin = new Thickness(4, 2, 4, 4)
+                Margin = new Thickness(0, 2, 0, 2)
             };
             emptyText.SetResourceReference(TextBlock.ForegroundProperty, "TextMuted");
-            root.Children.Add(emptyText);
+            appCardPanel.Children.Add(emptyText);
         }
         else
         {
@@ -478,11 +563,11 @@ public partial class AudioWidget : DockWidget
             foreach (var session in sessions)
             {
                 var appRow = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24, GridUnitType.Pixel) });
-                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76, GridUnitType.Pixel) });
-                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28, GridUnitType.Pixel) });
+                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22, GridUnitType.Pixel) });
+                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(74, GridUnitType.Pixel) });
+                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26, GridUnitType.Pixel) });
                 appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34, GridUnitType.Pixel) });
+                appRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32, GridUnitType.Pixel) });
 
                 UIElement appIconEl;
                 if (session.Icon is not null)
@@ -490,8 +575,8 @@ public partial class AudioWidget : DockWidget
                     appIconEl = new Image
                     {
                         Source = session.Icon,
-                        Width = 18,
-                        Height = 18,
+                        Width = 16,
+                        Height = 16,
                         VerticalAlignment = VerticalAlignment.Center,
                         HorizontalAlignment = HorizontalAlignment.Left
                     };
@@ -500,8 +585,8 @@ public partial class AudioWidget : DockWidget
                 {
                     var ic = new ContentControl
                     {
-                        Width = 16,
-                        Height = 16,
+                        Width = 14,
+                        Height = 14,
                         Content = FindResource("IconSliders"),
                         VerticalAlignment = VerticalAlignment.Center,
                         HorizontalAlignment = HorizontalAlignment.Left
@@ -513,11 +598,11 @@ public partial class AudioWidget : DockWidget
                 var nameBlock = new TextBlock
                 {
                     Text = session.Name,
-                    FontSize = 11.5,
+                    FontSize = 11,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     VerticalAlignment = VerticalAlignment.Center,
                     ToolTip = session.Name,
-                    Margin = new Thickness(4, 0, 4, 0)
+                    Margin = new Thickness(2, 0, 4, 0)
                 };
                 nameBlock.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
 
@@ -526,16 +611,16 @@ public partial class AudioWidget : DockWidget
 
                 var appIcon = new ContentControl
                 {
-                    Width = 14,
-                    Height = 14,
+                    Width = 13,
+                    Height = 13,
                     Content = FindResource(currentMuted || appVol == 0 ? "IconVolumeMute" : "IconVolume")
                 };
                 appIcon.SetResourceReference(StyleProperty, "WidgetIcon");
 
                 var appMuteBtn = new Button
                 {
-                    Width = 24,
-                    Height = 24,
+                    Width = 22,
+                    Height = 22,
                     Content = appIcon,
                     ToolTip = UiText.Get("MuteToggle")
                 };
@@ -544,7 +629,7 @@ public partial class AudioWidget : DockWidget
                 var appPercent = new TextBlock
                 {
                     Text = currentMuted ? "—" : UiText.Format("Percent", appVol),
-                    FontSize = 11,
+                    FontSize = 10.5,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextAlignment = TextAlignment.Right
                 };
@@ -601,15 +686,32 @@ public partial class AudioWidget : DockWidget
             var scrollViewer = new ScrollViewer
             {
                 Content = appList,
-                MaxHeight = 180,
+                MaxHeight = 150,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 Focusable = false
             };
-            root.Children.Add(scrollViewer);
+            appCardPanel.Children.Add(scrollViewer);
         }
 
+        appCard.Child = appCardPanel;
+        root.Children.Add(appCard);
+
         container.Child = root;
+    }
+
+    private static Border CreateSectionCard()
+    {
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        border.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
+        border.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
+        return border;
     }
 
     protected override void OnActivated()
@@ -712,7 +814,6 @@ public partial class AudioWidget : DockWidget
             _lastLanguage = lang;
             _lastLevel = -1;
             MuteButton.IsEnabled = false;
-            VolumeSlider.IsEnabled = false;
             if (_flyoutSlider is not null) _flyoutSlider.IsEnabled = false;
             if (_flyoutLevelText is not null) _flyoutLevelText.Text = string.Empty;
             if (_flyoutIcon is not null) _flyoutIcon.Content = FindResource("IconVolumeMute");
@@ -739,18 +840,35 @@ public partial class AudioWidget : DockWidget
         _lastLanguage = lang;
 
         MuteButton.IsEnabled = true;
-        VolumeSlider.IsEnabled = true;
         if (_flyoutSlider is not null) _flyoutSlider.IsEnabled = true;
         DeviceText.Text = deviceName;
-        Card.ToolTip = deviceName;
+        Card.ToolTip = $"{deviceName} ({level}%)";
         LevelText.Text = muted ? "—" : UiText.Format("Percent", level);
-        var iconKey = muted || level == 0 ? "IconVolumeMute" : level < 50 ? "IconVolumeLow" : "IconVolume";
+
+        var isHeadphone = deviceName.Contains("headphone", StringComparison.OrdinalIgnoreCase)
+            || deviceName.Contains("kulaklık", StringComparison.OrdinalIgnoreCase)
+            || deviceName.Contains("headset", StringComparison.OrdinalIgnoreCase)
+            || deviceName.Contains("buds", StringComparison.OrdinalIgnoreCase)
+            || deviceName.Contains("airpod", StringComparison.OrdinalIgnoreCase);
+
+        var iconKey = muted || level == 0
+            ? "IconVolumeMute"
+            : isHeadphone
+                ? "IconHeadphones"
+                : level < 50
+                    ? "IconVolumeLow"
+                    : "IconVolume";
+
         SetVolumeIcon(iconKey);
+
         _updating = true;
-        VolumeSlider.Value = level;
         if (_flyoutSlider is not null) _flyoutSlider.Value = level;
         if (_flyoutLevelText is not null) _flyoutLevelText.Text = LevelText.Text;
-        if (_flyoutIcon is not null) _flyoutIcon.Content = FindResource(iconKey);
+        if (_flyoutIcon is not null)
+        {
+            var flyoutIconKey = muted || level == 0 ? "IconVolumeMute" : level < 50 ? "IconVolumeLow" : "IconVolume";
+            _flyoutIcon.Content = FindResource(flyoutIconKey);
+        }
         _updating = false;
     }
 
@@ -759,13 +877,6 @@ public partial class AudioWidget : DockWidget
         if (_lastIconKey == key) return;
         _lastIconKey = key;
         VolumeIcon.Content = FindResource(key);
-    }
-
-    private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_updating || _monitor is null) return;
-        if (_monitor.SetVolume((float)(e.NewValue / 100.0))) Render();
-        else Report(UiText.Get("ErrorVolumeChange"));
     }
 
     private void MuteButton_Click(object sender, RoutedEventArgs e)
@@ -777,7 +888,7 @@ public partial class AudioWidget : DockWidget
 
     private void Card_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource is DependencyObject dep && (IsDescendantOf(dep, VolumeSlider) || IsDescendantOf(dep, MuteButton)))
+        if (e.OriginalSource is DependencyObject dep && IsDescendantOf(dep, MuteButton))
         {
             return;
         }

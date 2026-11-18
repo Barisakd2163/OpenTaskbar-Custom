@@ -3,25 +3,19 @@
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
               xmlns:local="clr-namespace:OpenTaskbar.Services">
-    <Border x:Name="Card" Style="{StaticResource WidgetCardBorder}" Width="184" Padding="6,0,12,0" MouseWheel="Card_MouseWheel" MouseLeftButtonUp="Card_MouseLeftButtonUp">
+    <Border x:Name="Card" Style="{StaticResource WidgetCardBorder}" Width="140" Padding="8,0,10,0" MouseWheel="Card_MouseWheel" MouseLeftButtonUp="Card_MouseLeftButtonUp" Cursor="Hand">
         <Grid VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <Button x:Name="MuteButton" Grid.RowSpan="2" VerticalAlignment="Center" Style="{StaticResource WidgetIconButton}" Width="28" Height="28" Click="MuteButton_Click"
-                    ToolTip="{local:Loc MuteToggle}" AutomationProperties.Name="{local:Loc MuteToggle}">
-                <ContentControl x:Name="VolumeIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconVolume}" Width="16" Height="16" />
+            <Button x:Name="MuteButton" Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource WidgetIconButton}" Width="24" Height="24" Click="MuteButton_Click"
+                    ToolTip="{local:Loc MuteToggle}" AutomationProperties.Name="{local:Loc MuteToggle}" Margin="0,0,4,0">
+                <ContentControl x:Name="VolumeIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconVolume}" Width="15" Height="15" />
             </Button>
-            <TextBlock x:Name="DeviceText" Grid.Column="1" Style="{StaticResource WidgetText}" Margin="6,0,6,0" FontSize="11.5" Cursor="Hand" TextTrimming="CharacterEllipsis" />
-            <TextBlock x:Name="LevelText" Grid.Column="2" Style="{StaticResource WidgetCaption}" Cursor="Hand" />
-            <Slider x:Name="VolumeSlider" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource WidgetSlider}" Margin="6,3,0,0"
-                    ValueChanged="VolumeSlider_ValueChanged" AutomationProperties.Name="{local:Loc Volume}" />
+            <TextBlock x:Name="DeviceText" Grid.Column="1" Style="{StaticResource WidgetText}" FontSize="11.5" VerticalAlignment="Center" Margin="2,0,4,0" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="LevelText" Grid.Column="2" Style="{StaticResource WidgetCaption}" FontWeight="SemiBold" VerticalAlignment="Center" />
         </Grid>
     </Border>
 </w:DockWidget>
