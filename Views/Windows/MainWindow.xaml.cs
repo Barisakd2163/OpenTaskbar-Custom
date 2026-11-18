@@ -2101,7 +2101,7 @@ public partial class MainWindow : Window
     private void MoveDockItem(string token, int index)
     {
         var settings = _preferences.Current;
-        var visibleOrder = _dockItemElements.Keys.ToArray();
+        var visibleOrder = VisibleDockItems().Select(item => item.Key).ToArray();
         var oldOrder = BuildEffectiveDockOrder();
         var tokens = DockItemOrdering.MoveVisibleItem(oldOrder, visibleOrder, token, index);
         if (tokens.SequenceEqual(oldOrder, StringComparer.OrdinalIgnoreCase)) return;
