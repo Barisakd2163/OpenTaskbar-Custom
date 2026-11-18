@@ -12,6 +12,7 @@ public sealed class DockAutoHideController : IDisposable
     private const uint MonitorDefaultToNearest = 2;
     private const uint GaRootOwner = 3;
     private const int DwmwaExtendedFrameBounds = 9;
+    private const int DwmwaCloaked = 14;
 
     private static readonly CubicEase EaseOut = CreateFrozenEase(EasingMode.EaseOut);
     private static readonly CubicEase EaseInOut = CreateFrozenEase(EasingMode.EaseInOut);
@@ -44,6 +45,25 @@ public sealed class DockAutoHideController : IDisposable
     public bool IsMouseOverDock { get; private set; }
     public bool IsMouseAtEdge { get; private set; }
     public bool HasOverlap { get; private set; }
+
+    /// <summary>True while a shell menu (the Start menu) is open; the dock then stays revealed like the native taskbar.</summary>
+    public Func<bool>? IsShellMenuOpen { get; set; }
+
+    /// <summary>
+    /// Identifies foreground windows that belong to the shell rather than an application: the Start menu (which
+    /// stays the cloaked foreground window after it closes) and the full-screen Alt+Tab switcher. They must not
+    /// decide whether an application covers the dock; the application in front before them does.
+    /// </summary>
+    public Func<nint, bool>? IsShellMenuWindow { get; set; }
+
+    /// <summary>The last application window that held the foreground, used while a shell menu holds it instead.</summary>
+    public Func<nint>? LastApplicationWindowProvider { get; set; }
+
+    /// <summary>
+    /// All top-level application windows. In Smart mode any of them covering the dock keeps it hidden, not only
+    /// the foreground one.
+    /// </summary>
+    public Func<IEnumerable<nint>>? BackgroundWindowsProvider { get; set; }
 
     /// <summary>Seam for tests: supplies the OS foreground window without depending on a real desktop.</summary>
     internal Func<nint> ForegroundProvider { get; set; } = NativeWindowTracker.GetForegroundApplicationWindow;
@@ -169,8 +189,9 @@ public sealed class DockAutoHideController : IDisposable
 
     public void CheckForegroundWindow(nint foregroundHwnd)
     {
-        if (Mode != AutoHideMode.Smart) return;
-        RefreshSmartOverlap(foregroundHwnd);
+        if (Mode == AutoHideMode.Disabled) return;
+        // Always mode also re-evaluates so an opening Start menu reveals the hidden dock.
+        if (Mode == AutoHideMode.Smart) RefreshSmartOverlap(foregroundHwnd);
         EvaluateState();
     }
 
@@ -184,22 +205,45 @@ public sealed class DockAutoHideController : IDisposable
         var root = GetAncestor(foregroundHwnd, GaRootOwner);
         var target = root != 0 ? root : foregroundHwnd;
         if (!IsWindow(target)) return;
-        GetWindowThreadProcessId(target, out var pid);
-        if (pid == Environment.ProcessId)
+        if (IsShellMenuWindow?.Invoke(target) == true)
         {
-            var fallback = ForegroundProvider();
-            if (fallback != 0 && fallback != target)
+            // Judge the application beneath the Start menu rather than the menu itself.
+            var application = LastApplicationWindowProvider?.Invoke() ?? 0;
+            target = application != 0 && IsWindow(application) ? application : 0;
+        }
+        if (target != 0)
+        {
+            GetWindowThreadProcessId(target, out var pid);
+            if (pid == Environment.ProcessId)
             {
-                target = fallback;
-            }
-            else
-            {
-                // No distinct application beneath our own window: any earlier overlap is stale.
-                HasOverlap = false;
-                return;
+                var fallback = ForegroundProvider();
+                if (fallback != 0 && fallback != target)
+                {
+                    target = fallback;
+                }
+                else
+                {
+                    // Closing the Start menu from the dock leaves the dock itself in the foreground; judge the
+                    // application that was in front before it, which still covers the dock area.
+                    var application = LastApplicationWindowProvider?.Invoke() ?? 0;
+                    target = application != 0 && application != target && IsWindow(application) ? application : 0;
+                }
             }
         }
-        HasOverlap = EvaluateWindowOverlap(target);
+
+        // A small focused window in front of a maximized or full-screen one must not reveal the dock: the desktop
+        // is still covered behind it, so any visible application window over the dock area keeps it hidden.
+        HasOverlap = (target != 0 && EvaluateWindowOverlap(target)) || AnyOtherWindowCoversDock(target);
+    }
+
+    private bool AnyOtherWindowCoversDock(nint foregroundTarget)
+    {
+        if (BackgroundWindowsProvider?.Invoke() is not { } windows) return false;
+        foreach (var window in windows)
+        {
+            if (window != foregroundTarget && EvaluateWindowOverlap(window)) return true;
+        }
+        return false;
     }
 
     public void EvaluateState()
@@ -284,6 +328,7 @@ public sealed class DockAutoHideController : IDisposable
     {
         if (Mode == AutoHideMode.Disabled) return false;
         if (IsMouseOverDock || IsMouseAtEdge) return false;
+        if (IsShellMenuOpen?.Invoke() == true) return false;
         if (_isInteractionLocked()) return false;
         if (Mode == AutoHideMode.Always) return true;
         if (Mode == AutoHideMode.Smart) return HasOverlap;
@@ -367,6 +412,10 @@ public sealed class DockAutoHideController : IDisposable
         if (target == _windowHandle || !IsWindow(target) || !IsWindowVisible(target) || IsIconic(target))
             return false;
 
+        // Cloaked windows (other virtual desktops, suspended apps, a closed Start menu) are not on screen.
+        if (DwmGetWindowAttribute(target, DwmwaCloaked, out int cloaked, sizeof(int)) == 0 && cloaked != 0)
+            return false;
+
         GetWindowThreadProcessId(target, out var processId);
         if (processId == Environment.ProcessId)
             return false;
@@ -392,7 +441,7 @@ public sealed class DockAutoHideController : IDisposable
         if (IsZoomed(target))
             return true;
 
-        if (DwmGetWindowAttribute(target, DwmwaExtendedFrameBounds, out var winRect, Marshal.SizeOf<Rect>()) != 0
+        if (DwmGetWindowAttribute(target, DwmwaExtendedFrameBounds, out Rect winRect, Marshal.SizeOf<Rect>()) != 0
             && !GetWindowRect(target, out winRect))
         {
             return false;
@@ -486,6 +535,9 @@ public sealed class DockAutoHideController : IDisposable
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out Rect pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

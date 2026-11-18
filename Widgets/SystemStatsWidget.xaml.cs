@@ -133,8 +133,13 @@ public partial class SystemStatsWidget : DockWidget
         // Opening the widget must never wait for a slow native sensor query.
         Interlocked.Increment(ref _sensorGeneration);
 
+        var meters = Settings.StatsMeters;
+        _hasGpu = meters.HasFlag(SystemMeters.Gpu);
+        _hasCpuTemp = meters.HasFlag(SystemMeters.CpuTemperature);
+        _hasGpuTemp = meters.HasFlag(SystemMeters.GpuTemperature);
+
         ApplyMeterSelection();
-        // Show Memory & Battery right away, and schedule the first CPU/sensor sample for the next 1s tick.
+        // Show Memory & Battery right away, and schedule the first CPU/sensor sample.
         SampleFastCounters(sampleCpu: false);
         var nowMs = Environment.TickCount64;
         _lastFastSampleTickMs = nowMs - 900;
@@ -169,6 +174,11 @@ public partial class SystemStatsWidget : DockWidget
     protected override void OnSettingsChanged()
     {
         Interlocked.Increment(ref _sensorGeneration);
+
+        var meters = Settings.StatsMeters;
+        _hasGpu = meters.HasFlag(SystemMeters.Gpu);
+        _hasCpuTemp = meters.HasFlag(SystemMeters.CpuTemperature);
+        _hasGpuTemp = meters.HasFlag(SystemMeters.GpuTemperature);
 
         ApplyMeterSelection();
         if (IsActive)
@@ -212,8 +222,11 @@ public partial class SystemStatsWidget : DockWidget
         if ((meters & (SystemMeters.Gpu | SystemMeters.CpuTemperature | SystemMeters.GpuTemperature)) == 0) return;
         if (Interlocked.CompareExchange(ref _sensorSampling, 1, 0) != 0) return;
         var generation = Volatile.Read(ref _sensorGeneration);
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
+            double? gpu = null;
+            double? cpuTemp = null;
+            double? gpuTemp = null;
             try
             {
                 lock (_sensorGate)
@@ -223,15 +236,39 @@ public partial class SystemStatsWidget : DockWidget
                     _sensors.Configure(meters);
                     if (meters.HasFlag(SystemMeters.Gpu)) _sensors.SampleGpuUsage();
                 }
+
+                // Short delay so D3DKMT counters can compute a valid initial delta without waiting 4s
+                await Task.Delay(350).ConfigureAwait(false);
+
+                lock (_sensorGate)
+                {
+                    if (generation != Volatile.Read(ref _sensorGeneration)) return;
+                    if (meters.HasFlag(SystemMeters.Gpu)) gpu = _sensors?.SampleGpuUsage();
+                    if (meters.HasFlag(SystemMeters.CpuTemperature)) cpuTemp = _sensors?.SampleCpuTemperature();
+                    if (meters.HasFlag(SystemMeters.GpuTemperature)) gpuTemp = _sensors?.SampleGpuTemperature();
+                }
             }
             catch (Exception ex)
             {
-                AppLog.Warning($"Sensor baseline failed: {ex.Message}");
+                AppLog.Warning($"Sensor baseline/initial sample failed: {ex.Message}");
+                return;
             }
             finally
             {
                 Interlocked.Exchange(ref _sensorSampling, 0);
             }
+
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            {
+                if (!IsActive || generation != Volatile.Read(ref _sensorGeneration)) return;
+                var currentMeters = Settings.StatsMeters;
+                UpdateSensor(GpuButton, currentMeters.HasFlag(SystemMeters.Gpu) ? gpu : null,
+                    usage => SetUsage(GpuRing, GpuButton, ref _gpuState, usage, "Gpu"));
+                UpdateSensor(CpuTemperatureButton, currentMeters.HasFlag(SystemMeters.CpuTemperature) ? cpuTemp : null,
+                    celsius => SetTemperature(CpuTemperatureRing, CpuTemperatureButton, ref _cpuTempState, celsius, "CpuTemperature"));
+                UpdateSensor(GpuTemperatureButton, currentMeters.HasFlag(SystemMeters.GpuTemperature) ? gpuTemp : null,
+                    celsius => SetTemperature(GpuTemperatureRing, GpuTemperatureButton, ref _gpuTempState, celsius, "GpuTemperature"));
+            });
         });
     }
 
@@ -268,7 +305,7 @@ public partial class SystemStatsWidget : DockWidget
                 Interlocked.Exchange(ref _sensorSampling, 0);
             }
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
             {
                 if (!IsActive || generation != Volatile.Read(ref _sensorGeneration)) return;
                 var currentMeters = Settings.StatsMeters;

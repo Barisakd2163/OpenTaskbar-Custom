@@ -38,8 +38,10 @@
         <Grid>
             <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /></Grid.RowDefinitions>
             <Grid>
-                <TextBlock Text="{local:Loc SettingsTitle}" Margin="20,0,148,0" FontWeight="SemiBold"
-                           VerticalAlignment="Center" IsHitTestVisible="False" TextTrimming="CharacterEllipsis" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,148,0" IsHitTestVisible="False">
+                    <TextBlock Text="{local:Loc SettingsTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="TitleVersionText" Margin="8,0,0,0" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeCaption}" VerticalAlignment="Center" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,6,5"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button Content="&#xE921;" Style="{StaticResource CaptionButton}" Click="Minimize_Click"
@@ -189,8 +191,15 @@
 
                             <TextBlock Text="{local:Loc Diagnostics}" Style="{StaticResource SettingsSectionHeading}" />
                             <Border Style="{StaticResource SettingsRow}" Padding="16,14"><DockPanel>
+                                <TextBlock x:Name="AppVersionText" DockPanel.Dock="Right" Style="{StaticResource SettingsRowLabel}" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="OpenTaskbar" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc Diagnostics}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+                            <Border Style="{StaticResource SettingsRow}" Padding="16,14"><DockPanel>
                                 <Button Content="{local:Loc OpenLogFile}" DockPanel.Dock="Right" Style="{StaticResource SettingsButton}" Click="OpenLogFile_Click" VerticalAlignment="Center" />
-                                <TextBlock Text="{local:Loc Diagnostics}" Style="{StaticResource SettingsRowLabel}" VerticalAlignment="Center" />
+                                <TextBlock Text="{local:Loc OpenLogFile}" Style="{StaticResource SettingsRowLabel}" VerticalAlignment="Center" />
                             </DockPanel></Border>
                         </StackPanel>
                     </ScrollViewer>

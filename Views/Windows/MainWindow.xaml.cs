@@ -65,6 +65,9 @@ public partial class MainWindow : Window
     private DateTime _contextMenuOpenedAtUtc;
     private Size _dockArea;
     private nint? _foregroundAtAppPress;
+    private readonly StartMenuState _startMenu = new();
+    private bool _startMenuOpenAtPress;
+    private nint _lastApplicationWindow;
     private uint _taskbarCreatedMessage;
     private Point _dragStartPoint;
     private readonly HashSet<FrameworkElement> _displacedIcons = [];
@@ -183,6 +186,7 @@ public partial class MainWindow : Window
             RebuildDockOrder();
         };
         Deactivated += (_, _) => _widgetCoordinator.CollapseHover();
+        Activated += (_, _) => _startMenu.OnDockActivated();
         _widgetCoordinator.AvailabilityChanged += () =>
         {
             ResizeDockToContent();
@@ -288,6 +292,12 @@ public partial class MainWindow : Window
                 || (_settingsWindow is { IsVisible: true, IsActive: true, WindowState: not WindowState.Minimized })
                 || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
         _autoHideController.DockBoundsProvider = GetDockPhysicalBounds;
+        _autoHideController.IsShellMenuOpen = _startMenu.IsStartMenuOpenNow;
+        // The Start menu and the Alt+Tab switcher cover the dock but are not applications: look past them.
+        _autoHideController.IsShellMenuWindow = IsShellOverlayWindow;
+        _autoHideController.LastApplicationWindowProvider = () => _lastApplicationWindow;
+        _autoHideController.BackgroundWindowsProvider = () => (_windowTracker?.Snapshot ?? []).Select(window => window.Handle);
+        _startMenu.StartWatching();
         _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
@@ -882,12 +892,58 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
 
+        var startMenuWasOpen = _startMenuOpenAtPress;
+        _startMenuOpenAtPress = false;
+        if (_startMenu.IsStartMenuOpenNow())
+        {
+            // The dock does not take activation on left clicks, so the Start menu is not light-dismissed: close it.
+            CloseStartMenu();
+            return;
+        }
+        if (startMenuWasOpen)
+        {
+            // The press already dismissed the Start menu; requesting it now would reopen it.
+            _startMenu.Reset();
+            return;
+        }
+
         const uint wmSysCommand = 0x0112;
         const int scTaskList = 0xF130;
         if (_source is null || !PostMessage(_source.Handle, wmSysCommand, scTaskList, 0))
         {
             ReportError("ErrorStartMenuOpen");
         }
+    }
+
+    /// <summary>
+    /// Closes the open Start menu with the Windows key, then hands the foreground back to the application that
+    /// was in front before it, as the native taskbar does. Windows otherwise returns it to the dock window.
+    /// </summary>
+    private void CloseStartMenu()
+    {
+        _startMenu.Reset();
+        const byte vkLeftWindows = 0x5B;
+        const uint keyEventKeyUp = 0x0002;
+        keybd_event(vkLeftWindows, 0, 0, 0);
+        keybd_event(vkLeftWindows, 0, keyEventKeyUp, 0);
+
+        var application = _lastApplicationWindow;
+        if (application == 0) return;
+        var restoreTimer = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(200) };
+        restoreTimer.Tick += (_, _) =>
+        {
+            restoreTimer.Stop();
+            if (_startMenu.IsStartMenuOpenNow() || !IsWindow(application) || IsIconic(application)) return;
+            // Only take the foreground back from the dock or the closed Start menu, never from a window the
+            // user focused in the meantime.
+            var current = GetForegroundWindow();
+            GetWindowThreadProcessId(current, out var pid);
+            if (pid == Environment.ProcessId || _startMenu.IsStartMenuWindow(current))
+            {
+                SetForegroundWindow(application);
+            }
+        };
+        restoreTimer.Start();
     }
 
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false, nint? foregroundAtPress = null)
@@ -1135,6 +1191,9 @@ public partial class MainWindow : Window
             : description.Trim();
     }
 
+    private bool IsShellOverlayWindow(nint windowHandle) =>
+        _startMenu.IsStartMenuWindow(windowHandle) || ShellOverlayWindows.IsTaskSwitcher(windowHandle);
+
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
     {
         _replacementSession?.UpdateForeground(windowHandle);
@@ -1143,6 +1202,10 @@ public partial class MainWindow : Window
         GetWindowThreadProcessId(windowHandle, out var processId);
         // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
         if (processId == Environment.ProcessId) return;
+        var isStartMenu = _startMenu.IsStartMenuWindow(windowHandle);
+        _startMenu.OnForegroundChanged(isStartMenu);
+        if (!isStartMenu && windowHandle != 0 && !ShellOverlayWindows.IsTaskSwitcher(windowHandle))
+            _lastApplicationWindow = windowHandle;
         if (_openContextMenu is not null
             && windowHandle != 0
             && windowHandle != _foregroundWindow
@@ -2248,9 +2311,6 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
         Application.Current.Resources["DockIconSize"] = profile.Icon;
-        // Keep app artwork visually balanced with neighboring compact widgets without
-        // shrinking the clickable dock cell or changing its drag/drop geometry.
-        Application.Current.Resources["DockApplicationIconSize"] = Math.Max(18, Math.Round(profile.Icon * 0.88));
         Application.Current.Resources["StartLogoSize"] = Math.Max(14, Math.Round(profile.Icon * 0.68));
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(radius);
@@ -2279,9 +2339,13 @@ public partial class MainWindow : Window
     private void UpdatePreferredIconPixels()
     {
         var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        var pixels = ApplicationIconProvider.ComputeTargetPixels(Profile.Icon, dpiScale);
+        // Keep app artwork visually balanced with neighboring compact widgets without shrinking the clickable
+        // dock cell or changing its drag/drop geometry; the size is snapped so icons are drawn 1:1 in pixels.
+        var pixels = ApplicationIconProvider.ComputeApplicationIconPixels(Math.Max(18, Profile.Icon * 0.88), dpiScale);
         ApplicationIconProvider.PreferredIconPixels = pixels;
+        ApplicationIconProvider.HoverIconPixels = ApplicationIconProvider.ComputeHoverIconPixels(pixels, DockMetrics.HoverScale);
         ThemePacks.PreferredIconPixels = pixels;
+        Application.Current.Resources["DockApplicationIconSize"] = pixels / Math.Max(1.0, dpiScale);
     }
 
     private void WidgetStrip_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -2362,6 +2426,9 @@ public partial class MainWindow : Window
         _foregroundWindow = 0;
         _foregroundAtMenuOpen = 0;
         _foregroundAtAppPress = null;
+        _startMenuOpenAtPress = false;
+        _startMenu.Reset();
+        _lastApplicationWindow = 0;
         _contextTargetWasForeground = false;
         _contextMenuOpenedAtUtc = default;
         _keyboardNavigationActive = false;
@@ -2587,6 +2654,7 @@ public partial class MainWindow : Window
         StopMagnificationRendering();
         _magnificationScaleTargets.Clear();
         _magnifiedIcons.Clear();
+        _restingIcons.Clear();
         _source?.RemoveHook(WindowProc);
         _source = null;
 
@@ -2616,6 +2684,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.Dispose();
         _autoHideController?.Dispose();
         _autoHideController = null;
+        _startMenu.Dispose();
         _widgetCoordinator.Dispose();
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();
@@ -2623,6 +2692,20 @@ public partial class MainWindow : Window
         DisposeExtras();
         DisposeFeatures();
     }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, nuint extraInfo);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     internal static extern nint GetWindowLongPtr(nint windowHandle, int index);

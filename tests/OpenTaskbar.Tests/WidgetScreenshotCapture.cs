@@ -13,7 +13,10 @@ namespace OpenTaskbar.Tests;
 
 internal static class WidgetScreenshotCapture
 {
-    private const string OutputDir = @"C:\Users\agnes\.gemini\antigravity-cli\brain\59686241-ffa2-45c2-b3de-5c6f58d9b382\screenshots";
+    private static string OutputDir =>
+        Environment.GetEnvironmentVariable("OPENTASKBAR_SCREENSHOT_DIR") is { Length: > 0 } custom
+            ? custom
+            : Path.Combine(Path.GetTempPath(), "OpenTaskbar", "screenshots");
 
     public static void CaptureAll(Application app)
     {

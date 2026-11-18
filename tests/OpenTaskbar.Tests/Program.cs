@@ -15,6 +15,8 @@ TaskManagerTextChecks();
 SettingsChecks();
 InitialLanguageChecks();
 MultiMonitorChecks();
+DockIconPixelChecks();
+StartMenuAndOverlayChecks();
 checks += RunningAppChecks.Run();
 if (!headless) checks += WidgetViewChecks.Run();
 checks += ThemePackChecks.Run();
@@ -325,6 +327,67 @@ void MultiMonitorChecks()
     Check(UiText.Get("SecondaryWidgets") == "İkinci ekranda widget göster", "SecondaryWidgets must be localized in Turkish.");
     Check(UiText.Get("SecondaryAppsCurrent") == "Yalnızca bu ekrandaki pencereler", "SecondaryAppsCurrent must be localized in Turkish.");
     Check(UiText.Get("SecondaryAppsAll") == "Tüm açık pencereler", "SecondaryAppsAll must be localized in Turkish.");
+}
+
+void DockIconPixelChecks()
+{
+    // Large dock at 100%: 38 DIP * 0.88 = 33.4 px must use the native 32 px artwork instead of resampling it.
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(38 * 0.88, 1.0) == 32, "Large dock icons must snap to 32 px.");
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(34 * 0.88, 1.0) == 32, "Medium dock icons must snap to 32 px.");
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(28 * 0.88, 1.0) == 24, "Compact dock icons must snap to 24 px.");
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(38 * 0.88, 1.25) == 40, "125% DPI must snap to the native 40 px size.");
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(38 * 0.88, 1.5) == 48, "150% DPI must snap to the native 48 px size.");
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(38 * 0.88 * 1.5, 1.5) == 75,
+        "Sizes far from any native size must keep their own pixel size instead of jumping to a distant one.");
+    Check(ApplicationIconProvider.ComputeApplicationIconPixels(10, 0.5) == 16, "Icons must never drop below 16 px.");
+
+    // Magnified icons (up to 1.28x) use the smallest native size that covers the magnified size, so they are
+    // scaled down instead of blurred up.
+    Check(ApplicationIconProvider.ComputeHoverIconPixels(32, 1.28) == 48, "A 32 px icon magnified to 41 px must use 48 px artwork.");
+    Check(ApplicationIconProvider.ComputeHoverIconPixels(24, 1.28) == 32, "A 24 px icon magnified to 31 px must use 32 px artwork.");
+    Check(ApplicationIconProvider.ComputeHoverIconPixels(40, 1.28) == 64, "A 40 px icon magnified to 52 px must use 64 px artwork.");
+    Check(ApplicationIconProvider.ComputeHoverIconPixels(300, 1.28) == 384, "Beyond the largest native size the exact magnified size is used.");
+    Check(ApplicationIconProvider.GetHoverVariant(null) is null, "A missing icon has no hover variant.");
+}
+
+void StartMenuAndOverlayChecks()
+{
+    // Task switcher window classes
+    Check(ShellOverlayWindows.IsTaskSwitcherClassName("XamlExplorerHostIslandWindow"), "Windows 11 switcher must be recognized.");
+    Check(ShellOverlayWindows.IsTaskSwitcherClassName("MultitaskingViewFrame"), "Windows 10 switcher must be recognized.");
+    Check(ShellOverlayWindows.IsTaskSwitcherClassName("TaskSwitcherWnd"), "Classic switcher must be recognized.");
+    Check(!ShellOverlayWindows.IsTaskSwitcherClassName("CabinetWClass"), "Explorer cabinet must not be recognized as switcher.");
+    Check(!ShellOverlayWindows.IsTaskSwitcherClassName("Notepad"), "Notepad must not be recognized as switcher.");
+    Check(!ShellOverlayWindows.IsTaskSwitcherClassName(null), "Null class name must not match switcher.");
+
+    // Start Menu process identification vs Windows Search flyout
+    Check(StartMenuState.IsStartMenuProcessName("StartMenuExperienceHost"), "StartMenuExperienceHost must be recognized as Start Menu.");
+    Check(StartMenuState.IsStartMenuProcessName("startmenuexperiencehost"), "Process name check must be case insensitive.");
+    Check(!StartMenuState.IsStartMenuProcessName("SearchHost"), "SearchHost must NOT be treated as Start Menu.");
+    Check(!StartMenuState.IsStartMenuProcessName("SearchApp"), "SearchApp must NOT be treated as Start Menu.");
+    Check(!StartMenuState.IsStartMenuProcessName("explorer"), "explorer must not be treated as Start Menu.");
+    Check(!StartMenuState.IsStartMenuProcessName(null), "Null process name must return false.");
+
+    // Scoped press dismissal behavior
+    var clock = new TestClock();
+    var state = new StartMenuState(clock);
+    Check(!state.IsOpen, "StartMenuState must start closed.");
+
+    state.OnForegroundChanged(true);
+    Check(state.IsOpen, "Foreground change to Start menu must mark it open.");
+    Check(state.WasOpenAtPress(openNow: true), "When open now, WasOpenAtPress must return true.");
+
+    state.OnForegroundChanged(false);
+    Check(!state.IsOpen, "Foreground change away must mark it closed.");
+
+    // Ambient check without pointer press must NOT return true
+    Check(!state.WasOpenAtPress(openNow: false, pressTimestamp: 0),
+        "Without active pointer press, a closed Start menu must never be considered open at press.");
+
+    // A click occurring 500ms later must NOT be eaten
+    var later = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(0.5 * System.Diagnostics.Stopwatch.Frequency);
+    Check(!state.WasOpenAtPress(openNow: false, pressTimestamp: later),
+        "A later click must not be treated as open at press.");
 }
 
 sealed class TestClock : TimeProvider

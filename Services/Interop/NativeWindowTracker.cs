@@ -316,6 +316,19 @@ public sealed class NativeWindowTracker : IDisposable
             return true;
         }
 
+        var classLength = GetClassName(windowHandle, _classBuffer, _classBuffer.Length);
+        if (classLength > 0)
+        {
+            ReadOnlySpan<char> cls = _classBuffer.AsSpan(0, classLength);
+            // UWP hosted core windows (e.g. SystemSettings.exe) are internal surfaces of ApplicationFrameWindow;
+            // tracking them directly creates duplicate taskbar entries with legacy icons.
+            if (cls.SequenceEqual("Windows.UI.Core.CoreWindow"))
+            {
+                _ignoredWindows.Add(windowHandle);
+                return true;
+            }
+        }
+
         var titleLength = GetWindowTextLength(windowHandle);
         if (titleLength <= 0)
         {

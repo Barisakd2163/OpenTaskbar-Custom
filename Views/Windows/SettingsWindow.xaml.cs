@@ -46,6 +46,10 @@ public partial class SettingsWindow : Window
         _applied = preferences.Current;
         _preferenceEditedHandler = PreferenceEdited;
         InitializeComponent();
+        var currentVersion = UpdateChecker.CurrentVersion;
+        var versionString = $"v{currentVersion.Major}.{currentVersion.Minor}.{currentVersion.Build}";
+        TitleVersionText.Text = versionString;
+        AppVersionText.Text = versionString;
         ScopeRadioGroups(this);
         foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets))
         {
