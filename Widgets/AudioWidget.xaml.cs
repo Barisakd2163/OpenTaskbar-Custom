@@ -33,6 +33,16 @@ public partial class AudioWidget : DockWidget
     private Slider? _flyoutMicSlider;
     private TextBlock? _flyoutMicLevelText;
     private ContentControl? _flyoutMicIcon;
+    private readonly List<AppAudioSession> _appSessions = [];
+
+    // Allows the mixer controls to be tested without real audio hardware.
+    internal Func<IReadOnlyList<AppAudioSession>>? AppSessionSource { get; set; }
+
+    private void ReleaseAppSessions()
+    {
+        foreach (var session in _appSessions) session.Dispose();
+        _appSessions.Clear();
+    }
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 40;
@@ -79,6 +89,7 @@ public partial class AudioWidget : DockWidget
         container.Unloaded += (_, _) =>
         {
             if (!ReferenceEquals(_flyoutContainer, container)) return;
+            ReleaseAppSessions();
             _flyoutContainer = null;
             _flyoutSlider = null;
             _flyoutLevelText = null;
@@ -96,6 +107,7 @@ public partial class AudioWidget : DockWidget
 
     private void PopulateFlyout(Border container)
     {
+        ReleaseAppSessions();
         var root = new StackPanel { Margin = new Thickness(0) };
 
         // Header: Ses Denetimi
@@ -545,7 +557,8 @@ public partial class AudioWidget : DockWidget
         appHeader.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         appCardPanel.Children.Add(appHeader);
 
-        var sessions = _monitor?.GetAppSessions() ?? [];
+        var sessions = AppSessionSource?.Invoke() ?? _monitor?.GetAppSessions() ?? [];
+        _appSessions.AddRange(sessions);
         if (sessions.Count == 0)
         {
             var emptyText = new TextBlock
@@ -647,24 +660,40 @@ public partial class AudioWidget : DockWidget
 
                 var localSession = session;
                 var appUpdating = false;
+                var confirmedLevel = appVol;
 
                 appSlider.ValueChanged += (_, args) =>
                 {
                     if (appUpdating) return;
                     var newLevel = (int)Math.Round(args.NewValue);
-                    localSession.SetVolume(newLevel / 100f);
+                    if (!localSession.SetVolume(newLevel / 100f))
+                    {
+                        appUpdating = true;
+                        try { appSlider.Value = confirmedLevel; }
+                        finally { appUpdating = false; }
+                        Report(UiText.Get("ErrorVolumeChange"));
+                        return;
+                    }
+
+                    confirmedLevel = newLevel;
                     if (currentMuted && newLevel > 0)
                     {
-                        currentMuted = false;
-                        appIcon.Content = FindResource("IconVolume");
+                        if (localSession.SetMute(false)) currentMuted = false;
+                        else Report(UiText.Get("ErrorVolumeChange"));
                     }
+                    appIcon.Content = FindResource(currentMuted || newLevel == 0 ? "IconVolumeMute" : "IconVolume");
                     appPercent.Text = currentMuted ? "—" : UiText.Format("Percent", newLevel);
                 };
 
                 appMuteBtn.Click += (_, _) =>
                 {
-                    currentMuted = !currentMuted;
-                    localSession.SetMute(currentMuted);
+                    var mute = !currentMuted;
+                    if (!localSession.SetMute(mute))
+                    {
+                        Report(UiText.Get("ErrorVolumeChange"));
+                        return;
+                    }
+                    currentMuted = mute;
                     appIcon.Content = FindResource(currentMuted || (int)appSlider.Value == 0 ? "IconVolumeMute" : "IconVolume");
                     appPercent.Text = currentMuted ? "—" : UiText.Format("Percent", (int)Math.Round(appSlider.Value));
                 };
@@ -738,6 +767,7 @@ public partial class AudioWidget : DockWidget
     protected override void OnDeactivated()
     {
         _flyout.Close();
+        ReleaseAppSessions();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         if (_monitor is null) return;
         _monitor.VolumeChanged -= Monitor_VolumeChanged;
@@ -746,6 +776,12 @@ public partial class AudioWidget : DockWidget
         _monitor.DefaultMicChanged -= Monitor_DefaultMicChanged;
         _monitor.Dispose();
         _monitor = null;
+    }
+
+    protected override void OnDisposed()
+    {
+        _flyout.Close();
+        ReleaseAppSessions();
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
