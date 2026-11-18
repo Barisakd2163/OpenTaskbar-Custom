@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Instellingen",
   "SettingsTitle": "OpenTaskbar-instellingen",
   "General": "Algemeen",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "De themamap kan niet worden geopend. Controleer de toegangsrechten.",
   "ErrorUpdateFailed": "De update kon niet worden gedownload. Controleer uw internetverbinding en probeer het opnieuw.",
   "PreviewWeekday": "Woensdag",
-  "PreviewDate": "16 nov"
+  "PreviewDate": "16 nov",
+  "DockCornerRadius": "Hoekradius",
+  "DockCornerRadiusDescription": "Regelt de afronding van de hoeken van de taakbalk.",
+  "DockBottomGapDescription": "Afstand tussen de taakbalk en de schermrand.",
+  "DockBottomGap": "Schermrandafstand"
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Paramètres",
   "SettingsTitle": "Paramètres d'OpenTaskbar",
   "General": "Général",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Impossible d’ouvrir le dossier des thèmes. Vérifiez les autorisations d’accès.",
   "ErrorUpdateFailed": "La mise à jour n’a pas pu être téléchargée. Vérifiez votre connexion Internet et réessayez.",
   "PreviewWeekday": "Lundi",
-  "PreviewDate": "16 nov."
+  "PreviewDate": "16 nov.",
+  "DockCornerRadius": "Rayon des coins",
+  "DockCornerRadiusDescription": "Ajuste l'arrondi des coins de la barre des tâches.",
+  "DockBottomGapDescription": "Distance entre la barre des tâches et le bord de l'écran.",
+  "DockBottomGap": "Espacement du bord d'écran"
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "설정",
   "SettingsTitle": "OpenTaskbar 설정",
   "General": "일반",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "테마 폴더를 열 수 없습니다. 접근 권한을 확인하세요.",
   "ErrorUpdateFailed": "업데이트를 다운로드할 수 없습니다. 인터넷 연결을 확인한 후 다시 시도하세요.",
   "PreviewWeekday": "월요일",
-  "PreviewDate": "11월 16일"
+  "PreviewDate": "11월 16일",
+  "DockCornerRadius": "모서리 곡률",
+  "DockCornerRadiusDescription": "작업 표시줄 프레임 모서리의 둥글기를 조절합니다.",
+  "DockBottomGapDescription": "작업 표시줄과 화면 가장자리 사이의 거리를 조절합니다.",
+  "DockBottomGap": "화면 가장자리 여백"
 }

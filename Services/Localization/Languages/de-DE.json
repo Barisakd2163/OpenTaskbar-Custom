@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Einstellungen",
   "SettingsTitle": "OpenTaskbar-Einstellungen",
   "General": "Allgemein",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Der Designordner konnte nicht geöffnet werden. Prüfen Sie die Zugriffsberechtigungen.",
   "ErrorUpdateFailed": "Das Update konnte nicht heruntergeladen werden. Prüfen Sie die Internetverbindung und versuchen Sie es erneut.",
   "PreviewWeekday": "Montag",
-  "PreviewDate": "16. Nov."
+  "PreviewDate": "16. Nov.",
+  "DockCornerRadius": "Eckenabrundung",
+  "DockCornerRadiusDescription": "Steuert die Rundung der Taskleistenecken (0 px = scharf, 16–22 px = normal, 32 px = abgerundet).",
+  "DockBottomGapDescription": "Abstand zwischen der Taskleiste und dem Bildschirmrand.",
+  "DockBottomGap": "Bildschirmrandabstand"
 }

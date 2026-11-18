@@ -117,4 +117,7 @@ public sealed record DockSettings(
     IReadOnlyDictionary<string, WidgetDensityMode>? WidgetDensityOverrides = null,
     // Free-form dock order: "start", "app:<path>", "stack:<path>", "widget:<id>", "bin".
     // Null keeps the legacy grouped layout until the user drags an item.
-    IReadOnlyList<string>? DockItemOrder = null);
+    IReadOnlyList<string>? DockItemOrder = null,
+    // Custom taskbar geometry overrides (null = auto from size profile).
+    int? DockCornerRadius = null,
+    int? DockBottomGap = null);

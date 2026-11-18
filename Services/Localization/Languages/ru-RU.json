@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Параметры",
   "SettingsTitle": "Параметры OpenTaskbar",
   "General": "Общие",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Не удалось открыть папку тем. Проверьте разрешения доступа.",
   "ErrorUpdateFailed": "Не удалось загрузить обновление. Проверьте подключение к Интернету и повторите попытку.",
   "PreviewWeekday": "Понедельник",
-  "PreviewDate": "16 нояб."
+  "PreviewDate": "16 нояб.",
+  "DockCornerRadius": "Радиус скругления",
+  "DockCornerRadiusDescription": "Настраивает скругление углов панели задач.",
+  "DockBottomGapDescription": "Расстояние между панелью задач и краем экрана.",
+  "DockBottomGap": "Отступ от края экрана"
 }

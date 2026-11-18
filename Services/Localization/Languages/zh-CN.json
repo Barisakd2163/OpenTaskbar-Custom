@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "设置",
   "SettingsTitle": "OpenTaskbar 设置",
   "General": "常规",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "无法打开主题文件夹。请检查访问权限。",
   "ErrorUpdateFailed": "无法下载更新。请检查网络连接后重试。",
   "PreviewWeekday": "星期一",
-  "PreviewDate": "11月16日"
+  "PreviewDate": "11月16日",
+  "DockCornerRadius": "圆角弧度",
+  "DockCornerRadiusDescription": "调整任务栏边框圆角大小。",
+  "DockBottomGapDescription": "设置任务栏与屏幕边缘的距离。",
+  "DockBottomGap": "屏幕边缘间距"
 }

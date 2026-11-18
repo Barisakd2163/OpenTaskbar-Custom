@@ -101,6 +101,11 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = _applied.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
         UpdateDockScaleLabel();
+        var initialProfile = DockMetrics.For(_applied.Size, _applied.DockScale);
+        CornerRadiusSlider.Value = _applied.DockCornerRadius ?? (int)Math.Round(initialProfile.Radius);
+        BottomGapSlider.Value = _applied.DockBottomGap ?? (int)Math.Round(initialProfile.BottomGap);
+        UpdateCornerRadiusLabel();
+        UpdateBottomGapLabel();
         FocusMinutesSlider.Value = _applied.FocusMinutes;
         BreakMinutesSlider.Value = _applied.FocusBreakMinutes;
         FocusSessionsSlider.Value = _applied.FocusSessions;
@@ -286,6 +291,8 @@ public partial class SettingsWindow : Window
             Layout = FullWidthLayout.IsChecked == true ? DockLayout.FullWidth : DockLayout.Floating,
             Size = LargeSize.IsChecked == true ? DockSize.Large : MediumSize.IsChecked == true ? DockSize.Medium : DockSize.Compact,
             DockScale = Math.Round(DockScaleSlider.Value) / 100,
+            DockCornerRadius = (int)Math.Round(CornerRadiusSlider.Value),
+            DockBottomGap = (int)Math.Round(BottomGapSlider.Value),
             ShowClock = IsEnabled("Clock"),
             ShowMedia = IsEnabled("Media"),
             ShowSystemStats = IsEnabled("SystemStats"),
@@ -977,6 +984,11 @@ public partial class SettingsWindow : Window
         LargeSize.IsChecked = settings.Size == DockSize.Large;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         UpdateDockScaleLabel();
+        var reloadProfile = DockMetrics.For(settings.Size, settings.DockScale);
+        CornerRadiusSlider.Value = settings.DockCornerRadius ?? (int)Math.Round(reloadProfile.Radius);
+        BottomGapSlider.Value = settings.DockBottomGap ?? (int)Math.Round(reloadProfile.BottomGap);
+        UpdateCornerRadiusLabel();
+        UpdateBottomGapLabel();
         LoadThemePacks(settings.ThemePack);
         ThemeApplicationIconsToggle.IsChecked = settings.ThemeApplicationIcons;
         foreach (var option in _widgetOptions)
@@ -1109,6 +1121,30 @@ public partial class SettingsWindow : Window
     private void UpdateOpacityLabel() => OpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(OpacitySlider.Value));
 
     private void UpdateDockScaleLabel() => DockScaleValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(DockScaleSlider.Value));
+
+    private void UpdateCornerRadiusLabel() => CornerRadiusValue.Text = $"{(int)Math.Round(CornerRadiusSlider.Value)} px";
+
+    private void CornerRadiusSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_initializing) return;
+        UpdateCornerRadiusLabel();
+        (Application.Current.MainWindow as MainWindow)?.SetGeometryPreview(
+            (int)Math.Round(CornerRadiusSlider.Value),
+            (int)Math.Round(BottomGapSlider.Value));
+        PreferenceEdited(sender, e);
+    }
+
+    private void UpdateBottomGapLabel() => BottomGapValue.Text = $"{(int)Math.Round(BottomGapSlider.Value)} px";
+
+    private void BottomGapSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_initializing) return;
+        UpdateBottomGapLabel();
+        (Application.Current.MainWindow as MainWindow)?.SetGeometryPreview(
+            (int)Math.Round(CornerRadiusSlider.Value),
+            (int)Math.Round(BottomGapSlider.Value));
+        PreferenceEdited(sender, e);
+    }
 
     private void DockScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {

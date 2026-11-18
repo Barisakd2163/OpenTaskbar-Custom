@@ -86,6 +86,8 @@ public partial class MainWindow : Window
     private bool _instantDockResize;
     private double _dockTopGap;
     private (DockSize Size, double Scale)? _sizePreviewOverride;
+    private double? _radiusPreviewOverride;
+    private double? _bottomGapPreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
     private int _wheelRemainder;
 
@@ -1681,6 +1683,8 @@ public partial class MainWindow : Window
     private void Preferences_Changed(object? sender, EventArgs e)
     {
         _sizePreviewOverride = null;
+        _radiusPreviewOverride = null;
+        _bottomGapPreviewOverride = null;
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
         ThemePacks_Changed(this, EventArgs.Empty);
@@ -2177,13 +2181,22 @@ public partial class MainWindow : Window
     private void ApplyDockMargin()
     {
         var side = IsFullWidth ? DockMetrics.FullWidthSideInset : DockMetrics.SideInset;
+        var bottomGap = EffectiveBottomGap;
         DockSurface.Margin = Edge switch
         {
-            DockEdge.Left => new Thickness(Profile.BottomGap, side, _dockTopGap, side),
-            DockEdge.Right => new Thickness(_dockTopGap, side, Profile.BottomGap, side),
-            _ => new Thickness(side, _dockTopGap, side, Profile.BottomGap)
+            DockEdge.Left => new Thickness(bottomGap, side, _dockTopGap, side),
+            DockEdge.Right => new Thickness(_dockTopGap, side, bottomGap, side),
+            _ => new Thickness(side, _dockTopGap, side, bottomGap)
         };
     }
+
+    private double EffectiveCornerRadius => _radiusPreviewOverride ?? (_preferences.Current.DockCornerRadius is { } customRadius && customRadius >= 0
+        ? customRadius
+        : Profile.Radius);
+
+    private double EffectiveBottomGap => _bottomGapPreviewOverride ?? (_preferences.Current.DockBottomGap is { } customGap && customGap >= 0
+        ? customGap
+        : Profile.BottomGap);
 
     private DockSizeProfile Profile => _sizePreviewOverride is { } preview
         ? DockMetrics.For(preview.Size, preview.Scale)
@@ -2196,8 +2209,18 @@ public partial class MainWindow : Window
         if (_replacementSession?.IsActive == true)
         {
             var thickness = IsVertical ? _dockArea.Width : _dockArea.Height;
-            if (thickness > 0) _dockTopGap = Math.Max(0.0, thickness - Profile.SurfaceHeight - Profile.BottomGap);
+            if (thickness > 0) _dockTopGap = Math.Max(0.0, thickness - Profile.SurfaceHeight - EffectiveBottomGap);
         }
+        ApplyDockMargin();
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
+    }
+
+    internal void SetGeometryPreview(int? radius, int? bottomGap)
+    {
+        _radiusPreviewOverride = radius;
+        _bottomGapPreviewOverride = bottomGap;
+        ApplySizeProfile();
         ApplyDockMargin();
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
@@ -2207,6 +2230,7 @@ public partial class MainWindow : Window
     {
         UpdatePreferredIconPixels();
         var profile = Profile;
+        var radius = EffectiveCornerRadius;
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
         Application.Current.Resources["DockIconSize"] = profile.Icon;
@@ -2215,10 +2239,10 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockApplicationIconSize"] = Math.Max(18, Math.Round(profile.Icon * 0.88));
         Application.Current.Resources["StartLogoSize"] = Math.Max(14, Math.Round(profile.Icon * 0.68));
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
-        DockFrame.CornerRadius = new CornerRadius(profile.Radius);
-        DockInnerBevel.CornerRadius = new CornerRadius(Math.Max(1, profile.Radius - 1));
+        DockFrame.CornerRadius = new CornerRadius(radius);
+        DockInnerBevel.CornerRadius = new CornerRadius(Math.Max(0, radius - 1));
         // The sheen sits on the inner top edge of the glass frame, inset past the rounded corners.
-        var sheenHorizontal = Math.Max(4, profile.Radius - 8);
+        var sheenHorizontal = Math.Max(4, radius - 8);
         DockSheen.Margin = new Thickness(sheenHorizontal, -profile.VerticalPadding + 1, sheenHorizontal, 0);
         var bevelH = -9;
         var bevelV = -profile.VerticalPadding + 1;

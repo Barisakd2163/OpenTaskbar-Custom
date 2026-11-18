@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using OpenTaskbar.Models;
+using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Views.Widgets;
 
@@ -11,13 +12,27 @@ public partial class TimedWidgetTile : UserControl
     public static readonly RoutedEvent DetailsRequestedEvent = EventManager.RegisterRoutedEvent(
         nameof(DetailsRequested), RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(TimedWidgetTile));
 
-    public TimedWidgetTile() => InitializeComponent();
+    public TimedWidgetTile()
+    {
+        InitializeComponent();
+        Loaded += (_, _) => UpdateTileIcon();
+        DataContextChanged += (_, _) => UpdateTileIcon();
+    }
 
     public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
     public event RoutedEventHandler DetailsRequested
     {
         add => AddHandler(DetailsRequestedEvent, value);
         remove => RemoveHandler(DetailsRequestedEvent, value);
+    }
+
+    private void UpdateTileIcon()
+    {
+        if (TileIcon is null) return;
+        if (DataContext is CountdownDockWidget)
+            TileIcon.Content = FindResource("IconHourglass");
+        else
+            TileIcon.Content = FindResource("IconTimer");
     }
 
     private void Details_Click(object sender, RoutedEventArgs e) => RequestDetails();

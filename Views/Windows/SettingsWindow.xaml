@@ -293,6 +293,34 @@
                             </DockPanel></Border>
 
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Width="240" VerticalAlignment="Center">
+                                    <Slider x:Name="CornerRadiusSlider" Width="176" Minimum="0" Maximum="32" Value="18" TickFrequency="1"
+                                            IsSnapToTickEnabled="True" SmallChange="1" LargeChange="4" Style="{StaticResource SettingsOpacitySlider}"
+                                            AutomationProperties.Name="{local:Loc DockCornerRadius}" AutomationProperties.HelpText="{local:Loc DockCornerRadiusDescription}"
+                                            ValueChanged="CornerRadiusSlider_ValueChanged" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="CornerRadiusValue" Width="56" TextAlignment="Right" Foreground="{DynamicResource TextSecondary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc DockCornerRadius}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc DockCornerRadiusDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Width="240" VerticalAlignment="Center">
+                                    <Slider x:Name="BottomGapSlider" Width="176" Minimum="0" Maximum="24" Value="6" TickFrequency="1"
+                                            IsSnapToTickEnabled="True" SmallChange="1" LargeChange="3" Style="{StaticResource SettingsOpacitySlider}"
+                                            AutomationProperties.Name="{local:Loc DockBottomGap}" AutomationProperties.HelpText="{local:Loc DockBottomGapDescription}"
+                                            ValueChanged="BottomGapSlider_ValueChanged" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="BottomGapValue" Width="56" TextAlignment="Right" Foreground="{DynamicResource TextSecondary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{local:Loc DockBottomGap}" Style="{StaticResource SettingsRowLabel}" />
+                                    <TextBlock Text="{local:Loc DockBottomGapDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                </StackPanel>
+                            </DockPanel></Border>
+
+                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <Border DockPanel.Dock="Right" Width="240" Height="32" CornerRadius="7" Background="{DynamicResource SettingsControl}" BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1" Padding="2" VerticalAlignment="Center">
                                     <UniformGrid Columns="3">
                                         <RadioButton x:Name="BottomEdge" GroupName="DockEdge" Content="{local:Loc EdgeBottom}" Style="{StaticResource SettingsSegmentChoice}" />

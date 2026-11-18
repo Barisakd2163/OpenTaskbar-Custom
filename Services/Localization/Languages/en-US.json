@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Settings",
   "SettingsTitle": "OpenTaskbar settings",
   "General": "General",
@@ -471,5 +471,9 @@
   "ErrorThemeFolderOpen": "The theme folder could not be opened. Check access permissions.",
   "ErrorUpdateFailed": "The update could not be downloaded. Check your internet connection and try again.",
   "PreviewWeekday": "Monday",
-  "PreviewDate": "Nov 16"
+  "PreviewDate": "Nov 16",
+  "DockCornerRadius": "Corner radius",
+  "DockCornerRadiusDescription": "Controls the roundness of the taskbar frame corners (0 px = sharp, 16–22 px = normal, 32 px = pill).",
+  "DockBottomGapDescription": "Distance between the taskbar and the screen edge.",
+  "DockBottomGap": "Screen edge spacing"
 }

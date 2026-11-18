@@ -142,14 +142,67 @@
     </Style>
     <DataTemplate DataType="{x:Type models:DockWidgetItem}">
         <Grid AutomationProperties.Name="{Binding Label}">
-            <!-- Default tile preview (Battery, Storage, DayProgress) -->
-            <Border x:Name="DefaultTile" Style="{StaticResource DockWidgetFrame}">
+            <!-- Default tile preview (modern WidgetCardBorder) -->
+            <Border x:Name="DefaultTile" Style="{StaticResource WidgetCardBorder}" Padding="10,0">
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Label}" Foreground="{DynamicResource TextSecondary}" FontSize="{StaticResource TextSizeWidgetLabel}" />
-                    <TextBlock Text="{Binding Value}" Foreground="{DynamicResource TextPrimary}" FontSize="{StaticResource TextSizeWidgetValue}"
-                               MaxWidth="{StaticResource DockWidgetValueMaxWidth}" TextWrapping="Wrap"
-                               Typography.NumeralAlignment="Tabular" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Label}" Style="{StaticResource WidgetCaption}" FontSize="9.5" FontWeight="Bold" />
+                    <TextBlock Text="{Binding Value}" Style="{StaticResource WidgetText}" FontSize="13" Margin="0,1,0,0"
+                               Typography.NumeralAlignment="Tabular" />
                 </StackPanel>
+            </Border>
+
+            <!-- Modern Battery Card -->
+            <Border x:Name="BatteryCard" Style="{StaticResource WidgetCardBorder}" Padding="10,0" Visibility="Collapsed">
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ContentControl Grid.Column="0" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconBattery}"
+                                    Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center"
+                                    Foreground="{DynamicResource WidgetAccent}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Label}" Style="{StaticResource WidgetCaption}" FontSize="9.5" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Value}" Style="{StaticResource WidgetText}" FontSize="13" Margin="0,1,0,0"
+                                   Typography.NumeralAlignment="Tabular" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Modern Storage Card -->
+            <Border x:Name="StorageCard" Style="{StaticResource WidgetCardBorder}" Padding="10,0" Visibility="Collapsed">
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ContentControl Grid.Column="0" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconHardDrive}"
+                                    Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center"
+                                    Foreground="{DynamicResource WidgetAccent}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Label}" Style="{StaticResource WidgetCaption}" FontSize="9.5" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Value}" Style="{StaticResource WidgetText}" FontSize="13" Margin="0,1,0,0"
+                                   Typography.NumeralAlignment="Tabular" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Modern DayProgress Card -->
+            <Border x:Name="DayProgressCard" Style="{StaticResource WidgetCardBorder}" Padding="10,0" Visibility="Collapsed">
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ContentControl Grid.Column="0" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconCalendar}"
+                                    Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center"
+                                    Foreground="{DynamicResource WidgetAccent}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Label}" Style="{StaticResource WidgetCaption}" FontSize="9.5" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Value}" Style="{StaticResource WidgetText}" FontSize="13" Margin="0,1,0,0"
+                                   Typography.NumeralAlignment="Tabular" />
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- Unified Date & Clock + Weather capsule preview -->
@@ -338,6 +391,18 @@
             <DataTrigger Binding="{Binding Id}" Value="Tray">
                 <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="TrayPreview" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Id}" Value="Battery">
+                <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="BatteryCard" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Id}" Value="Storage">
+                <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="StorageCard" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Id}" Value="DayProgress">
+                <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="DayProgressCard" Property="Visibility" Value="Visible" />
             </DataTrigger>
         </DataTemplate.Triggers>
     </DataTemplate>

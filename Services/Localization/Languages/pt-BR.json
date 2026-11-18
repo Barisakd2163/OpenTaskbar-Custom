@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Configurações",
   "SettingsTitle": "Configurações do OpenTaskbar",
   "General": "Geral",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Não foi possível abrir a pasta de temas. Verifique as permissões de acesso.",
   "ErrorUpdateFailed": "Não foi possível baixar a atualização. Verifique sua conexão com a Internet e tente novamente.",
   "PreviewWeekday": "Segunda-feira",
-  "PreviewDate": "16 de nov."
+  "PreviewDate": "16 de nov.",
+  "DockCornerRadius": "Raio dos cantos",
+  "DockCornerRadiusDescription": "Controla o arredondamento dos cantos da barra de tarefas.",
+  "DockBottomGapDescription": "Distância entre a barra de tarefas e a borda da tela.",
+  "DockBottomGap": "Espaçamento da borda da tela"
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Ayarlar",
   "SettingsTitle": "OpenTaskbar ayarları",
   "General": "Genel",
@@ -471,5 +471,9 @@
   "ErrorThemeFolderOpen": "Tema klasörü açılamadı. Klasöre erişim iznini denetleyin.",
   "ErrorUpdateFailed": "Güncelleme indirilemedi. İnternet bağlantısını denetleyip yeniden deneyin.",
   "PreviewWeekday": "Pazartesi",
-  "PreviewDate": "16 Kas"
+  "PreviewDate": "16 Kas",
+  "DockCornerRadius": "Köşe yuvarlaklığı",
+  "DockCornerRadiusDescription": "Görev çubuğu çerçevesinin köşe kavisini ayarlar (0 px = keskin, 16–22 px = standart, 32 px = yuvarlak hap).",
+  "DockBottomGapDescription": "Görev çubuğunun ekran kenarına olan mesafesini ayarlar.",
+  "DockBottomGap": "Ekran kenar boşluğu"
 }

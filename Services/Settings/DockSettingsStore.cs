@@ -130,7 +130,9 @@ public sealed class DockSettingsStore
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.WidgetOrder?.Count
         && settings.Profiles?.Any(profile => string.IsNullOrWhiteSpace(profile.Name) || profile.HiddenApps is null) != true
-        && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count;
+        && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count
+        && (settings.DockCornerRadius is null || settings.DockCornerRadius is >= 0 and <= 48)
+        && (settings.DockBottomGap is null || settings.DockBottomGap is >= 0 and <= 48);
 
     public static bool Validate(DockSettings settings) => IsValid(settings);
 

@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Impostazioni",
   "SettingsTitle": "Impostazioni di OpenTaskbar",
   "General": "Generale",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Impossibile aprire la cartella dei temi. Verifica le autorizzazioni di accesso.",
   "ErrorUpdateFailed": "Impossibile scaricare l’aggiornamento. Controlla la connessione Internet e riprova.",
   "PreviewWeekday": "Lunedì",
-  "PreviewDate": "16 nov"
+  "PreviewDate": "16 nov",
+  "DockCornerRadius": "Raggio degli angoli",
+  "DockCornerRadiusDescription": "Regola l'arrotondamento degli angoli della barra delle applicazioni.",
+  "DockBottomGapDescription": "Distanza tra la barra delle applicazioni e il bordo dello schermo.",
+  "DockBottomGap": "Distanza dal bordo dello schermo"
 }

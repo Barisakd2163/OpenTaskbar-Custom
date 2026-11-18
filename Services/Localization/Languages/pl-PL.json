@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Ustawienia",
   "SettingsTitle": "Ustawienia OpenTaskbar",
   "General": "Ogólne",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Nie udało się otworzyć folderu motywów. Sprawdź uprawnienia dostępu.",
   "ErrorUpdateFailed": "Nie udało się pobrać aktualizacji. Sprawdź połączenie internetowe i spróbuj ponownie.",
   "PreviewWeekday": "Środa",
-  "PreviewDate": "16 lis"
+  "PreviewDate": "16 lis",
+  "DockCornerRadius": "Zaokrąglenie narożników",
+  "DockCornerRadiusDescription": "Steruje zaokrągleniem narożników paska zadań.",
+  "DockBottomGapDescription": "Odległość paska zadań od krawędzi ekranu.",
+  "DockBottomGap": "Odstęp od krawędzi ekranu"
 }

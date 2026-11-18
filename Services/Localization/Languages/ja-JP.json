@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "設定",
   "SettingsTitle": "OpenTaskbar の設定",
   "General": "全般",
@@ -440,5 +440,9 @@
   "TaskbarAutoHideReenabled": "Windows タスクバーの自動的に隠す機能が再び有効になりました。",
   "WeatherWindSpeed": "時速 {0} km",
   "PreviewWeekday": "月曜日",
-  "PreviewDate": "11月16日"
+  "PreviewDate": "11月16日",
+  "DockCornerRadius": "角の丸み",
+  "DockCornerRadiusDescription": "タスクバーの角の丸みを調整します。",
+  "DockBottomGapDescription": "タスクバーと画面端の間隔を設定します。",
+  "DockBottomGap": "画面端の余白"
 }

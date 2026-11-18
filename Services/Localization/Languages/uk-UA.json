@@ -1,4 +1,4 @@
-{
+﻿{
   "Settings": "Налаштування",
   "SettingsTitle": "Налаштування OpenTaskbar",
   "General": "Загальні",
@@ -440,5 +440,9 @@
   "ErrorThemeFolderOpen": "Не вдалося відкрити папку тем. Перевірте права доступу.",
   "ErrorUpdateFailed": "Не вдалося завантажити оновлення. Перевірте підключення до Інтернету й повторіть спробу.",
   "PreviewWeekday": "Середа",
-  "PreviewDate": "16 лист."
+  "PreviewDate": "16 лист.",
+  "DockCornerRadius": "Радіус заокруглення",
+  "DockCornerRadiusDescription": "Налаштовує заокруглення кутів панелі завдань.",
+  "DockBottomGapDescription": "Відстань між панеллю завдань і краєм екрана.",
+  "DockBottomGap": "Відступ від краю екрана"
 }

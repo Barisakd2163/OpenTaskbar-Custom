@@ -812,6 +812,27 @@ internal static class DockLayoutChecks
         Check(tokensWithLegacy.IndexOf("widget:Stopwatch") > tokensWithLegacy.IndexOf("widget:Media"),
             "Legacy widgets must follow the order tokens in the unified dock strip.");
 
+        // Verify taskbar corner radius and bottom gap settings validation
+        var customGeometrySettings = new DockSettings(DockCornerRadius: 24, DockBottomGap: 8);
+        Check(OpenTaskbar.Services.DockSettingsStore.Validate(customGeometrySettings),
+            "Valid DockCornerRadius and DockBottomGap must pass validation.");
+
+        var sharpCornerSettings = new DockSettings(DockCornerRadius: 0, DockBottomGap: 0);
+        Check(OpenTaskbar.Services.DockSettingsStore.Validate(sharpCornerSettings),
+            "Zero DockCornerRadius (sharp) and zero DockBottomGap must pass validation.");
+
+        var invalidRadiusSettings = new DockSettings(DockCornerRadius: -5);
+        Check(!OpenTaskbar.Services.DockSettingsStore.Validate(invalidRadiusSettings),
+            "Negative DockCornerRadius must fail validation.");
+
+        var excessiveRadiusSettings = new DockSettings(DockCornerRadius: 60);
+        Check(!OpenTaskbar.Services.DockSettingsStore.Validate(excessiveRadiusSettings),
+            "Excessive DockCornerRadius must fail validation.");
+
+        var invalidGapSettings = new DockSettings(DockBottomGap: -2);
+        Check(!OpenTaskbar.Services.DockSettingsStore.Validate(invalidGapSettings),
+            "Negative DockBottomGap must fail validation.");
+
         return checks;
     }
 }
