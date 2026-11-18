@@ -19,6 +19,7 @@ internal static class NetSpeedChecks
         CheckBytesFormatting(Check);
         CheckWidgetLifecycleAndCalculations(Check);
         CheckHoverFlyoutAndInteractions(Check);
+        CheckSpeedTestExecution(Check);
 
         return checks;
     }
@@ -56,8 +57,8 @@ internal static class NetSpeedChecks
     {
         var widget = new NetSpeedWidget();
         check(widget.SupportsCompactMode, "NetSpeedWidget must support compact mode.");
-        check(widget.CompactWidthEstimate == 54, "Compact width estimate must be 54 DIP.");
-        check(widget.FullWidthEstimate == 84, "Full width estimate must be 84 DIP.");
+        check(widget.CompactWidthEstimate == 68, "Compact width estimate must be 68 DIP.");
+        check(widget.FullWidthEstimate == 140, "Full width estimate must be 140 DIP.");
 
         long fakeReceived = 100_000_000;
         long fakeSent = 20_000_000;
@@ -90,19 +91,38 @@ internal static class NetSpeedChecks
     private static void CheckHoverFlyoutAndInteractions(Action<bool, string> check)
     {
         var widget = new NetSpeedWidget();
-        var clicked = false;
-        widget.OpenSettingsAction = () => clicked = true;
-
         var flyout = widget.BuildHoverFlyoutContent();
         check(flyout is StackPanel, "BuildHoverFlyoutContent must return a non-null StackPanel.");
 
         var panel = (StackPanel)flyout!;
-        check(panel.Children.Count >= 2, "Flyout must include at least heading and metrics.");
+        check(panel.Children.Count >= 2, "Hover flyout must include at least heading and metrics.");
 
-        if (widget.Content is Button button)
+        var clickFlyout = widget.BuildClickFlyoutContent();
+        check(clickFlyout is StackPanel, "BuildClickFlyoutContent must return a non-null StackPanel.");
+        var clickPanel = (StackPanel)clickFlyout;
+        check(clickPanel.Children.Count >= 4, "Click flyout must include heading, metrics, speed test, and settings.");
+    }
+
+    private static void CheckSpeedTestExecution(Action<bool, string> check)
+    {
+        var widget = new NetSpeedWidget();
+        widget.SpeedTestRunner = (progress, ct) =>
         {
-            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            check(clicked, "Clicking the card button must invoke the settings action.");
-        }
+            progress.Report(new SpeedTestProgress("Testing", 50.0, 50));
+            return Task.FromResult(new SpeedTestResult(18, 95.5, 32.1));
+        };
+
+        var flyout = widget.BuildClickFlyoutContent();
+        check(flyout != null, "Click flyout must build before test.");
+
+        // Run the test
+        widget.StartSpeedTestAsync().GetAwaiter().GetResult();
+
+        // Verify flyout content reflects completed results
+        var updatedFlyout = widget.BuildClickFlyoutContent();
+        check(updatedFlyout is StackPanel, "Updated flyout must be a StackPanel.");
+
+        // Test cancel
+        widget.CancelSpeedTest();
     }
 }

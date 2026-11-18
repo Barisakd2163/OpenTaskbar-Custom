@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Automation;
@@ -10,9 +11,20 @@ using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Widgets;
 
+public enum SpeedTestStatus
+{
+    Idle,
+    Running,
+    Completed,
+    Failed
+}
+
+public sealed record SpeedTestProgress(string StatusText, double CurrentMbps, double Percent);
+public sealed record SpeedTestResult(int PingMs, double DownloadMbps, double UploadMbps);
+
 /// <summary>
-/// A dock widget that displays real-time internet download and upload speeds.
-/// Clicking it opens Windows Network &amp; Internet Settings.
+/// A dock widget that displays real-time internet download and upload speeds side-by-side.
+/// Clicking it opens an interactive flyout allowing the user to run a network speed test.
 /// Conforms to the Widget Height Uniformity Rule (46 DIP).
 /// </summary>
 public sealed class NetSpeedWidget : DockWidget
@@ -20,15 +32,20 @@ public sealed class NetSpeedWidget : DockWidget
     public static string Id => "NetSpeed";
 
     public override bool SupportsCompactMode => true;
-    public override int ShrinkPriority => 35;
-    public override double CompactWidthEstimate => 54;
-    public override double FullWidthEstimate => 84;
+    public override int ShrinkPriority => 30;
+    public override double CompactWidthEstimate => 68;
+    public override double FullWidthEstimate => 140;
 
     private readonly Button _cardButton;
-    private readonly TextBlock _downArrow;
+    private readonly ContentControl _downIcon;
     private readonly TextBlock _downloadText;
-    private readonly TextBlock _upArrow;
+    private readonly ContentControl _upIcon;
     private readonly TextBlock _uploadText;
+    private readonly StackPanel _uploadGroup;
+
+    private readonly DockFlyout _flyout = new();
+    private StackPanel? _flyoutPanel;
+    private StackPanel? _speedTestContainer;
 
     private long _lastReceivedBytes = -1;
     private long _lastSentBytes = -1;
@@ -39,78 +56,102 @@ public sealed class NetSpeedWidget : DockWidget
     private long _sessionUploadedBytes;
     private string _primaryInterfaceName = string.Empty;
 
+    // Speed test state
+    private SpeedTestStatus _testStatus = SpeedTestStatus.Idle;
+    private SpeedTestResult? _lastTestResult;
+    private string _testStatusMessage = string.Empty;
+    private double _testLiveMbps;
+    private double _testProgressPercent;
+    private CancellationTokenSource? _testCts;
+
+    private static readonly HttpClient SharedHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(15)
+    };
+
     internal Func<(long Received, long Sent, string PrimaryInterfaceName)> NetworkReader { get; set; } = ReadNetworkBytes;
+    internal Func<IProgress<SpeedTestProgress>, CancellationToken, Task<SpeedTestResult>> SpeedTestRunner { get; set; } = DefaultRunSpeedTestAsync;
     internal Action OpenSettingsAction { get; set; } = DefaultOpenSettings;
 
     public NetSpeedWidget()
     {
-        _downArrow = new TextBlock
+        _downIcon = new ContentControl
         {
-            Text = "↓ ",
-            FontSize = 10.5,
-            FontWeight = FontWeights.Bold,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+            Content = FindResource("IconArrowDown"),
+            Width = 12,
+            Height = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
         };
-        _downArrow.SetResourceReference(TextBlock.ForegroundProperty, "WidgetAccent");
+        _downIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+        _downIcon.SetResourceReference(ForegroundProperty, "WidgetAccent");
 
         _downloadText = new TextBlock
         {
             Text = "0 B/s",
-            FontSize = 11,
+            FontSize = 11.5,
             FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         _downloadText.SetResourceReference(StyleProperty, "WidgetText");
 
-        var downRow = new StackPanel
+        var downGroup = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center
         };
-        downRow.Children.Add(_downArrow);
-        downRow.Children.Add(_downloadText);
+        downGroup.Children.Add(_downIcon);
+        downGroup.Children.Add(_downloadText);
 
-        _upArrow = new TextBlock
+        _upIcon = new ContentControl
         {
-            Text = "↑ ",
-            FontSize = 10,
-            FontWeight = FontWeights.Bold,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+            Content = FindResource("IconArrowUp"),
+            Width = 12,
+            Height = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
         };
-        _upArrow.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        _upIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+        _upIcon.SetResourceReference(ForegroundProperty, "TextSecondary");
 
         _uploadText = new TextBlock
         {
             Text = "0 B/s",
-            FontSize = 10.5,
+            FontSize = 11.5,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
-        _uploadText.SetResourceReference(StyleProperty, "WidgetCaption");
+        _uploadText.SetResourceReference(StyleProperty, "WidgetText");
 
-        var upRow = new StackPanel
+        _uploadGroup = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, -1, 0, 0)
+            Margin = new Thickness(10, 0, 0, 0)
         };
-        upRow.Children.Add(_upArrow);
-        upRow.Children.Add(_uploadText);
+        _uploadGroup.Children.Add(_upIcon);
+        _uploadGroup.Children.Add(_uploadText);
 
-        var stack = new StackPanel
+        var contentRow = new StackPanel
         {
+            Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        stack.Children.Add(downRow);
-        stack.Children.Add(upRow);
+        contentRow.Children.Add(downGroup);
+        contentRow.Children.Add(_uploadGroup);
 
         _cardButton = new Button
         {
-            Content = stack,
-            Padding = new Thickness(10, 2, 10, 2)
+            Content = contentRow,
+            Padding = new Thickness(10, 0, 10, 0)
         };
         _cardButton.SetResourceReference(StyleProperty, "WidgetCardButton");
-        _cardButton.Click += (_, _) => OpenSettingsAction();
+        _cardButton.Click += CardButton_Click;
 
         Content = _cardButton;
         Localize();
@@ -129,6 +170,8 @@ public sealed class NetSpeedWidget : DockWidget
     protected override void OnDeactivated()
     {
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+        CancelSpeedTest();
+        _flyout.Close();
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => Localize();
@@ -173,32 +216,29 @@ public sealed class NetSpeedWidget : DockWidget
         UpdateLabels();
     }
 
-    protected override void OnCompactChanged(bool compact) => UpdateLabels();
+    protected override void OnCompactChanged(bool compact)
+    {
+        _uploadGroup.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        UpdateLabels();
+    }
 
     private void UpdateLabels()
     {
-        if (IsCompact)
-        {
-            _downArrow.Text = "↓";
-            _upArrow.Text = "↑";
-            _downloadText.Text = FormatCompactSpeed(_downloadBytesPerSec);
-            _uploadText.Text = FormatCompactSpeed(_uploadBytesPerSec);
-        }
-        else
-        {
-            _downArrow.Text = "↓ ";
-            _upArrow.Text = "↑ ";
-            _downloadText.Text = FormatSpeed(_downloadBytesPerSec);
-            _uploadText.Text = FormatSpeed(_uploadBytesPerSec);
-        }
+        _downloadText.Text = FormatSpeed(_downloadBytesPerSec);
+        _uploadText.Text = FormatSpeed(_uploadBytesPerSec);
 
         var speedStatus = $"↓ {FormatSpeed(_downloadBytesPerSec)} · ↑ {FormatSpeed(_uploadBytesPerSec)}";
         AutomationProperties.SetName(_cardButton, $"{UiText.Get("WidgetNetSpeed")}: {speedStatus}");
     }
 
+    private void CardButton_Click(object sender, RoutedEventArgs e)
+    {
+        _flyout.Toggle(_cardButton, BuildClickFlyoutContent, focusable: true);
+    }
+
     public override UIElement? BuildHoverFlyoutContent()
     {
-        var panel = new StackPanel { Width = 230 };
+        var panel = new StackPanel { Width = 240 };
         panel.Children.Add(DockFlyout.Heading(UiText.Get("WidgetNetSpeed")));
 
         if (!string.IsNullOrEmpty(_primaryInterfaceName))
@@ -263,6 +303,477 @@ public sealed class NetSpeedWidget : DockWidget
         panel.Children.Add(speedGrid);
 
         return panel;
+    }
+
+    internal UIElement BuildClickFlyoutContent()
+    {
+        _flyoutPanel = new StackPanel { Width = 270 };
+        _flyoutPanel.Children.Add(DockFlyout.Heading(UiText.Get("WidgetNetSpeed")));
+
+        if (!string.IsNullOrEmpty(_primaryInterfaceName))
+        {
+            _flyoutPanel.Children.Add(DockFlyout.Caption($"{UiText.Get("NetworkAdapter")}: {_primaryInterfaceName}"));
+        }
+
+        // Live stats grid
+        var speedGrid = new Grid { Margin = new Thickness(0, 6, 0, 8) };
+        speedGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        speedGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var downCol = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
+        downCol.Children.Add(new TextBlock
+        {
+            Text = $"↓ {UiText.Get("NetworkDownload")}",
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("WidgetAccent")
+        });
+        downCol.Children.Add(new TextBlock
+        {
+            Text = FormatSpeed(_downloadBytesPerSec),
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        });
+        downCol.Children.Add(new TextBlock
+        {
+            Text = $"{UiText.Get("NetworkTotalReceived")}: {FormatBytes(_sessionDownloadedBytes)}",
+            FontSize = 9.5,
+            Foreground = (Brush)FindResource("TextSecondary"),
+            Margin = new Thickness(0, 2, 0, 0)
+        });
+
+        var upCol = new StackPanel { Margin = new Thickness(4, 0, 0, 0) };
+        upCol.Children.Add(new TextBlock
+        {
+            Text = $"↑ {UiText.Get("NetworkUpload")}",
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("TextSecondary")
+        });
+        upCol.Children.Add(new TextBlock
+        {
+            Text = FormatSpeed(_uploadBytesPerSec),
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        });
+        upCol.Children.Add(new TextBlock
+        {
+            Text = $"{UiText.Get("NetworkTotalSent")}: {FormatBytes(_sessionUploadedBytes)}",
+            FontSize = 9.5,
+            Foreground = (Brush)FindResource("TextSecondary"),
+            Margin = new Thickness(0, 2, 0, 0)
+        });
+
+        Grid.SetColumn(downCol, 0);
+        Grid.SetColumn(upCol, 1);
+        speedGrid.Children.Add(downCol);
+        speedGrid.Children.Add(upCol);
+        _flyoutPanel.Children.Add(speedGrid);
+
+        // Divider
+        _flyoutPanel.Children.Add(CreateDivider());
+
+        // Speed Test Section Container
+        _speedTestContainer = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+        UpdateSpeedTestView();
+        _flyoutPanel.Children.Add(_speedTestContainer);
+
+        // Divider
+        _flyoutPanel.Children.Add(CreateDivider());
+
+        // Settings link
+        var settingsButton = DockFlyout.FlatButton(
+            new TextBlock { Text = UiText.Get("NetworkSettings"), FontSize = 11.5, FontWeight = FontWeights.SemiBold },
+            (_, _) => OpenSettingsAction(),
+            UiText.Get("NetworkSettings")
+        );
+        settingsButton.Margin = new Thickness(0, 2, 0, 0);
+        _flyoutPanel.Children.Add(settingsButton);
+
+        return _flyoutPanel;
+    }
+
+    private Border CreateDivider()
+    {
+        var border = new Border
+        {
+            Height = 1,
+            Margin = new Thickness(0, 6, 0, 6)
+        };
+        border.SetResourceReference(Border.BackgroundProperty, "MenuStroke");
+        return border;
+    }
+
+    private void UpdateSpeedTestView()
+    {
+        if (_speedTestContainer == null) return;
+        _speedTestContainer.Children.Clear();
+
+        var headerRow = new Grid { Margin = new Thickness(0, 2, 0, 6) };
+        headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleBlock = new TextBlock
+        {
+            Text = UiText.Get("SpeedTestTitle"),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        headerRow.Children.Add(titleBlock);
+        _speedTestContainer.Children.Add(headerRow);
+
+        switch (_testStatus)
+        {
+            case SpeedTestStatus.Idle:
+                if (_lastTestResult != null)
+                {
+                    _speedTestContainer.Children.Add(CreateResultsGrid(_lastTestResult));
+                }
+
+                var startButton = DockFlyout.FlatButton(
+                    new TextBlock
+                    {
+                        Text = _lastTestResult == null ? UiText.Get("SpeedTestStart") : UiText.Get("SpeedTestRestart"),
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 11.5,
+                        Foreground = (Brush)FindResource("WidgetAccent")
+                    },
+                    async (_, _) => await StartSpeedTestAsync()
+                );
+                startButton.Margin = new Thickness(0, 4, 0, 0);
+                _speedTestContainer.Children.Add(startButton);
+                break;
+
+            case SpeedTestStatus.Running:
+                var statusBlock = new TextBlock
+                {
+                    Text = string.IsNullOrEmpty(_testStatusMessage) ? UiText.Get("SpeedTestTestingPing") : _testStatusMessage,
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("TextSecondary"),
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                _speedTestContainer.Children.Add(statusBlock);
+
+                if (_testLiveMbps > 0)
+                {
+                    var liveSpeedBlock = new TextBlock
+                    {
+                        Text = $"{_testLiveMbps.ToString("0.0", CultureInfo.InvariantCulture)} Mbps",
+                        FontSize = 18,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = (Brush)FindResource("WidgetAccent"),
+                        Margin = new Thickness(0, 0, 0, 6),
+                        Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+                    };
+                    _speedTestContainer.Children.Add(liveSpeedBlock);
+                }
+
+                var progress = new ProgressBar
+                {
+                    Height = 4,
+                    Minimum = 0,
+                    Maximum = 100,
+                    Value = _testProgressPercent,
+                    Margin = new Thickness(0, 2, 0, 6)
+                };
+                _speedTestContainer.Children.Add(progress);
+
+                var cancelButton = DockFlyout.FlatButton(
+                    new TextBlock { Text = UiText.Get("SpeedTestCancel"), FontSize = 11, Foreground = (Brush)FindResource("TextSecondary") },
+                    (_, _) => CancelSpeedTest()
+                );
+                cancelButton.Margin = new Thickness(0, 2, 0, 0);
+                _speedTestContainer.Children.Add(cancelButton);
+                break;
+
+            case SpeedTestStatus.Completed:
+                if (_lastTestResult != null)
+                {
+                    _speedTestContainer.Children.Add(CreateResultsGrid(_lastTestResult));
+                }
+
+                var testAgainBtn = DockFlyout.FlatButton(
+                    new TextBlock
+                    {
+                        Text = UiText.Get("SpeedTestRestart"),
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 11.5,
+                        Foreground = (Brush)FindResource("WidgetAccent")
+                    },
+                    async (_, _) => await StartSpeedTestAsync()
+                );
+                testAgainBtn.Margin = new Thickness(0, 6, 0, 0);
+                _speedTestContainer.Children.Add(testAgainBtn);
+                break;
+
+            case SpeedTestStatus.Failed:
+                var errorBlock = new TextBlock
+                {
+                    Text = UiText.Get("SpeedTestFailed"),
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("WidgetWarning"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 2, 0, 6)
+                };
+                _speedTestContainer.Children.Add(errorBlock);
+
+                var retryBtn = DockFlyout.FlatButton(
+                    new TextBlock { Text = UiText.Get("SpeedTestRetry"), FontWeight = FontWeights.Bold, FontSize = 11.5 },
+                    async (_, _) => await StartSpeedTestAsync()
+                );
+                retryBtn.Margin = new Thickness(0, 2, 0, 0);
+                _speedTestContainer.Children.Add(retryBtn);
+                break;
+        }
+    }
+
+    private Grid CreateResultsGrid(SpeedTestResult result)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 4, 0, 6) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var pingStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        pingStack.Children.Add(new TextBlock
+        {
+            Text = UiText.Get("SpeedTestPing"),
+            FontSize = 10,
+            Foreground = (Brush)FindResource("TextSecondary")
+        });
+        pingStack.Children.Add(new TextBlock
+        {
+            Text = result.PingMs >= 0 ? $"{result.PingMs} ms" : "—",
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        });
+
+        var downStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        downStack.Children.Add(new TextBlock
+        {
+            Text = $"↓ {UiText.Get("NetworkDownload")}",
+            FontSize = 10,
+            Foreground = (Brush)FindResource("WidgetAccent")
+        });
+        downStack.Children.Add(new TextBlock
+        {
+            Text = $"{result.DownloadMbps.ToString("0.0", CultureInfo.InvariantCulture)}",
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        });
+        downStack.Children.Add(new TextBlock
+        {
+            Text = "Mbps",
+            FontSize = 9,
+            Foreground = (Brush)FindResource("TextSecondary")
+        });
+
+        var upStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        upStack.Children.Add(new TextBlock
+        {
+            Text = $"↑ {UiText.Get("NetworkUpload")}",
+            FontSize = 10,
+            Foreground = (Brush)FindResource("TextSecondary")
+        });
+        upStack.Children.Add(new TextBlock
+        {
+            Text = $"{result.UploadMbps.ToString("0.0", CultureInfo.InvariantCulture)}",
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        });
+        upStack.Children.Add(new TextBlock
+        {
+            Text = "Mbps",
+            FontSize = 9,
+            Foreground = (Brush)FindResource("TextSecondary")
+        });
+
+        Grid.SetColumn(pingStack, 0);
+        Grid.SetColumn(downStack, 1);
+        Grid.SetColumn(upStack, 2);
+
+        grid.Children.Add(pingStack);
+        grid.Children.Add(downStack);
+        grid.Children.Add(upStack);
+        return grid;
+    }
+
+    internal async Task StartSpeedTestAsync()
+    {
+        CancelSpeedTest();
+        _testCts = new CancellationTokenSource();
+        var ct = _testCts.Token;
+
+        _testStatus = SpeedTestStatus.Running;
+        _testStatusMessage = UiText.Get("SpeedTestTestingPing");
+        _testLiveMbps = 0;
+        _testProgressPercent = 5;
+        UpdateSpeedTestView();
+
+        var progress = new Progress<SpeedTestProgress>(p =>
+        {
+            if (ct.IsCancellationRequested) return;
+            _testStatusMessage = p.StatusText;
+            _testLiveMbps = p.CurrentMbps;
+            _testProgressPercent = p.Percent;
+            UpdateSpeedTestView();
+        });
+
+        try
+        {
+            var result = await SpeedTestRunner(progress, ct).ConfigureAwait(true);
+            if (!ct.IsCancellationRequested)
+            {
+                _lastTestResult = result;
+                _testStatus = SpeedTestStatus.Completed;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _testStatus = SpeedTestStatus.Idle;
+        }
+        catch
+        {
+            _testStatus = SpeedTestStatus.Failed;
+        }
+        finally
+        {
+            _testLiveMbps = 0;
+            UpdateSpeedTestView();
+        }
+    }
+
+    internal void CancelSpeedTest()
+    {
+        if (_testCts != null)
+        {
+            try
+            {
+                _testCts.Cancel();
+                _testCts.Dispose();
+            }
+            catch
+            {
+            }
+            _testCts = null;
+        }
+        _testStatus = SpeedTestStatus.Idle;
+        UpdateSpeedTestView();
+    }
+
+    private static async Task<SpeedTestResult> DefaultRunSpeedTestAsync(IProgress<SpeedTestProgress> progress, CancellationToken ct)
+    {
+        // 1. Measure latency
+        progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingPing"), 0, 10));
+        var pingMs = await MeasurePingAsync(ct).ConfigureAwait(false);
+
+        // 2. Measure download
+        progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingDownload"), 0, 25));
+        var downMbps = await MeasureDownloadAsync(progress, ct).ConfigureAwait(false);
+
+        // 3. Measure upload
+        progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingUpload"), 0, 65));
+        var upMbps = await MeasureUploadAsync(progress, ct).ConfigureAwait(false);
+
+        progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingUpload"), upMbps, 100));
+        return new SpeedTestResult(pingMs, downMbps, upMbps);
+    }
+
+    private static async Task<int> MeasurePingAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync("1.1.1.1", 2000).ConfigureAwait(false);
+            if (reply.Status == IPStatus.Success)
+            {
+                return (int)reply.RoundtripTime;
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Head, "https://1.1.1.1");
+            using var response = await SharedHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            sw.Stop();
+            return Math.Max(1, (int)sw.ElapsedMilliseconds);
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    private static async Task<double> MeasureDownloadAsync(IProgress<SpeedTestProgress> progress, CancellationToken ct)
+    {
+        try
+        {
+            // Download 5 MB payload from Cloudflare speed test CDN
+            var url = "https://speed.cloudflare.com/__down?bytes=5000000";
+            using var response = await SharedHttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var buffer = new byte[64 * 1024];
+            long totalBytesRead = 0;
+            var sw = Stopwatch.StartNew();
+
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false);
+                if (bytesRead == 0) break;
+                totalBytesRead += bytesRead;
+
+                var elapsedSec = sw.Elapsed.TotalSeconds;
+                if (elapsedSec > 0.05)
+                {
+                    var currentMbps = (totalBytesRead * 8.0) / (elapsedSec * 1_000_000.0);
+                    var percent = 25 + Math.Min(35, (totalBytesRead / 5000000.0) * 35);
+                    progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingDownload"), currentMbps, percent));
+                }
+            }
+
+            sw.Stop();
+            var finalSec = Math.Max(0.05, sw.Elapsed.TotalSeconds);
+            return (totalBytesRead * 8.0) / (finalSec * 1_000_000.0);
+        }
+        catch when (!ct.IsCancellationRequested)
+        {
+            return 0;
+        }
+    }
+
+    private static async Task<double> MeasureUploadAsync(IProgress<SpeedTestProgress> progress, CancellationToken ct)
+    {
+        try
+        {
+            // Upload 2 MB payload to Cloudflare speed test endpoint
+            var payload = new byte[2 * 1024 * 1024];
+            using var content = new ByteArrayContent(payload);
+            var sw = Stopwatch.StartNew();
+            using var response = await SharedHttpClient.PostAsync("https://speed.cloudflare.com/__up", content, ct).ConfigureAwait(false);
+            sw.Stop();
+
+            var finalSec = Math.Max(0.05, sw.Elapsed.TotalSeconds);
+            var upMbps = (payload.Length * 8.0) / (finalSec * 1_000_000.0);
+            progress.Report(new SpeedTestProgress(UiText.Get("SpeedTestTestingUpload"), upMbps, 95));
+            return upMbps;
+        }
+        catch when (!ct.IsCancellationRequested)
+        {
+            return 0;
+        }
     }
 
     public static string FormatSpeed(double bytesPerSecond)
