@@ -24,6 +24,7 @@ internal static class AdaptiveWidgetAndConfirmChecks
         CheckAdaptiveDensityAndHysteresis(application.Dispatcher, Check);
         CheckScrollableAppBudget(Check);
         CheckVisualBalanceAndTrayFiltering(application, Check);
+        CheckEnhancedAudioCenter(application, Check);
         return checks;
     }
 
@@ -211,5 +212,46 @@ internal static class AdaptiveWidgetAndConfirmChecks
             "Compact-capable widgets must produce hover flyout content cleanly.");
         hover.CollapseActive();
         check(!hover.IsHoverActive, "CollapseActive must reset hover active state.");
+    }
+
+    private static void CheckEnhancedAudioCenter(Application application, Action<bool, string> check)
+    {
+        // 1. Localization keys for enhanced audio controls in Turkish and English
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+        check(!string.IsNullOrWhiteSpace(UiText.Get("AudioOutputDevices")), "AudioOutputDevices key must exist in Turkish.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("AudioInputDevices")), "AudioInputDevices key must exist in Turkish.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("Microphone")), "Microphone key must exist in Turkish.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("MicMuteToggle")), "MicMuteToggle key must exist in Turkish.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("AppVolumeMixer")), "AppVolumeMixer key must exist in Turkish.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("NoActiveAudioApps")), "NoActiveAudioApps key must exist in Turkish.");
+
+        UiText.Current.SetLanguage(AppLanguage.English);
+        check(!string.IsNullOrWhiteSpace(UiText.Get("AudioOutputDevices")), "AudioOutputDevices key must exist in English.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("AudioInputDevices")), "AudioInputDevices key must exist in English.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("Microphone")), "Microphone key must exist in English.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("MicMuteToggle")), "MicMuteToggle key must exist in English.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("AppVolumeMixer")), "AppVolumeMixer key must exist in English.");
+        check(!string.IsNullOrWhiteSpace(UiText.Get("NoActiveAudioApps")), "NoActiveAudioApps key must exist in English.");
+
+        // 2. Data contracts
+        var dev = new AudioDeviceInfo("dev-1", "Test Headphones", true, false);
+        check(dev.Id == "dev-1" && dev.Name == "Test Headphones" && dev.IsDefault && !dev.IsInput,
+            "AudioDeviceInfo contract must retain device identity, state, and flow.");
+
+        var volumeSet = 0f;
+        var muteSet = false;
+        var session = new AppAudioSession(1234, "Spotify", null, 0.75f, false, vol => volumeSet = vol, m => muteSet = m);
+        check(session.ProcessId == 1234 && session.Name == "Spotify" && Math.Abs(session.Volume - 0.75f) < 0.001f && !session.IsMuted,
+            "AppAudioSession contract must retain session metadata and initial state.");
+        session.SetVolume(0.5f);
+        session.SetMute(true);
+        check(Math.Abs(volumeSet - 0.5f) < 0.001f && muteSet,
+            "AppAudioSession delegates must successfully propagate volume and mute commands.");
+
+        // 3. Audio widget flyout construction
+        using var audioWidget = new AudioWidget();
+        var flyout = audioWidget.BuildHoverFlyoutContent();
+        check(flyout is Border container && container.Child is StackPanel root && root.Children.Count >= 4,
+            "AudioWidget flyout must build a multi-section audio center container.");
     }
 }

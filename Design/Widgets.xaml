@@ -16,6 +16,10 @@
     <StreamGeometry x:Key="IconVolume">M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a5 5 0 0 1 0 7.07 M19.07 4.93a10 10 0 0 1 0 14.14</StreamGeometry>
     <StreamGeometry x:Key="IconVolumeLow">M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a5 5 0 0 1 0 7.07</StreamGeometry>
     <StreamGeometry x:Key="IconVolumeMute">M11 5L6 9H2v6h4l5 4V5z M22 9l-6 6 M16 9l6 6</StreamGeometry>
+    <StreamGeometry x:Key="IconHeadphones">M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3</StreamGeometry>
+    <StreamGeometry x:Key="IconMic">M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M19 10v2a7 7 0 0 1-14 0v-2 M12 19v3 M8 22h8</StreamGeometry>
+    <StreamGeometry x:Key="IconMicMute">M1 1l22 22 M9 9v3a3 3 0 0 0 5.12 2.12 M15 9.34V5a3 3 0 0 0-5.94-.6 M19 10v2a7 7 0 0 1-.13 1.34 M12 19v3 M8 22h8</StreamGeometry>
+    <StreamGeometry x:Key="IconSliders">M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6</StreamGeometry>
     <StreamGeometry x:Key="IconWifi">M5 12.55a11 11 0 0 1 14.08 0 M1.42 9a16 16 0 0 1 21.16 0 M8.53 16.11a6 6 0 0 1 6.95 0 M12 20h.01</StreamGeometry>
     <StreamGeometry x:Key="IconBluetooth">M7 7l10 10-5 5V2l5 5L7 17</StreamGeometry>
     <StreamGeometry x:Key="IconCast">M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6 M2 12a9 9 0 0 1 8 8 M2 16a5 5 0 0 1 4 4 M2 20h.01</StreamGeometry>
