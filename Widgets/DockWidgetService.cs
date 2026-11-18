@@ -28,6 +28,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     public const string CountdownId = "Countdown";
     public const string SearchId = "Search";
     public const string NetSpeedId = "NetSpeed";
+    public const string BluetoothBatteryId = "BluetoothBattery";
 
     private sealed record WidgetDefinition(string Id, string LabelKey, Func<CultureInfo, string>? Read);
 
@@ -41,6 +42,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new(FocusId, "WidgetFocus", _ => "25:00"),
         new(WeatherId, "WidgetWeather", _ => "21°"),
         new(NetSpeedId, "WidgetNetSpeed", _ => "↓ 0 B/s · ↑ 0 B/s"),
+        new(BluetoothBatteryId, "WidgetBluetoothBattery", _ => "53% · 🔋"),
         new(AiUsageId, "WidgetAiUsage", _ => "CL · CX"),
         new(DesktopsId, "WidgetDesktops", _ => "1 / 2"),
         new(TrayId, "WidgetTray", _ => "▲"),

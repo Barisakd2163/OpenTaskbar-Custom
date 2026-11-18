@@ -50,6 +50,7 @@ internal static class WidgetViewChecks
             checks += SettingsAndAutoHideChecks.Run(app);
             checks += AdaptiveWidgetAndConfirmChecks.Run(app);
             checks += NetSpeedChecks.Run(app);
+            checks += BluetoothBatteryChecks.Run(app);
 
             var settingsAction = new Button { Content = UiText.Get("Apply") };
             var selectedTab = new TabItem { Header = UiText.Get("General"), Content = settingsAction };
@@ -422,6 +423,7 @@ internal static class WidgetViewChecks
                 DockWidgetService.FocusId => "25:00",
                 DockWidgetService.WeatherId => "21°",
                 DockWidgetService.NetSpeedId => "↓ 12 MB/s · ↑ 2 MB/s",
+                DockWidgetService.BluetoothBatteryId => "53%",
                 DockWidgetService.AiUsageId => "CL · CX",
                 DockWidgetService.DesktopsId => "1 / 2",
                 DockWidgetService.TrayId => "▲",

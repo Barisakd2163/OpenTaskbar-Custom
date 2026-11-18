@@ -490,10 +490,11 @@ internal static class DockLayoutChecks
         Check(app.FindResource("StartDockButton") is Style, "StartDockButton tactile tile style must be defined.");
 
         // Verify WidgetCoordinator ordering, reordering and validation
-        Check(WidgetCoordinator.DefaultWidgetOrder.Length == 12, "WidgetCoordinator must have 12 default widgets.");
+        Check(WidgetCoordinator.DefaultWidgetOrder.Length == 13, "WidgetCoordinator must have 13 default widgets.");
         Check(WidgetCoordinator.GetLabelKey("Clock") == "WidgetClock", "Clock widget label key must match.");
         Check(WidgetCoordinator.GetLabelKey("Media") == "WidgetMedia", "Media widget label key must match.");
         Check(WidgetCoordinator.GetLabelKey("NetSpeed") == "WidgetNetSpeed", "NetSpeed widget label key must match.");
+        Check(WidgetCoordinator.GetLabelKey("BluetoothBattery") == "WidgetBluetoothBattery", "BluetoothBattery widget label key must match.");
 
         UiText.Current.SetLanguage(AppLanguage.Turkish);
         Check(UiText.Get("WidgetOrderHeading") == "Widget Sıralaması", "WidgetOrderHeading must localize to Turkish.");
@@ -509,7 +510,7 @@ internal static class DockLayoutChecks
         coordinator.ApplyOrder(["Clock", "Focus", "Media"]);
         Check(coordinator.CurrentOrder[0] == "Clock" && coordinator.CurrentOrder[1] == "Focus" && coordinator.CurrentOrder[2] == "Media",
             "ApplyOrder must reorder widgets per specified order.");
-        Check(testStrip.Children.Count == 12, "Strip children count must remain 12 after reordering.");
+        Check(testStrip.Children.Count == 13, "Strip children count must remain 13 after reordering.");
         var unspecified = coordinator.CurrentOrder.Skip(3).ToArray();
         coordinator.ApplyOrder(["Clock", "Focus", "Media"]);
         Check(coordinator.CurrentOrder.Skip(3).SequenceEqual(unspecified),
