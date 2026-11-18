@@ -40,10 +40,13 @@ internal static class DockLayoutChecks
         var stored = new[] { "app:A", "app:closed", "app:B", "widget:disabled", "widget:Clock" };
         var shown = new[] { "app:A", "app:B", "widget:Clock" };
         var reordered = DockItemOrdering.MoveVisibleItem(stored, shown, "widget:Clock", 1);
-        Check(reordered.SequenceEqual(["widget:Clock", "app:closed", "app:A", "widget:disabled", "app:B"]),
+        Check(reordered.SequenceEqual(["app:A", "app:closed", "widget:Clock", "widget:disabled", "app:B"]),
             "Inactive saved items must not shift the visible insertion point.");
-        Check(reordered.Where(token => shown.Contains(token)).SequenceEqual(["widget:Clock", "app:A", "app:B"]),
+        Check(reordered.Where(token => shown.Contains(token)).SequenceEqual(["app:A", "widget:Clock", "app:B"]),
             "The displayed order after dropping must match the pointer position.");
+        Check(DockItemOrdering.MoveVisibleItem(stored, shown, "widget:Clock", 0)
+                .Where(token => shown.Contains(token)).SequenceEqual(["widget:Clock", "app:A", "app:B"]),
+            "Moving to the first visible slot must still work when inactive items are saved.");
         Check(DockItemOrdering.MoveVisibleItem(stored, shown, "app:B", 3)
                 .Where(token => shown.Contains(token)).SequenceEqual(["app:A", "widget:Clock", "app:B"]),
             "Moving right past hidden items must remain an adjacent move.");
