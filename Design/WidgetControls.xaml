@@ -325,7 +325,7 @@
                         <TextBlock Text="Claude" Width="44" Margin="0,0,6,0" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
                         <w:RingMeter Width="34" Height="34" StrokeThickness="3" FontSize="10.5" Value="0.42" Text="42"
-                                     TrackBrush="{DynamicResource WidgetTrack}" ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                                     TrackBrush="{DynamicResource TextMuted}" ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource WidgetCardBorder}" Padding="10,0">
@@ -335,7 +335,7 @@
                         <TextBlock Text="Codex" Width="44" Margin="0,0,6,0" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
                         <w:RingMeter Width="34" Height="34" StrokeThickness="3" FontSize="10.5" Value="0.78" Text="78"
-                                     TrackBrush="{DynamicResource WidgetTrack}" ValueBrush="{DynamicResource WidgetWarning}" Foreground="{DynamicResource TextPrimary}" />
+                                     TrackBrush="{DynamicResource TextMuted}" ValueBrush="{DynamicResource WidgetWarning}" Foreground="{DynamicResource TextPrimary}" />
                     </StackPanel>
                 </Border>
             </StackPanel>

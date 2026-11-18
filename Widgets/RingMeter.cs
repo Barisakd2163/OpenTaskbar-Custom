@@ -76,8 +76,11 @@ public sealed class RingMeter : FrameworkElement
             }
             else
             {
-                // Clockwise from 12 o'clock.
-                var angle = Value * 2 * Math.PI;
+                // Clockwise from 12 o'clock. Above 90%, reserve enough arc for the two round caps plus a visible
+                // unused segment so high-usage readings like 98% do not visually close into a 100% ring.
+                var maxFraction = Math.Max(0.90, 1.0 - (StrokeThickness * 2.5) / (2 * Math.PI * radius));
+                var effective = Value <= 0.90 ? Value : 0.90 + (Value - 0.90) / 0.099 * (maxFraction - 0.90);
+                var angle = effective * 2 * Math.PI;
                 var start = new Point(center.X, center.Y - radius);
                 var end = new Point(center.X + radius * Math.Sin(angle), center.Y - radius * Math.Cos(angle));
                 var geometry = new StreamGeometry();

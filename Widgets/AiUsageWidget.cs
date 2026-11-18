@@ -333,7 +333,7 @@ public sealed class AiUsageWidget : DockWidget
         label.TextTrimming = TextTrimming.CharacterEllipsis;
         label.Margin = new Thickness(0, 0, Gap, 0);
         var ring = new RingMeter { Width = RingSize, Height = RingSize, StrokeThickness = 3, FontSize = 10.5, Text = "—", IsHitTestVisible = false };
-        ring.SetResourceReference(RingMeter.TrackBrushProperty, "WidgetTrack");
+        ring.SetResourceReference(RingMeter.TrackBrushProperty, "TextMuted");
         var row = new StackPanel { Orientation = Orientation.Horizontal, Children = { logo, label, ring } };
         var button = new Button { Content = row };
         button.SetResourceReference(StyleProperty, "WidgetCardButton");
@@ -556,7 +556,7 @@ public sealed class AiUsageWidget : DockWidget
     {
         var bar = new Grid { Height = 8, Margin = new Thickness(0, 3, 0, 2) };
         var track = new Border { Height = 4, CornerRadius = new CornerRadius(2) };
-        track.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
+        track.SetResourceReference(Border.BackgroundProperty, "TextMuted");
         bar.Children.Add(track);
         var fill = new Border { Height = 4, CornerRadius = new CornerRadius(2) };
         fill.SetResourceReference(Border.BackgroundProperty, accent);
@@ -565,7 +565,7 @@ public sealed class AiUsageWidget : DockWidget
         {
             var tick = new Border { Width = 2, CornerRadius = new CornerRadius(1), HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(-1, 0, 0, 0) };
-            tick.SetResourceReference(Border.BackgroundProperty, "TextSecondary");
+            tick.SetResourceReference(Border.BackgroundProperty, "TextPrimary");
             bar.Children.Add(Split(elapsed, tick, 1));
             bar.ToolTip = UiText.Get("AiUsagePaceMarker");
             bar.Background = Brushes.Transparent;
