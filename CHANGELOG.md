@@ -9,7 +9,8 @@
 - Crash handlers now fall back to journal-based restore when no session is active or another thread is already stopping.
 - Added a detached watchdog process that restores the taskbar after End Task, `taskkill /F`, FailFast or power loss.
 - `OpenTaskbar.exe --restore` now reports failures through the exit code and only clears the journal after success.
-- Added an optional Search widget that opens the existing Spotlight launcher above the dock button, with compact icon-only density and localized catalog entry in all 14 languages.
+- Added an optional Search widget that triggers native Windows Search (Win+S), with compact icon-only density and localized catalog entry in all 14 languages.
+- Removed the built-in Spotlight search popup and Alt+Space hotkey in favor of Windows native search integration.
 
 ## 0.2.7 - 2026-11-17
 

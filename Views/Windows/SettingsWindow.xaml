@@ -525,23 +525,6 @@
                             <!-- Hotkeys -->
                             <TextBlock Text="{local:Loc SectionHotkeys}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <StackPanel DockPanel.Dock="Right" Width="280" VerticalAlignment="Center">
-                                    <UniformGrid Columns="2" Margin="0,0,0,4">
-                                        <RadioButton x:Name="LauncherAltSpace" GroupName="LauncherHotkey" Content="Alt + Space" Style="{StaticResource SettingsChoice}" Margin="2,0" />
-                                        <RadioButton x:Name="LauncherCtrlSpace" GroupName="LauncherHotkey" Content="Ctrl + Space" Style="{StaticResource SettingsChoice}" Margin="2,0" />
-                                    </UniformGrid>
-                                    <UniformGrid Columns="2">
-                                        <RadioButton x:Name="LauncherCtrlAltSpace" GroupName="LauncherHotkey" Content="Ctrl+Alt+Space" Style="{StaticResource SettingsChoice}" Margin="2,0" />
-                                        <RadioButton x:Name="LauncherOff" GroupName="LauncherHotkey" Content="{local:Loc HotkeyDisabled}" Style="{StaticResource SettingsChoice}" Margin="2,0" />
-                                    </UniformGrid>
-                                </StackPanel>
-                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                    <TextBlock Text="{local:Loc LauncherHotkey}" Style="{StaticResource SettingsRowLabel}" />
-                                    <TextBlock Text="{local:Loc LauncherHotkeyDescription}" Style="{StaticResource SettingsRowDescription}" />
-                                </StackPanel>
-                            </DockPanel></Border>
-
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <Border DockPanel.Dock="Right" Width="280" Height="32" CornerRadius="7" Background="{DynamicResource SettingsControl}" BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1" Padding="2" VerticalAlignment="Center">
                                     <UniformGrid Columns="3">
                                         <RadioButton x:Name="DockCtrlAltD" GroupName="DockHotkey" Content="Ctrl+Alt+D" Style="{StaticResource SettingsSegmentChoice}" />
@@ -557,19 +540,6 @@
 
                             <!-- Start Button & Interactions -->
                             <TextBlock Text="{local:Loc SectionInteractions}" Style="{StaticResource SettingsSectionHeading}" />
-                            <Border Style="{StaticResource SettingsRow}"><DockPanel>
-                                <Border DockPanel.Dock="Right" Width="260" Height="32" CornerRadius="7" Background="{DynamicResource SettingsControl}" BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1" Padding="2" VerticalAlignment="Center">
-                                    <UniformGrid Columns="2">
-                                        <RadioButton x:Name="StartOpensWindows" GroupName="StartAction" Content="{local:Loc StartWindows}" Style="{StaticResource SettingsSegmentChoice}" />
-                                        <RadioButton x:Name="StartOpensLauncher" GroupName="StartAction" Content="{local:Loc StartLauncher}" Style="{StaticResource SettingsSegmentChoice}" />
-                                    </UniformGrid>
-                                </Border>
-                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                    <TextBlock Text="{local:Loc StartButton}" Style="{StaticResource SettingsRowLabel}" />
-                                    <TextBlock Text="{local:Loc StartButtonDescription}" Style="{StaticResource SettingsRowDescription}" />
-                                </StackPanel>
-                            </DockPanel></Border>
-
                             <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                 <Border DockPanel.Dock="Right" Width="260" Height="32" CornerRadius="7" Background="{DynamicResource SettingsControl}" BorderBrush="{DynamicResource StrokeSubtle}" BorderThickness="1" Padding="2" VerticalAlignment="Center">
                                     <UniformGrid Columns="3">

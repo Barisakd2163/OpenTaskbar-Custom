@@ -44,7 +44,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new("Storage", "WidgetStorage", SystemWidgetData.ReadStorage),
         new("DayProgress", "WidgetDayProgress", culture =>
             (DateTime.Now.TimeOfDay.TotalSeconds / TimeSpan.FromDays(1).TotalSeconds).ToString("P0", culture)),
-        new(SearchId, "WidgetLauncher", _ => "Alt+Space"),
+        new(SearchId, "WidgetLauncher", _ => "Win+S"),
         new(StopwatchId, "WidgetStopwatch", null),
         new(CountdownId, "WidgetCountdown", null)
     ];

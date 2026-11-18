@@ -5,8 +5,7 @@ using OpenTaskbar.Services;
 namespace OpenTaskbar.Widgets;
 
 /// <summary>
-/// A dock-side entry point for the existing Spotlight launcher. Clicking it opens the launcher above the widget,
-/// reusing the one search implementation instead of duplicating a text box and result list on the dock.
+/// A dock-side entry point for Windows Search (Win+S). Clicking it triggers Windows' native search flyout.
 /// </summary>
 public sealed class SearchWidget : DockWidget
 {
@@ -14,9 +13,6 @@ public sealed class SearchWidget : DockWidget
     private readonly TextBlock _label;
 
     public static string Id => "Search";
-
-    /// <summary>The button is passed as the placement anchor so the launcher can open directly above it.</summary>
-    public event Action<FrameworkElement>? LauncherRequested;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 45;
@@ -38,7 +34,12 @@ public sealed class SearchWidget : DockWidget
 
         _button = new Button { Content = content, Padding = new Thickness(8, 0, 10, 0) };
         _button.SetResourceReference(StyleProperty, "WidgetCardButton");
-        _button.Click += (_, _) => LauncherRequested?.Invoke(_button);
+        _button.Click += (_, _) =>
+        {
+            DockFlyout.CloseAll();
+            var error = ShellShortcuts.OpenWindowsSearch();
+            if (error is not null) ReportError?.Invoke(error);
+        };
 
         Localize();
         Content = _button;
@@ -54,7 +55,7 @@ public sealed class SearchWidget : DockWidget
     {
         var root = new StackPanel { Width = 232 };
         root.Children.Add(DockFlyout.Heading(UiText.Get("WidgetLauncher")));
-        root.Children.Add(DockFlyout.Caption(UiText.Get("LauncherWidgetHint")));
+        root.Children.Add(DockFlyout.Caption(UiText.Get("WidgetLauncherDescription")));
         return root;
     }
 
@@ -72,7 +73,7 @@ public sealed class SearchWidget : DockWidget
     private void Localize()
     {
         _label.Text = UiText.Get("WidgetLauncher");
-        _button.ToolTip = UiText.Get("LauncherWidgetHint");
+        _button.ToolTip = UiText.Get("WidgetLauncherDescription");
         System.Windows.Automation.AutomationProperties.SetName(_button, UiText.Get("OpenLauncher"));
     }
 }

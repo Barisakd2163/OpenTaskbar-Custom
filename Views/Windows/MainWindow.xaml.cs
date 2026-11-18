@@ -161,7 +161,6 @@ public partial class MainWindow : Window
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
-        _widgetCoordinator.LauncherRequested += ToggleLauncher;
         _widgetCoordinator.ConfigureWidgetMenu = menu =>
         {
             menu.Opened += DockContextMenu_Opened;
@@ -874,11 +873,6 @@ public partial class MainWindow : Window
     {
         _previewCloseTimer.Stop();
         _thumbnailPreview.Hide();
-        if (_preferences.Current.StartAction == StartButtonAction.Launcher)
-        {
-            ToggleLauncher();
-            return;
-        }
 
         const uint wmSysCommand = 0x0112;
         const int scTaskList = 0xF130;

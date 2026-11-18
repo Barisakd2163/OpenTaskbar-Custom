@@ -14,12 +14,10 @@ namespace OpenTaskbar;
 public partial class MainWindow
 {
     private const int WmHotkey = 0x0312;
-    private const int LauncherHotkeyId = 0x4F01;
     private const int DockHotkeyId = 0x4F02;
-    private (HotkeyChoice Launcher, HotkeyChoice Dock)? _registeredHotkeys;
+    private HotkeyChoice? _registeredDockHotkey;
     private bool _keyboardNavigationActive;
     private nint _foregroundBeforeKeyboard;
-    private LauncherWindow? _launcher;
     private UpdateChecker.Release? _availableUpdate;
     private DispatcherTimer? _updateTimer;
     private CancellationTokenSource? _updateCheck;
@@ -98,31 +96,24 @@ public partial class MainWindow
     private void RegisterHotkeys()
     {
         if (_source is null) return;
-        var wanted = (_preferences.Current.LauncherHotkey, _preferences.Current.DockHotkey);
-        if (_registeredHotkeys == wanted) return;
+        var wanted = _preferences.Current.DockHotkey;
+        if (_registeredDockHotkey == wanted) return;
         UnregisterHotkeys();
-        _registeredHotkeys = wanted;
-        var failed = false;
-        foreach (var (id, choice) in new[] { (LauncherHotkeyId, wanted.LauncherHotkey), (DockHotkeyId, wanted.DockHotkey) })
+        _registeredDockHotkey = wanted;
+        if (DescribeHotkey(wanted) is not { } hotkey) return;
+        const uint noRepeat = 0x4000;
+        if (!RegisterHotKey(_source.Handle, DockHotkeyId, hotkey.Modifiers | noRepeat, hotkey.Key))
         {
-            if (DescribeHotkey(choice) is not { } hotkey) continue;
-            const uint noRepeat = 0x4000;
-            if (!RegisterHotKey(_source.Handle, id, hotkey.Modifiers | noRepeat, hotkey.Key))
-            {
-                AppLog.Warning($"RegisterHotKey {choice} failed: {Marshal.GetLastPInvokeError()}");
-                failed = true;
-            }
+            AppLog.Warning($"RegisterHotKey {wanted} failed: {Marshal.GetLastPInvokeError()}");
+            ReportError("ErrorHotkeyRegister");
         }
-
-        if (failed) ReportError("ErrorHotkeyRegister");
     }
 
     private void UnregisterHotkeys()
     {
         if (_source is null) return;
-        UnregisterHotKey(_source.Handle, LauncherHotkeyId);
         UnregisterHotKey(_source.Handle, DockHotkeyId);
-        _registeredHotkeys = null;
+        _registeredDockHotkey = null;
     }
 
     private bool HandleHotkeyMessage(int message, nint wParam)
@@ -130,9 +121,6 @@ public partial class MainWindow
         if (message != WmHotkey) return false;
         switch (wParam.ToInt32())
         {
-            case LauncherHotkeyId:
-                ToggleLauncher();
-                return true;
             case DockHotkeyId:
                 if (_keyboardNavigationActive) EndKeyboardNavigation(restoreForeground: true);
                 else StartKeyboardNavigation();
@@ -142,22 +130,7 @@ public partial class MainWindow
         }
     }
 
-    // ---- Launcher (#12) ----
-
-    private void ToggleLauncher(FrameworkElement? anchor = null)
-    {
-        _launcher ??= CreateLauncher();
-        _launcher.Toggle(anchor);
-    }
-
-    private LauncherWindow CreateLauncher()
-    {
-        var launcher = new LauncherWindow(ReportError);
-        launcher.Closed += (_, _) => _launcher = null;
-        return launcher;
-    }
-
-    private void OpenLauncher_Click(object sender, RoutedEventArgs e) => ToggleLauncher();
+    private void OpenSearch_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenWindowsSearch());
 
     private void OpenTaskManager_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenTaskManager());
 
@@ -501,7 +474,6 @@ public partial class MainWindow
         _desktopTimer?.Stop();
         _updateCheck?.Cancel();
         DockFlyout.AnyClosed -= OnAnyDockFlyoutClosed;
-        _launcher?.Close();
     }
 
     [DllImport("user32.dll", SetLastError = true)]

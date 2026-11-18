@@ -71,12 +71,11 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **System Tray Management:** Background tray apps manager with window restore and confirmed process termination.
 - **Interactive Catalog:** Built-in widget catalog with live previews and expandable configuration drawers with instant auto-save.
 
-### Built-in Launcher and Extras
-- **Spotlight Launcher (`Alt + Space`):** Quick keyboard launcher for applications, files, system settings, and inline math calculations.
-- **Search Widget:** An optional dock widget that opens the same launcher directly above itself, with a compact icon-only mode for narrow docks.
+### Extras and Integration
+- **Search Widget:** An optional dock widget that opens native Windows Search (Win+S), with a compact icon-only mode for narrow docks.
 - **Folder Stacks:** Quick access to folders (such as Downloads) with 2x2 miniature icon previews.
 - **Recycle Bin Integration:** Live recycle bin icon supporting drag-and-drop file deletion and one-click emptying.
-- **Dock Menu:** Right-click the dock for the launcher, folder stacks, profiles, Task Manager, update checks, and settings.
+- **Dock Menu:** Right-click the dock for Windows Search, folder stacks, profiles, Task Manager, update checks, and settings.
 
 ### Foolproof Taskbar Recovery
 - **Zero Risk:** State journaling records every taskbar replacement action. On exit, system shutdown, or unexpected termination, OpenTaskbar automatically restores the native Windows taskbar.
@@ -103,12 +102,11 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 | Shortcut | Description |
 | :--- | :--- |
-| `Alt + Space` | Open Spotlight Quick Launcher |
 | `Shift + Mouse Wheel` | Scroll dock contents horizontally |
 | `Ctrl + Mouse Wheel` | Scroll dock contents horizontally (high precision) |
 | `Middle Click + Drag` | Pan overflowing dock contents |
 | `Alt + F4` | Close window preview card |
-| `Esc` | Close active flyout, stack, or launcher |
+| `Esc` | Close active flyout or stack |
 
 ---
 

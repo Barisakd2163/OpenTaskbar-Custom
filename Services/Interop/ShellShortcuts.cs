@@ -23,6 +23,7 @@ public static class ShellShortcuts
     private const ushort VkA = 0x41;
     private const ushort VkN = 0x4E;
     private const ushort VkP = 0x50;
+    private const ushort VkS = 0x53;
     private const uint InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventExtended = 0x0001;
@@ -95,6 +96,15 @@ public static class ShellShortcuts
         {
             ScheduleControlCenterReposition(anchor);
         }
+        return error;
+    }
+
+    /// <summary>Win+S: Windows Search flyout, opened natively via Windows shortcut.</summary>
+    public static string? OpenWindowsSearch()
+    {
+        AppLog.Info("OpenWindowsSearch: invoked.");
+        var error = SendWindowsShortcut(VkS);
+        if (error is not null) AppLog.Warning($"OpenWindowsSearch failed: {error}");
         return error;
     }
 

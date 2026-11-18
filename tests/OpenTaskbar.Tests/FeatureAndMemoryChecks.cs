@@ -123,19 +123,10 @@ internal static class FeatureAndMemoryChecks
             Check(ReferenceEquals(dockItem1.ContextMenu, dockItem2.ContextMenu),
                 "Shared ContextMenu must be reused across dock items without per-item duplication.");
 
-            var launcher = new LauncherWindow(_ => { });
-            launcher.Close();
-            Check(true, "LauncherWindow must initialize and close cleanly.");
-
             var search = new SearchWidget();
-            FrameworkElement? searchAnchor = null;
-            search.LauncherRequested += anchor => searchAnchor = anchor;
             search.Activate();
             if (search.Content is Button searchButton)
             {
-                searchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Check(ReferenceEquals(searchAnchor, searchButton),
-                    "The search widget must request the launcher with its own button as the anchor.");
                 Check(search.BuildHoverFlyoutContent() is not null,
                     "The compact-capable search widget must provide hover content.");
             }

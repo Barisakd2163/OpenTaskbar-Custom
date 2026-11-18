@@ -314,11 +314,9 @@ public partial class SettingsWindow : Window
             ShowTray = IsEnabled("Tray"),
             ShowWeather = IsEnabled("Weather"),
             WeatherCity = WeatherCityBox.Text.Trim(),
-            LauncherHotkey = LauncherAltSpace.IsChecked == true ? HotkeyChoice.AltSpace
-                : LauncherCtrlSpace.IsChecked == true ? HotkeyChoice.CtrlSpace
-                : LauncherCtrlAltSpace.IsChecked == true ? HotkeyChoice.CtrlAltSpace : HotkeyChoice.Disabled,
+            LauncherHotkey = _preferences.Current.LauncherHotkey,
             DockHotkey = DockCtrlAltD.IsChecked == true ? HotkeyChoice.CtrlAltD : DockWinAltD.IsChecked == true ? HotkeyChoice.WinAltD : HotkeyChoice.Disabled,
-            StartAction = StartOpensLauncher.IsChecked == true ? StartButtonAction.Launcher : StartButtonAction.WindowsStart,
+            StartAction = StartButtonAction.WindowsStart,
             StartPlacement = StartHidden.IsChecked == true ? StartButtonPlacement.Hidden
                 : StartLast.IsChecked == true ? StartButtonPlacement.End
                 : StartFirst.IsChecked == true ? StartButtonPlacement.Start
@@ -721,15 +719,9 @@ public partial class SettingsWindow : Window
         StatsCpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.CpuTemperature);
         StatsGpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Gpu);
         StatsGpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.GpuTemperature);
-        LauncherAltSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.AltSpace;
-        LauncherCtrlSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.CtrlSpace;
-        LauncherCtrlAltSpace.IsChecked = settings.LauncherHotkey == HotkeyChoice.CtrlAltSpace;
-        LauncherOff.IsChecked = settings.LauncherHotkey is not (HotkeyChoice.AltSpace or HotkeyChoice.CtrlSpace or HotkeyChoice.CtrlAltSpace);
         DockCtrlAltD.IsChecked = settings.DockHotkey == HotkeyChoice.CtrlAltD;
         DockWinAltD.IsChecked = settings.DockHotkey == HotkeyChoice.WinAltD;
         DockOff.IsChecked = settings.DockHotkey is not (HotkeyChoice.CtrlAltD or HotkeyChoice.WinAltD);
-        StartOpensWindows.IsChecked = settings.StartAction == StartButtonAction.WindowsStart;
-        StartOpensLauncher.IsChecked = settings.StartAction == StartButtonAction.Launcher;
         StartFirst.IsChecked = settings.StartPlacement == StartButtonPlacement.Start;
         StartLast.IsChecked = settings.StartPlacement == StartButtonPlacement.End;
         StartHidden.IsChecked = settings.StartPlacement == StartButtonPlacement.Hidden;
