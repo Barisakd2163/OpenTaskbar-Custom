@@ -3,6 +3,9 @@ using System.IO;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
+// `--headless` runs only the pure logic checks: no WPF Application, no windows, no synthetic keyboard input,
+// no file dialogs and no desktop side effects. The default run keeps the full UI verification suite for CI.
+var headless = args.Contains("--headless", StringComparer.OrdinalIgnoreCase);
 var checks = 0;
 CountdownChecks();
 StopwatchChecks();
@@ -13,7 +16,7 @@ SettingsChecks();
 InitialLanguageChecks();
 MultiMonitorChecks();
 checks += RunningAppChecks.Run();
-checks += WidgetViewChecks.Run();
+if (!headless) checks += WidgetViewChecks.Run();
 checks += ThemePackChecks.Run();
 checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
