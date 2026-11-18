@@ -24,6 +24,11 @@ public sealed class SearchWidget : DockWidget
     private readonly Button _clearButton;
     private bool _syncing;
 
+    // Injectable shell actions keep the click/focus lifecycle testable without opening Windows Search.
+    internal Func<bool> IsSearchOpen { get; set; } = ShellShortcuts.IsSearchFlyoutOpen;
+    internal Func<FrameworkElement?, string?> OpenSearch { get; set; } = ShellShortcuts.OpenWindowsSearch;
+    internal Action<string> SyncQuery { get; set; } = ShellShortcuts.SyncSearchQuery;
+
     public static string Id => "Search";
 
     public override bool SupportsCompactMode => true;
@@ -122,11 +127,9 @@ public sealed class SearchWidget : DockWidget
         _container.SetResourceReference(StyleProperty, "WidgetCardBorder");
         _container.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            if (!_inputBox.IsFocused)
-            {
-                _inputBox.Focus();
-                e.Handled = true;
-            }
+            var alreadyFocused = _inputBox.IsFocused;
+            HandleSearchPress(alreadyFocused);
+            if (!alreadyFocused) e.Handled = true;
         };
 
         _inputBox.GotFocus += (_, _) =>
@@ -136,16 +139,19 @@ public sealed class SearchWidget : DockWidget
             EnsureSearchOpened();
             if (!string.IsNullOrEmpty(_inputBox.Text))
             {
-                ShellShortcuts.SyncSearchQuery(_inputBox.Text);
+                SyncQuery(_inputBox.Text);
             }
         };
 
         _inputBox.LostFocus += (_, _) =>
         {
             ApplyDensity();
-            if (!ShellShortcuts.IsSearchFlyoutOpen())
+            if (!IsSearchOpen())
             {
-                _inputBox.Text = string.Empty;
+                // Clearing a stale query must not trigger TextChanged to reopen Windows Search.
+                _syncing = true;
+                try { _inputBox.Clear(); }
+                finally { _syncing = false; }
             }
         };
 
@@ -157,7 +163,7 @@ public sealed class SearchWidget : DockWidget
 
             if (_syncing) return;
             EnsureSearchOpened();
-            ShellShortcuts.SyncSearchQuery(_inputBox.Text);
+            SyncQuery(_inputBox.Text);
         };
 
         _inputBox.PreviewKeyDown += InputBox_PreviewKeyDown;
@@ -166,11 +172,18 @@ public sealed class SearchWidget : DockWidget
         Content = _container;
     }
 
+    // GotFocus runs only the first time. Later clicks must also reopen Search if the textbox kept focus.
+    internal void HandleSearchPress(bool alreadyFocused)
+    {
+        if (alreadyFocused) EnsureSearchOpened();
+        else _inputBox.Focus();
+    }
+
     private void EnsureSearchOpened()
     {
-        if (!ShellShortcuts.IsSearchFlyoutOpen())
+        if (!IsSearchOpen())
         {
-            var error = ShellShortcuts.OpenWindowsSearch(this);
+            var error = OpenSearch(this);
             if (error is not null) ReportError?.Invoke(error);
         }
     }
