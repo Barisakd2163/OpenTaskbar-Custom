@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for the release (e.g. v0.2.7)'
+        description: 'Tag name for the release (e.g. v0.2.8)'
         required: true
         type: string
 
@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "${{ inputs.tag_name }}" }
-          if (-not $tag) { $tag = "v0.2.7" }
+          if (-not $tag) { $tag = "v0.2.8" }
           "TAG_NAME=$tag" >> $env:GITHUB_ENV
 
       - name: Package release archive

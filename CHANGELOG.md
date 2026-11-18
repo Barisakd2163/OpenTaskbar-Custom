@@ -1,16 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.2.8 - 2026-11-18
 
-- Fixed the native taskbar staying hidden after a failed restore: shutdown is now blocked while a recovery journal remains, and a journal-based fallback runs before exit.
-- Recovery journals are deleted only after the taskbar is verified visible; transient Explorer restarts no longer destroy the recovery state.
-- Added verified, repeated taskbar state/visibility restore so Explorer cannot re-hide the tray right after recovery.
-- Startup now self-heals a pending recovery journal in every mode, including `--preview` and `--inspect`.
-- Crash handlers now fall back to journal-based restore when no session is active or another thread is already stopping.
-- Added a detached watchdog process that restores the taskbar after End Task, `taskkill /F`, FailFast or power loss.
-- `OpenTaskbar.exe --restore` now reports failures through the exit code and only clears the journal after success.
-- Added an optional Search widget that triggers native Windows Search (Win+S), with compact icon-only density and localized catalog entry in all 14 languages.
-- Removed the built-in Spotlight search popup and Alt+Space hotkey in favor of Windows native search integration.
+- Added an active dock-integrated Search capsule widget with embedded text input, live watermark, clear button, and direct two-way synchronization with Windows Search (`SearchHost.exe`).
+- Forwarded `Enter`, `Up`, `Down`, and `Escape` keyboard navigation from dock search input directly to Windows Search.
+- Positioned Windows Search flyout dynamically centered above the Search widget trigger button and suppressed rogue Explorer taskbar search boxes.
+- Removed legacy built-in Spotlight popup and `Alt+Space` hotkey in favor of native Windows Search integration.
+- Redesigned Audio widget with output and input device pickers and a comprehensive per-app volume mixer enumerating all active audio sessions across endpoints.
+- Elevated all dock widget flyout popups with comfortable spacing above the dock.
+- Removed runtime `HeapHardLimit` and extreme memory conservation to eliminate 0x80131506 crashes under heavy layout rendering.
+- Added idle-triggered memory trimming and non-concurrent workstation GC to reduce RAM footprint.
+- Disabled `PublishReadyToRun` to drastically reduce build times and single-file publish artifact sizes.
+- Added right-click context menu with widget removal support directly on dock widget items.
+- Fixed native taskbar recovery journaling, verified repeated state restore, and hardened recovery across crashes.
 
 ## 0.2.7 - 2026-11-17
 
