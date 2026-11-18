@@ -2,8 +2,7 @@
 
 ## 0.2.8 - 2026-11-18
 
-## 0.2.8 - 2026-11-18
-
+- Added an optional AI Usage widget for Claude Code and Codex, with read-only CLI sign-in, one quota ring per provider (session and weekly), a pace hint, reset countdowns, a selectable ring window, and translations in all 14 languages.
 - Added an active dock-integrated Search capsule widget with embedded text input, live watermark, clear button, and direct two-way synchronization with Windows Search (`SearchHost.exe`).
 - Forwarded `Enter`, `Up`, `Down`, and `Escape` keyboard navigation from dock search input directly to Windows Search.
 - Positioned Windows Search flyout dynamically centered above the Search widget trigger button and suppressed rogue Explorer taskbar search boxes.

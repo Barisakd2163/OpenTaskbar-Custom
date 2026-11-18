@@ -63,6 +63,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Fullscreen Detection:** Automatically yields and hides when full-screen applications, borderless games, or browser videos are playing.
 
 ### Modular Widget System
+- **AI Usage:** An optional Claude Code and Codex quota widget with one ring per provider for session and weekly usage, reset countdowns, a pace hint, and plan, credit and weekly breakdown details, reading only enabled CLI sign-in files without refreshing, writing, logging, or exporting credentials.
 - **Real-Time Hardware Meters:** CPU usage, RAM usage, GPU usage, GPU temperature (NVIDIA), and CPU temperature rings with customizable thresholds.
 - **Media Controls:** Now Playing track information, artist metadata, track seek bar, and volume slider.
 - **Clock, Calendar and Weather:** Unified date and time capsule with detailed optical glass weather and multi-day forecast flyout.

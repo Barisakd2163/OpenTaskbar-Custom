@@ -334,6 +334,10 @@ public partial class SettingsWindow : Window
                 : DateStyleShort.IsChecked == true ? ClockDateStyle.ShortDateOnly
                 : ClockDateStyle.DayAndShortDate,
             StatsMeters = ReadStatsMeters(),
+            AiUsageProviders = ReadAiProviders(),
+            AiUsageRing = AiUsageRingSession.IsChecked == true ? AiUsageRing.Session
+                : AiUsageRingWeekly.IsChecked == true ? AiUsageRing.Weekly
+                : AiUsageRing.Highest,
             ThemePack = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id,
             ThemeApplicationIcons = false
         };
@@ -544,6 +548,10 @@ public partial class SettingsWindow : Window
         ThemePacks.ApplyWidgets(_preferences.Current.Theme);
     }
 
+    private AiProviders ReadAiProviders() =>
+        (AiUsageClaudeToggle.IsChecked == true ? AiProviders.Claude : 0)
+        | (AiUsageCodexToggle.IsChecked == true ? AiProviders.Codex : 0);
+
     private SystemMeters ReadStatsMeters() =>
         (StatsCpuToggle.IsChecked == true ? SystemMeters.Cpu : 0)
         | (StatsMemoryToggle.IsChecked == true ? SystemMeters.Memory : 0)
@@ -640,6 +648,7 @@ public partial class SettingsWindow : Window
             {
                 "Clock" => ClockOptions,
                 "Weather" => WeatherOptions,
+                "AiUsage" => AiUsageOptions,
                 "Focus" => FocusOptions,
                 "SystemStats" => StatsOptions,
                 _ => null
@@ -665,6 +674,13 @@ public partial class SettingsWindow : Window
     private void CollapseFocusOptions_Click(object sender, RoutedEventArgs e)
     {
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } option)
+            option.IsSettingsExpanded = false;
+        UpdateWidgetOptionState();
+    }
+
+    private void CollapseAiUsageOptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "AiUsage") is { } option)
             option.IsSettingsExpanded = false;
         UpdateWidgetOptionState();
     }
@@ -717,6 +733,11 @@ public partial class SettingsWindow : Window
         DateStyleNumeric.IsChecked = settings.DateStyle == ClockDateStyle.NumericDate;
         DateStyleHidden.IsChecked = settings.DateStyle == ClockDateStyle.Hidden;
         WeatherCityBox.Text = settings.WeatherCity;
+        AiUsageClaudeToggle.IsChecked = settings.AiUsageProviders.HasFlag(AiProviders.Claude);
+        AiUsageCodexToggle.IsChecked = settings.AiUsageProviders.HasFlag(AiProviders.Codex);
+        AiUsageRingHighest.IsChecked = settings.AiUsageRing == AiUsageRing.Highest;
+        AiUsageRingSession.IsChecked = settings.AiUsageRing == AiUsageRing.Session;
+        AiUsageRingWeekly.IsChecked = settings.AiUsageRing == AiUsageRing.Weekly;
         StatsCpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Cpu);
         StatsMemoryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Memory);
         StatsBatteryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Battery);
@@ -739,6 +760,11 @@ public partial class SettingsWindow : Window
         _widgetDensityBoxes.Clear();
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock) clock.SettingsView = ClockOptions;
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather) weather.SettingsView = WeatherOptions;
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "AiUsage") is { } aiUsage)
+        {
+            AttachDensityRow("AiUsage", AiUsageOptions);
+            aiUsage.SettingsView = AiUsageOptions;
+        }
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } focus)
         {
             AttachDensityRow("Focus", FocusOptions);
@@ -1027,6 +1053,7 @@ public partial class SettingsWindow : Window
         FocusOptions.Visibility = IsExpanded("Focus") ? Visibility.Visible : Visibility.Collapsed;
         StatsOptions.Visibility = IsExpanded("SystemStats") ? Visibility.Visible : Visibility.Collapsed;
         WeatherOptions.Visibility = IsExpanded("Weather") ? Visibility.Visible : Visibility.Collapsed;
+        AiUsageOptions.Visibility = IsExpanded("AiUsage") ? Visibility.Visible : Visibility.Collapsed;
         FocusMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(FocusMinutesSlider.Value));
         BreakMinutesValue.Text = UiText.Format("MinutesFormat", (int)Math.Round(BreakMinutesSlider.Value));
         FocusSessionsValue.Text = ((int)Math.Round(FocusSessionsSlider.Value)).ToString(System.Globalization.CultureInfo.InvariantCulture);

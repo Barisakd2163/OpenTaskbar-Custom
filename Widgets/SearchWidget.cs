@@ -9,15 +9,11 @@ namespace OpenTaskbar.Widgets;
 /// <summary>
 /// A dock-side button for Windows Search (Win+S).
 /// Clicking it opens Windows' native search menu positioned directly above the widget.
+/// Styled as an icon-only button with identical dimensions to <see cref="TrayWidget"/>.
 /// </summary>
 public sealed class SearchWidget : DockWidget
 {
-    private const double ExpandedWidth = 84.0;
-    private const double CompactWidth = 40.0;
-
     private readonly Button _button;
-    private readonly ContentControl _icon;
-    private readonly TextBlock _label;
 
     // Injectable shell actions keep the click lifecycle testable without opening Windows Search.
     internal Func<bool> IsSearchOpen { get; set; } = ShellShortcuts.IsSearchFlyoutOpen;
@@ -25,48 +21,23 @@ public sealed class SearchWidget : DockWidget
 
     public static string Id => "Search";
 
-    public override bool SupportsCompactMode => true;
-    public override int ShrinkPriority => 45;
-    public override double FullWidthEstimate => ExpandedWidth;
-    public override double CompactWidthEstimate => CompactWidth;
-
     public SearchWidget()
     {
-        _icon = new ContentControl
+        var glyph = new ContentControl
         {
             Content = FindResource("IconSearch"),
-            Width = 14,
-            Height = 14,
+            Width = 16,
+            Height = 16,
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false
         };
-        _icon.SetResourceReference(StyleProperty, "WidgetIcon");
-        _icon.SetResourceReference(ForegroundProperty, "TextSecondary");
-
-        _label = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 12,
-            Margin = new Thickness(6, 0, 0, 0),
-            IsHitTestVisible = false
-        };
-        _label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-
-        var content = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-        content.Children.Add(_icon);
-        content.Children.Add(_label);
+        glyph.SetResourceReference(StyleProperty, "WidgetIcon");
+        glyph.SetResourceReference(ForegroundProperty, "TextPrimary");
 
         _button = new Button
         {
-            Content = content,
-            Height = 32,
-            Padding = new Thickness(10, 0, 10, 0),
-            VerticalAlignment = VerticalAlignment.Center
+            Content = glyph,
+            Padding = new Thickness(10, 0, 10, 0)
         };
         _button.SetResourceReference(StyleProperty, "WidgetCardButton");
         _button.Click += (_, _) => HandleSearchClick();
@@ -83,17 +54,6 @@ public sealed class SearchWidget : DockWidget
             var error = OpenSearch(this);
             if (error is not null) ReportError?.Invoke(error);
         }
-    }
-
-    protected override void OnCompactChanged(bool compact) => ApplyDensity();
-    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensity();
-
-    private void ApplyDensity()
-    {
-        var isCompactMode = IsCompact && !IsHoverExpanded;
-        _label.Visibility = isCompactMode ? Visibility.Collapsed : Visibility.Visible;
-        _button.Width = isCompactMode ? CompactWidth : double.NaN;
-        _button.Padding = isCompactMode ? new Thickness(0) : new Thickness(10, 0, 10, 0);
     }
 
     public override UIElement? BuildHoverFlyoutContent()
@@ -117,7 +77,6 @@ public sealed class SearchWidget : DockWidget
 
     private void Localize()
     {
-        _label.Text = UiText.Get("WidgetLauncher");
         _button.ToolTip = UiText.Get("WidgetLauncherDescription");
         AutomationProperties.SetName(_button, UiText.Get("WidgetLauncher"));
     }
