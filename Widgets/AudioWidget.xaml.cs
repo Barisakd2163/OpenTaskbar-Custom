@@ -552,9 +552,9 @@ public partial class AudioWidget : DockWidget
             {
                 Text = UiText.Get("NoActiveAudioApps"),
                 FontSize = 11.5,
-                Margin = new Thickness(0, 2, 0, 2)
+                Margin = new Thickness(2, 4, 2, 4)
             };
-            emptyText.SetResourceReference(TextBlock.ForegroundProperty, "TextMuted");
+            emptyText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             appCardPanel.Children.Add(emptyText);
         }
         else

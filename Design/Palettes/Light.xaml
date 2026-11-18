@@ -3,6 +3,7 @@
     <!-- Neutral materials preserve application icon colors and wallpaper visibility. -->
     <SolidColorBrush x:Key="TextPrimary" Color="#FF202329" />
     <SolidColorBrush x:Key="TextSecondary" Color="#FF5E6570" />
+    <SolidColorBrush x:Key="TextMuted" Color="#805E6570" />
     <LinearGradientBrush x:Key="WindowsLogoBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#FF14B8A6" Offset="0" />
         <GradientStop Color="#FF0284C7" Offset="0.55" />

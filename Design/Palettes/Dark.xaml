@@ -3,6 +3,7 @@
     <!-- Neutral materials preserve application icon colors and wallpaper visibility. -->
     <SolidColorBrush x:Key="TextPrimary" Color="#FFF1F3F5" />
     <SolidColorBrush x:Key="TextSecondary" Color="#FFADB5BF" />
+    <SolidColorBrush x:Key="TextMuted" Color="#80ADB5BF" />
     <!-- "Aurora" accents: one teal-to-sky gradient carries every active state across the dock. -->
     <LinearGradientBrush x:Key="WindowsLogoBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#FF5EEAD4" Offset="0" />

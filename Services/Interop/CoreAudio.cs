@@ -35,7 +35,7 @@ public sealed class AudioEndpointMonitor : IDisposable
     private const int ClsCtxAll = 0x17;
     private const int StgmRead = 0;
     private static readonly Guid AudioEndpointVolumeId = new("5CDF2C82-841E-4546-9722-0CF74078229A");
-    private static readonly Guid AudioSessionManager2Id = new("77AA99A0-1BD6-484F-BC0A-07659B270234");
+    private static readonly Guid AudioSessionManager2Id = new("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
     private static readonly PropertyKey FriendlyNameKey = new(new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 14);
 
     private readonly IMMDeviceEnumerator _enumerator;
@@ -674,7 +674,7 @@ public sealed class AudioEndpointMonitor : IDisposable
         [PreserveSig] int OnNotify(nint notificationData);
     }
 
-    [ComImport, Guid("77AA99A0-1BD6-484F-BC0A-07659B270234"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [ComImport, Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IAudioSessionManager2
     {
         [PreserveSig] int GetAudioSessionControl(nint audioSessionGuid, uint streamFlags, out nint sessionControl);
@@ -686,7 +686,7 @@ public sealed class AudioEndpointMonitor : IDisposable
         [PreserveSig] int UnregisterDuckNotification(nint duckNotification);
     }
 
-    [ComImport, Guid("E2F5E971-987E-454C-A426-43C1AB27ECDB"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [ComImport, Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IAudioSessionEnumerator
     {
         [PreserveSig] int GetCount(out int sessionCount);
