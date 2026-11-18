@@ -144,10 +144,10 @@ public partial class MainWindow
 
     // ---- Launcher (#12) ----
 
-    private void ToggleLauncher()
+    private void ToggleLauncher(FrameworkElement? anchor = null)
     {
         _launcher ??= CreateLauncher();
-        _launcher.Toggle();
+        _launcher.Toggle(anchor);
     }
 
     private LauncherWindow CreateLauncher()

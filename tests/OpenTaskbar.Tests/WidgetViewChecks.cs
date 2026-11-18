@@ -398,6 +398,7 @@ internal static class WidgetViewChecks
                 DockWidgetService.WeatherId => "21°",
                 DockWidgetService.DesktopsId => "1 / 2",
                 DockWidgetService.TrayId => "▲",
+                DockWidgetService.SearchId => "Alt+Space",
                 DockWidgetService.BatteryId => UiText.Get("SystemDataUnavailable"),
                 "Storage" => "128,5 GiB",
                 "DayProgress" => "61%",

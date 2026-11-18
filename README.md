@@ -73,6 +73,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 ### Built-in Launcher and Extras
 - **Spotlight Launcher (`Alt + Space`):** Quick keyboard launcher for applications, files, system settings, and inline math calculations.
+- **Search Widget:** An optional dock widget that opens the same launcher directly above itself, with a compact icon-only mode for narrow docks.
 - **Folder Stacks:** Quick access to folders (such as Downloads) with 2x2 miniature icon previews.
 - **Recycle Bin Integration:** Live recycle bin icon supporting drag-and-drop file deletion and one-click emptying.
 - **Dock Menu:** Right-click the dock for the launcher, folder stacks, profiles, Task Manager, update checks, and settings.

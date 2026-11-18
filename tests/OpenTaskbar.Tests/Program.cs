@@ -113,6 +113,10 @@ void CatalogChecks()
     Check(catalog.CreateWidgets(null).Count == 0, "New settings must not install widgets implicitly.");
     Check(catalog.CreateOptions([], []).All(option => !option.IsInstalled && !option.IsEnabled),
         "The available catalog must be optional.");
+    var searchOption = catalog.CreateOptions([], []).SingleOrDefault(option => option.Id == DockWidgetService.SearchId);
+    Check(searchOption is not null && searchOption.Label == UiText.Get("WidgetLauncher")
+        && searchOption.Description == UiText.Get("WidgetLauncherDescription") && searchOption.HasSettings,
+        "The Search widget must be listed in Settings with a localized label, description and options panel.");
     var first = catalog.CreateWidgets([DockWidgetService.StopwatchId, DockWidgetService.CountdownId]);
     Check(first.Count == 2 && first.OfType<ITimedDockWidget>().Count() == 2, "Both time widgets must be available.");
     var stopwatch = first.OfType<StopwatchDockWidget>().Single();

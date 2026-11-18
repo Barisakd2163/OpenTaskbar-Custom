@@ -20,6 +20,7 @@ public sealed class WidgetCoordinator : IDisposable
 
     public static readonly string[] DefaultWidgetOrder =
     [
+        "Search",
         "Media",
         "Desktops",
         "SystemStats",
@@ -33,6 +34,7 @@ public sealed class WidgetCoordinator : IDisposable
 
     public static string? GetLabelKey(string id) => id switch
     {
+        "Search" => "WidgetLauncher",
         "Media" => "WidgetMedia",
         "Desktops" => "WidgetDesktops",
         "SystemStats" => "WidgetSystemStats",
@@ -74,6 +76,9 @@ public sealed class WidgetCoordinator : IDisposable
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
     public event Action<string>? WidgetRemoveRequested;
+
+    /// <summary>Raised by the search widget with its button as the anchor for the launcher window.</summary>
+    public event Action<FrameworkElement>? LauncherRequested;
 
     /// <summary>Lets the host wire its context-menu open/close handlers so auto-hide stays locked while the menu is up.</summary>
     public Action<ContextMenu>? ConfigureWidgetMenu { get; set; }
@@ -117,6 +122,7 @@ public sealed class WidgetCoordinator : IDisposable
             onHoverLayoutChanged ?? (_ => { }));
         _widgets =
         [
+            new("Search", "WidgetLauncher", CreateSearchWidget, s => IsCatalogEnabled(s, "Search")),
             new("Media", "WidgetMedia", () => new MediaWidget(), s => IsCatalogEnabled(s, "Media")),
             new("Desktops", "WidgetDesktops", () => new DesktopsWidget(), s => IsCatalogEnabled(s, "Desktops")),
             new("SystemStats", "WidgetSystemStats", () => new SystemStatsWidget(), s => IsCatalogEnabled(s, "SystemStats")),
@@ -152,6 +158,13 @@ public sealed class WidgetCoordinator : IDisposable
 
     public string? GetWidgetId(DockWidget widget) =>
         (widget.Tag as string) ?? _widgets.FirstOrDefault(s => ReferenceEquals(s.Widget, widget))?.Id;
+
+    private SearchWidget CreateSearchWidget()
+    {
+        var search = new SearchWidget();
+        search.LauncherRequested += anchor => LauncherRequested?.Invoke(anchor);
+        return search;
+    }
 
     private DockWidget EnsureWidget(WidgetSlot slot)
     {

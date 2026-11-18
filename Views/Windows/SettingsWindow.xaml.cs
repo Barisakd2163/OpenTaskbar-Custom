@@ -760,6 +760,29 @@ public partial class SettingsWindow : Window
             AttachDensityRow(id, panel);
             option.SettingsView = panel;
         }
+        if (_widgetOptions.FirstOrDefault(o => o.Id == DockWidgetService.SearchId) is { } search)
+        {
+            var panel = new StackPanel();
+            var heading = new TextBlock
+            {
+                Text = UiText.Get("WidgetLauncher"),
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            heading.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            var description = new TextBlock
+            {
+                Text = UiText.Get("WidgetLauncherDescription"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            description.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            panel.Children.Add(heading);
+            panel.Children.Add(description);
+            AttachDensityRow(DockWidgetService.SearchId, panel);
+            search.SettingsView = panel;
+        }
     }
 
     private void AttachDensityRow(string widgetId, FrameworkElement container)
