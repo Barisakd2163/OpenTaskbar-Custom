@@ -248,125 +248,176 @@ public sealed class AudioEndpointMonitor : IDisposable
         }
     }
 
-    public IReadOnlyList<AppAudioSession> GetAppSessions()
+    public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null)
     {
         var sessions = new List<AppAudioSession>();
-        if (_enumerator.GetDefaultAudioEndpoint(DataFlowRender, RoleMultimedia, out var device) != 0 || device is null)
-        {
-            return sessions;
-        }
+        var seenPids = new HashSet<int>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        try
+        void CollectFromDevice(IMMDevice device)
         {
-            var iid = AudioSessionManager2Id;
-            if (device.Activate(ref iid, ClsCtxAll, 0, out var activated) != 0 || activated is not IAudioSessionManager2 sessionManager)
-            {
-                return sessions;
-            }
-
             try
             {
-                if (sessionManager.GetSessionEnumerator(out var sessionEnum) != 0 || sessionEnum is null)
+                var iid = AudioSessionManager2Id;
+                if (device.Activate(ref iid, ClsCtxAll, 0, out var activated) != 0 || activated is not IAudioSessionManager2 sessionManager)
                 {
-                    return sessions;
+                    return;
                 }
 
                 try
                 {
-                    if (sessionEnum.GetCount(out var count) != 0 || count == 0) return sessions;
-                    var myPid = Environment.ProcessId;
-
-                    for (var i = 0; i < count; i++)
+                    if (sessionManager.GetSessionEnumerator(out var sessionEnum) != 0 || sessionEnum is null)
                     {
-                        if (sessionEnum.GetSession(i, out var control) != 0 || control is null) continue;
-                        try
+                        return;
+                    }
+
+                    try
+                    {
+                        if (sessionEnum.GetCount(out var count) != 0 || count == 0) return;
+                        var myPid = Environment.ProcessId;
+
+                        for (var i = 0; i < count; i++)
                         {
-                            if (control is not IAudioSessionControl2 ctl2 || control is not ISimpleAudioVolume simpleVolume) continue;
-                            if (ctl2.GetState(out var state) != 0 || state == 2) continue; // 2 = Expired
-
-                            var isSystemSounds = ctl2.IsSystemSoundsSession() == 0;
-                            ctl2.GetProcessId(out var pid);
-                            if (pid == myPid) continue;
-
-                            string appName;
-                            BitmapSource? appIcon = null;
-
-                            if (isSystemSounds)
+                            if (sessionEnum.GetSession(i, out var control) != 0 || control is null) continue;
+                            try
                             {
-                                appName = UiText.Get("SystemSounds");
-                                appIcon = ApplicationIconProvider.GetForResource(@"%SystemRoot%\System32\audiosrv.dll", -1);
-                            }
-                            else if (pid > 0)
-                            {
-                                try
+                                if (control is not IAudioSessionControl2 ctl2 || control is not ISimpleAudioVolume simpleVolume) continue;
+                                if (ctl2.GetState(out var state) != 0 || state == 2) continue; // 2 = Expired
+
+                                var isSystemSounds = ctl2.IsSystemSoundsSession() == 0;
+                                ctl2.GetProcessId(out var pid);
+                                if (pid == myPid) continue;
+
+                                if (pid > 0 && !seenPids.Add(pid)) continue;
+
+                                string appName;
+                                BitmapSource? appIcon = null;
+
+                                if (isSystemSounds)
                                 {
-                                    using var proc = Process.GetProcessById(pid);
-                                    appName = proc.ProcessName;
-                                    var exePath = proc.MainModule?.FileName;
-                                    if (!string.IsNullOrEmpty(exePath))
+                                    if (!seenNames.Add("SystemSounds")) continue;
+                                    appName = UiText.Get("SystemSounds");
+                                    try
                                     {
-                                        appIcon = ApplicationIconProvider.GetForFile(exePath, 32);
+                                        appIcon = ApplicationIconProvider.GetForResource(@"%SystemRoot%\System32\audiosrv.dll", -1);
                                     }
+                                    catch { }
                                 }
-                                catch
-                                {
-                                    appName = $"App ({pid})";
-                                }
-                            }
-                            else
-                            {
-                                ctl2.GetDisplayName(out var dn);
-                                appName = !string.IsNullOrWhiteSpace(dn) ? dn : "Audio";
-                            }
-
-                            simpleVolume.GetMasterVolume(out var vol);
-                            simpleVolume.GetMute(out var muted);
-
-                            sessions.Add(new AppAudioSession(
-                                pid,
-                                appName,
-                                appIcon,
-                                vol,
-                                muted,
-                                level =>
+                                else if (pid > 0)
                                 {
                                     try
                                     {
-                                        var ctx = Guid.NewGuid();
-                                        simpleVolume.SetMasterVolume(Math.Clamp(level, 0f, 1f), ref ctx);
+                                        using var proc = Process.GetProcessById(pid);
+                                        appName = proc.ProcessName;
+                                        var exePath = proc.MainModule?.FileName;
+                                        if (!string.IsNullOrEmpty(exePath))
+                                        {
+                                            appIcon = ApplicationIconProvider.GetForFile(exePath, 32);
+                                        }
                                     }
-                                    catch (Exception ex) { AppLog.Warning($"Session volume change failed: {ex.Message}"); }
-                                },
-                                mute =>
-                                {
-                                    try
+                                    catch
                                     {
-                                        var ctx = Guid.NewGuid();
-                                        simpleVolume.SetMute(mute, ref ctx);
+                                        appName = $"App ({pid})";
                                     }
-                                    catch (Exception ex) { AppLog.Warning($"Session mute change failed: {ex.Message}"); }
                                 }
-                            ));
+                                else
+                                {
+                                    ctl2.GetDisplayName(out var dn);
+                                    appName = !string.IsNullOrWhiteSpace(dn) ? dn : "Audio";
+                                    if (!seenNames.Add(appName)) continue;
+                                }
+
+                                simpleVolume.GetMasterVolume(out var vol);
+                                simpleVolume.GetMute(out var muted);
+
+                                sessions.Add(new AppAudioSession(
+                                    pid,
+                                    appName,
+                                    appIcon,
+                                    vol,
+                                    muted,
+                                    level =>
+                                    {
+                                        try
+                                        {
+                                            var ctx = Guid.NewGuid();
+                                            simpleVolume.SetMasterVolume(Math.Clamp(level, 0f, 1f), ref ctx);
+                                        }
+                                        catch (Exception ex) { AppLog.Warning($"Session volume change failed: {ex.Message}"); }
+                                    },
+                                    mute =>
+                                    {
+                                        try
+                                        {
+                                            var ctx = Guid.NewGuid();
+                                            simpleVolume.SetMute(mute, ref ctx);
+                                        }
+                                        catch (Exception ex) { AppLog.Warning($"Session mute change failed: {ex.Message}"); }
+                                    }
+                                ));
+                            }
+                            catch (Exception ex)
+                            {
+                                AppLog.Warning($"Error reading audio session: {ex.Message}");
+                            }
+                            finally
+                            {
+                                Marshal.ReleaseComObject(control);
+                            }
                         }
-                        catch (Exception ex)
-                        {
-                            AppLog.Warning($"Error reading audio session: {ex.Message}");
-                        }
+                    }
+                    finally
+                    {
+                        Marshal.ReleaseComObject(sessionEnum);
                     }
                 }
                 finally
                 {
-                    Marshal.ReleaseComObject(sessionEnum);
+                    Marshal.ReleaseComObject(sessionManager);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warning($"CollectFromDevice failed: {ex.Message}");
+            }
+        }
+
+        if (!string.IsNullOrEmpty(targetDeviceId))
+        {
+            if (_enumerator.GetDevice(targetDeviceId, out var targetDev) == 0 && targetDev is not null)
+            {
+                try { CollectFromDevice(targetDev); }
+                finally { Marshal.ReleaseComObject(targetDev); }
+                return sessions;
+            }
+        }
+
+        if (_enumerator.GetDefaultAudioEndpoint(DataFlowRender, RoleMultimedia, out var defDevice) == 0 && defDevice is not null)
+        {
+            try { CollectFromDevice(defDevice); }
+            finally { Marshal.ReleaseComObject(defDevice); }
+        }
+
+        if (_enumerator.EnumAudioEndpoints(DataFlowRender, DeviceStateActive, out var coll) == 0 && coll is not null)
+        {
+            try
+            {
+                if (coll.GetCount(out var count) == 0)
+                {
+                    for (uint i = 0; i < count; i++)
+                    {
+                        if (coll.Item(i, out var dev) == 0 && dev is not null)
+                        {
+                            try { CollectFromDevice(dev); }
+                            finally { Marshal.ReleaseComObject(dev); }
+                        }
+                    }
                 }
             }
             finally
             {
-                Marshal.ReleaseComObject(sessionManager);
+                Marshal.ReleaseComObject(coll);
             }
-        }
-        finally
-        {
-            Marshal.ReleaseComObject(device);
         }
 
         return sessions;
@@ -509,7 +560,7 @@ public sealed class AudioEndpointMonitor : IDisposable
         public IReadOnlyList<AudioDeviceInfo> GetPlaybackDevices() => _disposed ? [] : _owner.GetDevices(isRecording: false);
         public IReadOnlyList<AudioDeviceInfo> GetRecordingDevices() => _disposed ? [] : _owner.GetDevices(isRecording: true);
         public bool SelectDefaultDevice(string deviceId) => !_disposed && SetDefaultDevice(deviceId);
-        public IReadOnlyList<AppAudioSession> GetAppSessions() => _disposed ? [] : _owner.GetAppSessions();
+        public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null) => _disposed ? [] : _owner.GetAppSessions(targetDeviceId);
 
         public void BindDefaultDevice()
         {

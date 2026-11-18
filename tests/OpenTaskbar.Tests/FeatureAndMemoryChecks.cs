@@ -125,11 +125,10 @@ internal static class FeatureAndMemoryChecks
 
             var search = new SearchWidget();
             search.Activate();
-            if (search.Content is Button searchButton)
-            {
-                Check(search.BuildHoverFlyoutContent() is not null,
-                    "The compact-capable search widget must provide hover content.");
-            }
+            Check(search.BuildHoverFlyoutContent() is not null,
+                "The compact-capable search widget must provide hover content.");
+            Check(search.SupportsCompactMode && search.FullWidthEstimate > search.CompactWidthEstimate,
+                "Search widget must provide valid width estimates for compact and expanded modes.");
             search.Deactivate();
 
 

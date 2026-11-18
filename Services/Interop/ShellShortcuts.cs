@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Interop;
 using OpenTaskbar.Models;
 
@@ -113,6 +114,72 @@ public static class ShellShortcuts
         }
         if (error is not null) AppLog.Warning($"OpenWindowsSearch failed: {error}");
         return error;
+    }
+
+    /// <summary>Checks whether Windows Search flyout is currently open and uncloaked.</summary>
+    public static bool IsSearchFlyoutOpen() => FindSearchWindows().Count > 0;
+
+    /// <summary>Closes Windows Search flyout if currently open.</summary>
+    public static void CloseWindowsSearch()
+    {
+        if (IsSearchFlyoutOpen())
+        {
+            SendWindowsShortcut(VkS);
+            EnsureNativeTaskbarHidden();
+        }
+    }
+
+    /// <summary>Forwards a virtual key down/up to the open Windows Search flyout.</summary>
+    public static void ForwardKeyToSearch(ushort vk)
+    {
+        var windows = FindSearchWindows();
+        if (windows.Count == 0) return;
+        foreach (var hwnd in windows)
+        {
+            PostMessage(hwnd, WmKeyDown, (nint)vk, 0);
+            PostMessage(hwnd, WmKeyUp, (nint)vk, 0);
+        }
+    }
+
+    /// <summary>Synchronizes the dock search text query into Windows Search edit control.</summary>
+    public static void SyncSearchQuery(string query)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                var windows = FindSearchWindows();
+                if (windows.Count == 0) return;
+
+                foreach (var hwnd in windows)
+                {
+                    try
+                    {
+                        var root = AutomationElement.FromHandle(hwnd);
+                        if (root is null) continue;
+
+                        var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
+                        var edit = root.FindFirst(TreeScope.Descendants, editCondition);
+                        if (edit is not null)
+                        {
+                            if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) && pattern is ValuePattern vp)
+                            {
+                                vp.SetValue(query);
+                                return;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLog.Warning($"SyncSearchQuery element error: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warning($"SyncSearchQuery failed: {ex.Message}");
+            }
+        });
     }
 
     private static void EnsureNativeTaskbarHidden()
@@ -485,6 +552,12 @@ public static class ShellShortcuts
 
     private const int SwHide = 0;
     private const int DwmwaCloaked = 14;
+    private const uint WmKeyDown = 0x0100;
+    private const uint WmKeyUp = 0x0101;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
