@@ -17,6 +17,7 @@ checks += WidgetViewChecks.Run();
 checks += ThemePackChecks.Run();
 checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
+checks += ApplicationJumpListChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)

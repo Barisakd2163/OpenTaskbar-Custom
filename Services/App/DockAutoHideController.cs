@@ -45,6 +45,9 @@ public sealed class DockAutoHideController : IDisposable
     public bool IsMouseAtEdge { get; private set; }
     public bool HasOverlap { get; private set; }
 
+    /// <summary>Seam for tests: supplies the OS foreground window without depending on a real desktop.</summary>
+    internal Func<nint> ForegroundProvider { get; set; } = NativeWindowTracker.GetForegroundApplicationWindow;
+
     public event Action<bool>? VisibilityChanged;
 
     public DockAutoHideController(
@@ -184,13 +187,15 @@ public sealed class DockAutoHideController : IDisposable
         GetWindowThreadProcessId(target, out var pid);
         if (pid == Environment.ProcessId)
         {
-            var fallback = NativeWindowTracker.GetForegroundApplicationWindow();
+            var fallback = ForegroundProvider();
             if (fallback != 0 && fallback != target)
             {
                 target = fallback;
             }
             else
             {
+                // No distinct application beneath our own window: any earlier overlap is stale.
+                HasOverlap = false;
                 return;
             }
         }

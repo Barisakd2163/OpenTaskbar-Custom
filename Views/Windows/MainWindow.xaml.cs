@@ -1261,9 +1261,11 @@ public partial class MainWindow : Window
                     item.Click += async (_, args) =>
                     {
                         args.Handled = true;
-                        var invocation = _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
+                        // Await before closing: closing raises ContextMenu.Closed -> ReleaseAsync, and racing both
+                        // on the COM worker can dispose the session before the invocation is dispatched.
+                        var launched = await _jumpLists.InvokeAsync(result.SessionId, entry.CommandId, _source?.Handle ?? 0);
                         menu.IsOpen = false;
-                        if (!await invocation && IsLoaded)
+                        if (!launched && IsLoaded)
                             ReportError("ErrorAppTaskRun");
                     };
                     items.Add(item);
