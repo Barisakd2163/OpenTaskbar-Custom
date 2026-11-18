@@ -49,6 +49,26 @@ internal static class DockLayoutChecks
         Check(!SecondaryDockWindow.NeedsOwnShelf(66, 96), "An existing taskbar strip must be reused as is.");
         Check(SecondaryDockWindow.NeedsOwnShelf(66, 192), "A strip must be measured in DPI-aware pixels.");
 
+        // A secondary dock's own app-bar shelf contributes to the monitor work-area strip.
+        // Seeing that space again must not cause the dock to release and re-register its shelf.
+        foreach (var dpi in new uint[] { 96, 120, 144, 192 })
+        {
+            var shelf = DockLayoutMetrics.Calculate(DockMetrics.ShelfHeight, 0, 0, dpi).ShelfPixels;
+            Check(SecondaryDockWindow.MissingShelfPixels(shelf, shelf, dpi) == shelf,
+                "An existing self-owned shelf must not be mistaken for Explorer's taskbar reservation.");
+            Check(SecondaryDockWindow.MissingShelfPixels(shelf + 12, shelf, dpi) == Math.Max(0, shelf - 12),
+                "Only the external portion of a mixed work-area strip must reduce our reservation.");
+            Check(SecondaryDockWindow.MissingShelfPixels(shelf + 20, 0, dpi) == 0,
+                "An adequate external taskbar strip must make our shelf unnecessary.");
+            Check(SecondaryDockWindow.MissingShelfPixels(shelf * 2, shelf, dpi) == 0,
+                "A returning native taskbar must release our shelf.");
+        }
+
+        Check((SecondaryDockWindow.PositionFlags(false) & 0x0040u) == 0,
+            "Positioning a fullscreen-hidden secondary dock must not force it visible.");
+        Check((SecondaryDockWindow.PositionFlags(true) & 0x0040u) != 0,
+            "Positioning a visible secondary dock must keep it shown.");
+
         foreach (var width in new[] { 140d, 280d, 500d })
         {
             var iconSize = (double)app.FindResource("DockIconSize");
