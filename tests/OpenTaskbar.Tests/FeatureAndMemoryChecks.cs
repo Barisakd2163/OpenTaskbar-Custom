@@ -45,11 +45,76 @@ internal static class FeatureAndMemoryChecks
                 Check(reordered && lazyCoordinator.CurrentOrder[0] != "Search",
                     "Lazy WidgetCoordinator must support drag reordering.");
 
-                // Enable all 10 live widgets + SystemMeters.All
+                // Enable all 11 live widgets + SystemMeters.All
                 lazyCoordinator.Apply(new DockSettings(
                     Widgets: WidgetCoordinator.DefaultWidgetOrder,
                     StatsMeters: SystemMeters.All));
-                Check(strip.Children.Count == 10, "Enabling all 10 live widgets must materialize all 10 controls.");
+                Check(strip.Children.Count == 11, "Enabling all 11 live widgets must materialize all 11 controls.");
+            }
+
+            var aiLoads = 0;
+            using (var ai = new AiUsageWidget((_, _) =>
+            {
+                aiLoads++;
+                return Task.FromResult<(AiUsageReport?, string?)>((null, "ErrorAiUsageSignIn"));
+            }))
+            {
+                ai.Activate();
+                ai.Tick(DateTime.Now);
+                Check(aiLoads == 0, "AI Usage must not load while all providers are disabled.");
+                ai.ApplySettings(new DockSettings(AiUsageProviders: AiProviders.Claude));
+                Check(aiLoads == 1 && ai.Visibility == Visibility.Visible
+                    && AiCards(ai) is [{ ToolTip: string hint }] && hint.Contains("claude", StringComparison.Ordinal),
+                    "AI Usage must keep sign-in failures visible with a localized CLI hint.");
+                ai.Tick(DateTime.Now);
+                Check(aiLoads == 1, "A sign-in failure must not poll again without changed credentials.");
+                ai.SetCompactState(true);
+                Check(ai.BuildHoverFlyoutContent() is not null, "AI Usage must provide compact hover details.");
+                ai.Deactivate();
+                ai.Tick(DateTime.Now.AddHours(1));
+                Check(aiLoads == 1, "Inactive AI widgets must not call their loader.");
+            }
+
+            var pending = new TaskCompletionSource<(AiUsageReport?, string?)>();
+            CancellationToken aiCancellation = default;
+            using (var ai = new AiUsageWidget((_, cancellation) =>
+            {
+                aiCancellation = cancellation;
+                return pending.Task;
+            }))
+            {
+                ai.ApplySettings(new DockSettings(AiUsageProviders: AiProviders.Codex));
+                ai.Activate();
+                ai.ApplySettings(new DockSettings());
+                Check(aiCancellation.IsCancellationRequested, "Disabling AI providers must cancel their pending request.");
+                pending.SetResult((new(AiProviders.Codex, "fixture", [new("AiUsageSession", 0.5, null, 18000)], DateTimeOffset.UtcNow), null));
+                Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                Check(AiCards(ai) is [{ ToolTip: string hint }] && hint == UiText.Get("AiUsageNoProviders"),
+                    "A late AI response must not restore a disabled provider.");
+            }
+
+            var aiNow = DateTimeOffset.UtcNow;
+            using (var ai = new AiUsageWidget((provider, _) => Task.FromResult<(AiUsageReport?, string?)>((new(provider, "Plus",
+                [new("AiUsageSession", 0.42, aiNow.AddHours(3), 18000), new("AiUsageWeekly", provider == AiProviders.Codex ? 0.9 : 0.29,
+                    aiNow.AddDays(5), 604800)], aiNow) { LimitReached = provider == AiProviders.Codex }, null))))
+            {
+                ai.ApplySettings(new DockSettings(AiUsageProviders: AiProviders.All));
+                ai.Activate();
+                Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                var cards = AiCards(ai);
+                Check(cards.Length == 2 && cards.All(card => card.Width == (double)app.FindResource("WidgetHeight"))
+                    && cards[0].ToolTip is string claudeTip && claudeTip.StartsWith("Claude Code 42%", StringComparison.Ordinal)
+                    && claudeTip.Contains("Weekly 29%", StringComparison.Ordinal) && claudeTip.Contains("Resets in", StringComparison.Ordinal)
+                    && cards[1].ToolTip is string codexTip && codexTip.Contains(UiText.Get("AiUsageLimitReached"), StringComparison.Ordinal),
+                    "AI Usage must show one System-meter sized card per provider with a one-line summary.");
+                ai.ApplySettings(new DockSettings(AiUsageProviders: AiProviders.All, AiUsageRing: AiUsageRing.Weekly));
+                Check(AiCards(ai)[0].ToolTip is string weeklyTip && weeklyTip.StartsWith("Claude Code 29%", StringComparison.Ordinal),
+                    "The ring setting must choose the window the dock shows.");
+                ai.SetCompactState(true);
+                Check(AiCards(ai) is [{ ToolTip: string compactTip }] && compactTip.Contains('\n'),
+                    "Compact AI Usage must collapse to one card that summarizes every provider.");
+                Check(ai.BuildHoverFlyoutContent() is StackPanel aiFlyout && aiFlyout.Children.Count > 4,
+                    "The AI Usage flyout must build sections for every provider.");
             }
 
             // 2. SystemStats + on-demand SystemSensors parity & disposal
@@ -218,4 +283,7 @@ internal static class FeatureAndMemoryChecks
         encoder.Save(ms);
         return ms.ToArray();
     }
+
+    private static Button[] AiCards(AiUsageWidget widget) =>
+        ((Panel)widget.Content).Children.OfType<Button>().Where(card => card.Visibility == Visibility.Visible).ToArray();
 }

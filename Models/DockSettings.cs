@@ -54,6 +54,12 @@ public enum SystemMeters
     All = Cpu | Memory | Battery | CpuTemperature | Gpu | GpuTemperature
 }
 
+[Flags]
+public enum AiProviders { None = 0, Claude = 1, Codex = 2, All = Claude | Codex }
+
+/// <summary>Which quota window the AI usage ring shows; Highest follows whichever window is closest to its limit.</summary>
+public enum AiUsageRing { Highest, Session, Weekly }
+
 /// <summary>A named view of the dock that hides some pinned apps; pins themselves are never removed.</summary>
 public sealed record DockProfile(string Name, IReadOnlyList<string> HiddenApps);
 
@@ -120,4 +126,6 @@ public sealed record DockSettings(
     IReadOnlyList<string>? DockItemOrder = null,
     // Custom taskbar geometry overrides (null = auto from size profile).
     int? DockCornerRadius = null,
-    int? DockBottomGap = null);
+    int? DockBottomGap = null,
+    AiProviders AiUsageProviders = AiProviders.None,
+    AiUsageRing AiUsageRing = AiUsageRing.Highest);
