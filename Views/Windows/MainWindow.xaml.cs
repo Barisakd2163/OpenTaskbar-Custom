@@ -2020,6 +2020,49 @@ public partial class MainWindow : Window
         }
     }
 
+    // Keep the saved order and newly discovered apps in one consistent sequence.
+    // Both drawing and drag/drop must use the same effective order.
+    private List<string> BuildEffectiveDockOrder()
+    {
+        var settings = _preferences.Current;
+        var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
+        foreach (var token in DefaultDockOrder(settings))
+        {
+            if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase))
+            {
+                if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var lastAppIndex = tokens.FindLastIndex(t =>
+                        t.StartsWith("app:", StringComparison.OrdinalIgnoreCase)
+                        && FindDockApp(t[4..]) is not null);
+
+                    if (lastAppIndex >= 0)
+                    {
+                        tokens.Insert(lastAppIndex + 1, token);
+                    }
+                    else
+                    {
+                        var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
+                        if (startIndex >= 0)
+                        {
+                            tokens.Insert(startIndex + 1, token);
+                        }
+                        else
+                        {
+                            tokens.Insert(0, token);
+                        }
+                    }
+                }
+                else
+                {
+                    tokens.Add(token);
+                }
+            }
+        }
+
+        return tokens;
+    }
+
     /// <summary>Rebuilds the single dock strip from the persisted free-form item order.</summary>
     private void RebuildDockOrder()
     {
@@ -2027,42 +2070,7 @@ public partial class MainWindow : Window
         _rebuildingDockOrder = true;
         try
         {
-            var settings = _preferences.Current;
-            var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
-            foreach (var token in DefaultDockOrder(settings))
-            {
-                if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase))
-                {
-                    if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var lastAppIndex = tokens.FindLastIndex(t =>
-                            t.StartsWith("app:", StringComparison.OrdinalIgnoreCase)
-                            && FindDockApp(t[4..]) is not null);
-
-                        if (lastAppIndex >= 0)
-                        {
-                            tokens.Insert(lastAppIndex + 1, token);
-                        }
-                        else
-                        {
-                            var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
-                            if (startIndex >= 0)
-                            {
-                                tokens.Insert(startIndex + 1, token);
-                            }
-                            else
-                            {
-                                tokens.Insert(0, token);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        tokens.Add(token);
-                    }
-                }
-            }
-
+            var tokens = BuildEffectiveDockOrder();
             var pairs = new List<(string Token, FrameworkElement Element)>();
             foreach (var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -2093,10 +2101,16 @@ public partial class MainWindow : Window
     private void MoveDockItem(string token, int index)
     {
         var settings = _preferences.Current;
-        var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
-        tokens.RemoveAll(existing => string.Equals(existing, token, StringComparison.OrdinalIgnoreCase));
-        tokens.Insert(Math.Clamp(index, 0, tokens.Count), token);
-        _preferences.Save(settings with { DockItemOrder = tokens });
+        var visibleOrder = _dockItemElements.Keys.ToArray();
+        var oldOrder = BuildEffectiveDockOrder();
+        var tokens = DockItemOrdering.MoveVisibleItem(oldOrder, visibleOrder, token, index);
+        if (tokens.SequenceEqual(oldOrder, StringComparer.OrdinalIgnoreCase)) return;
+        var error = _preferences.Save(settings with { DockItemOrder = tokens });
+        if (error is not null)
+        {
+            ReportError(error);
+            return;
+        }
         RebuildDockOrder();
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
