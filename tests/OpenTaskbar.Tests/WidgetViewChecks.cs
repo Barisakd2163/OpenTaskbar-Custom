@@ -65,7 +65,7 @@ internal static class WidgetViewChecks
                 checks++;
             }
 
-            // Re-clicking Search must work even if Windows closes its flyout without moving WPF focus.
+            // Re-clicking Search must work even if Windows closes its flyout.
             var nativeSearchOpen = false;
             var searchOpenRequests = 0;
             var search = new OpenTaskbar.Widgets.SearchWidget
@@ -76,28 +76,17 @@ internal static class WidgetViewChecks
                     searchOpenRequests++;
                     nativeSearchOpen = true;
                     return null;
-                },
-                SyncQuery = _ => { }
+                }
             };
             search.Activate();
             Layout(search);
-            search.HandleSearchPress(alreadyFocused: true);
-            Check(searchOpenRequests == 1, "A press on the focused search box must open closed Windows Search.");
-            search.HandleSearchPress(alreadyFocused: true);
-            Check(searchOpenRequests == 1, "A press while Windows Search is open must not reopen it.");
+            search.HandleSearchClick();
+            Check(searchOpenRequests == 1, "Clicking search widget must open Windows Search.");
+            search.HandleSearchClick();
+            Check(searchOpenRequests == 1, "Clicking while Windows Search is open must not reopen it.");
             nativeSearchOpen = false;
-            search.HandleSearchPress(alreadyFocused: true);
-            Check(searchOpenRequests == 2, "After Windows Search closes, pressing the still-focused widget must reopen it.");
-
-            // Losing focus after Search closes clears stale text without reopening the flyout.
-            var searchInput = Descendants<TextBox>(search).Single();
-            searchInput.Text = "test";
-            nativeSearchOpen = false;
-            searchInput.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));
-            Check(searchInput.Text.Length == 0 && searchOpenRequests == 2,
-                "Clearing the query on focus loss must not launch Windows Search again.");
-            search.HandleSearchPress(alreadyFocused: true);
-            Check(searchOpenRequests == 3, "Search must open again after losing focus and clearing its text.");
+            search.HandleSearchClick();
+            Check(searchOpenRequests == 2, "After Windows Search closes, clicking search widget again must reopen it.");
             search.Dispose();
 
             var clock = new TestClock();
