@@ -45,11 +45,12 @@ internal static class FeatureAndMemoryChecks
                 Check(reordered && lazyCoordinator.CurrentOrder[0] != "Search",
                     "Lazy WidgetCoordinator must support drag reordering.");
 
-                // Enable all 11 live widgets + SystemMeters.All
+                // Enable all live widgets + SystemMeters.All
                 lazyCoordinator.Apply(new DockSettings(
                     Widgets: WidgetCoordinator.DefaultWidgetOrder,
                     StatsMeters: SystemMeters.All));
-                Check(strip.Children.Count == 11, "Enabling all 11 live widgets must materialize all 11 controls.");
+                Check(strip.Children.Count == WidgetCoordinator.DefaultWidgetOrder.Length,
+                    "Enabling all live widgets must materialize all controls.");
             }
 
             var aiLoads = 0;
