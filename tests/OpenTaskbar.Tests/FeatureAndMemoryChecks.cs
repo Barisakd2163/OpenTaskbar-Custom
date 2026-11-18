@@ -205,6 +205,17 @@ internal static class FeatureAndMemoryChecks
             tray.Deactivate();
             search.Deactivate();
 
+            // Verify MediaWidget lifecycle, hover flyout, density and tick safety
+            using (var mediaWidget = new MediaWidget())
+            {
+                mediaWidget.Activate();
+                Check(mediaWidget.BuildHoverFlyoutContent() is not null, "MediaWidget must provide rich hover flyout content.");
+                Check(mediaWidget.SupportsCompactMode, "MediaWidget must declare compact mode support.");
+                Check(mediaWidget.FullWidthEstimate > mediaWidget.CompactWidthEstimate, "MediaWidget full width must exceed compact width.");
+                mediaWidget.Tick(DateTime.Now);
+                mediaWidget.Deactivate();
+            }
+
 
 
 

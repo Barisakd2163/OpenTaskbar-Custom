@@ -235,7 +235,8 @@ public partial class MediaWidget : DockWidget
             if (!IsActive || activationVersion != _activationVersion) return;
             _manager = manager;
             _manager.CurrentSessionChanged += Manager_CurrentSessionChanged;
-            BindSession(_manager.GetCurrentSession());
+            _manager.SessionsChanged += Manager_SessionsChanged;
+            BindSession(GetActiveSession());
         }
         catch (Exception ex) when (ex is COMException or UnauthorizedAccessException)
         {
@@ -256,6 +257,7 @@ public partial class MediaWidget : DockWidget
         if (_manager is not null)
         {
             _manager.CurrentSessionChanged -= Manager_CurrentSessionChanged;
+            _manager.SessionsChanged -= Manager_SessionsChanged;
             _manager = null;
         }
 
@@ -270,7 +272,53 @@ public partial class MediaWidget : DockWidget
 
     protected override void OnTick(DateTime now)
     {
-        if (_session is not null && _playing && !_draggingProgress)
+        if (!IsActive || _manager is null) return;
+
+        // Auto-discover playing sessions (e.g. YouTube in a browser) if unbound or current session is inactive.
+        if (_session is null || !_playing)
+        {
+            var active = GetActiveSession();
+            if (active is not null && !ReferenceEquals(active, _session))
+            {
+                BindSession(active);
+                return;
+            }
+        }
+
+        if (_session is null || _draggingProgress) return;
+
+        // Actively poll timeline properties so duration updates (e.g. YouTube video buffering) are picked up immediately.
+        RefreshTimeline();
+
+        // Keep playback status in sync even if Windows drops an event.
+        try
+        {
+            var pb = _session.GetPlaybackInfo();
+            if (pb is not null)
+            {
+                var isPlaying = pb.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+                if (_playing != isPlaying)
+                {
+                    _playing = isPlaying;
+                    if (_lastPlayGlyph != _playing)
+                    {
+                        _lastPlayGlyph = _playing;
+                        PlayPauseGlyph.Content = FindResource(_playing ? "IconPauseFill" : "IconPlayFill");
+                    }
+                }
+                var controls = pb.Controls;
+                if (controls is not null)
+                {
+                    _canSeek = controls.IsPlaybackPositionEnabled;
+                }
+            }
+        }
+        catch
+        {
+            // Transient COM failure during app transition.
+        }
+
+        if (_playing)
         {
             UpdateProgressUI();
         }
@@ -354,8 +402,79 @@ public partial class MediaWidget : DockWidget
     private void Manager_CurrentSessionChanged(MediaSessionManager sender, CurrentSessionChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && _manager is not null) BindSession(_manager.GetCurrentSession());
+            if (IsActive && _manager is not null) BindSession(GetActiveSession());
         });
+
+    private void Manager_SessionsChanged(MediaSessionManager sender, SessionsChangedEventArgs args) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (IsActive && _manager is not null) BindSession(GetActiveSession());
+        });
+
+    private MediaSession? GetActiveSession()
+    {
+        if (_manager is null) return null;
+
+        // 1. If Windows reports an active current session that is actively playing, use it.
+        MediaSession? current = null;
+        try { current = _manager.GetCurrentSession(); } catch { }
+
+        if (current is not null)
+        {
+            try
+            {
+                var pb = current.GetPlaybackInfo();
+                if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    return current;
+                }
+            }
+            catch { }
+        }
+
+        // 2. Scan all sessions: prefer any session actively playing (e.g. YouTube in Chrome/Firefox/Edge).
+        try
+        {
+            var sessions = _manager.GetSessions();
+            if (sessions is { Count: > 0 })
+            {
+                foreach (var s in sessions)
+                {
+                    try
+                    {
+                        var pb = s.GetPlaybackInfo();
+                        if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                        {
+                            return s;
+                        }
+                    }
+                    catch { }
+                }
+
+                if (current is not null) return current;
+
+                // If none are playing, pick the first open/paused session.
+                foreach (var s in sessions)
+                {
+                    try
+                    {
+                        var pb = s.GetPlaybackInfo();
+                        if (pb?.PlaybackStatus is not (GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed
+                            or GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped))
+                        {
+                            return s;
+                        }
+                    }
+                    catch { }
+                }
+
+                return sessions[0];
+            }
+        }
+        catch { }
+
+        return current;
+    }
 
     private void BindSession(MediaSession? session)
     {
@@ -402,10 +521,22 @@ public partial class MediaWidget : DockWidget
         {
             var timeline = _session.GetTimelineProperties();
             if (timeline is null) return;
-            _startTime = timeline.StartTime;
-            _endTime = timeline.EndTime;
-            _position = timeline.Position;
-            _positionUpdatedAt = timeline.LastUpdatedTime;
+
+            var start = timeline.StartTime;
+            var end = timeline.EndTime;
+            if (end <= TimeSpan.Zero && timeline.MaxSeekTime > TimeSpan.Zero)
+            {
+                end = timeline.MaxSeekTime;
+            }
+
+            var pos = timeline.Position;
+            var updatedAt = timeline.LastUpdatedTime;
+
+            _startTime = start;
+            _endTime = end;
+            _position = pos;
+            _positionUpdatedAt = updatedAt != default ? updatedAt : DateTimeOffset.UtcNow;
+
             if (!_draggingProgress) UpdateProgressUI();
         }
         catch (Exception ex)
@@ -432,7 +563,10 @@ public partial class MediaWidget : DockWidget
         if (_playing && _positionUpdatedAt != default)
         {
             var delta = (DateTimeOffset.UtcNow - _positionUpdatedAt).TotalSeconds;
-            if (delta > 0 && delta < 3600) elapsed += delta;
+            if (delta > -2)
+            {
+                elapsed += Math.Max(0, delta);
+            }
         }
 
         elapsed = Math.Clamp(elapsed, 0, duration.TotalSeconds);

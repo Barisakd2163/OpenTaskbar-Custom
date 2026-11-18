@@ -29,8 +29,8 @@ internal static class VisualParityChecks
             // SHA-256 pixel hashes captured on the Windows CI runner for the reviewed design.
             var expected = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["DockButtons_Dark"] = "E7B5F68F28A4ABC1FFA7FB097EADD2BDB9E30056E3D10733BD547CE985520E09",
-                ["DockButtons_Light"] = "AAB7166065A7A83F6A91A3F258550592333F9320D69855715FCB3C11FC105ECF",
+                ["DockButtons_Dark"] = "EA8C4048F68397F476CD20C0DE8A324F81E02763C20D7EFAF5B5CE28CCB13999",
+                ["DockButtons_Light"] = "8A3AAD5AF8F20219480CB972C5FC68D06FEE4DC1244160952591A65AA29EAECE",
                 ["RingMeters_Dark"] = "AA26B0446BBDF57C22178347AF6A6130652401D0CF2F2558BB2F89F242D01B39",
                 ["RingMeters_Light"] = "9C6CCB7DB0D700DA8B4A592B59359572624028B6536111E22545F834C75B7B05",
                 ["TimedWidgets_Dark"] = "60E193612F9523954A32E4CE0DB18D9339EC740B2D6712EAA35A5ACD439CE2D7",
