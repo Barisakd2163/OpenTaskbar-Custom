@@ -240,7 +240,9 @@ internal static class AdaptiveWidgetAndConfirmChecks
 
         var volumeSet = 0f;
         var muteSet = false;
-        var session = new AppAudioSession(1234, "Spotify", null, 0.75f, false, vol => volumeSet = vol, m => muteSet = m);
+        var session = new AppAudioSession(1234, "Spotify", null, 0.75f, false,
+            vol => { volumeSet = vol; return true; },
+            m => { muteSet = m; return true; });
         check(session.ProcessId == 1234 && session.Name == "Spotify" && Math.Abs(session.Volume - 0.75f) < 0.001f && !session.IsMuted,
             "AppAudioSession contract must retain session metadata and initial state.");
         session.SetVolume(0.5f);
