@@ -28,7 +28,7 @@ public partial class App : Application
         if (TaskbarRecoveryWatchdog.IsWatchdogInvocation(e.Args))
         {
             TaskbarRecoveryWatchdog.Run(e.Args);
-            Shutdown(0);
+            Environment.Exit(0);
             return;
         }
 

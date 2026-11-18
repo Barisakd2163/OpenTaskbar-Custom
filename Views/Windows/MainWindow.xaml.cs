@@ -2648,7 +2648,6 @@ public partial class MainWindow : Window
 
         if (error is not null || TaskbarReplacementSession.HasPendingRecovery || _replacementSession?.IsActive == true)
         {
-            e.Cancel = true;
             ReportError(error ?? "ErrorTaskbarRestoreFailed");
         }
     }

@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
+using Microsoft.Win32.SafeHandles;
 
 namespace OpenTaskbar.Services;
 
@@ -63,25 +65,64 @@ internal static class TaskbarRecoveryWatchdog
         }
         catch (ArgumentException)
         {
+            TaskbarReplacementSession.ForceRestoreNativeTaskbar();
             return;
         }
 
         using (parent)
         {
-            var exitedCleanly = false;
-            while (true)
+            AutoResetEvent? processWaitHandle = null;
+            try
             {
-                var signaled = WaitHandle.WaitAny([cleanExit, heartbeat], HeartbeatTimeoutMs);
-                if (signaled == 0)
+                if (!parent.HasExited)
                 {
-                    exitedCleanly = true;
-                    break;
+                    processWaitHandle = new AutoResetEvent(false)
+                    {
+                        SafeWaitHandle = new SafeWaitHandle(parent.Handle, ownsHandle: false)
+                    };
                 }
-
-                if (signaled == WaitHandle.WaitTimeout || parent.WaitForExit(0)) break;
+            }
+            catch (InvalidOperationException)
+            {
             }
 
-            if (exitedCleanly) return;
+            if (processWaitHandle is null)
+            {
+                TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+                return;
+            }
+
+            using (processWaitHandle)
+            {
+                var exitedCleanly = false;
+                WaitHandle[] waitHandles = [cleanExit, processWaitHandle, heartbeat];
+
+                while (true)
+                {
+                    var signaled = WaitHandle.WaitAny(waitHandles, HeartbeatTimeoutMs);
+                    if (signaled == 0)
+                    {
+                        exitedCleanly = true;
+                        break;
+                    }
+
+                    if (signaled == 1 || parent.HasExited)
+                    {
+                        if (cleanExit.WaitOne(0))
+                        {
+                            exitedCleanly = true;
+                        }
+                        break;
+                    }
+
+                    if (signaled == WaitHandle.WaitTimeout)
+                    {
+                        break;
+                    }
+                }
+
+                if (exitedCleanly) return;
+            }
         }
 
         var error = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
@@ -112,7 +153,9 @@ internal static class TaskbarRecoveryWatchdog
             _heartbeat.Set();
             _heartbeatTimer = new Timer(_ => _heartbeat?.Set(), null, HeartbeatIntervalMs, HeartbeatIntervalMs);
 
-            using var watchdog = Process.Start(new ProcessStartInfo(executablePath)
+            var watchdogExecutable = EnsureWatchdogExecutable(executablePath);
+
+            using var watchdog = Process.Start(new ProcessStartInfo(watchdogExecutable)
             {
                 Arguments = BuildArguments(parentPid, token),
                 CreateNoWindow = true,
@@ -129,12 +172,48 @@ internal static class TaskbarRecoveryWatchdog
         }
     }
 
+    private static string EnsureWatchdogExecutable(string mainExecutablePath)
+    {
+        try
+        {
+            var appDir = Path.GetDirectoryName(mainExecutablePath) ?? string.Empty;
+            var isSingleFile = !File.Exists(Path.Combine(appDir, "OpenTaskbar.dll"));
+            var targetDir = isSingleFile
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar")
+                : appDir;
+
+            Directory.CreateDirectory(targetDir);
+            var watchdogExe = Path.Combine(targetDir, "OpenTaskbarWatchdog.exe");
+
+            var sourceInfo = new FileInfo(mainExecutablePath);
+            var targetInfo = new FileInfo(watchdogExe);
+
+            if (!targetInfo.Exists || targetInfo.Length != sourceInfo.Length || targetInfo.LastWriteTimeUtc != sourceInfo.LastWriteTimeUtc)
+            {
+                File.Copy(mainExecutablePath, watchdogExe, overwrite: true);
+            }
+
+            return watchdogExe;
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning($"Could not prepare isolated watchdog binary: {ex}");
+            return mainExecutablePath;
+        }
+    }
+
     /// <summary>Called on every exit path, so the watchdog never mistakes a normal shutdown for a crash.</summary>
     public static void NotifyCleanExit()
     {
         _heartbeatTimer?.Dispose();
         _heartbeatTimer = null;
-        _cleanExit?.Set();
+        try
+        {
+            _cleanExit?.Set();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
         Cleanup();
     }
 

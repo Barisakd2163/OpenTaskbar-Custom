@@ -19,6 +19,27 @@ if ($running) {
         $stillRunning | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Milliseconds 300
     }
+
+    # Ensure Windows native taskbar is restored if any instance was running
+    $nativeTaskbarRestorer = @"
+using System;
+using System.Runtime.InteropServices;
+public class PortableRestorer {
+    [DllImport("user32.dll")] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string className, string title);
+    public static void ShowAll() {
+        var p = FindWindow("Shell_TrayWnd", null);
+        if (p != IntPtr.Zero) ShowWindow(p, 5);
+        var s = IntPtr.Zero;
+        while ((s = FindWindowEx(IntPtr.Zero, s, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero) {
+            ShowWindow(s, 5);
+        }
+    }
+}
+"@
+    Add-Type -TypeDefinition $nativeTaskbarRestorer -ErrorAction SilentlyContinue
+    [PortableRestorer]::ShowAll()
 }
 
 Write-Host "Publishing OpenTaskbar as self-contained portable executable..." -ForegroundColor Cyan
