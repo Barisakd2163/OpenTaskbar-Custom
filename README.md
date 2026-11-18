@@ -141,9 +141,14 @@ dotnet run --project OpenTaskbar.csproj -- --preview --settings
 # Build self-contained portable executable (outputs to dist\OpenTaskbar.exe)
 powershell -ExecutionPolicy Bypass -File ".\scripts\publish-portable.ps1"
 
-# Run automated behavior and visual verification tests
+# Run automated behavior and visual verification tests (full suite, used by CI)
 dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj
+
+# Run only pure logic checks: no windows, no synthetic input, no desktop side effects
+dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj -- --headless
 ```
+
+The full suite verifies WPF controls and therefore needs a Windows desktop session. The `--headless` mode skips those visual checks and runs the fast, side-effect-free logic tests.
 
 ---
 

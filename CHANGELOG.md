@@ -13,6 +13,10 @@
 - Removed the Win+Alt+D dock hotkey (existing selections migrate to Ctrl+Alt+D) because MOD_WIN registrations can fire spuriously after a secure-desktop transition.
 - The lock screen is no longer mistaken for a full-screen app; dock hover, flyouts and cached foreground windows are reset on lock/unlock so the first click after returning cannot hit a settings link.
 - Added an optional Search widget that opens the existing Spotlight launcher above the dock button, with compact icon-only density and localized catalog entry in all 14 languages.
+- Fixed application-specific jump list tasks (e.g. LibreWolf private window) failing with a profile-lock error: unpackaged tasks now launch their shell link target and arguments directly instead of inheriting OpenTaskbar's shell activation context.
+- Fixed stale Smart auto-hide overlap state when one of our own windows becomes foreground, and made the auto-hide test independent of the real foreground window.
+- Removed tests that synthesized real Win+N / Win+A keystrokes and opened Windows panels on the developer's desktop.
+- Added a `--headless` test mode that runs 222 pure logic checks without creating windows or sending input.
 
 ## 0.2.7 - 2026-11-17
 

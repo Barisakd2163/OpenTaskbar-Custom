@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -27,6 +28,7 @@ internal sealed class NativeJumpListSession : IDisposable
     private static readonly PropertyKey HostEnvironmentKey = new(AppIdKey.Format, 14);
     private static readonly PropertyKey ActivationContextKey = new(AppIdKey.Format, 20);
     private static readonly PropertyKey TitleKey = new(new("F29F85E0-4FF9-1068-AB91-08002B27B3D9"), 2);
+    private const uint SLgpRawPath = 4;
     private readonly Dictionary<int, ShellComObject> _commands = [];
     private int _nextCommand;
 
@@ -253,6 +255,13 @@ internal sealed class NativeJumpListSession : IDisposable
             }
             finally { PropVariantClear(ref host); }
         }
+        // Unpackaged tasks (Firefox, LibreWolf, ...) carry their target and arguments in a shell link. Invoking
+        // the link through IContextMenu with OUR hwnd makes ShellExecute derive the activation context from
+        // OpenTaskbar, so a second instance starts and hits the app's profile/single-instance lock. Launching the
+        // link's target directly is the same path the dock already uses for normal app launches and preserves
+        // the app's own IPC. Keep the shell path as a fallback for items that are not shell links.
+        if (TryLaunchShellLink(item)) return;
+
         using var direct = item.Query(ContextMenuInterface);
         if (direct is not null)
         {
@@ -263,6 +272,38 @@ internal sealed class NativeJumpListSession : IDisposable
         if (shellItem is null) throw new COMException("No Shell invocation interface.");
         using var bound = Bind(shellItem, new("3981E225-F559-11D3-8E3A-00C04F6837D5"), ContextMenuInterface);
         InvokeDefault(bound, owner, null);
+    }
+
+    /// <summary>
+    /// Reads an IShellLink task and starts its target with the arguments the application published. Returns false
+    /// when the item is not a shell link, so the caller can fall back to shell invocation.
+    /// </summary>
+    internal static bool TryLaunchShellLink(ShellComObject item)
+    {
+        using var link = item.Query(ShellLinkInterface);
+        if (link is null) return false;
+
+        var path = new StringBuilder(260);
+        if (link.Method<GetLinkPath>(3)(link.Handle, path, path.Capacity, 0, SLgpRawPath) < 0 || path.Length == 0)
+            return false;
+
+        var arguments = new StringBuilder(2048);
+        var args = link.Method<GetLinkArguments>(9)(link.Handle, arguments, arguments.Capacity) >= 0
+            ? arguments.ToString() : string.Empty;
+        var directory = new StringBuilder(260);
+        var workingDirectory = link.Method<GetLinkWorkingDirectory>(11)(link.Handle, directory, directory.Capacity) >= 0
+            ? directory.ToString() : string.Empty;
+
+        Process.Start(BuildLaunchInfo(path.ToString(), args, workingDirectory));
+        AppLog.Info($"Jump List task launched directly: {path} {args}".TrimEnd());
+        return true;
+    }
+
+    internal static ProcessStartInfo BuildLaunchInfo(string path, string arguments, string workingDirectory)
+    {
+        var info = new ProcessStartInfo(path) { Arguments = arguments, UseShellExecute = true };
+        if (!string.IsNullOrWhiteSpace(workingDirectory)) info.WorkingDirectory = workingDirectory;
+        return info;
     }
 
     private static ShellComObject Bind(ShellComObject item, Guid handler, Guid iid)
@@ -324,6 +365,8 @@ internal sealed class NativeJumpListSession : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int GetImage(nint self, NativeSize size, uint flags, out nint bitmap);
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)] private delegate int GetIconLocation(nint self, StringBuilder path, int length, out int index);
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)] private delegate int GetLinkPath(nint self, StringBuilder path, int length, nint findData, uint flags);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)] private delegate int GetLinkArguments(nint self, StringBuilder arguments, int length);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)] private delegate int GetLinkWorkingDirectory(nint self, StringBuilder directory, int length);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int BindHandler(nint self, nint context, ref Guid handler, ref Guid iid, out nint result);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int QueryMenu(nint self, nint menu, uint index, uint first, uint last, uint flags);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int InvokeMenu(nint self, ref InvokeInfo info);
