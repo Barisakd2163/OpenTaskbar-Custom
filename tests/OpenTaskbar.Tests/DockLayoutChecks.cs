@@ -744,18 +744,11 @@ internal static class DockLayoutChecks
         Check(script.Contains("start \"\" \"%DST%\""), "Script must start updated executable.");
         Check(script.Contains("del /f /q \"%~f0\""), "Script must clean itself up.");
 
-        // Verify notification center and quick settings anchoring support
-        var dummyButton = new Button();
-        var openNotifError = ShellShortcuts.OpenNotificationCenter(dummyButton);
-        Check(openNotifError is null || openNotifError == "ErrorShortcutSend" || openNotifError == UiText.Get("ErrorShortcutSend"),
-            "OpenNotificationCenter with anchor must execute without crashing.");
-
+        // Shell shortcuts are deliberately NOT invoked here: OpenNotificationCenter/OpenQuickSettings synthesize
+        // real Win+N / Win+A keystrokes, which opens Windows panels on the developer's desktop and can leave a Win
+        // modifier stuck. Only the pure predicate is checked; anchoring is covered by the widget interaction tests.
         ShellShortcuts.IsMediaWidgetActive = () => true;
         Check(ShellShortcuts.IsMediaWidgetActive() == true, "IsMediaWidgetActive predicate must report active state.");
-
-        var openQuickError = ShellShortcuts.OpenQuickSettings(dummyButton);
-        Check(openQuickError is null || openQuickError == "ErrorShortcutSend" || openQuickError == UiText.Get("ErrorShortcutSend"),
-            "OpenQuickSettings with anchor must execute without crashing.");
         ShellShortcuts.IsMediaWidgetActive = null;
 
         return checks;
