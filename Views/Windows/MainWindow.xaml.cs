@@ -154,6 +154,7 @@ public partial class MainWindow : Window
         _widgetCoordinator.CloseApplicationRequested += CloseApplication;
         _widgetCoordinator.TerminateApplicationRequested += TerminateApplication;
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
+        _widgetCoordinator.LauncherRequested += ToggleLauncher;
         _widgetCoordinator.ConfigureWidgetMenu = menu =>
         {
             menu.Opened += DockContextMenu_Opened;

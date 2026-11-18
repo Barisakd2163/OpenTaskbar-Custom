@@ -120,7 +120,13 @@ public sealed class LauncherWindow : Window
         SetWindowLongPtr(handle, -20, new nint((style | 0x80) & ~0x40000));
     }
 
-    public void Toggle()
+    public void Toggle() => Toggle(null);
+
+    /// <summary>
+    /// Opens (or closes) the launcher. When an anchor is supplied the window is placed directly above it, which
+    /// lets dock widgets act as a search bar without owning a second text box or result list.
+    /// </summary>
+    public void Toggle(FrameworkElement? anchor)
     {
         if (IsVisible)
         {
@@ -137,7 +143,27 @@ public sealed class LauncherWindow : Window
         Activate();
         _query.Focus();
         Keyboard.Focus(_query);
+        if (anchor is not null) PlaceAboveAnchorOnce(anchor);
         _ = RefreshCatalogAsync();
+    }
+
+    private void PlaceAboveAnchorOnce(FrameworkElement anchor)
+    {
+        void PlaceOnce(object? sender, EventArgs args)
+        {
+            LayoutUpdated -= PlaceOnce;
+            if (!IsVisible || !anchor.IsLoaded || PresentationSource.FromVisual(anchor) is null) return;
+
+            var area = SystemParameters.WorkArea;
+            var topLeft = anchor.PointToScreen(new Point(0, 0));
+            var bottomRight = anchor.PointToScreen(new Point(anchor.ActualWidth, anchor.ActualHeight));
+            var center = (topLeft.X + bottomRight.X) / 2;
+            Left = Math.Clamp(center - Width / 2, area.Left + 8, Math.Max(area.Left + 8, area.Right - Width - 8));
+            Top = Math.Clamp(topLeft.Y - ActualHeight - 10, area.Top + 8,
+                Math.Max(area.Top + 8, area.Bottom - ActualHeight - 8));
+        }
+
+        LayoutUpdated += PlaceOnce;
     }
 
     private void Dismiss()
