@@ -420,6 +420,7 @@ internal static class WidgetViewChecks
                 DockWidgetService.SystemStatsId => "CPU · RAM",
                 DockWidgetService.FocusId => "25:00",
                 DockWidgetService.WeatherId => "21°",
+                DockWidgetService.AiUsageId => "CL · CX",
                 DockWidgetService.DesktopsId => "1 / 2",
                 DockWidgetService.TrayId => "▲",
                 DockWidgetService.SearchId => "Alt+Space",

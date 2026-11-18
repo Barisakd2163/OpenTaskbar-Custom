@@ -18,6 +18,7 @@ MultiMonitorChecks();
 DockIconPixelChecks();
 StartMenuAndOverlayChecks();
 checks += RunningAppChecks.Run();
+checks += AiUsageChecks.Run();
 if (!headless) checks += WidgetViewChecks.Run();
 checks += ThemePackChecks.Run();
 checks += ThemeTransferChecks.Run();
@@ -124,6 +125,10 @@ void CatalogChecks()
         && searchOption.Description == UiText.Get("WidgetLauncherDescription") && searchOption.HasSettings,
         "The Search widget must be listed in Settings with a localized label, description and options panel.");
     var first = catalog.CreateWidgets([DockWidgetService.StopwatchId, DockWidgetService.CountdownId]);
+    var aiOption = catalog.CreateOptions([], []).SingleOrDefault(option => option.Id == DockWidgetService.AiUsageId);
+    Check(aiOption is not null && aiOption.Label == UiText.Get("WidgetAiUsage")
+        && aiOption.Description == UiText.Get("WidgetAiUsageDescription") && aiOption.HasSettings,
+        "AI Usage must have a localized catalog card and settings panel.");
     Check(first.Count == 2 && first.OfType<ITimedDockWidget>().Count() == 2, "Both time widgets must be available.");
     var stopwatch = first.OfType<StopwatchDockWidget>().Single();
     var timer = first.OfType<CountdownDockWidget>().Single();

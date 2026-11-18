@@ -125,6 +125,8 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
         && Enum.IsDefined(settings.DateStyle)
         && (settings.StatsMeters & ~SystemMeters.All) == 0
+        && (settings.AiUsageProviders & ~AiProviders.All) == 0
+        && Enum.IsDefined(settings.AiUsageRing)
         && settings.WeatherCity is { Length: <= 80 }
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
