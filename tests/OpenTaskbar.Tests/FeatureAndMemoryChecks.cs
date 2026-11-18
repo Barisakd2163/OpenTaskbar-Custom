@@ -86,6 +86,8 @@ internal static class FeatureAndMemoryChecks
             }
             Check(true, "Shared AudioEndpointMonitor handles must survive partial release and clean final disposal.");
 
+            checks += AudioMixerChecks.Run();
+
             // 4. WindowThumbnailPreview lazy creation & disposal
             var preview = new WindowThumbnailPreview((Style)app.FindResource("DockButton"));
             Check(!preview.IsVisible && preview.SourceHandle == 0 && preview.ActiveHandles.Count == 0,
