@@ -65,6 +65,41 @@ internal static class WidgetViewChecks
                 checks++;
             }
 
+            // Re-clicking Search must work even if Windows closes its flyout without moving WPF focus.
+            var nativeSearchOpen = false;
+            var searchOpenRequests = 0;
+            var search = new OpenTaskbar.Widgets.SearchWidget
+            {
+                IsSearchOpen = () => nativeSearchOpen,
+                OpenSearch = _ =>
+                {
+                    searchOpenRequests++;
+                    nativeSearchOpen = true;
+                    return null;
+                },
+                SyncQuery = _ => { }
+            };
+            search.Activate();
+            Layout(search);
+            search.HandleSearchPress(alreadyFocused: true);
+            Check(searchOpenRequests == 1, "A press on the focused search box must open closed Windows Search.");
+            search.HandleSearchPress(alreadyFocused: true);
+            Check(searchOpenRequests == 1, "A press while Windows Search is open must not reopen it.");
+            nativeSearchOpen = false;
+            search.HandleSearchPress(alreadyFocused: true);
+            Check(searchOpenRequests == 2, "After Windows Search closes, pressing the still-focused widget must reopen it.");
+
+            // Losing focus after Search closes clears stale text without reopening the flyout.
+            var searchInput = Descendants<TextBox>(search).Single();
+            searchInput.Text = "test";
+            nativeSearchOpen = false;
+            searchInput.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));
+            Check(searchInput.Text.Length == 0 && searchOpenRequests == 2,
+                "Clearing the query on focus loss must not launch Windows Search again.");
+            search.HandleSearchPress(alreadyFocused: true);
+            Check(searchOpenRequests == 3, "Search must open again after losing focus and clearing its text.");
+            search.Dispose();
+
             var clock = new TestClock();
             var timer = new CountdownDockWidget(clock);
             var timerHost = new ContentControl { Content = timer };
