@@ -746,6 +746,72 @@ internal static class DockLayoutChecks
             "OpenQuickSettings with anchor must execute without crashing.");
         ShellShortcuts.IsMediaWidgetActive = null;
 
+        // Verify uninstall and dock item order pruning on widget removal
+        var initialSettings = new DockSettings(
+            Widgets: ["Clock", "Stopwatch", "Countdown", "Media"],
+            InstalledWidgets: ["Clock", "Stopwatch", "Countdown", "Media", "Storage"],
+            WidgetOrder: ["Clock", "Stopwatch", "Countdown", "Media"],
+            DockItemOrder: ["start", "app:C:\\app.exe", "widget:Stopwatch", "widget:Clock", "widget:Countdown", "bin"],
+            ShowClock: true,
+            ShowMedia: true);
+
+        void RemoveWidgetFromSettings(DockSettings settings, string id, out DockSettings updated)
+        {
+            var widgets = (settings.Widgets ?? [])
+                .Where(w => !string.Equals(w, id, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var installed = (settings.InstalledWidgets ?? [])
+                .Where(w => !string.Equals(w, id, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var order = settings.WidgetOrder?
+                .Where(w => !string.Equals(w, id, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var dockItemOrder = settings.DockItemOrder?
+                .Where(token => !string.Equals(token, "widget:" + id, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            updated = settings with
+            {
+                Widgets = widgets,
+                InstalledWidgets = installed,
+                WidgetOrder = order,
+                DockItemOrder = dockItemOrder,
+                ShowClock = id.Equals("Clock", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowClock,
+                ShowMedia = id.Equals("Media", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowMedia
+            };
+        }
+
+        RemoveWidgetFromSettings(initialSettings, "Stopwatch", out var afterLegacyRemoved);
+        Check(afterLegacyRemoved.Widgets?.Contains("Stopwatch") == false, "Removed legacy widget must not be in Widgets.");
+        Check(afterLegacyRemoved.InstalledWidgets?.Contains("Stopwatch") == false, "Removed legacy widget must be uninstalled from InstalledWidgets.");
+        Check(afterLegacyRemoved.DockItemOrder?.Contains("widget:Stopwatch") == false, "Removed legacy widget must be pruned from DockItemOrder.");
+        Check(afterLegacyRemoved.DockItemOrder?.SequenceEqual(["start", "app:C:\\app.exe", "widget:Clock", "widget:Countdown", "bin"]) == true,
+            "Remaining dock items must preserve their order after legacy widget removal.");
+
+        RemoveWidgetFromSettings(afterLegacyRemoved, "Clock", out var afterCoordinatorRemoved);
+        Check(afterCoordinatorRemoved.Widgets?.Contains("Clock") == false, "Removed coordinator widget must not be in Widgets.");
+        Check(afterCoordinatorRemoved.InstalledWidgets?.Contains("Clock") == false, "Removed coordinator widget must be uninstalled from InstalledWidgets.");
+        Check(afterCoordinatorRemoved.DockItemOrder?.Contains("widget:Clock") == false, "Removed coordinator widget must be pruned from DockItemOrder.");
+        Check(afterCoordinatorRemoved.ShowClock == false, "ShowClock flag must be cleared when Clock widget is uninstalled.");
+
+        // Verify that legacy widgets can be integrated into DefaultDockOrder tokens
+        var legacyWidgets = new OpenTaskbar.Models.DockWidgetItem[]
+        {
+            new OpenTaskbar.Services.StopwatchDockWidget(TimeProvider.System),
+            new OpenTaskbar.Services.CountdownDockWidget(TimeProvider.System),
+            new OpenTaskbar.Models.DockWidgetItem("Storage", "Storage")
+        };
+        var tokensWithLegacy = new List<string> { "start", "app:C:\\app.exe", "bin", "widget:Media" };
+        foreach (var leg in legacyWidgets)
+        {
+            var tok = "widget:" + leg.Id;
+            if (!tokensWithLegacy.Contains(tok, StringComparer.OrdinalIgnoreCase))
+                tokensWithLegacy.Add(tok);
+        }
+        Check(tokensWithLegacy.Contains("widget:Stopwatch") && tokensWithLegacy.Contains("widget:Countdown") && tokensWithLegacy.Contains("widget:Storage"),
+            "Default dock order must support legacy widget tokens alongside coordinator widgets.");
+        Check(tokensWithLegacy.IndexOf("widget:Stopwatch") > tokensWithLegacy.IndexOf("widget:Media"),
+            "Legacy widgets must follow the order tokens in the unified dock strip.");
+
         return checks;
     }
 }

@@ -59,6 +59,7 @@ public partial class MainWindow : Window
     private readonly List<FrameworkElement> _magnifiedIcons = [];
     private ContextMenu? _openContextMenu;
     private OpenTaskbar.Widgets.DockWidget? _contextTargetWidget;
+    private FrameworkElement? _contextTargetElement;
     private bool _contextTargetWasForeground;
     private nint _foregroundAtMenuOpen;
     private DateTime _contextMenuOpenedAtUtc;
@@ -78,6 +79,9 @@ public partial class MainWindow : Window
     // Failures are written to the log only; the dock never displays error popups.
     private readonly WidgetCoordinator _widgetCoordinator;
     private readonly Dictionary<string, FrameworkElement> _dockItemElements = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ContentControl> _legacyWidgetElements = new(StringComparer.OrdinalIgnoreCase);
+    private Point _legacyDragStartPoint;
+    private ContentControl? _draggedLegacyWidget;
     private bool _rebuildingDockOrder;
     private bool _instantDockResize;
     private double _dockTopGap;
@@ -121,7 +125,7 @@ public partial class MainWindow : Window
             Loaded += (_, _) => OpenSettings_Click(this, new RoutedEventArgs());
         PinnedApps.ItemsSource = _pinnedApps;
         RunningApps.ItemsSource = _runningApps;
-        DockWidgets.ItemsSource = _widgets;
+        AddHandler(TimedWidgetTile.DetailsRequestedEvent, new RoutedEventHandler(TimedWidget_DetailsRequested));
         _thumbnailPreview = new WindowThumbnailPreview((Style)FindResource("PreviewCloseButton"));
         _previewHoverTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher);
         _previewHoverTimer.Tick += PreviewHoverTimer_Tick;
@@ -1176,7 +1180,9 @@ public partial class MainWindow : Window
             SetForegroundWindow(_source.Handle);
         }
 
-        _contextTargetWidget = (contextMenu.PlacementTarget as FrameworkElement) as OpenTaskbar.Widgets.DockWidget
+        _contextTargetElement = contextMenu.PlacementTarget as FrameworkElement
+            ?? FindVisualParent<FrameworkElement>(contextMenu.PlacementTarget);
+        _contextTargetWidget = _contextTargetElement as OpenTaskbar.Widgets.DockWidget
             ?? FindVisualParent<OpenTaskbar.Widgets.DockWidget>(contextMenu.PlacementTarget);
         var pinnedApp = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext as DockApp;
         contextMenu.DataContext = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext;
@@ -1339,6 +1345,7 @@ public partial class MainWindow : Window
         if (!ReferenceEquals(sender, _openContextMenu)) return;
         _openContextMenu = null;
         _contextTargetWidget = null;
+        _contextTargetElement = null;
         _autoHideController?.EvaluateState();
         _jumpListLoad?.Cancel();
         if (_jumpListSession is { } session)
@@ -1351,15 +1358,44 @@ public partial class MainWindow : Window
     private void RemoveWidgetMenu_Click(object sender, RoutedEventArgs e)
     {
         var target = (sender as MenuItem)?.Parent is ContextMenu menu ? menu.PlacementTarget : null;
-        var widget = target as OpenTaskbar.Widgets.DockWidget ?? FindVisualParent<OpenTaskbar.Widgets.DockWidget>(target) ?? _contextTargetWidget;
+        var element = target as FrameworkElement ?? _contextTargetElement;
+        var widget = element as OpenTaskbar.Widgets.DockWidget ?? FindVisualParent<OpenTaskbar.Widgets.DockWidget>(element) ?? _contextTargetWidget;
         if (widget?.Tag is string widgetId)
         {
             RemoveDockWidget(widgetId);
+            return;
         }
-        else if (widget is not null && _widgetCoordinator.GetWidgetId(widget) is { } id)
+        if (widget is not null && _widgetCoordinator.GetWidgetId(widget) is { } id)
         {
             RemoveDockWidget(id);
+            return;
         }
+        if (element is { Tag: string elementTag } && !string.IsNullOrWhiteSpace(elementTag))
+        {
+            RemoveDockWidget(elementTag);
+            return;
+        }
+        if (element is { DataContext: DockWidgetItem dwi })
+        {
+            RemoveDockWidget(dwi.Id);
+            return;
+        }
+        var parent = FindVisualParentWithTag(element);
+        if (parent?.Tag is string parentTag && !string.IsNullOrWhiteSpace(parentTag))
+        {
+            RemoveDockWidget(parentTag);
+            return;
+        }
+    }
+
+    private static FrameworkElement? FindVisualParentWithTag(DependencyObject? child)
+    {
+        while (child is not null)
+        {
+            if (child is FrameworkElement { Tag: string tag } fe && !string.IsNullOrWhiteSpace(tag)) return fe;
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
     }
 
     private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
@@ -1687,19 +1723,42 @@ public partial class MainWindow : Window
         var widgets = (settings.Widgets ?? [])
             .Where(widget => !string.Equals(widget, id, StringComparison.OrdinalIgnoreCase))
             .ToArray();
+        var installed = (settings.InstalledWidgets ?? [])
+            .Where(widget => !string.Equals(widget, id, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
         var order = settings.WidgetOrder?
             .Where(widget => !string.Equals(widget, id, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (widgets.Length == (settings.Widgets?.Count ?? 0)) return;
+        var dockItemOrder = settings.DockItemOrder?
+            .Where(token => !string.Equals(token, "widget:" + id, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (widgets.Length == (settings.Widgets?.Count ?? 0) && installed.Length == (settings.InstalledWidgets?.Count ?? 0)) return;
 
         // Close the gap immediately instead of animating the dock width after a removal.
         _instantDockResize = true;
         try
         {
-            var updated = settings with { Widgets = widgets, WidgetOrder = order };
+            var updated = settings with
+            {
+                Widgets = widgets,
+                InstalledWidgets = installed,
+                WidgetOrder = order,
+                DockItemOrder = dockItemOrder,
+                ShowClock = id.Equals("Clock", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowClock,
+                ShowMedia = id.Equals("Media", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowMedia,
+                ShowSystemStats = id.Equals("SystemStats", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowSystemStats,
+                ShowFocus = id.Equals("Focus", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowFocus,
+                ShowAudio = id.Equals("Audio", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowAudio,
+                ShowQuickSettings = id.Equals("QuickSettings", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowQuickSettings,
+                ShowWeather = id.Equals("Weather", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowWeather,
+                ShowVirtualDesktops = id.Equals("Desktops", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowVirtualDesktops,
+                ShowTray = id.Equals("Tray", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowTray
+            };
             var error = _preferences.Save(updated);
             if (error is not null) ReportError(error);
             _widgetCoordinator.Apply(updated);
+            ApplyWidgets(updated.Widgets);
+            RebuildDockOrder();
             ResizeDockToContent();
             _replacementSession?.RefreshPosition();
         }
@@ -1723,7 +1782,16 @@ public partial class MainWindow : Window
             .ToArray();
         foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
-        WidgetDivider.Visibility = _widgets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var activeIds = new HashSet<string>(_widgets.Select(w => w.Id), StringComparer.OrdinalIgnoreCase);
+        var removedKeys = _legacyWidgetElements.Keys.Where(k => !activeIds.Contains(k)).ToArray();
+        foreach (var key in removedKeys)
+        {
+            _legacyWidgetElements.Remove(key);
+        }
+
+        WidgetDivider.Visibility = Visibility.Collapsed;
+        DockWidgets.Visibility = Visibility.Collapsed;
         if (_widgets.Count > 0)
         {
             DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
@@ -1734,6 +1802,7 @@ public partial class MainWindow : Window
             _widgetRefreshTimer.Stop();
         }
         UpdateTimedWidgetRefresh();
+        RebuildDockOrder();
         ResizeDockToContent();
     }
 
@@ -1754,6 +1823,14 @@ public partial class MainWindow : Window
         foreach (var id in _widgetCoordinator.CurrentOrder)
         {
             if (_widgetCoordinator.ActiveWidgets.ContainsKey(id)) tokens.Add("widget:" + id);
+        }
+        foreach (var legacy in _widgets)
+        {
+            var token = "widget:" + legacy.Id;
+            if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase))
+            {
+                tokens.Add(token);
+            }
         }
         return tokens;
     }
@@ -1781,12 +1858,92 @@ public partial class MainWindow : Window
             element.DataContext = stack;
             return element;
         }
-        if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)
-            && _widgetCoordinator.ActiveWidgets.TryGetValue(token[7..], out var widget))
+        if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase))
         {
-            return widget;
+            var widgetId = token[7..];
+            if (_widgetCoordinator.ActiveWidgets.TryGetValue(widgetId, out var widget))
+            {
+                return widget;
+            }
+            if (GetOrCreateLegacyWidgetElement(widgetId) is { } legacyElement)
+            {
+                return legacyElement;
+            }
         }
         return null;
+    }
+
+    private FrameworkElement? GetOrCreateLegacyWidgetElement(string widgetId)
+    {
+        var widgetItem = _widgets.FirstOrDefault(w => string.Equals(w.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        if (widgetItem is null) return null;
+
+        if (_legacyWidgetElements.TryGetValue(widgetId, out var existing))
+        {
+            existing.Content = widgetItem;
+            existing.DataContext = widgetItem;
+            return existing;
+        }
+
+        var host = new ContentControl
+        {
+            Content = widgetItem,
+            DataContext = widgetItem,
+            Focusable = false,
+            Tag = widgetId,
+            VerticalAlignment = VerticalAlignment.Center,
+            ContextMenu = (ContextMenu)FindResource("WidgetContextMenu")
+        };
+        host.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged) ResizeDockToContent();
+        };
+        host.PreviewMouseLeftButtonDown += LegacyWidget_PreviewMouseLeftButtonDown;
+        host.PreviewMouseLeftButtonUp += LegacyWidget_PreviewMouseLeftButtonUp;
+        host.PreviewMouseMove += LegacyWidget_PreviewMouseMove;
+
+        _legacyWidgetElements[widgetId] = host;
+        return host;
+    }
+
+    private void LegacyWidget_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject dep && (WidgetCoordinator.IsInteractiveControl(dep) || FindVisualParent<ButtonBase>(dep) is not null))
+        {
+            _draggedLegacyWidget = null;
+            return;
+        }
+        if (sender is ContentControl host)
+        {
+            _legacyDragStartPoint = e.GetPosition(DockContents);
+            _draggedLegacyWidget = host;
+        }
+    }
+
+    private void LegacyWidget_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _draggedLegacyWidget = null;
+    }
+
+    private void LegacyWidget_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _draggedLegacyWidget is null || sender is not ContentControl host)
+        {
+            return;
+        }
+        var currentPoint = e.GetPosition(DockContents);
+        var diff = _legacyDragStartPoint - currentPoint;
+        if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+        {
+            var target = _draggedLegacyWidget;
+            _draggedLegacyWidget = null;
+            if (target.Tag is string widgetId)
+            {
+                if (Mouse.Captured is UIElement captured) captured.ReleaseMouseCapture();
+                DragDrop.DoDragDrop(target, new WidgetCoordinator.WidgetDragPayload(widgetId), DragDropEffects.Move);
+            }
+        }
     }
 
     /// <summary>Rebuilds the single dock strip from the persisted free-form item order.</summary>

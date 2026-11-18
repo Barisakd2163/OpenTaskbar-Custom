@@ -259,8 +259,7 @@
                                 </Grid>
                             </Button>
                             <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" IsHitTestVisible="False" />
-                            <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged"
-                                          widgets:TimedWidgetTile.DetailsRequested="TimedWidget_DetailsRequested">
+                            <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged" Visibility="Collapsed">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
