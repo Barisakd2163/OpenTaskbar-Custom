@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -260,6 +261,21 @@ internal static class FeatureAndMemoryChecks
             var decodedLarge = (BitmapSource?)decodeMethod.Invoke(null, [largePng]);
             Check(decodedSmall?.PixelWidth == 16, "Small tray PNG snapshots must not be upscaled.");
             Check(decodedLarge?.PixelWidth == 32, "Oversized tray PNG snapshots must be downsampled to 32px.");
+
+            // 10. NativeTaskbarWindow & Live TrayHost checks
+            var explorerTaskbar = NativeTaskbarWindow.Find();
+            if (explorerTaskbar != 0)
+            {
+                GetWindowThreadProcessId(explorerTaskbar, out var ownerPid);
+                Check(ownerPid != (uint)Environment.ProcessId, "NativeTaskbarWindow.Find must never return a window owned by OpenTaskbar.");
+            }
+            Check(!TrayHost.IsBroadcasting, "TrayHost.IsBroadcasting must be false when idle.");
+            using (var testTray = new TrayWidget())
+            {
+                var liveEmptyContent = testTray.BuildLiveContent(Array.Empty<ManagedShell.WindowsTray.NotifyIcon>());
+                Check(liveEmptyContent is StackPanel sp && sp.Children.Count >= 2,
+                    "TrayWidget.BuildLiveContent must render a heading, empty caption and settings for an empty icon list.");
+            }
         }
         finally
         {
@@ -309,4 +325,7 @@ internal static class FeatureAndMemoryChecks
 
     private static Button[] AiCards(AiUsageWidget widget) =>
         ((Panel)widget.Content).Children.OfType<Button>().Where(card => card.Visibility == Visibility.Visible).ToArray();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
 }

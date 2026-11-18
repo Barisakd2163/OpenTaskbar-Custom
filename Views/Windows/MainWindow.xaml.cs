@@ -396,6 +396,7 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
+            if (session.IsActive) TrayHost.Start();
         }
         catch (InvalidOperationException ex)
         {
@@ -410,7 +411,8 @@ public partial class MainWindow : Window
     {
         if (_taskbarCreatedMessage != 0 && unchecked((uint)message) == _taskbarCreatedMessage)
         {
-            _replacementSession?.HandleTaskbarCreated();
+            // Our own tray host broadcasts TaskbarCreated to collect icons; only an Explorer restart needs handling.
+            if (!TrayHost.IsBroadcasting) _replacementSession?.HandleTaskbarCreated();
             handled = true;
             return IntPtr.Zero;
         }
@@ -2620,6 +2622,8 @@ public partial class MainWindow : Window
 
     internal string? RestoreWindowsTaskbar()
     {
+        // Hand tray icons back to Explorer before its taskbar becomes visible again.
+        TrayHost.Current?.Dispose();
         var session = _replacementSession;
         if (session is null) return null;
         var error = session.Stop();
