@@ -104,9 +104,10 @@ public static class ShellShortcuts
     public static string? OpenWindowsSearch(FrameworkElement? anchor = null)
     {
         AppLog.Info("OpenWindowsSearch: invoked.");
-        var wasVisible = IsSearchVisible();
+        EnsureNativeTaskbarHidden();
         var error = SendWindowsShortcut(VkS);
-        if (error is null && anchor is not null && !wasVisible)
+        EnsureNativeTaskbarHidden();
+        if (error is null && anchor is not null)
         {
             ScheduleSearchReposition(anchor);
         }
@@ -114,7 +115,20 @@ public static class ShellShortcuts
         return error;
     }
 
-    private static bool IsSearchVisible() => FindSearchWindows().Count > 0;
+    private static void EnsureNativeTaskbarHidden()
+    {
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        if (taskbar != 0 && IsWindowVisible(taskbar))
+        {
+            ShowWindow(taskbar, SwHide);
+            AppLog.Info("EnsureNativeTaskbarHidden: Shell_TrayWnd hidden.");
+        }
+        var secondary = FindWindow("Shell_SecondaryTrayWnd", null);
+        if (secondary != 0 && IsWindowVisible(secondary))
+        {
+            ShowWindow(secondary, SwHide);
+        }
+    }
 
     private static List<nint> FindSearchWindows()
     {
@@ -131,6 +145,7 @@ public static class ShellShortcuts
                 EnumWindows((hwnd, _) =>
                 {
                     if (!IsWindowVisible(hwnd)) return true;
+                    if (IsWindowCloaked(hwnd)) return true;
                     GetWindowThreadProcessId(hwnd, out var pid);
                     if (pids.Contains(pid))
                     {
@@ -158,7 +173,7 @@ public static class ShellShortcuts
             foreach (var title in new[] { "Search", "Arama", "Ara" })
             {
                 var h = FindWindow("Windows.UI.Core.CoreWindow", title);
-                if (h != 0 && IsWindowVisible(h))
+                if (h != 0 && IsWindowVisible(h) && !IsWindowCloaked(h))
                 {
                     list.Add(h);
                     break;
@@ -171,6 +186,7 @@ public static class ShellShortcuts
 
     private static void ScheduleSearchReposition(FrameworkElement anchor)
     {
+        AppLog.Info("ScheduleSearchReposition: scheduled.");
         var next = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _searchRepositionCts, next);
         previous?.Cancel();
@@ -180,7 +196,12 @@ public static class ShellShortcuts
 
     private static async Task RepositionSearchAsync(FrameworkElement anchor, CancellationToken cancellation)
     {
-        if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0) return;
+        if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0)
+        {
+            AppLog.Warning("RepositionSearchAsync: PresentationSource is null.");
+            return;
+        }
+
         Point topLeft;
         Point bottomRight;
         try
@@ -188,25 +209,36 @@ public static class ShellShortcuts
             topLeft = anchor.PointToScreen(new Point(0, 0));
             bottomRight = anchor.PointToScreen(new Point(anchor.ActualWidth, anchor.ActualHeight));
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            AppLog.Warning($"RepositionSearchAsync PointToScreen failed: {ex.Message}");
             return;
         }
 
         var monitor = MonitorFromWindow(source.Handle, MonitorDefaultToNearest);
         var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo)) return;
+        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            AppLog.Warning("RepositionSearchAsync: GetMonitorInfo failed.");
+            return;
+        }
+
         var edge = DockFlyout.Edge;
+        AppLog.Info($"RepositionSearchAsync: anchor bounds [{topLeft.X:F0},{topLeft.Y:F0} - {bottomRight.X:F0},{bottomRight.Y:F0}], edge: {edge}");
 
         try
         {
-            for (var attempt = 0; attempt < 30; attempt++)
+            for (var attempt = 0; attempt < 35; attempt++)
             {
-                await Task.Delay(25, cancellation);
+                await Task.Delay(20, cancellation);
                 if (cancellation.IsCancellationRequested) return;
+
+                EnsureNativeTaskbarHidden();
 
                 var searchWindows = FindSearchWindows();
                 if (searchWindows.Count == 0) continue;
+
+                AppLog.Info($"RepositionSearchAsync: attempt {attempt} found {searchWindows.Count} window(s).");
 
                 var mainHwnd = searchWindows.OrderByDescending(h =>
                 {
@@ -244,44 +276,28 @@ public static class ShellShortcuts
                         break;
                 }
 
-                if (searchWindows.Count > 1)
+                AppLog.Info($"RepositionSearchAsync: moving main window {mainHwnd:X} ({width}x{height}) from ({rect.Left},{rect.Top}) to ({targetX},{targetY})");
+                SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+
+                foreach (var aux in searchWindows.Where(h => h != mainHwnd))
                 {
-                    var sorted = searchWindows.OrderByDescending(h =>
+                    if (GetWindowRect(aux, out var auxRect))
                     {
-                        if (GetWindowRect(h, out var r)) return r.Bottom - r.Top;
-                        return 0;
-                    }).ToList();
-
-                    var flyout = sorted[0];
-                    var inputBar = sorted[1];
-
-                    if (GetWindowRect(inputBar, out var inputRect) && GetWindowRect(flyout, out var flyoutRect))
-                    {
-                        var inputW = inputRect.Right - inputRect.Left;
-                        var inputH = inputRect.Bottom - inputRect.Top;
-                        var flyoutW = flyoutRect.Right - flyoutRect.Left;
-                        var flyoutH = flyoutRect.Bottom - flyoutRect.Top;
-
-                        var inputTargetX = Math.Clamp(centerX - inputW / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - inputW - 8);
-                        var flyoutTargetX = Math.Clamp(centerX - flyoutW / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - flyoutW - 8);
-
-                        var inputTargetY = Math.Clamp((int)Math.Round(topLeft.Y) - inputH - 10, minY, maxY);
-                        var flyoutTargetY = Math.Clamp(inputTargetY - flyoutH - 4, minY, maxY);
-
-                        SetWindowPos(flyout, 0, flyoutTargetX, flyoutTargetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-                        SetWindowPos(inputBar, 0, inputTargetX, inputTargetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+                        var auxW = auxRect.Right - auxRect.Left;
+                        var auxH = auxRect.Bottom - auxRect.Top;
+                        var auxX = Math.Clamp(centerX - auxW / 2, monitorInfo.Work.Left + 8, monitorInfo.Work.Right - auxW - 8);
+                        var auxY = Math.Clamp((int)Math.Round(topLeft.Y) - auxH - 8, minY, maxY);
+                        AppLog.Info($"RepositionSearchAsync: moving aux window {aux:X} ({auxW}x{auxH}) to ({auxX},{auxY})");
+                        SetWindowPos(aux, 0, auxX, auxY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
                     }
                 }
-                else
+
+                for (var frame = 0; frame < 5; frame++)
                 {
+                    await Task.Delay(30, cancellation);
+                    EnsureNativeTaskbarHidden();
                     SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
                 }
-
-                // Settle across extra frames to smoothly complete shell entrance transitions
-                await Task.Delay(40, cancellation);
-                SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
-                await Task.Delay(50, cancellation);
-                SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
                 break;
             }
         }
@@ -466,6 +482,19 @@ public static class ShellShortcuts
         public NativeRect Work;
         public uint Flags;
     }
+
+    private const int SwHide = 0;
+    private const int DwmwaCloaked = 14;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(nint hWnd, int nCmdShow);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    private static bool IsWindowCloaked(nint hwnd) =>
+        DwmGetWindowAttribute(hwnd, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
