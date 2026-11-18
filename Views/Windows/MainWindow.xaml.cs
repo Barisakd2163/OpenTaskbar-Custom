@@ -2038,7 +2038,7 @@ public partial class MainWindow : Window
     {
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
         ResizeDockToContent();
-        if (++_memoryTrimCounter >= 12)
+        if (++_memoryTrimCounter >= 3)
         {
             _memoryTrimCounter = 0;
             NativeMemoryMethods.TrimWorkingSet();

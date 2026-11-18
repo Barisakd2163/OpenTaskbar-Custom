@@ -221,12 +221,17 @@ public partial class MainWindow
         _magnificationLastFrame = null;
     }
 
-    private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseEnterDock();
+    private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        NativeMemoryMethods.CancelIdleTrim();
+        _autoHideController?.OnMouseEnterDock();
+    }
 
     private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         ResetMagnification();
         _autoHideController?.OnMouseLeaveDock();
+        NativeMemoryMethods.ScheduleIdleTrim(TimeSpan.FromSeconds(2));
     }
 
     private void DockEdgeTrigger_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseEnterEdge();

@@ -16,7 +16,29 @@ internal static class NativeMemoryMethods
     private static extern bool EmptyWorkingSet(nint process);
 
     private static long _lastTrimTicks;
-    private static readonly TimeSpan MinTrimInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MinTrimInterval = TimeSpan.FromSeconds(20);
+    private static CancellationTokenSource? _idleTrimCts;
+
+    public static void ScheduleIdleTrim(TimeSpan? delay = null)
+    {
+        _idleTrimCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _idleTrimCts = cts;
+        var token = cts.Token;
+        Task.Delay(delay ?? TimeSpan.FromSeconds(2), token).ContinueWith(_ =>
+        {
+            if (!token.IsCancellationRequested)
+            {
+                TrimWorkingSet();
+            }
+        }, TaskScheduler.Default);
+    }
+
+    public static void CancelIdleTrim()
+    {
+        _idleTrimCts?.Cancel();
+        _idleTrimCts = null;
+    }
 
     public static void TrimWorkingSet(bool force = false)
     {
