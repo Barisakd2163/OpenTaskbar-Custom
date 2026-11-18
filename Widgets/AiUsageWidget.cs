@@ -42,8 +42,8 @@ public sealed class AiUsageWidget : DockWidget
     {
         _loader = loader;
         _summary = AddCard("AI");
-        _claude = AddCard("CL");
-        _codex = AddCard("CX");
+        _claude = AddCard("Claude");
+        _codex = AddCard("Codex");
         _flyout.Closed += (_, _) => _countdowns.Clear();
         Content = _cards;
         Render();
@@ -297,9 +297,9 @@ public sealed class AiUsageWidget : DockWidget
     private string Duration(TimeSpan span)
     {
         var value = span < TimeSpan.Zero ? TimeSpan.Zero : span;
-        return value < TimeSpan.FromHours(1)
-            ? UiText.Format("MinutesFormat", Math.Max(1, (int)Math.Ceiling(value.TotalMinutes)))
-            : value.ToString(@"h\:mm", Culture);
+        var minutes = Math.Max(1, (int)Math.Ceiling(value.TotalMinutes));
+        // Spelled-out units: a bare "1:54" reads as a clock time, not a duration.
+        return minutes < 60 ? UiText.Format("MinutesFormat", minutes) : UiText.Format("HoursMinutesFormat", minutes / 60, minutes % 60);
     }
 
     private string Summary(AiProviders provider)
@@ -473,7 +473,7 @@ public sealed class AiUsageWidget : DockWidget
         }
         if (showPace && LimitIn(window, now) is { } limit)
             row.Children.Add(Text(limit < RelativeLimit ? UiText.Format("AiUsagePaceIn", Duration(limit))
-                : UiText.Format("AiUsagePaceAt", When(now + limit)), 11, "WidgetWarning"));
+                : UiText.Format("AiUsagePaceAt", When(now + limit)), 11, Accent(window.Used, window.Severity)));
         return row;
     }
 
@@ -528,7 +528,7 @@ public sealed class AiUsageWidget : DockWidget
         var fetched = EnabledProviders.Where(_reports.ContainsKey).Select(provider => _reports[provider].FetchedAt).ToArray();
         if (fetched.Length > 0)
             notes.Children.Add(Text(UiText.Format("AiUsageUpdated", fetched.Min().ToLocalTime().ToString("t", Culture)), 11, "TextSecondary"));
-        var note = Text(UiText.Get("AiUsageUnofficialNote"), 9.5, "TextSecondary", new Thickness(0, 1, 0, 0));
+        var note = Text(UiText.Get("AiUsageUnofficialNote"), 10.5, "TextSecondary", new Thickness(0, 1, 0, 0));
         note.TextWrapping = TextWrapping.Wrap;
         notes.Children.Add(note);
         footer.Children.Add(notes);
@@ -565,6 +565,8 @@ public sealed class AiUsageWidget : DockWidget
                 Margin = new Thickness(-1, 0, 0, 0) };
             tick.SetResourceReference(Border.BackgroundProperty, "TextSecondary");
             bar.Children.Add(Split(elapsed, tick, 1));
+            bar.ToolTip = UiText.Get("AiUsagePaceMarker");
+            bar.Background = Brushes.Transparent;
         }
         return bar;
     }
