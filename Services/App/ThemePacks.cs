@@ -8,16 +8,30 @@ using OpenTaskbar.Models;
 namespace OpenTaskbar.Services;
 
 /// <summary><c>theme.json</c> at the root of a theme folder.</summary>
-public sealed record ThemePackManifest(string? Name = null, string? Author = null, string? Description = null);
+public sealed record ThemePackManifest(
+    string? Name = null,
+    string? Author = null,
+    string? Description = null,
+    bool PreserveOriginalIcons = false);
 
 /// <summary>
-/// A theme folder: <c>theme.json</c>, an optional icon pack in <c>icons\</c> and an optional widget pack in <c>widgets\</c>.
+/// A theme folder: <c>theme.json</c>, an optional custom icon pack in <c>icons\</c>
+/// and an optional widget pack in <c>widgets\</c>. Bundled themes keep the original icons.
 /// </summary>
 public sealed class ThemePack
 {
     public const string ManifestFileName = "theme.json";
     public const string IconFolder = "icons";
     public const string WidgetFolder = "widgets";
+
+    // Older installations still have the bundled icon packs on disk. Their folders must
+    // keep native Windows and application icons even before theme.json is refreshed.
+    private static readonly HashSet<string> BuiltInThemeIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "catppuccin", "gruvbox", "nord", "prism", "solarized", "tokyo-night"
+    };
+
+    internal static bool IsBuiltInTheme(string? id) => id is not null && BuiltInThemeIds.Contains(id);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -64,7 +78,8 @@ public sealed class ThemePack
         IconPack? icons = null;
         WidgetPack? widgets = null;
         var iconDirectory = Path.Combine(directory, IconFolder);
-        if (File.Exists(Path.Combine(iconDirectory, IconPack.ManifestFileName)))
+        if (!manifest.PreserveOriginalIcons && !IsBuiltInTheme(id)
+            && File.Exists(Path.Combine(iconDirectory, IconPack.ManifestFileName)))
         {
             (icons, var iconError) = IconPack.Load(iconDirectory);
             if (iconError is not null) problems.Add(iconError);

@@ -1,6 +1,6 @@
 # Theme Packs
 
-A theme pack restyles OpenTaskbar with an **icon pack** and a **widget pack**. OpenTaskbar installs its bundled theme library into your user theme folder on first launch. You can also add or edit your own theme folders there.
+A theme pack restyles OpenTaskbar with colors, fonts and widget styles. All six bundled themes **keep original Windows and application icons**. Custom themes can still include an optional icon pack. OpenTaskbar installs bundled themes into your user theme folder on first launch.
 
 ## Where themes live
 
@@ -18,15 +18,17 @@ A theme pack restyles OpenTaskbar with an **icon pack** and a **widget pack**. O
 
 Both packs are optional. Pick a theme in **Settings → Appearance → Theme → Theme pack**. **Open folder** opens the `Themes` folder; **Reload** rereads the selected theme after you change its files.
 
-The built-in library includes Catppuccin Mocha, Gruvbox Material, Nord, Prism, Solarized and Tokyo Night. A starter theme is in [theme-template](theme-template). Bundled themes are available in [themes](../themes).
+The built-in library includes Catppuccin Mocha, Gruvbox Material, Nord, Prism, Solarized and Tokyo Night. **All six preserve original app, Start and Recycle Bin icons, even when older installations still contain icon files.** Their widget styles continue to work. A starter custom theme is in [theme-template](theme-template). Bundled themes are available in [themes](../themes).
 
 ## theme.json
 
 ```json
-{ "name": "My Theme", "author": "You", "description": "Optional." }
+{ "name": "My Theme", "author": "You", "description": "Optional.", "preserveOriginalIcons": true }
 ```
 
-## Icon pack: icons\pack.json
+Set `preserveOriginalIcons` to `true` to retain native Windows and app icons even if an `icons/pack.json` file exists. All bundled themes do this automatically, including previously installed copies. Custom themes can omit this flag to use an icon pack.
+
+## Optional custom icon pack: icons\pack.json
 
 ```jsonc
 {
@@ -117,4 +119,4 @@ Token names are listed in [Design/Palettes/Dark.xaml](../Design/Palettes/Dark.xa
 
 ## Licensing
 
-Only use icons whose license allows you to share them, and prefer category icons to application logos: a logo is its owner's trademark even when an icon set's license allows copying it. Prism follows this rule and is the only theme in this repository.
+Custom icon packs should only contain images you have permission to distribute. App logos may be trademarks. Bundled themes do not ship replacement app icons.

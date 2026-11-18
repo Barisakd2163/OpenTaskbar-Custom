@@ -150,6 +150,39 @@ internal static class ThemePackChecks
                 ThemePacks.Changed -= onChanged;
             }
 
+            // Previous releases installed icon packs for all built-in themes.
+            // Do not apply those old files to native app, Start or Recycle Bin icons.
+            var bundledNames = new[] { "catppuccin", "gruvbox", "nord", "prism", "solarized", "tokyo-night" };
+            foreach (var id in bundledNames)
+            {
+                var legacyDir = Path.Combine(root, id);
+                var legacyIcons = Path.Combine(legacyDir, ThemePack.IconFolder);
+                var legacyWidgets = Path.Combine(legacyDir, ThemePack.WidgetFolder);
+                Directory.CreateDirectory(legacyIcons);
+                Directory.CreateDirectory(legacyWidgets);
+                File.WriteAllText(Path.Combine(legacyDir, ThemePack.ManifestFileName), "{}");
+                File.Copy(Path.Combine(iconDir, IconPack.ManifestFileName),
+                    Path.Combine(legacyIcons, IconPack.ManifestFileName));
+                File.Copy(Path.Combine(widgetDir, WidgetPack.ManifestFileName),
+                    Path.Combine(legacyWidgets, WidgetPack.ManifestFileName));
+                WritePng(Path.Combine(legacyIcons, "browser.png"), 48);
+
+                var (loaded, legacyError, _) = ThemePack.Load(legacyDir);
+                Check(legacyError is null && loaded?.Icons is null && loaded?.Widgets is not null,
+                    $"A previously installed {id} theme must keep its styles but ignore old icon packs.");
+                ThemePacks.Select(id);
+                Check(ReferenceEquals(ThemePacks.ApplyIcon(original, @"C:\\Apps\\firefox.exe"), original),
+                    $"Built-in theme {id} must preserve application icons.");
+                Check(ReferenceEquals(ThemePacks.ApplyIcon(original, null, specialKey: IconPack.RecycleBinKey), original)
+                    && ThemePacks.ApplyIcon(null, null, specialKey: IconPack.StartKey) is null,
+                    $"Built-in theme {id} must preserve the Recycle Bin and Start icons.");
+            }
+            var copiedId = ThemePackTransfer.CreateTheme("My Nord Copy", null, "nord");
+            var copiedTheme = ThemePack.Load(Path.Combine(root, copiedId));
+            Check(copiedTheme.Pack?.Manifest.PreserveOriginalIcons == true && copiedTheme.Pack.Icons is null,
+                "A copy of a built-in theme must keep the native icons even if old icon files were copied.");
+            ThemePacks.Select(null);
+
             Check(Corners(Render(new IconPackFallback(IconPackShape.Petal, IconPackCorner.TopRight))) == "TR+BL",
                 "A petal plate must keep two opposite corners square.");
             Check(Corners(Render(new IconPackFallback(IconPackShape.Circle))) == "", "A circle plate must have no square corner.");
@@ -174,6 +207,8 @@ internal static class ThemePackChecks
                 Check(err is null && t is not null, $"Theme {Path.GetFileName(subDir)} must load without errors.");
                 Check(prob.Count == 0, $"Theme {Path.GetFileName(subDir)} must have zero problems.");
                 Check(t!.Widgets is not null, $"Theme {Path.GetFileName(subDir)} must have a valid WidgetPack.");
+                Check(t.Icons is null && t.Manifest.PreserveOriginalIcons,
+                    $"Bundled theme {Path.GetFileName(subDir)} must preserve native icons.");
             }
         }
 

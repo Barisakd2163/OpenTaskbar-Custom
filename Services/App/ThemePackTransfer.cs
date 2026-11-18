@@ -37,17 +37,24 @@ internal static class ThemePackTransfer
         var target = Path.Combine(root, id);
         Directory.CreateDirectory(target);
 
+        var preserveOriginalIcons = false;
         if (!string.IsNullOrWhiteSpace(basedOnId) && IsSafeId(basedOnId))
         {
             var source = Path.Combine(root, basedOnId);
-            if (Directory.Exists(source)) CopyDirectory(source, target);
+            if (Directory.Exists(source))
+            {
+                preserveOriginalIcons = ThemePack.IsBuiltInTheme(basedOnId)
+                    || ThemePack.Load(source).Pack?.Manifest.PreserveOriginalIcons == true;
+                CopyDirectory(source, target);
+            }
         }
 
         var manifestPath = Path.Combine(target, ThemePack.ManifestFileName);
         var manifest = new ThemePackManifest(
             string.IsNullOrWhiteSpace(name) ? id : name.Trim(),
             string.IsNullOrWhiteSpace(author) ? null : author.Trim(),
-            null);
+            null,
+            preserveOriginalIcons);
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
         return id;
     }
