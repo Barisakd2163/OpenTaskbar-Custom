@@ -24,16 +24,16 @@ internal static class DockLayoutChecks
         }
 
         // Drop coordinates count visible elements, not hidden entries in the saved order.
-        var apps = new[] { "app:A", "app:B", "widget:Clock", "widget:Audio" };
-        Check(DockItemOrdering.MoveVisibleItem(apps, apps, "widget:Clock", 2).SequenceEqual(apps),
+        var dragItems = new[] { "app:A", "app:B", "widget:Clock", "widget:Audio" };
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "widget:Clock", 2).SequenceEqual(dragItems),
             "Dropping an item in its own slot must not move it.");
-        Check(DockItemOrdering.MoveVisibleItem(apps, apps, "widget:Clock", 1)
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "widget:Clock", 1)
                 .SequenceEqual(["app:A", "widget:Clock", "app:B", "widget:Audio"]),
             "Moving one slot left must not jump to the start.");
-        Check(DockItemOrdering.MoveVisibleItem(apps, apps, "app:B", 3)
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "app:B", 3)
                 .SequenceEqual(["app:A", "widget:Clock", "app:B", "widget:Audio"]),
             "Moving one slot right must account for removal of the source.");
-        Check(DockItemOrdering.MoveVisibleItem(apps, apps, "app:B", 4)
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "app:B", 4)
                 .SequenceEqual(["app:A", "widget:Clock", "widget:Audio", "app:B"]),
             "Dropping at the far right must reach the last visible position.");
 
@@ -49,7 +49,7 @@ internal static class DockLayoutChecks
             "Moving right past hidden items must remain an adjacent move.");
         Check(DockItemOrdering.MoveVisibleItem(stored, shown, "app:unknown", 0).SequenceEqual(stored),
             "An item not currently visible must not disturb the saved order.");
-        Check(DockItemOrdering.MoveVisibleItem(apps, apps, "APP:B", 0)[0] == "app:B",
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "APP:B", 0)[0] == "app:B",
             "Dock item identifiers must be matched without case sensitivity.");
 
         var minimum = (double)app.FindResource("DockMinimumShelfHeight");
