@@ -275,14 +275,11 @@ public partial class MediaWidget : DockWidget
         if (!IsActive || _manager is null) return;
 
         // Auto-discover playing sessions (e.g. YouTube in a browser) if unbound or current session is inactive.
-        if (_session is null || !_playing)
+        var candidate = GetActiveSession();
+        if (ShouldSwitchSession(candidate))
         {
-            var active = GetActiveSession();
-            if (active is not null && !ReferenceEquals(active, _session))
-            {
-                BindSession(active);
-                return;
-            }
+            BindSession(candidate);
+            return;
         }
 
         if (_session is null || _draggingProgress) return;
@@ -310,6 +307,8 @@ public partial class MediaWidget : DockWidget
                 if (controls is not null)
                 {
                     _canSeek = controls.IsPlaybackPositionEnabled;
+                    ProgressSlider.IsHitTestVisible = _canSeek;
+                    ProgressSlider.Focusable = _canSeek;
                 }
             }
         }
@@ -402,14 +401,48 @@ public partial class MediaWidget : DockWidget
     private void Manager_CurrentSessionChanged(MediaSessionManager sender, CurrentSessionChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && _manager is not null) BindSession(GetActiveSession());
+            if (!IsActive || _manager is null) return;
+            var candidate = GetActiveSession();
+            if (ShouldSwitchSession(candidate)) BindSession(candidate);
         });
 
     private void Manager_SessionsChanged(MediaSessionManager sender, SessionsChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && _manager is not null) BindSession(GetActiveSession());
+            if (!IsActive || _manager is null) return;
+            var candidate = GetActiveSession();
+            if (ShouldSwitchSession(candidate)) BindSession(candidate);
         });
+
+    private static bool IsSameSession(MediaSession? a, MediaSession? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        return string.Equals(a.SourceAppUserModelId, b.SourceAppUserModelId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ShouldSwitchSession(MediaSession? candidate)
+    {
+        if (candidate is null) return _session is not null;
+        if (_session is null) return true;
+        if (IsSameSession(candidate, _session)) return false;
+
+        // If candidate is playing and current session is not playing, switch to candidate.
+        if (!_playing)
+        {
+            try
+            {
+                var pb = candidate.GetPlaybackInfo();
+                if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    return true;
+                }
+            }
+            catch { }
+        }
+
+        return false;
+    }
 
     private MediaSession? GetActiveSession()
     {
@@ -499,19 +532,19 @@ public partial class MediaWidget : DockWidget
     private void Session_MediaPropertiesChanged(MediaSession sender, MediaPropertiesChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && ReferenceEquals(sender, _session)) Refresh(includeProperties: true);
+            if (IsActive && IsSameSession(sender, _session)) Refresh(includeProperties: true);
         });
 
     private void Session_PlaybackInfoChanged(MediaSession sender, PlaybackInfoChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && ReferenceEquals(sender, _session)) Refresh(includeProperties: false);
+            if (IsActive && IsSameSession(sender, _session)) Refresh(includeProperties: false);
         });
 
     private void Session_TimelinePropertiesChanged(MediaSession sender, TimelinePropertiesChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && ReferenceEquals(sender, _session)) RefreshTimeline();
+            if (IsActive && IsSameSession(sender, _session)) RefreshTimeline();
         });
 
     private void RefreshTimeline()
@@ -573,7 +606,9 @@ public partial class MediaWidget : DockWidget
         _updatingProgress = true;
         ProgressSlider.Maximum = duration.TotalSeconds;
         ProgressSlider.Value = elapsed;
-        ProgressSlider.IsEnabled = _canSeek;
+        ProgressSlider.IsEnabled = true;
+        ProgressSlider.IsHitTestVisible = _canSeek;
+        ProgressSlider.Focusable = _canSeek;
         ProgressSlider.ToolTip = $"{FormatTime(TimeSpan.FromSeconds(elapsed))} / {FormatTime(duration)}";
         _updatingProgress = false;
     }
