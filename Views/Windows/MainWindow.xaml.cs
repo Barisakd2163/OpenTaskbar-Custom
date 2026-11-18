@@ -124,7 +124,15 @@ public partial class MainWindow : Window
         _widgetPanel.OperationFailed += ReportError;
         ShowInTaskbar = _isPreview || _isInspection;
         if (((App)Application.Current).OpenSettingsOnStartup)
-            Loaded += (_, _) => OpenSettings_Click(this, new RoutedEventArgs());
+        {
+            RoutedEventHandler? openSettingsOnce = null;
+            openSettingsOnce = (_, _) =>
+            {
+                Loaded -= openSettingsOnce;
+                OpenSettings_Click(this, new RoutedEventArgs());
+            };
+            Loaded += openSettingsOnce;
+        }
         PinnedApps.ItemsSource = _pinnedApps;
         RunningApps.ItemsSource = _runningApps;
         AddHandler(TimedWidgetTile.DetailsRequestedEvent, new RoutedEventHandler(TimedWidget_DetailsRequested));
@@ -1633,15 +1641,17 @@ public partial class MainWindow : Window
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         _widgetPanel.Close(restoreFocus: false);
+        AppLog.Info($"Settings open requested: source={sender?.GetType().Name ?? "null"}, startupArg={((App)Application.Current).OpenSettingsOnStartup}, existing={(_settingsWindow is null ? "none" : _settingsWindow.IsClosingOrClosed ? "closing" : "open")}");
         if (_settingsWindow is { IsClosingOrClosed: true }) _settingsWindow = null;
         if (_settingsWindow is null)
         {
-            _settingsWindow = new SettingsWindow(_preferences);
-            _settingsWindow.Activated += (_, _) => _autoHideController?.EvaluateState();
-            _settingsWindow.Deactivated += (_, _) => _autoHideController?.EvaluateState();
-            _settingsWindow.Closed += (_, _) =>
+            var settingsWindow = new SettingsWindow(_preferences);
+            _settingsWindow = settingsWindow;
+            settingsWindow.Activated += (_, _) => _autoHideController?.EvaluateState();
+            settingsWindow.Deactivated += (_, _) => _autoHideController?.EvaluateState();
+            settingsWindow.Closed += (_, _) =>
             {
-                _settingsWindow = null;
+                if (ReferenceEquals(_settingsWindow, settingsWindow)) _settingsWindow = null;
                 if (_autoHideController is not null)
                 {
                     _autoHideController.CheckForegroundWindow(NativeWindowTracker.GetForegroundApplicationWindow());
