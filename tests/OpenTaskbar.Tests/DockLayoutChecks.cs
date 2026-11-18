@@ -23,6 +23,38 @@ internal static class DockLayoutChecks
             checks++;
         }
 
+        // Drop coordinates count visible elements, not hidden entries in the saved order.
+        var dragItems = new[] { "app:A", "app:B", "widget:Clock", "widget:Audio" };
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "widget:Clock", 2).SequenceEqual(dragItems),
+            "Dropping an item in its own slot must not move it.");
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "widget:Clock", 1)
+                .SequenceEqual(["app:A", "widget:Clock", "app:B", "widget:Audio"]),
+            "Moving one slot left must not jump to the start.");
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "app:B", 3)
+                .SequenceEqual(["app:A", "widget:Clock", "app:B", "widget:Audio"]),
+            "Moving one slot right must account for removal of the source.");
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "app:B", 4)
+                .SequenceEqual(["app:A", "widget:Clock", "widget:Audio", "app:B"]),
+            "Dropping at the far right must reach the last visible position.");
+
+        var stored = new[] { "app:A", "app:closed", "app:B", "widget:disabled", "widget:Clock" };
+        var shown = new[] { "app:A", "app:B", "widget:Clock" };
+        var reordered = DockItemOrdering.MoveVisibleItem(stored, shown, "widget:Clock", 1);
+        Check(reordered.SequenceEqual(["app:A", "app:closed", "widget:Clock", "widget:disabled", "app:B"]),
+            "Inactive saved items must not shift the visible insertion point.");
+        Check(reordered.Where(token => shown.Contains(token)).SequenceEqual(["app:A", "widget:Clock", "app:B"]),
+            "The displayed order after dropping must match the pointer position.");
+        Check(DockItemOrdering.MoveVisibleItem(stored, shown, "widget:Clock", 0)
+                .Where(token => shown.Contains(token)).SequenceEqual(["widget:Clock", "app:A", "app:B"]),
+            "Moving to the first visible slot must still work when inactive items are saved.");
+        Check(DockItemOrdering.MoveVisibleItem(stored, shown, "app:B", 3)
+                .Where(token => shown.Contains(token)).SequenceEqual(["app:A", "widget:Clock", "app:B"]),
+            "Moving right past hidden items must remain an adjacent move.");
+        Check(DockItemOrdering.MoveVisibleItem(stored, shown, "app:unknown", 0).SequenceEqual(stored),
+            "An item not currently visible must not disturb the saved order.");
+        Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "APP:B", 0)[0] == "app:B",
+            "Dock item identifiers must be matched without case sensitivity.");
+
         var minimum = (double)app.FindResource("DockMinimumShelfHeight");
         var headroom = (double)app.FindResource("DockHeadroom");
         foreach (var dpi in new uint[] { 96, 120, 144, 192 })

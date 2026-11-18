@@ -336,12 +336,17 @@ public partial class MainWindow
         return false;
     }
 
+    // Collapsed or zero-size widgets do not occupy a drop slot.
+    private IEnumerable<KeyValuePair<string, FrameworkElement>> VisibleDockItems() =>
+        _dockItemElements.Where(item => item.Value.IsVisible
+            && (IsVertical ? item.Value.ActualHeight : item.Value.ActualWidth) > 0);
+
     private int GetDockInsertionIndex(DragEventArgs e)
     {
         var point = e.GetPosition(DockContents);
         var cursor = IsVertical ? point.Y : point.X;
         var index = 0;
-        foreach (var element in _dockItemElements.Values)
+        foreach (var (_, element) in VisibleDockItems())
         {
             var origin = element.TranslatePoint(default, DockContents);
             var center = (IsVertical ? origin.Y : origin.X)
