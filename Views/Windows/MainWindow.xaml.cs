@@ -367,8 +367,6 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
-            // Only watch a process that actually hid the taskbar. Preview and inspection modes stay unwatched.
-            TaskbarRecoveryWatchdog.Start(Environment.ProcessId);
         }
         catch (InvalidOperationException ex)
         {
@@ -2022,10 +2020,17 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
+    private int _memoryTrimCounter;
+
     private void WidgetRefreshTimer_Tick(object? sender, EventArgs e)
     {
         DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
         ResizeDockToContent();
+        if (++_memoryTrimCounter >= 20)
+        {
+            _memoryTrimCounter = 0;
+            GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
+        }
     }
 
     private void DockWidgets_SizeChanged(object sender, SizeChangedEventArgs e)

@@ -127,7 +127,6 @@ public partial class App : Application
             }
         }
 
-        TaskbarRecoveryWatchdog.NotifyCleanExit();
         _devReload?.Dispose();
         _devReload = null;
         _instanceMutex?.ReleaseMutex();
