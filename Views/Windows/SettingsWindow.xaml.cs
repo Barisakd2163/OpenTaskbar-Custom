@@ -333,7 +333,7 @@ public partial class SettingsWindow : Window
                 : ClockDateStyle.DayAndShortDate,
             StatsMeters = ReadStatsMeters(),
             ThemePack = (ThemePackBox.SelectedItem as ThemePackChoice)?.Id,
-            ThemeApplicationIcons = ThemeApplicationIconsToggle.IsChecked == true
+            ThemeApplicationIcons = false
         };
     }
 
@@ -990,7 +990,6 @@ public partial class SettingsWindow : Window
         UpdateCornerRadiusLabel();
         UpdateBottomGapLabel();
         LoadThemePacks(settings.ThemePack);
-        ThemeApplicationIconsToggle.IsChecked = settings.ThemeApplicationIcons;
         foreach (var option in _widgetOptions)
         {
             option.IsInstalled = settings.InstalledWidgets?.Contains(option.Id, StringComparer.Ordinal) == true;

@@ -1648,21 +1648,11 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
-    {
-        var original = ApplicationIconProvider.GetForFile(executablePath);
-        return _preferences.Current.ThemeApplicationIcons
-            ? ThemePacks.ApplyIcon(original, executablePath)
-            : original;
-    }
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath) =>
+        ApplicationIconProvider.GetForFile(executablePath);
 
     private void ThemePacks_Changed(object? sender, EventArgs e)
     {
-        foreach (var app in _pinnedApps)
-        {
-            app.Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(app.ExecutablePath), app.ExecutablePath);
-        }
-
         RefreshRecycleBinIcon();
         ApplyStartIcon();
         if (_windowTracker is not null)

@@ -42,6 +42,7 @@ internal static class WidgetViewChecks
                 });
             ThemeManager.Apply(AppTheme.Dark);
             UiText.Current.SetLanguage(AppLanguage.Turkish);
+            OpenTaskbar.Tests.WidgetScreenshotCapture.CaptureAll(app);
             checks += DockLayoutChecks.Run(app);
             checks += ApplicationInteractionChecks.Run(app);
             checks += VisualParityChecks.Run(app);

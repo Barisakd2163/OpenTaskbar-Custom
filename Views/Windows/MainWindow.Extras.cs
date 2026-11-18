@@ -37,6 +37,17 @@ public partial class MainWindow
 
     private static readonly Brush StackTileBrush = CreateFrozenStackBrush(Color.FromArgb(0x35, 0xFF, 0xFF, 0xFF));
     private static readonly Brush StackTileStroke = CreateFrozenStackBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CardShadowBrush1 = CreateFrozenStackBrush(Color.FromArgb(0x35, 0x00, 0x00, 0x00));
+    private static readonly Brush CardShadowBrush2 = CreateFrozenStackBrush(Color.FromArgb(0x18, 0x00, 0x00, 0x00));
+    private static readonly Brush CardDeckBackBrush = CreateFrozenStackBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CardDeckBackStroke = CreateFrozenStackBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CardDeckMidBrush = CreateFrozenStackBrush(Color.FromArgb(0x3C, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CardDeckMidStroke = CreateFrozenStackBrush(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CardDeckFrontBrush = CreateFrozenStackBrush(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CardDeckFrontStroke = CreateFrozenStackBrush(Color.FromArgb(0x75, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush BadgeBackdropBrush = CreateFrozenStackBrush(Color.FromArgb(0xE0, 0x1E, 0x29, 0x3B));
+    private static readonly Brush BadgeStrokeBrush = CreateFrozenStackBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush BadgeIconBrush = CreateFrozenStackBrush(Color.FromArgb(0xF0, 0x60, 0xA5, 0xFA));
 
     private static Brush CreateFrozenStackBrush(Color color)
     {
@@ -90,48 +101,96 @@ public partial class MainWindow
 
     private int ExtraButtonCount => _stacks.Count + (RecycleBinButton.Visibility == Visibility.Visible ? 1 : 0);
 
+    private static readonly Geometry FolderBadgeGeometry = CreateFrozenGeometry("M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z");
+
+    private static Geometry CreateFrozenGeometry(string pathData)
+    {
+        var geom = Geometry.Parse(pathData);
+        geom.Freeze();
+        return geom;
+    }
+
     internal static BitmapSource? CreateStackIcon(DockStack stack, int targetSize = 128)
     {
         var size = Math.Max(16, targetSize);
-        var entries = stack.RecentEntries(4);
+        var entries = stack.RecentEntries(3);
         if (entries.Count == 0)
         {
             return ApplicationIconProvider.GetForShellItem(stack.Path, size, iconOnly: true);
         }
 
         var scale = size / 128.0;
-        var padding = 6 * scale;
-        var itemSize = 48 * scale;
-        var x0 = 13 * scale;
-        var x1 = 67 * scale;
-        var y0 = 13 * scale;
-        var y1 = 67 * scale;
-        var corner = 22 * scale;
-        var subIconRequest = Math.Max(16, (int)Math.Ceiling(itemSize));
 
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
-            var tilePen = new Pen(StackTileStroke, Math.Max(0.5, 1.5 * scale));
-            tilePen.Freeze();
-            dc.DrawRoundedRectangle(StackTileBrush, tilePen, new Rect(padding, padding, size - padding * 2, size - padding * 2), corner, corner);
-
-            var positions = new[]
+            // 1. Back card (top-right depth)
+            var rectBack = new Rect(24 * scale, 8 * scale, 76 * scale, 76 * scale);
+            var cornerBack = 14 * scale;
+            dc.DrawRoundedRectangle(CardShadowBrush2, null, new Rect(rectBack.X, rectBack.Y + 3 * scale, rectBack.Width, rectBack.Height), cornerBack, cornerBack);
+            var penBack = new Pen(CardDeckBackStroke, Math.Max(0.5, 1.2 * scale));
+            penBack.Freeze();
+            dc.DrawRoundedRectangle(CardDeckBackBrush, penBack, rectBack, cornerBack, cornerBack);
+            if (entries.Count >= 3)
             {
-                new Rect(x0, y0, itemSize, itemSize),
-                new Rect(x1, y0, itemSize, itemSize),
-                new Rect(x0, y1, itemSize, itemSize),
-                new Rect(x1, y1, itemSize, itemSize)
-            };
-
-            for (var i = 0; i < entries.Count && i < positions.Length; i++)
-            {
-                var icon = ApplicationIconProvider.GetForShellItem(entries[i].FullName, subIconRequest, iconOnly: true);
-                if (icon is not null)
+                var iconBack = ApplicationIconProvider.GetForShellItem(entries[2].FullName, (int)Math.Ceiling(44 * scale), iconOnly: true);
+                if (iconBack is not null)
                 {
-                    dc.DrawImage(icon, positions[i]);
+                    dc.DrawImage(iconBack, new Rect(rectBack.X + (rectBack.Width - 44 * scale) / 2, rectBack.Y + (rectBack.Height - 44 * scale) / 2, 44 * scale, 44 * scale));
                 }
             }
+
+            // 2. Middle card (intermediate layer)
+            var rectMid = new Rect(16 * scale, 20 * scale, 82 * scale, 82 * scale);
+            var cornerMid = 15 * scale;
+            dc.DrawRoundedRectangle(CardShadowBrush1, null, new Rect(rectMid.X, rectMid.Y + 3 * scale, rectMid.Width, rectMid.Height), cornerMid, cornerMid);
+            var penMid = new Pen(CardDeckMidStroke, Math.Max(0.5, 1.4 * scale));
+            penMid.Freeze();
+            dc.DrawRoundedRectangle(CardDeckMidBrush, penMid, rectMid, cornerMid, cornerMid);
+            if (entries.Count >= 2)
+            {
+                var iconMid = ApplicationIconProvider.GetForShellItem(entries[1].FullName, (int)Math.Ceiling(50 * scale), iconOnly: true);
+                if (iconMid is not null)
+                {
+                    dc.DrawImage(iconMid, new Rect(rectMid.X + (rectMid.Width - 50 * scale) / 2, rectMid.Y + (rectMid.Height - 50 * scale) / 2, 50 * scale, 50 * scale));
+                }
+            }
+
+            // 3. Front card (prominent foreground hero card)
+            var rectFront = new Rect(8 * scale, 32 * scale, 88 * scale, 88 * scale);
+            var cornerFront = 16 * scale;
+            dc.DrawRoundedRectangle(CardShadowBrush1, null, new Rect(rectFront.X, rectFront.Y + 4 * scale, rectFront.Width, rectFront.Height), cornerFront, cornerFront);
+            var penFront = new Pen(CardDeckFrontStroke, Math.Max(0.5, 1.6 * scale));
+            penFront.Freeze();
+            dc.DrawRoundedRectangle(CardDeckFrontBrush, penFront, rectFront, cornerFront, cornerFront);
+            if (entries.Count >= 1)
+            {
+                var iconFront = ApplicationIconProvider.GetForShellItem(entries[0].FullName, (int)Math.Ceiling(58 * scale), iconOnly: true);
+                if (iconFront is not null)
+                {
+                    dc.DrawImage(iconFront, new Rect(rectFront.X + (rectFront.Width - 58 * scale) / 2, rectFront.Y + (rectFront.Height - 58 * scale) / 2, 58 * scale, 58 * scale));
+                }
+            }
+
+            // 4. Folder badge pill (bottom-right corner emblem)
+            var badgeCenter = new Point(size - 22 * scale, size - 22 * scale);
+            var badgeRadius = 18 * scale;
+            dc.DrawEllipse(CardShadowBrush1, null, new Point(badgeCenter.X, badgeCenter.Y + 2 * scale), badgeRadius + 1 * scale, badgeRadius + 1 * scale);
+            var badgePen = new Pen(BadgeStrokeBrush, Math.Max(0.5, 1.5 * scale));
+            badgePen.Freeze();
+            dc.DrawEllipse(BadgeBackdropBrush, badgePen, badgeCenter, badgeRadius, badgeRadius);
+
+            var iconSize = 18 * scale;
+            var scaleGeom = iconSize / 24.0;
+            var originX = badgeCenter.X - (iconSize / 2);
+            var originY = badgeCenter.Y - (iconSize / 2);
+            dc.PushTransform(new TranslateTransform(originX, originY));
+            dc.PushTransform(new ScaleTransform(scaleGeom, scaleGeom));
+            var iconPen = new Pen(BadgeIconBrush, 2.0);
+            iconPen.Freeze();
+            dc.DrawGeometry(null, iconPen, FolderBadgeGeometry);
+            dc.Pop();
+            dc.Pop();
         }
 
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
@@ -242,9 +301,58 @@ public partial class MainWindow
 
     private UIElement BuildStackContent(DockStack stack)
     {
-        var root = new StackPanel { Width = 4 * 92 };
-        root.Children.Add(DockFlyout.Heading(stack.Name));
+        var root = new StackPanel { Width = 4 * 96 };
+
+        // 1. Sleek Header Bar with Folder Icon, Stack Name & Count Badge
+        var header = new DockPanel { Margin = new Thickness(4, 2, 4, 10) };
         var entries = stack.RecentEntries(StackEntryLimit);
+
+        var countBadge = new Border
+        {
+            CornerRadius = new CornerRadius(9),
+            Padding = new Thickness(7, 2, 7, 2),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        countBadge.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
+        var countText = new TextBlock
+        {
+            Text = entries.Count.ToString(), FontSize = 11, FontWeight = FontWeights.SemiBold
+        };
+        countText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        countBadge.Child = countText;
+        DockPanel.SetDock(countBadge, Dock.Right);
+        header.Children.Add(countBadge);
+
+        var titleGroup = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var folderIcon = new ContentControl
+        {
+            Content = Application.Current?.TryFindResource("IconFolder"),
+            Width = 15, Height = 15, Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        folderIcon.SetResourceReference(FrameworkElement.StyleProperty, "WidgetIcon");
+        folderIcon.SetResourceReference(Control.ForegroundProperty, "WidgetAccent");
+
+        var titleText = new TextBlock
+        {
+            Text = stack.Name, FontWeight = FontWeights.SemiBold, FontSize = 13.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        titleText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        titleGroup.Children.Add(folderIcon);
+        titleGroup.Children.Add(titleText);
+        header.Children.Add(titleGroup);
+
+        root.Children.Add(header);
+
+        var divider = new System.Windows.Shapes.Rectangle
+        {
+            Height = 1, Margin = new Thickness(2, 0, 2, 10)
+        };
+        divider.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "StrokeSubtle");
+        root.Children.Add(divider);
+
         if (entries.Count == 0)
         {
             root.Children.Add(DockFlyout.Caption(UiText.Get("StackEmpty")));
@@ -254,14 +362,16 @@ public partial class MainWindow
         var grid = new WrapPanel();
         foreach (var entry in entries)
         {
-            var image = new Image { Width = 48, Height = 48, Margin = new Thickness(0, 2, 0, 4) };
+            var image = new Image { Width = 46, Height = 46, Margin = new Thickness(0, 4, 0, 6) };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
             var label = new TextBlock
             {
                 Text = entry.Name, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
                 TextTrimming = TextTrimming.CharacterEllipsis, MaxHeight = 32, FontSize = 11
             };
-            var tile = new StackPanel { Width = 76 };
+            label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+
+            var tile = new StackPanel { Width = 84 };
             tile.Children.Add(image);
             tile.Children.Add(label);
             var path = entry.FullName;
@@ -278,13 +388,35 @@ public partial class MainWindow
         }
 
         root.Children.Add(grid);
-        var footer = new TextBlock { Text = UiText.Get("OpenFolderInExplorer"), FontWeight = FontWeights.SemiBold };
-        var open = DockFlyout.FlatButton(footer, (_, _) =>
+
+        // 2. Modern Footer Bar
+        var footerPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        var openFolderIcon = new ContentControl
+        {
+            Content = Application.Current?.TryFindResource("IconFolder"),
+            Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        openFolderIcon.SetResourceReference(FrameworkElement.StyleProperty, "WidgetIcon");
+        openFolderIcon.SetResourceReference(Control.ForegroundProperty, "TextPrimary");
+
+        var footerText = new TextBlock
+        {
+            Text = UiText.Get("OpenFolderInExplorer"), FontWeight = FontWeights.SemiBold, FontSize = 11.5
+        };
+        footerText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        footerPanel.Children.Add(openFolderIcon);
+        footerPanel.Children.Add(footerText);
+
+        var open = DockFlyout.FlatButton(footerPanel, (_, _) =>
         {
             _stackFlyout.Close();
             OpenPath(stack.Path);
         });
-        open.Margin = new Thickness(0, 8, 0, 0);
+        open.Margin = new Thickness(0, 10, 0, 0);
+        open.Padding = new Thickness(8, 7, 8, 7);
+        open.HorizontalAlignment = HorizontalAlignment.Stretch;
+        open.HorizontalContentAlignment = HorizontalAlignment.Center;
         root.Children.Add(open);
         return root;
     }
@@ -496,7 +628,7 @@ public partial class MainWindow
 
             _pinnedApps.Add(new DockApp(pin.Name, pin.ExecutablePath)
             {
-                Icon = ThemePacks.ApplyIcon(ApplicationIconProvider.GetForFile(pin.ExecutablePath), pin.ExecutablePath),
+                Icon = ApplicationIconProvider.GetForFile(pin.ExecutablePath),
                 LaunchArguments = pin.Arguments,
                 ShortcutPath = shortcutPath
             });

@@ -21,29 +21,28 @@
                             Foreground="{DynamicResource WidgetAccent}" />
 
             <!-- Details Trigger Button & Labels -->
-            <Button x:Name="DetailsButton" Grid.Column="1" Style="{StaticResource WidgetButton}" Padding="2,0,6,0" Click="Details_Click"
+            <Button x:Name="DetailsButton" Grid.Column="1" Style="{StaticResource WidgetButton}" Padding="4,0,6,0" Click="Details_Click"
                     HorizontalContentAlignment="Left" ToolTip="{local:Loc WidgetOpenDetails}"
                     AutomationProperties.Name="{Binding Title, RelativeSource={RelativeSource AncestorType=UserControl}}"
                     AutomationProperties.HelpText="{local:Loc WidgetOpenDetails}" AutomationProperties.ItemStatus="{Binding Value}">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                               Foreground="{DynamicResource TextSecondary}" FontSize="9.5" FontWeight="Bold" />
-                    <TextBlock x:Name="ValueText" Typography.NumeralAlignment="Tabular" FontWeight="SemiBold"
-                               FontSize="13.5" Foreground="{DynamicResource TextPrimary}" Margin="0,1,0,0">
+                <Grid VerticalAlignment="Center">
+                    <TextBlock x:Name="ValueText" Typography.NumeralAlignment="Tabular" FontWeight="Bold"
+                               FontSize="14.5" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Text" Value="{Binding Value}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Value}" Value="">
                                         <Setter Property="Text" Value="{local:Loc WidgetSetDuration}" />
-                                        <Setter Property="FontSize" Value="11" />
+                                        <Setter Property="FontSize" Value="11.5" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
                                         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                </StackPanel>
+                </Grid>
             </Button>
 
             <!-- Quick Action Button -->
@@ -73,6 +72,16 @@
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsRunning}" Value="True">
                                         <Setter Property="Fill" Value="{DynamicResource SurfaceDanger}" />
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="PulseRunning">
+                                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.75" To="1.0" Duration="0:0:0.8" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="PulseRunning" />
+                                        </DataTrigger.ExitActions>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>

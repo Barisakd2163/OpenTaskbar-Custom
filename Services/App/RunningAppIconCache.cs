@@ -72,9 +72,8 @@ public sealed class RunningAppIconCache
             _fileIcons[executablePath] = icon = _fileIcon(executablePath);
         }
 
-        // The icon pack is applied last, so switching packs needs no cache reset here.
-        var appId = _windows.TryGetValue(window, out var lookup) ? lookup.AppId : null;
-        return ThemePacks.ApplyIcon(icon, executablePath, appId);
+        // Application icons remain fixed to their native high-resolution system icons.
+        return icon;
     }
 
     /// <summary>Drops entries for windows and executables that are no longer tracked, so the caches stay bounded.</summary>
