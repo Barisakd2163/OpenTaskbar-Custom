@@ -22,6 +22,7 @@ internal static class AdaptiveWidgetAndConfirmChecks
         CheckDensityPersistence(Check);
         CheckDockItemOrderPersistence(Check);
         CheckAdaptiveDensityAndHysteresis(application.Dispatcher, Check);
+        CheckScrollableAppBudget(Check);
         CheckVisualBalanceAndTrayFiltering(application, Check);
         return checks;
     }
@@ -171,6 +172,20 @@ internal static class AdaptiveWidgetAndConfirmChecks
             "Auto widgets must return to full size when there is enough room.");
         check(!coordinator.TryCompactNextAutoWidget(settings),
             "Single-step compaction is not used; density is recalculated for the whole strip.");
+    }
+
+    private static void CheckScrollableAppBudget(Action<bool, string> check)
+    {
+        const double floor = 104;
+
+        check(WidgetCoordinator.EffectiveAppsWidth(600, 400, floor) == 400,
+            "Apps that fit without scrolling must keep their full width in density calculations.");
+        check(WidgetCoordinator.EffectiveAppsWidth(600, 160, floor) == 160,
+            "Scrollable app overflow must not compact widgets while apps still have more than the reserved floor.");
+        check(WidgetCoordinator.EffectiveAppsWidth(600, 0, floor) == floor,
+            "Once apps would be squeezed below the reserved floor, the remaining overflow must reach widget density.");
+        check(WidgetCoordinator.EffectiveAppsWidth(60, 0, floor) == 60,
+            "A short app strip must never be padded up to the reserved floor.");
     }
 
     private static void CheckVisualBalanceAndTrayFiltering(Application application, Action<bool, string> check)

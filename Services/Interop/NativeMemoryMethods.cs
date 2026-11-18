@@ -26,7 +26,11 @@ internal static class NativeMemoryMethods
 
         try
         {
-            GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+
             var handle = Process.GetCurrentProcess().Handle;
             if (handle != 0)
             {

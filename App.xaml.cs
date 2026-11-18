@@ -39,6 +39,11 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Contains("--software-render", StringComparer.OrdinalIgnoreCase))
+        {
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        }
+
         AppLog.Initialize();
         // A previous instance may have been killed while the taskbar was hidden. Heal before choosing a mode:
         // --preview and --inspect never start a replacement session, so they would otherwise leave it hidden.

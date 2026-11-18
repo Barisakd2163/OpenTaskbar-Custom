@@ -401,13 +401,14 @@ public partial class MediaWidget : DockWidget
         try
         {
             var timeline = _session.GetTimelineProperties();
+            if (timeline is null) return;
             _startTime = timeline.StartTime;
             _endTime = timeline.EndTime;
             _position = timeline.Position;
             _positionUpdatedAt = timeline.LastUpdatedTime;
             if (!_draggingProgress) UpdateProgressUI();
         }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        catch (Exception ex)
         {
             AppLog.Warning($"Media timeline refresh failed: {ex.Message}");
         }

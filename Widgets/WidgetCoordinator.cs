@@ -536,6 +536,15 @@ public sealed class WidgetCoordinator : IDisposable
     }
 
     /// <summary>
+    /// Width of the app area that counts toward widget-density overflow. Apps may scroll instead of
+    /// shrinking widgets, but only down to a reserved floor (roughly two dock cells). Below that floor
+    /// the dock is genuinely narrow, so the remaining overflow must be recovered from widget density.
+    /// </summary>
+    public static double EffectiveAppsWidth(double appsContentWidth, double maxAppsWidth, double appScrollFloor)
+        => Math.Min(Math.Max(0, appsContentWidth),
+            Math.Max(Math.Max(0, maxAppsWidth), Math.Max(0, appScrollFloor)));
+
+    /// <summary>
     /// Compact Auto widgets only when the content would exceed the available dock width.
     /// Explicit Compact and Full choices always take precedence. The full-width estimate
     /// accounts for widgets already compacted on a previous layout pass.

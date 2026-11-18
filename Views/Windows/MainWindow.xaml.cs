@@ -2404,12 +2404,12 @@ public partial class MainWindow : Window
         if (!IsFullWidth && _dockWidthOverride is { } fixedWidth)
             maxLayoutWidth = Math.Min(maxLayoutWidth, Math.Max(1, fixedWidth - DockHorizontalChrome));
         // App icons can scroll inside DockScrollViewer, so their natural (unscrolled) width must not be
-        // treated as overflow when deciding whether widgets need to compact. Only the width widgets would
-        // actually have to give up should trigger density changes; otherwise a small dock resize makes
-        // widgets shrink while apps could simply scroll instead.
+        // counted as overflow right away. They may take space from their own scroll range first, but once
+        // that would squeeze them below a couple of cells the remaining overflow has to come from widgets.
         var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
-        var visibleAppsWidth = Math.Min(appsContentWidth, maxAppsWidth);
-        var contentFixedWidth = leadWidth + visibleAppsWidth + trailWidth + widgetsWidth;
+        var appScrollFloor = (double)FindResource("DockCellSize") * 2;
+        var effectiveAppsWidth = WidgetCoordinator.EffectiveAppsWidth(appsContentWidth, maxAppsWidth, appScrollFloor);
+        var contentFixedWidth = leadWidth + effectiveAppsWidth + trailWidth + widgetsWidth;
         if (_widgetCoordinator.UpdateAdaptiveDensity(maxLayoutWidth, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale))
             _resizePending = true; // Measure again after the widget templates switch to compact mode.
 
