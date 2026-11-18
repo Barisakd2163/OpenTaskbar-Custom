@@ -310,6 +310,8 @@
   "AiUsageSession": "セッション（5 時間）",
   "AiUsageWeekly": "週間",
   "AiUsageWeeklyModel": "週間 · {0}",
+  "AiUsageGroupGemini": "Gemini モデル",
+  "AiUsageGroupClaudeGpt": "Claude と GPT モデル",
   "AiUsageResetsIn": "{0} 後にリセット",
   "AiUsageResetsAt": "リセット：{0}",
   "AiUsagePaceMarker": "期間内に均等に使った場合の使用量の位置を示します",

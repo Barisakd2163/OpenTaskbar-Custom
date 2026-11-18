@@ -349,6 +349,8 @@
   "AiUsageSession": "Session (5 h)",
   "AiUsageWeekly": "Weekly",
   "AiUsageWeeklyModel": "Weekly · {0}",
+  "AiUsageGroupGemini": "Gemini models",
+  "AiUsageGroupClaudeGpt": "Claude and GPT models",
   "AiUsageResetsIn": "Resets in {0}",
   "AiUsageResetsAt": "Resets {0}",
   "AiUsagePaceMarker": "Marks where usage would be if spread evenly over the window",

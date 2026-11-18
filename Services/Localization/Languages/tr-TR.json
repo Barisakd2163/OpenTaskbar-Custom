@@ -349,6 +349,8 @@
   "AiUsageSession": "Oturum (5 saat)",
   "AiUsageWeekly": "Haftalık",
   "AiUsageWeeklyModel": "Haftalık · {0}",
+  "AiUsageGroupGemini": "Gemini modelleri",
+  "AiUsageGroupClaudeGpt": "Claude ve GPT modelleri",
   "AiUsageResetsIn": "Sıfırlanma: {0} sonra",
   "AiUsageResetsAt": "Sıfırlanma: {0}",
   "AiUsagePaceMarker": "Kullanımın pencereye eşit dağılması halinde olması gereken noktayı gösterir",

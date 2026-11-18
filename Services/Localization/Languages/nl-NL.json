@@ -310,6 +310,8 @@
   "AiUsageSession": "Sessie (5 uur)",
   "AiUsageWeekly": "Wekelijks",
   "AiUsageWeeklyModel": "Wekelijks · {0}",
+  "AiUsageGroupGemini": "Gemini-modellen",
+  "AiUsageGroupClaudeGpt": "Claude- en GPT-modellen",
   "AiUsageResetsIn": "Herstel over {0}",
   "AiUsageResetsAt": "Herstel: {0}",
   "AiUsagePaceMarker": "Toont waar het gebruik zou staan als het gelijkmatig over de periode verdeeld was",

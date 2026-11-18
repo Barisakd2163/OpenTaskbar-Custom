@@ -238,8 +238,8 @@ public sealed class AiUsageWidget : DockWidget
     /// <summary>The window the dock ring shows; a missing session or weekly window falls back to the highest.</summary>
     internal static AiUsageWindow? RingWindow(AiUsageReport report, AiUsageRing ring) => ring switch
     {
-        AiUsageRing.Session => report.Windows.FirstOrDefault(window => window.LabelKey == "AiUsageSession"),
-        AiUsageRing.Weekly => report.Windows.FirstOrDefault(window => window.LabelKey == "AiUsageWeekly"),
+        AiUsageRing.Session => report.Windows.Where(window => window.LabelKey == "AiUsageSession").MaxBy(window => window.Used),
+        AiUsageRing.Weekly => report.Windows.Where(window => window.LabelKey == "AiUsageWeekly").MaxBy(window => window.Used),
         _ => null
     } ?? Highest(report);
 
@@ -288,6 +288,12 @@ public sealed class AiUsageWidget : DockWidget
         return UiText.Format("AiUsageWeeklyModel", model.Length == 0 ? model : char.ToUpper(model[0], Culture) + model[1..]);
     }
 
+    private static string GroupLabel(string group) =>
+        group.StartsWith("AiUsageGroup", StringComparison.Ordinal) ? UiText.Get(group) : group;
+
+    private string SummaryWindowLabel(AiUsageWindow window) =>
+        window.Group is { Length: > 0 } group ? $"{GroupLabel(group)} ({Label(window)})" : Label(window);
+
     // "h:mm" reads as a clock time once it nears a day, so longer spans show the local weekday and time instead.
     private static readonly TimeSpan RelativeLimit = TimeSpan.FromHours(6);
 
@@ -322,7 +328,7 @@ public sealed class AiUsageWidget : DockWidget
             return error is null ? name : $"{name}: {ErrorText(provider, error)}";
         var parts = new List<string> { $"{name} {Percent(main.Used)}" };
         parts.AddRange(report.Windows.Where(window => window != main && !IsModel(window))
-            .Select(window => $"{Label(window)} {Percent(window.Used)}"));
+            .Select(window => $"{SummaryWindowLabel(window)} {Percent(window.Used)}"));
         if (IsLimitReached(report)) parts.Add(UiText.Get("AiUsageLimitReached"));
         else if (main.ResetsAt is { } reset) parts.Add(ResetText(reset));
         if (error is not null) parts.Add(ErrorText(provider, error));
@@ -419,7 +425,26 @@ public sealed class AiUsageWidget : DockWidget
             }
             if (report is null) continue;
             var pace = PaceWindow(report, now);
-            foreach (var window in report.Windows) root.Children.Add(WindowRow(window, now, window == pace, countdowns));
+            string? currentGroup = null;
+            foreach (var window in report.Windows)
+            {
+                if (window.Group is { Length: > 0 } group && !string.Equals(group, currentGroup, StringComparison.Ordinal))
+                {
+                    var isFirstGroup = currentGroup is null;
+                    currentGroup = group;
+                    var groupHeader = Text(GroupLabel(group), 11.5, "TextPrimary",
+                        new Thickness(0, isFirstGroup ? 0 : 4, 0, window.GroupModels is null ? 4 : 1));
+                    groupHeader.FontWeight = FontWeights.SemiBold;
+                    root.Children.Add(groupHeader);
+                    if (window.GroupModels is { Length: > 0 } models)
+                    {
+                        var subtitle = Text(models, 10, "TextSecondary", new Thickness(0, 0, 0, 5));
+                        subtitle.TextWrapping = TextWrapping.Wrap;
+                        root.Children.Add(subtitle);
+                    }
+                }
+                root.Children.Add(WindowRow(window, now, window == pace, countdowns));
+            }
             if (report.Spend is { } spend) root.Children.Add(SpendRow(spend));
             if (report.Breakdown.Count > 0) root.Children.Add(BreakdownTiles(report.Breakdown));
             var extras = new List<string>();

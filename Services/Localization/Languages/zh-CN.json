@@ -310,6 +310,8 @@
   "AiUsageSession": "会话（5 小时）",
   "AiUsageWeekly": "每周",
   "AiUsageWeeklyModel": "每周 · {0}",
+  "AiUsageGroupGemini": "Gemini 模型",
+  "AiUsageGroupClaudeGpt": "Claude 与 GPT 模型",
   "AiUsageResetsIn": "{0} 后重置",
   "AiUsageResetsAt": "重置时间：{0}",
   "AiUsagePaceMarker": "表示在整个周期内均匀使用时应达到的位置",

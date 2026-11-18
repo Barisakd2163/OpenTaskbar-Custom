@@ -310,6 +310,8 @@
   "AiUsageSession": "세션(5시간)",
   "AiUsageWeekly": "주간",
   "AiUsageWeeklyModel": "주간 · {0}",
+  "AiUsageGroupGemini": "Gemini 모델",
+  "AiUsageGroupClaudeGpt": "Claude 및 GPT 모델",
   "AiUsageResetsIn": "{0} 후 초기화",
   "AiUsageResetsAt": "초기화: {0}",
   "AiUsagePaceMarker": "기간 내에 균등하게 사용했을 때의 위치를 표시합니다",

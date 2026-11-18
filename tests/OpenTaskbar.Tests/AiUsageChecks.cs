@@ -222,6 +222,26 @@ internal static class AiUsageChecks
             """).Report!;
         Check(agyExhausted.LimitReached && agyExhausted.Windows is [{ LabelKey: "AiUsagePool:Claude", Used: 1.0 }],
             "Antigravity buckets that omit remainingFraction when resetTime is set must register as 100% used.");
+        var agyGrouped = AiUsageService.ParseAntigravity("""
+            {"command":{"name":"usage","data":{"groups":[
+                {"name":"Gemini Models","description":"Models within this group: Gemini 4 Hydrogen, Gemini 3.8 Flash",
+                 "buckets":[{"id":"gemini-weekly","window":"weekly","remaining_fraction":0.5878,"reset_time":"2026-11-24T23:28:59Z"},
+                            {"id":"gemini-5h","window":"5h","remaining_fraction":0.4554,"reset_time":"2026-11-18T20:26:15Z"}]},
+                {"name":"Claude and GPT models","description":"Models within this group: Claude Opus 5.5, Claude Sonnet 5.5, GPT-OSS 120B",
+                 "buckets":[{"id":"3p-weekly","window":"weekly","remaining_fraction":0.4907,"reset_time":"2026-11-25T16:21:48Z"},
+                            {"id":"3p-5h","window":"5h","remaining_fraction":0.0,"reset_time":"2026-11-18T21:21:48Z"}]},
+                {"name":"Gemini 4 Argon","description":"For paid Pro plans, Argon quota is separate.",
+                 "buckets":[{"id":"gemini-argon-wtu-weekly","window":"weekly","remaining_fraction":0.6967,"reset_time":"2026-11-25T16:56:21Z"}]}
+            ]}}}
+            """).Report!;
+        Check(!agyGrouped.LimitReached && agyGrouped.Windows.Count == 5
+            && agyGrouped.Windows[0] is { Group: "AiUsageGroupGemini", GroupModels: "Gemini 4 Hydrogen, Gemini 3.8 Flash", LabelKey: "AiUsageWeekly", WindowSeconds: 604800 }
+            && agyGrouped.Windows[1] is { Group: "AiUsageGroupGemini", LabelKey: "AiUsageSession", WindowSeconds: 18000 }
+            && agyGrouped.Windows[3] is { Group: "AiUsageGroupClaudeGpt", LabelKey: "AiUsageSession", Used: 1.0 }
+            && agyGrouped.Windows[4] is { Group: "Gemini 4 Argon", GroupModels: null, LabelKey: "AiUsageWeekly" }
+            && AiUsageWidget.RingWindow(agyGrouped, AiUsageRing.Session)!.Used == 1.0
+            && Math.Abs(AiUsageWidget.RingWindow(agyGrouped, AiUsageRing.Weekly)!.Used - (1 - 0.4907)) < 1e-6,
+            "Antigravity grouped usage must preserve weekly and 5-hour windows per model group.");
 
         var path = Path.Combine(Path.GetTempPath(), $"ot-ai-fixture-{Guid.NewGuid():N}.json");
         try
@@ -286,7 +306,7 @@ internal static class AiUsageChecks
         Check(AiUsageWidget.RetryDelay(null, 0, null).TotalSeconds is >= 300 and <= 330, "Successful loads must refresh after five minutes plus jitter.");
 
         string[] keys = ["WidgetAiUsage", "WidgetAiUsageDescription", "AiUsageSettingsHeading", "AiUsageProviderHint",
-            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageWeeklyModel", "AiUsageResetsIn", "AiUsageResetsAt",
+            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageResetsIn", "AiUsageResetsAt",
             "AiUsageUpdated", "AiUsageRefresh", "AiUsageOpenDashboard", "AiUsageNoProviders", "AiUsageRingLabel",
             "AiUsageRingHighest", "AiUsageRingSession", "AiUsageLimitReached", "AiUsageStatusOk", "AiUsageStatusSignIn",
             "AiUsageStatusStale", "AiUsageStatusNearLimit", "AiUsageStatusHigh", "AiUsageStatusUnavailable", "AiUsageStatusLoading", "AiUsagePaceIn", "AiUsagePaceAt", "AiUsagePaceMarker", "HoursMinutesFormat",

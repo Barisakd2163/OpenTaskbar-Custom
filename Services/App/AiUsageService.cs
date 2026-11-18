@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -13,7 +14,7 @@ using OpenTaskbar.Models;
 namespace OpenTaskbar.Services;
 
 /// <summary>One quota window; Severity is the provider's own level ("normal", "warning", ...) when it sends one.</summary>
-public sealed record AiUsageWindow(string LabelKey, double Used, DateTimeOffset? ResetsAt, long? WindowSeconds, string? Severity = null);
+public sealed record AiUsageWindow(string LabelKey, double Used, DateTimeOffset? ResetsAt, long? WindowSeconds, string? Severity = null, string? Group = null, string? GroupModels = null);
 public sealed record AiUsageShare(string Name, double Used);
 public sealed record AiUsageSpend(decimal Used, decimal? Limit, string Currency, double? Used01);
 
@@ -56,14 +57,14 @@ public static class AiUsageService
             if (credential is null) return new(null, "ErrorAiUsageSignIn");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             timeout.CancelAfter(TimeSpan.FromSeconds(20));
-            using var request = provider == AiProviders.Antigravity
-                ? new HttpRequestMessage(HttpMethod.Post, "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota")
-                {
-                    Content = new StringContent("{}", Encoding.UTF8, "application/json")
-                }
-                : new HttpRequestMessage(HttpMethod.Get, provider == AiProviders.Claude
-                    ? "https://api.anthropic.com/api/oauth/usage"
-                    : "https://chatgpt.com/backend-api/wham/usage");
+            if (provider == AiProviders.Antigravity && await TryLoadAntigravityCliAsync(credential.Plan, timeout.Token).ConfigureAwait(false) is { } cliReport)
+                return new(cliReport, null);
+            using var request = new HttpRequestMessage(HttpMethod.Get, provider switch
+            {
+                AiProviders.Claude => "https://api.anthropic.com/api/oauth/usage",
+                AiProviders.Codex => "https://chatgpt.com/backend-api/wham/usage",
+                _ => "https://aicode.googleapis.com/v1alpha:fetchQuotaStatus"
+            });
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
             if (provider == AiProviders.Claude) request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
             else if (provider == AiProviders.Antigravity) request.Headers.UserAgent.ParseAdd("antigravity");
@@ -230,45 +231,88 @@ public static class AiUsageService
             else if (provider == AiProviders.Antigravity)
             {
                 plan ??= Text(root, "plan") ?? Text(root, "tier");
-                var pools = new Dictionary<string, (double Used, DateTimeOffset? ResetsAt)>(StringComparer.Ordinal);
-                void CollectBucket(string? modelId, JsonElement quota)
+                var groups = Property(Property(Property(root, "command"), "data"), "groups")
+                    ?? Property(Property(root, "quotaSummary"), "groups")
+                    ?? Property(root, "groups");
+                if (groups is { ValueKind: JsonValueKind.Array } groupArray)
                 {
-                    if (AntigravityPool(modelId) is not { } pool || quota.ValueKind != JsonValueKind.Object) return;
-                    DateTimeOffset? resetAt = Text(quota, "resetTime") is { } resetText
-                        && DateTimeOffset.TryParse(resetText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
-                        ? parsed : null;
-                    double used;
-                    if (Property(quota, "remainingFraction") is { } rem)
+                    foreach (var group in groupArray.EnumerateArray())
                     {
-                        if (Number(rem) is not { } fraction || !double.IsFinite(fraction)) return;
-                        used = Math.Clamp(1.0 - fraction, 0.0, 1.0);
+                        var groupName = NormalizeAntigravityGroup(Text(group, "name") ?? Text(group, "displayName"));
+                        if (string.IsNullOrWhiteSpace(groupName) || Property(group, "buckets") is not { ValueKind: JsonValueKind.Array } groupBuckets)
+                            continue;
+                        var groupModels = ExtractGroupModels(Text(group, "description"));
+                        foreach (var bucket in groupBuckets.EnumerateArray())
+                        {
+                            var resetText = Text(bucket, "reset_time") ?? Text(bucket, "resetTime");
+                            DateTimeOffset? resetAt = resetText is not null
+                                && DateTimeOffset.TryParse(resetText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+                                ? parsed : null;
+                            double used;
+                            if ((Property(bucket, "remaining_fraction") ?? Property(bucket, "remainingFraction")) is { } rem)
+                            {
+                                if (Number(rem) is not { } fraction || !double.IsFinite(fraction)) continue;
+                                used = Math.Clamp(1.0 - fraction, 0.0, 1.0);
+                            }
+                            else if (resetAt is not null) used = 1.0;
+                            else continue;
+                            var windowId = Text(bucket, "window") ?? Text(bucket, "refreshWindowLabel") ?? Text(bucket, "id") ?? Text(bucket, "bucketId");
+                            var isFiveHour = windowId is not null
+                                && (windowId.Equals("5h", StringComparison.OrdinalIgnoreCase) || windowId.EndsWith("-5h", StringComparison.OrdinalIgnoreCase));
+                            windows.Add(new(
+                                isFiveHour ? "AiUsageSession" : "AiUsageWeekly",
+                                used,
+                                resetAt,
+                                isFiveHour ? 18000L : 604800L,
+                                Group: groupName,
+                                GroupModels: groupModels));
+                        }
                     }
-                    else if (resetAt is not null) used = 1.0;
-                    else return;
-                    if (!pools.TryGetValue(pool, out var existing) || used > existing.Used
-                        || (Math.Abs(used - existing.Used) < 1e-6 && existing.ResetsAt is null && resetAt is not null))
-                        pools[pool] = (used, resetAt ?? existing.ResetsAt);
                 }
-                if (Property(root, "buckets") is { ValueKind: JsonValueKind.Array } buckets)
-                    foreach (var bucket in buckets.EnumerateArray())
-                        CollectBucket(Text(bucket, "modelId"), bucket);
-                if (Property(root, "models") is { ValueKind: JsonValueKind.Object } models)
-                    foreach (var prop in models.EnumerateObject())
-                        if (Property(prop.Value, "quotaInfo") is { } quotaInfo)
-                            CollectBucket(prop.Name, quotaInfo);
-                // When GPT-OSS shares the exact same partner quota pool as Claude, avoid repeating an identical row.
-                if (pools.TryGetValue("Claude", out var claudePool) && pools.TryGetValue("GPT-OSS", out var gptPool)
-                    && Math.Abs(claudePool.Used - gptPool.Used) < 1e-4 && claudePool.ResetsAt == gptPool.ResetsAt)
-                    pools.Remove("GPT-OSS");
-                foreach (var name in new[] { "Gemini Pro", "Gemini Flash", "Claude", "GPT-OSS" })
+                else
                 {
-                    if (!pools.TryGetValue(name, out var pool)) continue;
-                    long windowSeconds = pool.ResetsAt is { } r && (r - now).TotalSeconds > 18000 ? 604800L : 18000L;
-                    windows.Add(new("AiUsagePool:" + name, pool.Used, pool.ResetsAt, windowSeconds));
+                    var pools = new Dictionary<string, (double Used, DateTimeOffset? ResetsAt)>(StringComparer.Ordinal);
+                    void CollectBucket(string? modelId, JsonElement quota)
+                    {
+                        if (AntigravityPool(modelId) is not { } pool || quota.ValueKind != JsonValueKind.Object) return;
+                        DateTimeOffset? resetAt = Text(quota, "resetTime") is { } resetText
+                            && DateTimeOffset.TryParse(resetText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+                            ? parsed : null;
+                        double used;
+                        if (Property(quota, "remainingFraction") is { } rem)
+                        {
+                            if (Number(rem) is not { } fraction || !double.IsFinite(fraction)) return;
+                            used = Math.Clamp(1.0 - fraction, 0.0, 1.0);
+                        }
+                        else if (resetAt is not null) used = 1.0;
+                        else return;
+                        if (!pools.TryGetValue(pool, out var existing) || used > existing.Used
+                            || (Math.Abs(used - existing.Used) < 1e-6 && existing.ResetsAt is null && resetAt is not null))
+                            pools[pool] = (used, resetAt ?? existing.ResetsAt);
+                    }
+                    if (Property(root, "buckets") is { ValueKind: JsonValueKind.Array } buckets)
+                        foreach (var bucket in buckets.EnumerateArray())
+                            CollectBucket(Text(bucket, "modelId"), bucket);
+                    if (Property(root, "models") is { ValueKind: JsonValueKind.Object } models)
+                        foreach (var prop in models.EnumerateObject())
+                            if (Property(prop.Value, "quotaInfo") is { } quotaInfo)
+                                CollectBucket(prop.Name, quotaInfo);
+                    // When GPT-OSS shares the exact same partner quota pool as Claude, avoid repeating an identical row.
+                    if (pools.TryGetValue("Claude", out var claudePool) && pools.TryGetValue("GPT-OSS", out var gptPool)
+                        && Math.Abs(claudePool.Used - gptPool.Used) < 1e-4 && claudePool.ResetsAt == gptPool.ResetsAt)
+                        pools.Remove("GPT-OSS");
+                    foreach (var name in new[] { "Gemini Pro", "Gemini Flash", "Claude", "GPT-OSS" })
+                    {
+                        if (!pools.TryGetValue(name, out var pool)) continue;
+                        long windowSeconds = pool.ResetsAt is { } r && (r - now).TotalSeconds > 18000 ? 604800L : 18000L;
+                        windows.Add(new("AiUsagePool:" + name, pool.Used, pool.ResetsAt, windowSeconds));
+                    }
                 }
                 report = new(provider, PlanLabel(plan), windows, now)
                 {
-                    LimitReached = windows.Count > 0 && windows.All(window => window.Used >= 1.0)
+                    LimitReached = windows.Count > 0
+                        && windows.GroupBy(window => window.Group ?? window.LabelKey, StringComparer.Ordinal)
+                            .All(group => group.Any(window => window.Used >= 1.0))
                 };
             }
             else
@@ -385,6 +429,63 @@ public static class AiUsageService
         if (modelId.StartsWith("claude-", StringComparison.OrdinalIgnoreCase)) return "Claude";
         if (modelId.StartsWith("gpt-", StringComparison.OrdinalIgnoreCase)) return "GPT-OSS";
         return null;
+    }
+
+    private static string? NormalizeAntigravityGroup(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var trimmed = name.Trim();
+        if (trimmed.Equals("Gemini Models", StringComparison.OrdinalIgnoreCase)) return "AiUsageGroupGemini";
+        if (trimmed.Equals("Claude and GPT models", StringComparison.OrdinalIgnoreCase)) return "AiUsageGroupClaudeGpt";
+        return trimmed;
+    }
+
+    private static string? ExtractGroupModels(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return null;
+        const string prefix = "Models within this group:";
+        return description.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? description[prefix.Length..].Trim()
+            : null;
+    }
+
+    private static async Task<AiUsageReport?> TryLoadAntigravityCliAsync(string? plan, CancellationToken cancellation)
+    {
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo("agy")
+                {
+                    ArgumentList = { "-p", "/usage", "--output-format", "json" },
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8
+                }
+            };
+            if (!process.Start()) return null;
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellation);
+            var stderrTask = process.StandardError.ReadToEndAsync(cancellation);
+            try
+            {
+                await process.WaitForExitAsync(cancellation).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                throw;
+            }
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            _ = await stderrTask.ConfigureAwait(false);
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
+            return ParseAntigravity(stdout, plan).Report;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

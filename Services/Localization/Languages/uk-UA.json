@@ -310,6 +310,8 @@
   "AiUsageSession": "Сеанс (5 год)",
   "AiUsageWeekly": "За тиждень",
   "AiUsageWeeklyModel": "За тиждень · {0}",
+  "AiUsageGroupGemini": "Моделі Gemini",
+  "AiUsageGroupClaudeGpt": "Моделі Claude і GPT",
   "AiUsageResetsIn": "Скидання через {0}",
   "AiUsageResetsAt": "Скидання: {0}",
   "AiUsagePaceMarker": "Показує, де було б використання за рівномірного витрачання протягом періоду",
