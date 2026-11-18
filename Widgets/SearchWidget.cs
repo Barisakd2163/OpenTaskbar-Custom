@@ -37,7 +37,7 @@ public sealed class SearchWidget : DockWidget
         _button.Click += (_, _) =>
         {
             DockFlyout.CloseAll();
-            var error = ShellShortcuts.OpenWindowsSearch();
+            var error = ShellShortcuts.OpenWindowsSearch(_button);
             if (error is not null) ReportError?.Invoke(error);
         };
 
