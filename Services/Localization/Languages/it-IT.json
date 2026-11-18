@@ -315,6 +315,7 @@
   "AiUsageUnofficialNote": "Usa endpoint non ufficiali; la disponibilità può cambiare.",
   "AiUsageSession": "Sessione (5 ore)",
   "AiUsageWeekly": "Settimanale",
+  "AiUsageMonthly": "Mensile",
   "AiUsageWeeklyModel": "Settimanale · {0}",
   "AiUsageGroupGemini": "Modelli Gemini",
   "AiUsageGroupClaudeGpt": "Modelli Claude e GPT",

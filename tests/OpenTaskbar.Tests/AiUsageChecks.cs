@@ -200,7 +200,20 @@ internal static class AiUsageChecks
             Check(AiUsageService.ParseClaude(json, null).Error == "ErrorAiUsageLoad", "Invalid Claude responses must return a localization key.");
             Check(AiUsageService.ParseCodex(json).Error == "ErrorAiUsageLoad", "Invalid Codex responses must return a localization key.");
             Check(AiUsageService.ParseAntigravity(json).Error == "ErrorAiUsageLoad", "Invalid Antigravity responses must return a localization key.");
+            Check(AiUsageService.ParseOpenCode(json).Error == "ErrorAiUsageLoad", "Invalid OpenCode responses must return a localization key.");
         }
+
+        var openCode = AiUsageService.ParseOpenCode("""
+            {"rolling5h":{"usageDollars":2.34,"limitDollars":12,"usagePercent":19.5,"resetInSec":7200},
+             "weekly":{"usageDollars":8.91,"limitDollars":30,"usagePercent":29.7,"resetInSec":345600},
+             "monthly":{"usageDollars":15,"limitDollars":60,"resetInSec":1414800}}
+            """).Report!;
+        Check(openCode.Provider == AiProviders.OpenCode && openCode.Plan == "Go" && !openCode.LimitReached && openCode.Windows.Count == 3
+            && openCode.Windows[0] is { LabelKey: "AiUsageSession", WindowSeconds: 18000 } && Math.Abs(openCode.Windows[0].Used - 0.195) < 1e-6
+            && openCode.Windows[1] is { LabelKey: "AiUsageWeekly", WindowSeconds: 604800 } && Math.Abs(openCode.Windows[1].Used - 0.297) < 1e-6
+            && openCode.Windows[2] is { LabelKey: "AiUsageMonthly", WindowSeconds: 2592000 } && Math.Abs(openCode.Windows[2].Used - 0.25) < 1e-6
+            && openCode.Windows.All(window => window.ResetsAt is not null),
+            "OpenCode Go must parse 5-hour, weekly and monthly rolling quota windows and derive percentage from dollars when usagePercent is omitted.");
 
         var agy = AiUsageService.ParseAntigravity("""
             {"buckets":[
@@ -262,6 +275,10 @@ internal static class AiUsageChecks
             Check(AiUsageService.ReadAntigravityToken(path) == "fixture-agy", "Antigravity must read its nested keyring token.");
             File.WriteAllText(path, """{"access_token":"fixture-agy-flat","expiry_date":1}""");
             Check(AiUsageService.ReadAntigravityToken(path) is null, "Expired Antigravity oauth_creds must not be used.");
+            File.WriteAllText(path, """{"opencode-go":{"type":"api","key":"fixture-oc-v1"}}""");
+            Check(AiUsageService.ReadOpenCodeToken(path) == "fixture-oc-v1", "OpenCode must read v1 auth.json provider keys.");
+            File.WriteAllText(path, """[{"integrationID":"ollama-cloud","active":true,"value":{"key":"other"}},{"integrationID":"opencode-go","active":true,"value":{"type":"key","key":"fixture-oc-v2"}}]""");
+            Check(AiUsageService.ReadOpenCodeToken(path) == "fixture-oc-v2", "OpenCode must read v2 auth export array entries.");
             File.WriteAllText(path, "null");
             Check(AiUsageService.ReadClaudeToken(path) is null && AiUsageService.ReadCodexToken(path) is null,
                 "Malformed credential files must fail closed.");
@@ -306,7 +323,7 @@ internal static class AiUsageChecks
         Check(AiUsageWidget.RetryDelay(null, 0, null).TotalSeconds is >= 300 and <= 330, "Successful loads must refresh after five minutes plus jitter.");
 
         string[] keys = ["WidgetAiUsage", "WidgetAiUsageDescription", "AiUsageSettingsHeading", "AiUsageProviderHint",
-            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageResetsIn", "AiUsageResetsAt",
+            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageMonthly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageResetsIn", "AiUsageResetsAt",
             "AiUsageUpdated", "AiUsageRefresh", "AiUsageOpenDashboard", "AiUsageNoProviders", "AiUsageRingLabel",
             "AiUsageRingHighest", "AiUsageRingSession", "AiUsageLimitReached", "AiUsageStatusOk", "AiUsageStatusSignIn",
             "AiUsageStatusStale", "AiUsageStatusNearLimit", "AiUsageStatusHigh", "AiUsageStatusUnavailable", "AiUsageStatusLoading", "AiUsagePaceIn", "AiUsagePaceAt", "AiUsagePaceMarker", "HoursMinutesFormat",

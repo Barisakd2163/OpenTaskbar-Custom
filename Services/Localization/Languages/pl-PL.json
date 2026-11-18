@@ -315,6 +315,7 @@
   "AiUsageUnofficialNote": "Korzysta z nieoficjalnych punktów końcowych; dostępność może się zmienić.",
   "AiUsageSession": "Sesja (5 godz.)",
   "AiUsageWeekly": "Tygodniowo",
+  "AiUsageMonthly": "Miesięcznie",
   "AiUsageWeeklyModel": "Tygodniowo · {0}",
   "AiUsageGroupGemini": "Modele Gemini",
   "AiUsageGroupClaudeGpt": "Modele Claude i GPT",

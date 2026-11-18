@@ -14,7 +14,7 @@ namespace OpenTaskbar.Widgets;
 /// <summary>Opt-in CLI quota meters; only active, enabled providers may poll.</summary>
 public sealed class AiUsageWidget : DockWidget
 {
-    private static readonly AiProviders[] Providers = [AiProviders.Claude, AiProviders.Codex, AiProviders.Antigravity];
+    private static readonly AiProviders[] Providers = [AiProviders.Claude, AiProviders.Codex, AiProviders.Antigravity, AiProviders.OpenCode];
     private readonly Func<AiProviders, CancellationToken, Task<(AiUsageReport?, string?)>>? _loader;
     private readonly Dictionary<AiProviders, AiUsageReport> _reports = [];
     private readonly Dictionary<AiProviders, string> _errors = [];
@@ -31,6 +31,7 @@ public sealed class AiUsageWidget : DockWidget
     private readonly Card _claude;
     private readonly Card _codex;
     private readonly Card _antigravity;
+    private readonly Card _openCode;
     private readonly DockFlyout _flyout = new();
     private CancellationTokenSource? _loading;
     private AiProviders _loadingProvider;
@@ -46,6 +47,7 @@ public sealed class AiUsageWidget : DockWidget
         _claude = AddCard("Claude", "LogoClaude");
         _codex = AddCard("Codex", "LogoCodex");
         _antigravity = AddCard("Antigravity", "LogoAntigravity");
+        _openCode = AddCard("OpenCode", "LogoOpenCode");
         _flyout.Closed += (_, _) => _countdowns.Clear();
         Content = _cards;
         Render();
@@ -211,10 +213,17 @@ public sealed class AiUsageWidget : DockWidget
     {
         AiProviders.Claude => "Claude Code",
         AiProviders.Codex => "Codex",
+        AiProviders.OpenCode => "OpenCode Go",
         _ => "Antigravity"
     };
     private string ErrorText(AiProviders provider, string key) => key == "ErrorAiUsageSignIn"
-        ? UiText.Format(key, provider == AiProviders.Claude ? "claude" : provider == AiProviders.Codex ? "codex login" : "agy") : UiText.Get(key);
+        ? UiText.Format(key, provider switch
+        {
+            AiProviders.Claude => "claude",
+            AiProviders.Codex => "codex login",
+            AiProviders.OpenCode => "opencode auth login",
+            _ => "agy"
+        }) : UiText.Get(key);
     private CultureInfo Culture => Settings.Language.Culture;
     private static bool IsModel(AiUsageWindow window) => window.LabelKey.StartsWith("AiUsageWeeklyModel:", StringComparison.Ordinal);
     private static bool IsPool(AiUsageWindow window) => window.LabelKey.StartsWith("AiUsagePool:", StringComparison.Ordinal);
@@ -375,7 +384,7 @@ public sealed class AiUsageWidget : DockWidget
                 providers.Length == 0 ? UiText.Get("AiUsageNoProviders") : string.Join("\n", providers.Select(Summary)));
         }
         _summary.Button.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var (provider, card) in new[] { (AiProviders.Claude, _claude), (AiProviders.Codex, _codex), (AiProviders.Antigravity, _antigravity) })
+        foreach (var (provider, card) in new[] { (AiProviders.Claude, _claude), (AiProviders.Codex, _codex), (AiProviders.Antigravity, _antigravity), (AiProviders.OpenCode, _openCode) })
         {
             var visible = !summary && _enabled.HasFlag(provider);
             card.Button.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
@@ -649,6 +658,7 @@ public sealed class AiUsageWidget : DockWidget
             {
                 AiProviders.Claude => "https://claude.ai/settings/usage",
                 AiProviders.Codex => "https://chatgpt.com/codex/settings/usage",
+                AiProviders.OpenCode => "https://opencode.ai/go",
                 _ => "https://antigravity.google/docs"
             };
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });

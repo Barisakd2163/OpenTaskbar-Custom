@@ -315,6 +315,7 @@
   "AiUsageUnofficialNote": "Utilise des points d’accès non officiels ; leur disponibilité peut changer.",
   "AiUsageSession": "Session (5 h)",
   "AiUsageWeekly": "Hebdomadaire",
+  "AiUsageMonthly": "Mensuel",
   "AiUsageWeeklyModel": "Hebdomadaire · {0}",
   "AiUsageGroupGemini": "Modèles Gemini",
   "AiUsageGroupClaudeGpt": "Modèles Claude et GPT",

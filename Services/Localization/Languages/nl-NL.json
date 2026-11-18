@@ -315,6 +315,7 @@
   "AiUsageUnofficialNote": "Gebruikt onofficiële eindpunten; de beschikbaarheid kan veranderen.",
   "AiUsageSession": "Sessie (5 uur)",
   "AiUsageWeekly": "Wekelijks",
+  "AiUsageMonthly": "Maandelijks",
   "AiUsageWeeklyModel": "Wekelijks · {0}",
   "AiUsageGroupGemini": "Gemini-modellen",
   "AiUsageGroupClaudeGpt": "Claude- en GPT-modellen",

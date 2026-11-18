@@ -46,7 +46,8 @@ public static class AiUsageService
 
     internal static async Task<LoadResult> LoadWithPolicyAsync(AiProviders provider, CancellationToken cancellation)
     {
-        if (provider is not (AiProviders.Claude or AiProviders.Codex or AiProviders.Antigravity)) return new(null, "ErrorAiUsageLoad");
+        if (provider is not (AiProviders.Claude or AiProviders.Codex or AiProviders.Antigravity or AiProviders.OpenCode))
+            return new(null, "ErrorAiUsageLoad");
         int? status = null;
         try
         {
@@ -63,6 +64,7 @@ public static class AiUsageService
             {
                 AiProviders.Claude => "https://api.anthropic.com/api/oauth/usage",
                 AiProviders.Codex => "https://chatgpt.com/backend-api/wham/usage",
+                AiProviders.OpenCode => "https://opencode.ai/zen/go/v1/usage",
                 _ => "https://aicode.googleapis.com/v1alpha:fetchQuotaStatus"
             });
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
@@ -81,6 +83,7 @@ public static class AiUsageService
             {
                 AiProviders.Claude => ParseClaude(json, credential.Plan),
                 AiProviders.Codex => ParseCodex(json),
+                AiProviders.OpenCode => ParseOpenCode(json, credential.Plan),
                 _ => ParseAntigravity(json, credential.Plan)
             };
             return new(report, error);
@@ -108,6 +111,7 @@ public static class AiUsageService
         {
             AiProviders.Claude => ("CLAUDE_CONFIG_DIR", ".claude", ".credentials.json"),
             AiProviders.Codex => ("CODEX_HOME", ".codex", "auth.json"),
+            AiProviders.OpenCode => ("OPENCODE_CONFIG_DIR", Path.Combine(".local", "share", "opencode"), "auth.json"),
             _ => ("GEMINI_CONFIG_DIR", ".gemini", "oauth_creds.json")
         };
         var directory = Environment.GetEnvironmentVariable(envVar);
@@ -124,7 +128,14 @@ public static class AiUsageService
         try
         {
             var fileStamp = File.GetLastWriteTimeUtc(CredentialPath(provider));
-            return fileStamp > stamp ? fileStamp : stamp;
+            if (fileStamp > stamp) stamp = fileStamp;
+            if (provider == AiProviders.OpenCode)
+            {
+                var dbPath = Path.Combine(Path.GetDirectoryName(CredentialPath(provider)) ?? string.Empty, "opencode.db");
+                var dbStamp = File.GetLastWriteTimeUtc(dbPath);
+                if (dbStamp > stamp) stamp = dbStamp;
+            }
+            return stamp;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
             or NotSupportedException or SecurityException) { return stamp; }
@@ -133,6 +144,7 @@ public static class AiUsageService
     internal static string? ReadClaudeToken(string? path = null) => ReadCredential(AiProviders.Claude, path ?? CredentialPath(AiProviders.Claude))?.Token;
     internal static string? ReadCodexToken(string? path = null) => ReadCredential(AiProviders.Codex, path ?? CredentialPath(AiProviders.Codex))?.Token;
     internal static string? ReadAntigravityToken(string? path = null) => ReadCredential(AiProviders.Antigravity, path)?.Token;
+    internal static string? ReadOpenCodeToken(string? path = null) => ReadCredential(AiProviders.OpenCode, path)?.Token;
 
     private static Credential? ReadCredential(AiProviders provider, string? path = null)
     {
@@ -141,12 +153,26 @@ public static class AiUsageService
             && ReadKeyringCredential("gemini:antigravity", out var unusedLastWritten) is { } keyringJson
             && ParseAntigravityCredential(keyringJson) is { } keyringCred)
             return keyringCred;
+        if (provider == AiProviders.OpenCode && path is null)
+        {
+            foreach (var envKey in new[] { "OPENCODE_GO_API_KEY", "OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY" })
+                if (Environment.GetEnvironmentVariable(envKey) is { Length: > 0 } envToken && !string.IsNullOrWhiteSpace(envToken))
+                    return new(envToken.Trim());
+        }
         try
         {
-            using var stream = new FileStream(path ?? CredentialPath(provider), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var targetPath = path ?? CredentialPath(provider);
+            if (provider == AiProviders.OpenCode && path is null && !File.Exists(targetPath))
+            {
+                var legacyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".opencode", "auth.json");
+                if (File.Exists(legacyPath)) targetPath = legacyPath;
+                else if (TryReadOpenCodeCliCredential() is { } cliCred) return cliCred;
+            }
+            using var stream = new FileStream(targetPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var document = JsonDocument.Parse(stream);
             var root = document.RootElement;
             if (provider == AiProviders.Antigravity) return ParseAntigravityCredential(root);
+            if (provider == AiProviders.OpenCode) return ParseOpenCodeCredential(root);
             var auth = root.GetProperty(provider == AiProviders.Claude ? "claudeAiOauth" : "tokens");
             var token = auth.GetProperty(provider == AiProviders.Claude ? "accessToken" : "access_token").GetString();
             if (string.IsNullOrWhiteSpace(token)) return null;
@@ -186,9 +212,73 @@ public static class AiUsageService
         return new(token, Plan: Text(root, "plan") ?? Text(root, "tier"));
     }
 
+    private static Credential? ParseOpenCodeCredential(JsonElement root)
+    {
+        static string? ExtractKey(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object) return null;
+            var target = Property(element, "value") ?? element;
+            return Text(target, "key") ?? Text(target, "apiKey") ?? Text(target, "access_token") ?? Text(target, "accessToken") ?? Text(target, "token");
+        }
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            string? fallback = null;
+            foreach (var item in root.EnumerateArray())
+            {
+                var id = Text(item, "integrationID") ?? Text(item, "id") ?? Text(item, "provider");
+                if (id is null || (!id.Equals("opencode-go", StringComparison.OrdinalIgnoreCase)
+                    && !id.Equals("opencode", StringComparison.OrdinalIgnoreCase))) continue;
+                if (ExtractKey(item) is not { Length: > 0 } key || string.IsNullOrWhiteSpace(key)) continue;
+                if (id.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) && Flag(item, "active")) return new(key);
+                fallback ??= key;
+            }
+            return fallback is null ? null : new(fallback);
+        }
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var section in new[] { "opencode-go", "opencode", "zen" })
+                if (Property(root, section) is { } child && ExtractKey(child) is { Length: > 0 } key && !string.IsNullOrWhiteSpace(key))
+                    return new(key, Plan: Text(child, "plan") ?? Text(root, "plan"));
+            if (ExtractKey(root) is { Length: > 0 } flatKey && !string.IsNullOrWhiteSpace(flatKey))
+                return new(flatKey, Plan: Text(root, "plan"));
+        }
+        return null;
+    }
+
+    private static Credential? TryReadOpenCodeCliCredential()
+    {
+        try
+        {
+            var dbPath = Path.Combine(Path.GetDirectoryName(CredentialPath(AiProviders.OpenCode)) ?? string.Empty, "opencode.db");
+            if (!File.Exists(dbPath)) return null;
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo("opencode")
+                {
+                    ArgumentList = { "auth", "export" },
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8
+                }
+            };
+            if (!process.Start()) return null;
+            var stdout = process.StandardOutput.ReadToEnd();
+            if (!process.WaitForExit(5000) || process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
+            using var document = JsonDocument.Parse(stdout);
+            return ParseOpenCodeCredential(document.RootElement);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     internal static (AiUsageReport? Report, string? Error) ParseClaude(string json, string? plan) => Parse(json, AiProviders.Claude, plan);
     internal static (AiUsageReport? Report, string? Error) ParseCodex(string json) => Parse(json, AiProviders.Codex, null);
     internal static (AiUsageReport? Report, string? Error) ParseAntigravity(string json, string? plan = null) => Parse(json, AiProviders.Antigravity, plan);
+    internal static (AiUsageReport? Report, string? Error) ParseOpenCode(string json, string? plan = null) => Parse(json, AiProviders.OpenCode, plan);
 
     private static (AiUsageReport? Report, string? Error) Parse(string json, AiProviders provider, string? plan)
     {
@@ -313,6 +403,53 @@ public static class AiUsageService
                     LimitReached = windows.Count > 0
                         && windows.GroupBy(window => window.Group ?? window.LabelKey, StringComparer.Ordinal)
                             .All(group => group.Any(window => window.Used >= 1.0))
+                };
+            }
+            else if (provider == AiProviders.OpenCode)
+            {
+                plan ??= Text(root, "plan") ?? Text(root, "plan_type") ?? Text(root, "tier") ?? "Go";
+                (string[] Keys, string LabelKey, long Seconds)[] specs =
+                [
+                    (["rolling5h", "rollingUsage", "five_hour", "fiveHour"], "AiUsageSession", 18000L),
+                    (["weekly", "weeklyUsage", "seven_day"], "AiUsageWeekly", 604800L),
+                    (["monthly", "monthlyUsage", "thirty_day"], "AiUsageMonthly", 2592000L)
+                ];
+                foreach (var (keys, labelKey, defaultSeconds) in specs)
+                {
+                    JsonElement? slot = null;
+                    foreach (var key in keys)
+                        if (Property(root, key) is { ValueKind: JsonValueKind.Object } found) { slot = found; break; }
+                    if (slot is not { } value) continue;
+                    double? used = null;
+                    foreach (var pctKey in new[] { "usagePercent", "used_percent", "utilization", "percent" })
+                        if (Property(value, pctKey) is { } pct && Percent(pct) is { } parsedPct) { used = parsedPct; break; }
+                    if (used is null
+                        && (Property(value, "usageDollars") ?? Property(value, "used")) is { } usedElem && Number(usedElem) is { } usedAmt
+                        && (Property(value, "limitDollars") ?? Property(value, "limit")) is { } limitElem && Number(limitElem) is { } limitAmt
+                        && double.IsFinite(usedAmt) && double.IsFinite(limitAmt) && limitAmt > 0)
+                        used = Math.Clamp(usedAmt / limitAmt, 0.0, 1.0);
+                    if (used is not { } finalUsed) continue;
+                    DateTimeOffset? resetAt = null;
+                    foreach (var absKey in new[] { "resetsAt", "reset_at", "resetTime" })
+                    {
+                        if (Property(value, absKey) is not { } abs) continue;
+                        if (abs.ValueKind == JsonValueKind.String
+                            && DateTimeOffset.TryParse(abs.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var isoReset))
+                        { resetAt = isoReset; break; }
+                        if (UnixReset(abs) is { } unixReset) { resetAt = unixReset; break; }
+                    }
+                    if (resetAt is null)
+                    {
+                        foreach (var relKey in new[] { "resetInSec", "reset_after_seconds", "resetInSeconds" })
+                            if (Property(value, relKey) is { } rel && Number(rel) is { } after && after is >= 0 and < MaxResetSeconds)
+                            { resetAt = now.AddSeconds(after); break; }
+                    }
+                    windows.Add(new(labelKey, finalUsed, resetAt, defaultSeconds));
+                }
+                report = new(provider, PlanLabel(plan), windows, now)
+                {
+                    LimitReached = Flag(root, "limit_reached") || Flag(root, "limitReached")
+                        || windows.Any(window => window.Used >= 1.0)
                 };
             }
             else

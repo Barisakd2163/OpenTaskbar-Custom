@@ -315,6 +315,7 @@
   "AiUsageUnofficialNote": "Використовуються неофіційні точки доступу; доступність може змінитися.",
   "AiUsageSession": "Сеанс (5 год)",
   "AiUsageWeekly": "За тиждень",
+  "AiUsageMonthly": "Щомісяця",
   "AiUsageWeeklyModel": "За тиждень · {0}",
   "AiUsageGroupGemini": "Моделі Gemini",
   "AiUsageGroupClaudeGpt": "Моделі Claude і GPT",
