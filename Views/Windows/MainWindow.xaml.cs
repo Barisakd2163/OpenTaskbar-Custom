@@ -157,6 +157,8 @@ public partial class MainWindow : Window
             Interval = RunningAppIconCache.RetryDelay
         };
         _iconRetryTimer.Tick += IconRetryTimer_Tick;
+        // Icons load off the UI thread; refresh the running apps once when one or more loads finish.
+        _runningAppIcons.IconLoaded += QueueIconRefresh;
         _timedWidgetRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromSeconds(1)
@@ -537,6 +539,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool _iconRefreshQueued;
+
+    private void QueueIconRefresh()
+    {
+        if (_iconRefreshQueued) return;
+        _iconRefreshQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            _iconRefreshQueued = false;
+            if (_windowTracker is not null) WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+        });
+    }
+
     private void IconRetryTimer_Tick(object? sender, EventArgs e)
     {
         _iconRetryTimer.Stop();
@@ -597,7 +612,8 @@ public partial class MainWindow : Window
                 var windowCount = group.Count();
                 if (currentApps.TryGetValue(executablePath, out var existingApp))
                 {
-                    existingApp.Icon = icon;
+                    // While a new identity icon loads in the background, keep showing the current one.
+                    if (icon is not null || !_runningAppIcons.IsLoading) existingApp.Icon = icon;
                     existingApp.HasNotification = hasNotification;
                     existingApp.IsForeground = isForeground;
                     existingApp.WindowCount = windowCount;
@@ -978,40 +994,50 @@ public partial class MainWindow : Window
     private void LaunchApp(DockApp app, bool elevated)
     {
         var executablePath = app.ExecutablePath;
-        if (!File.Exists(executablePath))
+        var arguments = app.LaunchArguments ?? string.Empty;
+        // ShellExecuteEx loads shell extensions and can take from 100 ms to over a second. On the UI thread it froze
+        // the dock, launch bounce included, until Windows had taken the app. Start it from the thread pool instead;
+        // Process.Start runs ShellExecuteEx on its own STA thread when called from an MTA thread.
+        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated)).ContinueWith(task =>
         {
-            ReportError("ErrorAppFileNotFound");
-            return;
-        }
+            if (task.Result is { } error) Dispatcher.BeginInvoke(() => ReportError(error));
+        }, TaskScheduler.Default);
+    }
 
+    /// <summary>Starts an application through the shell and returns an error key, or null on success or UAC cancel.</summary>
+    internal static string? StartApplication(string executablePath, string arguments, bool elevated)
+    {
+        if (!File.Exists(executablePath)) return "ErrorAppFileNotFound";
         try
         {
             using var _ = Process.Start(new ProcessStartInfo(executablePath)
             {
-                Arguments = app.LaunchArguments ?? string.Empty,
+                Arguments = arguments,
                 UseShellExecute = true,
                 Verb = elevated ? "runas" : string.Empty
             });
+            return null;
         }
         catch (Win32Exception ex) when (elevated && ex.NativeErrorCode == 1223)
         {
             // The user declined the UAC prompt.
+            return null;
         }
         catch (Win32Exception)
         {
-            ReportError("ErrorAppLaunchWin32");
+            return "ErrorAppLaunchWin32";
         }
         catch (InvalidOperationException)
         {
-            ReportError("ErrorAppLaunchFailed");
+            return "ErrorAppLaunchFailed";
         }
         catch (UnauthorizedAccessException)
         {
-            ReportError("ErrorAppLaunchDenied");
+            return "ErrorAppLaunchDenied";
         }
         catch (IOException)
         {
-            ReportError("ErrorAppFileInaccessible");
+            return "ErrorAppFileInaccessible";
         }
     }
 
