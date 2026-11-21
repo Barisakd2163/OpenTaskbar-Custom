@@ -352,24 +352,24 @@ internal static class FeatureAndMemoryChecks
         var defaults = DockProfileService.EnsureDefaultProfile(new DockSettings(
             Widgets: ["Clock"], InstalledWidgets: ["Clock", "Focus"], FocusModeEnabled: true));
         var (work, createError) = DockProfileService.Create(defaults, "Work");
-        Check(createError is null && work is { ActiveProfile: "Work", FocusModeEnabled: true, Widgets: ["Clock"] },
-            "Creating a profile in Focus Mode must preserve the global toggle and the enabled widget list.");
-        Check(work.Profiles?.SingleOrDefault(profile => profile.Name == "Work")?.Widgets is ["Clock"],
-            "Creating a profile in Focus Mode must capture its configured widgets.");
+        Check(createError is null && work is { ActiveProfile: "Work", FocusModeEnabled: true, Widgets: [] },
+            "Creating a profile in Focus Mode must preserve the global toggle and start widget-free.");
+        Check(work.Profiles?.SingleOrDefault(profile => profile.Name == "Work")?.Widgets is [],
+            "A newly created profile must start with an empty widget snapshot.");
 
-        var (restoredDefault, defaultError) = DockProfileService.Switch(work with { Widgets = ["Focus"] }, "Default");
+        var (restoredDefault, defaultError) = DockProfileService.Switch(work, "Default");
         Check(defaultError is null && restoredDefault is { ActiveProfile: "Default", FocusModeEnabled: true, Widgets: ["Clock"] },
             "Switching to Default must keep Focus Mode enabled and restore its Clock widget.");
         var (restoredWork, workError) = DockProfileService.Switch(restoredDefault, "Work");
-        Check(workError is null && restoredWork is { ActiveProfile: "Work", FocusModeEnabled: true, Widgets: ["Focus"] },
-            "Switching back to Work must keep Focus Mode enabled and restore its Focus widget.");
+        Check(workError is null && restoredWork is { ActiveProfile: "Work", FocusModeEnabled: true, Widgets: [] },
+            "Switching back to Work must keep Focus Mode enabled and stay widget-free.");
 
         var unfocusedWork = restoredWork with { FocusModeEnabled = false };
-        Check(unfocusedWork.Widgets is ["Focus"], "Turning off Focus Mode must preserve Work's Focus widget.");
+        Check(unfocusedWork.Widgets is [], "Turning off Focus Mode must preserve Work's empty widget set.");
         var (unfocusedDefault, switchError) = DockProfileService.Switch(unfocusedWork, "Default");
         Check(switchError is null && unfocusedDefault is { ActiveProfile: "Default", FocusModeEnabled: false, Widgets: ["Clock"] },
             "Switching after disabling Focus Mode must keep it off and restore Default's Clock widget.");
-        Check(unfocusedDefault.Profiles is [{ Name: "Default", Widgets: ["Clock"] }, { Name: "Work", Widgets: ["Focus"] }],
+        Check(unfocusedDefault.Profiles is [{ Name: "Default", Widgets: ["Clock"] }, { Name: "Work", Widgets: [] }],
             "Each profile must retain its configured widget snapshot through Focus Mode toggles and profile switches.");
     }
 

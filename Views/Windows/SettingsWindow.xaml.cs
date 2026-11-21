@@ -276,6 +276,16 @@ public partial class SettingsWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        // Reflect external Focus Mode changes (e.g. the dock context-menu toggle) without
+        // rewriting the saved settings or the user's widget/animation choices. Suppress the
+        // toggle's Checked/Unchecked event so this sync does not raise a second save.
+        if (FocusModeToggle.IsChecked != _preferences.Current.FocusModeEnabled)
+        {
+            var wasInitializing = _initializing;
+            _initializing = true;
+            FocusModeToggle.IsChecked = _preferences.Current.FocusModeEnabled;
+            _initializing = wasInitializing;
+        }
         if (_applied.Language != _preferences.Current.Language)
         {
             var localizedOptions = _widgetPreviewService.CreateOptions([], []).ToDictionary(option => option.Id, StringComparer.Ordinal);
