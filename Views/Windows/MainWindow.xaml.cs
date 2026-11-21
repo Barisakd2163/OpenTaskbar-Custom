@@ -469,7 +469,7 @@ public partial class MainWindow : Window
         session.OperationReported += ReportOperationStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
-        session.ShelfHeight = IsVertical ? Profile.Shelf + 16 : Profile.Shelf;
+        session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
         _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale);
         session.Edge = Edge;
@@ -2701,6 +2701,26 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
+    /// <summary>
+    /// Shelf thickness reserved for the dock surface plus its external bottom gap.
+    /// Always stays at least <c>requiredSurface + ExternalBottomGap + 1</c> so increasing the bottom gap
+    /// or border thickness never compresses <see cref="DockSurface"/> below <see cref="DockSizeProfile.Cell"/>
+    /// and triggers a WPF <c>LayoutClip</c> on dock buttons (which would cut off magnified/bouncing icons).
+    /// </summary>
+    private double EffectiveShelfHeight
+    {
+        get
+        {
+            var profile = Profile;
+            var border = _preferences.Current.DockBackground == SurfaceBackground.None
+                ? 0.0
+                : Math.Max(0.0, _preferences.Current.DockBorderThickness) * 2.0;
+            var requiredSurface = profile.Cell + profile.VerticalPadding * 2 + border;
+            if (IsVertical) return Math.Max(profile.Shelf + 16, requiredSurface + ExternalBottomGap + 16);
+            return Math.Max(profile.Shelf, requiredSurface + ExternalBottomGap + 1);
+        }
+    }
+
     private void ApplySizeProfile()
     {
         UpdatePreferredIconPixels();
@@ -2733,7 +2753,7 @@ public partial class MainWindow : Window
         var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;
         WidgetStrip.LayoutTransform = widgetTransform;
         DockWidgets.LayoutTransform = widgetTransform;
-        var effectiveShelf = IsVertical ? profile.Shelf + 16 : profile.Shelf;
+        var effectiveShelf = EffectiveShelfHeight;
         if (_replacementSession is not null)
         {
             _replacementSession.ShelfHeight = effectiveShelf;
@@ -2747,7 +2767,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            Height = EffectiveHeadroom + profile.Shelf;
+            Height = EffectiveHeadroom + effectiveShelf;
         }
         ApplySecondaryShelf();
     }

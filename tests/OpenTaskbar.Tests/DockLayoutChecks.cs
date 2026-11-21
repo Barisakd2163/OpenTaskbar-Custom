@@ -1120,6 +1120,17 @@ internal static class DockLayoutChecks
                 Check(nextBtn.Visibility == Visibility.Collapsed && prevBtn.Visibility == Visibility.Collapsed,
                     "Sub-pixel overflow under 1 DIP must not show scroll indicators.");
             }
+
+            // Issue #81: Compact dock with default 6px or larger 12px external bottom gap must grow its shelf
+            // so DockButton never exceeds the available frame height and receives a WPF LayoutClip.
+            foreach (var bottomGap in new[] { 0d, 6d, 12d })
+            {
+                var compact = DockMetrics.For(DockSize.Compact);
+                var requiredShelf = Math.Max(compact.Shelf, compact.SurfaceHeight + bottomGap + 1);
+                var innerHeight = requiredShelf - bottomGap - 2 - compact.VerticalPadding * 2;
+                Check(innerHeight >= compact.Cell,
+                    $"Compact shelf ({requiredShelf} DIP) with bottom gap {bottomGap} DIP must leave at least {compact.Cell} DIP interior height so DockButton is never layout-clipped.");
+            }
         }
 
         return checks;
