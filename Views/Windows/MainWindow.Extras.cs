@@ -127,22 +127,6 @@ public partial class MainWindow
         return geom;
     }
 
-    private static readonly Pen DownloadsArrowPen = CreateFrozenPen(Color.FromArgb(0xC8, 0x5A, 0x39, 0x06), 7.5);
-
-    private static Pen CreateFrozenPen(Color color, double thickness)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        var pen = new Pen(brush, thickness)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round,
-            LineJoin = PenLineJoin.Round
-        };
-        pen.Freeze();
-        return pen;
-    }
-
     private static bool IsDownloadsFolder(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
@@ -158,7 +142,7 @@ public partial class MainWindow
         }
     }
 
-    internal static BitmapSource RenderModernFolderIcon(int size, bool isDownloads = false)
+    internal static BitmapSource RenderModernFolderIcon(int size)
     {
         var target = Math.Max(16, size);
         var scale = target / 128.0;
@@ -186,15 +170,6 @@ public partial class MainWindow
             var frontPen = new Pen(FolderFrontStroke, Math.Max(0.5, 1.0 * scale));
             frontPen.Freeze();
             dc.DrawRoundedRectangle(FolderFrontBrush, frontPen, frontRect, 14 * scale, 14 * scale);
-
-            if (isDownloads)
-            {
-                dc.PushTransform(new ScaleTransform(scale, scale));
-                dc.DrawLine(DownloadsArrowPen, new Point(64, 60), new Point(64, 90));
-                dc.DrawLine(DownloadsArrowPen, new Point(51, 78), new Point(64, 91));
-                dc.DrawLine(DownloadsArrowPen, new Point(77, 78), new Point(64, 91));
-                dc.Pop();
-            }
         }
 
         var rtb = new RenderTargetBitmap(target, target, 96, 96, PixelFormats.Pbgra32);
@@ -205,10 +180,19 @@ public partial class MainWindow
 
     internal static BitmapSource? CreateStackIcon(DockStack stack, int targetSize = 128)
     {
-        // Always render a consistent folder-backed icon instead of relying on Windows Shell's
-        // IShellItemImageFactory, which intermittently returns a bare arrow without a folder for Downloads.
         var size = Math.Max(128, targetSize);
-        return FillSquare(RenderModernFolderIcon(size, isDownloads: IsDownloadsFolder(stack.Path)), size);
+        // For Downloads, Windows Shell's IShellItemImageFactory intermittently returns a bare arrow with no folder backdrop;
+        // use the native Windows Downloads folder resource (imageres.dll,-184) so Downloads always shows the folder-backed icon.
+        // User-added folders keep their exact native Windows Shell icon.
+        var icon = IsDownloadsFolder(stack.Path)
+            ? ApplicationIconProvider.GetForResource(@"%SystemRoot%\System32\imageres.dll", -184, size)
+              ?? ApplicationIconProvider.GetForResource(@"%SystemRoot%\System32\imageres.dll", -4, size)
+              ?? ApplicationIconProvider.GetForShellItem(stack.Path, size, iconOnly: false)
+              ?? RenderModernFolderIcon(size)
+            : ApplicationIconProvider.GetForShellItem(stack.Path, size, iconOnly: true)
+              ?? ApplicationIconProvider.GetForFile(stack.Path, size)
+              ?? RenderModernFolderIcon(size);
+        return icon is null ? null : FillSquare(icon, size);
     }
 
     /// <summary>
