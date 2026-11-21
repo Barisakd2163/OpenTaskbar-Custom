@@ -131,7 +131,9 @@ public static class ApplicationIconProvider
         if ((string.IsNullOrWhiteSpace(appUserModelId) ? TryResolvePackagedAppUserModelId(executablePath) : appUserModelId) is { } aumid)
         {
             var shellSize = targetSize > 0 ? targetSize : PreferredIconPixels;
-            var packagedIcon = GetForShellItem($"shell:AppsFolder\\{aumid}", shellSize);
+            // iconOnly must match the running-app path: without SIIGBF_ICONONLY the Shell may return the
+            // app's window thumbnail (mirrored/rotated) instead of its Start-menu icon.
+            var packagedIcon = GetForShellItem($"shell:AppsFolder\\{aumid}", shellSize, iconOnly: true);
             if (packagedIcon is not null) return packagedIcon;
         }
 
