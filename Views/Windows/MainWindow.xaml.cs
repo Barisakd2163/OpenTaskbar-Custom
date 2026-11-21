@@ -562,7 +562,23 @@ public partial class MainWindow : Window
             var surfaceBottomRight = DockSurface.PointToScreen(new Point(DockSurface.ActualWidth, DockSurface.ActualHeight));
             var withinSurface = screenX >= surfaceTopLeft.X && screenX <= surfaceBottomRight.X
                 && screenY >= surfaceTopLeft.Y && screenY <= surfaceBottomRight.Y;
-            return !withinSurface;
+            if (withinSurface) return false;
+
+            // Keep the screen-edge reveal strip hit-testable while auto-hide is enabled; otherwise the hidden
+            // dock slides out of DockSurface and MouseEnter can never reach DockEdgeTrigger to reveal it again.
+            if (_preferences.Current.AutoHide != AutoHideMode.Disabled
+                && DockEdgeTrigger is { Visibility: Visibility.Visible, ActualWidth: > 0, ActualHeight: > 0 })
+            {
+                var triggerTopLeft = DockEdgeTrigger.PointToScreen(new Point(0, 0));
+                var triggerBottomRight = DockEdgeTrigger.PointToScreen(new Point(DockEdgeTrigger.ActualWidth, DockEdgeTrigger.ActualHeight));
+                if (screenX >= triggerTopLeft.X && screenX <= triggerBottomRight.X
+                    && screenY >= triggerTopLeft.Y && screenY <= triggerBottomRight.Y)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
         catch (InvalidOperationException)
         {

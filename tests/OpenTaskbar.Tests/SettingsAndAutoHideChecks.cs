@@ -23,6 +23,7 @@ internal static class SettingsAndAutoHideChecks
         }
 
         CheckSettingsSurviveReopen(application, Check);
+        CheckLegacySettingsMigration(Check);
         CheckAutoHideLifecycleAndPointerSync(application, Check);
         CheckFlyoutState(application, Check);
         CheckClockWidgetFlyoutAndAutoHide(application, Check);
@@ -400,6 +401,58 @@ internal static class SettingsAndAutoHideChecks
         while (!condition() && Environment.TickCount64 < deadline)
         {
             PumpDispatcher(dispatcher, 35);
+        }
+    }
+
+    private static void CheckLegacySettingsMigration(Action<bool, string> check)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ot-legacy-migrate-{Guid.NewGuid():N}.json");
+        try
+        {
+            // Realistic v0.2.x settings file with retired StatsMeters flags (CpuTemperature, Battery),
+            // retired widgets (Memory, Search, Desktops, Tray, AiUsage), legacy SurfaceOpacity and DockBottomGap.
+            File.WriteAllText(tempPath, """
+                {
+                  "Position": "Left",
+                  "Theme": "Dark",
+                  "SurfaceOpacity": 0.82,
+                  "DockBottomGap": 10,
+                  "DockScale": 1.1,
+                  "Widgets": ["Clock", "Memory", "Search", "Desktops", "Tray", "AiUsage"],
+                  "InstalledWidgets": ["Clock", "Memory", "Search", "Desktops", "Tray", "AiUsage"],
+                  "AiUsageProviders": "Claude, Codex",
+                  "StatsMeters": "Cpu, Memory, Battery, CpuTemperature, Gpu, GpuTemperature",
+                  "ShowVirtualDesktops": true,
+                  "ShowTray": true
+                }
+                """);
+
+            var store = new DockSettingsStore(tempPath);
+            var (migrated, error) = store.Load();
+            check(error is null, $"Loading a v0.2.x settings file must migrate cleanly without error (got '{error}').");
+            check(migrated.Position == DockPosition.Left && migrated.Theme == AppTheme.Dark && Math.Abs(migrated.DockScale - 1.1) < 0.001,
+                "Migration must preserve user position, theme, and dock scale.");
+            check(migrated.StatsMeters == (SystemMeters.Cpu | SystemMeters.Memory | SystemMeters.Gpu | SystemMeters.GpuTemperature),
+                "Migration must strip retired CpuTemperature and Battery flags while preserving active meters.");
+            check(Math.Abs(migrated.DockOpacity - 0.82) < 0.001 && Math.Abs(migrated.WidgetOpacity - 0.82) < 0.001,
+                "Migration must carry legacy SurfaceOpacity into per-surface opacities.");
+            check(migrated.DockBottomGapPixels == 10,
+                "Migration must carry legacy DockBottomGap into DockBottomGapPixels.");
+            check(migrated.ShowSearchButton && migrated.ShowTaskViewButton && migrated.ShowTrayButton,
+                "Migration must carry retired Search/Desktops/Tray widget states into shell button flags.");
+            check(migrated.Widgets is not null && migrated.Widgets.Contains("Clock") && migrated.Widgets.Contains("AiUsageClaude") && migrated.Widgets.Contains("AiUsageCodex"),
+                "Migration must split legacy AiUsage into enabled provider widgets.");
+
+            // Numeric legacy StatsMeters bitmask (63 = all v0.2.x flags including CpuTemperature=8 and Battery=4)
+            File.WriteAllText(tempPath, """{"StatsMeters": 63, "Position": "Right"}""");
+            var (numericMigrated, numericError) = store.Load();
+            check(numericError is null && numericMigrated.Position == DockPosition.Right
+                && numericMigrated.StatsMeters == SystemMeters.All,
+                "Numeric v0.2.x StatsMeters bitmasks must be masked to valid flags without resetting settings.");
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
         }
     }
 

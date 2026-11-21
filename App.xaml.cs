@@ -16,7 +16,8 @@ public partial class App : Application
 {
     private Mutex? _instanceMutex;
     private int _crashHandled;
-    public ApplicationPreferences Preferences { get; private set; } = new(new DockSettingsStore());
+    private ApplicationPreferences? _preferences;
+    public ApplicationPreferences Preferences => _preferences ??= new(new DockSettingsStore());
     public bool IsInspection { get; private set; }
     public bool IsDev { get; private set; }
     public bool OpenSettingsOnStartup { get; private set; }
@@ -85,12 +86,33 @@ public partial class App : Application
 
         var themeInstallError = ThemePacks.InstallBuiltInThemes();
         // Before any window exists, so a widget pack's sizes and fonts are in place when styles are first built.
-        ThemePacks.Select(Preferences.Current.ThemePack);
-        ThemePacks.ApplyWidgets(Preferences.Current.Theme);
+        // Guard against legacy or corrupted theme packs left in %LOCALAPPDATA%\OpenTaskbar\Themes from older versions.
+        try
+        {
+            ThemePacks.Select(Preferences.Current.ThemePack);
+            ThemePacks.ApplyWidgets(Preferences.Current.Theme);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Failed to apply theme pack '{Preferences.Current.ThemePack}' on startup; falling back to built-in theme: {ex.Message}");
+            ThemePacks.Select(null);
+            ThemePacks.ApplyWidgets(Preferences.Current.Theme);
+        }
         StartupStopwatch.Mark("themes and settings ready");
         base.OnStartup(e);
 
-        var mainWindow = new MainWindow();
+        MainWindow mainWindow;
+        try
+        {
+            mainWindow = new MainWindow();
+        }
+        catch (Exception ex) when (ThemePacks.Current is not null)
+        {
+            AppLog.Warning($"MainWindow startup failed with active theme pack '{ThemePacks.Current.Id}'; retrying with built-in theme: {ex.Message}");
+            ThemePacks.Select(null);
+            ThemePacks.ApplyWidgets(Preferences.Current.Theme);
+            mainWindow = new MainWindow();
+        }
         StartupStopwatch.Mark("MainWindow constructed");
         MainWindow = mainWindow;
         mainWindow.Show();
