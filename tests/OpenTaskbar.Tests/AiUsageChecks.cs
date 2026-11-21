@@ -269,6 +269,16 @@ internal static class AiUsageChecks
             && Math.Abs(AiUsageWidget.RingWindow(agyGrouped, AiUsageRing.Weekly)!.Used - (1 - 0.4907)) < 1e-6,
             "Antigravity grouped usage must preserve weekly and 5-hour windows per model group.");
 
+        var codexFreeMonthly = AiUsageService.ParseCodex("""
+            {"plan_type":"free","rate_limit":{"allowed":true,"limit_reached":false,
+             "primary_window":{"used_percent":45,"limit_window_seconds":2592000,"reset_after_seconds":864000},
+             "secondary_window":null}}
+            """).Report!;
+        Check(codexFreeMonthly.Plan == "Free"
+            && codexFreeMonthly.Windows.Count == 1
+            && codexFreeMonthly.Windows[0] is { LabelKey: "AiUsageMonthly", Used: 0.45, WindowSeconds: 2592000 },
+            "Codex free-plan 30-day windows must classify as AiUsageMonthly instead of AiUsageWeekly.");
+
         var path = Path.Combine(Path.GetTempPath(), $"ot-ai-fixture-{Guid.NewGuid():N}.json");
         try
         {

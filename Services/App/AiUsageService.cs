@@ -803,8 +803,10 @@ public static class AiUsageService
                     var reset = (Property(value, "reset_at") is { } absolute ? UnixReset(absolute) : null)
                         ?? (Property(value, "reset_after_seconds") is { } relative && Number(relative) is { } after
                             && after is >= 0 and < MaxResetSeconds ? (DateTimeOffset?)now.AddSeconds(after) : null);
-                    var weekly = seconds is { } span ? span >= 604800 : name == "secondary_window";
-                    windows.Add(new(weekly ? "AiUsageWeekly" : "AiUsageSession", used, reset, seconds));
+                    var labelKey = seconds is { } span
+                        ? (span >= 2419200 ? "AiUsageMonthly" : span >= 604800 ? "AiUsageWeekly" : "AiUsageSession")
+                        : (name == "secondary_window" ? "AiUsageWeekly" : "AiUsageSession");
+                    windows.Add(new(labelKey, used, reset, seconds));
                 }
                 var credits = Property(root, "credits");
                 var unlimited = Flag(credits, "unlimited");

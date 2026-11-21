@@ -32,10 +32,12 @@ public sealed class AiUsageWidget : DockWidget
     private int _renderedMinute = -1;
 
     private sealed record DualQuotaBars(
+        StackPanel SessionRow,
         TextBlock SessionLabel,
         Border SessionTrack,
         Border SessionFill,
         TextBlock SessionReset,
+        StackPanel WeeklyRow,
         TextBlock WeeklyLabel,
         Border WeeklyTrack,
         Border WeeklyFill,
@@ -205,7 +207,7 @@ public sealed class AiUsageWidget : DockWidget
             var sRem = sReset - DateTimeOffset.UtcNow;
             bars.SessionReset.Text = sRem > TimeSpan.Zero ? Duration(sRem) : Duration(TimeSpan.Zero);
         }
-        if (report.Windows.FirstOrDefault(w => w.LabelKey == "AiUsageWeekly")?.ResetsAt is { } wReset)
+        if (report.Windows.FirstOrDefault(w => w.LabelKey is "AiUsageWeekly" or "AiUsageMonthly")?.ResetsAt is { } wReset)
         {
             bars.WeeklyReset.Text = When(wReset);
         }
@@ -514,7 +516,7 @@ public sealed class AiUsageWidget : DockWidget
 
             var weeklyLabel = Text(UiText.Get("AiUsageWeeklyShort"), 9.5, "TextSecondary");
             weeklyLabel.FontWeight = FontWeights.SemiBold;
-            weeklyLabel.Width = 18;
+            weeklyLabel.Width = 22;
             weeklyLabel.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(weeklyLabel, FontNumeralAlignment.Tabular);
 
@@ -542,7 +544,8 @@ public sealed class AiUsageWidget : DockWidget
             barsPanel.Children.Add(sessionRow);
             barsPanel.Children.Add(weeklyRow);
 
-            var dualBars = new DualQuotaBars(sessionLabel, sessionTrack, sessionFill, sessionReset, weeklyLabel, weeklyTrack, weeklyFill, weeklyReset);
+            var dualBars = new DualQuotaBars(sessionRow, sessionLabel, sessionTrack, sessionFill, sessionReset,
+                weeklyRow, weeklyLabel, weeklyTrack, weeklyFill, weeklyReset);
 
             var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { logo, label, barsPanel } };
             var button = new Button { Content = row, Cursor = System.Windows.Input.Cursors.Arrow };
@@ -677,13 +680,21 @@ public sealed class AiUsageWidget : DockWidget
         }
         else if (_card.Bars is { } bars)
         {
+            var session = _report?.Windows.FirstOrDefault(w => w.LabelKey == "AiUsageSession");
+            var longWindow = _report?.Windows.FirstOrDefault(w => w.LabelKey is "AiUsageWeekly" or "AiUsageMonthly");
+
+            // Adapt dynamically when an account switches between a single-window free plan (e.g. monthly Codex)
+            // and a dual-window paid plan (5h session + 7d weekly).
+            var showSession = session is not null || longWindow is null;
+            var showLong = longWindow is not null || session is null;
+            bars.SessionRow.Visibility = showSession ? Visibility.Visible : Visibility.Collapsed;
+            bars.WeeklyRow.Visibility = showLong ? Visibility.Visible : Visibility.Collapsed;
+            bars.SessionRow.Margin = showSession && showLong ? new Thickness(0, 0, 0, 2) : new Thickness(0);
+
             bars.SessionLabel.Text = UiText.Get("AiUsageSessionShort");
-            bars.WeeklyLabel.Text = UiText.Get("AiUsageWeeklyShort");
+            bars.WeeklyLabel.Text = UiText.Get(longWindow?.LabelKey == "AiUsageMonthly" ? "AiUsageMonthlyShort" : "AiUsageWeeklyShort");
             bars.SessionLabel.SetResourceReference(TextBlock.ForegroundProperty, secondary);
             bars.WeeklyLabel.SetResourceReference(TextBlock.ForegroundProperty, secondary);
-
-            var session = _report?.Windows.FirstOrDefault(w => w.LabelKey == "AiUsageSession");
-            var weekly = _report?.Windows.FirstOrDefault(w => w.LabelKey == "AiUsageWeekly");
 
             var sUsed = session?.Used ?? 0;
             bars.SessionFill.Width = Math.Max(0, Math.Min(38, 38 * sUsed));
@@ -700,11 +711,11 @@ public sealed class AiUsageWidget : DockWidget
             }
             bars.SessionReset.SetResourceReference(TextBlock.ForegroundProperty, secondary);
 
-            var wUsed = weekly?.Used ?? 0;
+            var wUsed = longWindow?.Used ?? 0;
             bars.WeeklyFill.Width = Math.Max(0, Math.Min(38, 38 * wUsed));
-            bars.WeeklyFill.SetResourceReference(Border.BackgroundProperty, weekly is null ? "TextMuted" : Accent(wUsed, weekly.Severity));
+            bars.WeeklyFill.SetResourceReference(Border.BackgroundProperty, longWindow is null ? "TextMuted" : Accent(wUsed, longWindow.Severity));
 
-            if (weekly?.ResetsAt is { } wReset)
+            if (longWindow?.ResetsAt is { } wReset)
             {
                 bars.WeeklyReset.Text = When(wReset);
             }
