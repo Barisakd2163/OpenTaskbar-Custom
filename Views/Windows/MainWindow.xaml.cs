@@ -592,7 +592,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1933,9 +1933,9 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath, string? iconLocation = null)
     {
-        var raw = ApplicationIconProvider.GetForFile(executablePath);
+        var raw = ApplicationIconProvider.GetForPinnedApp(executablePath, iconLocation);
         return ThemePacks.ApplyIcon(raw, executablePath);
     }
 
@@ -1945,7 +1945,7 @@ public partial class MainWindow : Window
         ApplyStartIcon();
         foreach (var app in _pinnedApps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation);
         }
         if (_windowTracker is not null)
         {

@@ -528,7 +528,14 @@ public partial class MainWindow
             _updatingMagnificationLayout = true;
             try
             {
+                if (!_magnificationLayoutActive
+                    && DockScrollViewer.ScrollableWidth <= 1.0
+                    && DockScrollViewer.ScrollableHeight <= 1.0)
+                {
+                    DockScrollViewer.SuppressOverflowIndicators = true;
+                }
                 _magnificationLayoutActive = true;
+                var appliedDelta = 0.0;
                 // Skipping sub-pixel writes avoids a full dock layout pass on most frames - the main source of judder.
                 for (var i = 0; i < _magnificationTargets.Count; i++)
                 {
@@ -537,16 +544,19 @@ public partial class MainWindow
                     if (vertical)
                     {
                         if (Math.Abs(target.Button.Height - slotSize) >= 0.25) target.Button.Height = slotSize;
+                        if (double.IsFinite(target.Button.Height)) appliedDelta += Math.Max(0.0, target.Button.Height - target.BaseSize);
                     }
-                    else if (Math.Abs(target.Button.Width - slotSize) >= 0.25)
+                    else
                     {
-                        target.Button.Width = slotSize;
+                        if (Math.Abs(target.Button.Width - slotSize) >= 0.25) target.Button.Width = slotSize;
+                        if (double.IsFinite(target.Button.Width)) appliedDelta += Math.Max(0.0, target.Button.Width - target.BaseSize);
                     }
                 }
 
                 if (_canExpandSurface && _restSurfaceWidth > 0)
                 {
-                    var surfaceWidth = _restSurfaceWidth + totalActualExtra;
+                    var surfaceDelta = Math.Max(totalActualExtra, appliedDelta);
+                    var surfaceWidth = _restSurfaceWidth + surfaceDelta;
                     if (Math.Abs(DockSurface.Width - surfaceWidth) >= 0.25)
                     {
                         DockSurface.BeginAnimation(WidthProperty, null);
@@ -554,7 +564,7 @@ public partial class MainWindow
                     }
                     if (double.IsFinite(_restScrollMaxWidth))
                     {
-                        var maxWidth = _restScrollMaxWidth + totalActualExtra;
+                        var maxWidth = _restScrollMaxWidth + surfaceDelta;
                         if (Math.Abs(DockScrollViewer.MaxWidth - maxWidth) >= 0.25)
                             DockScrollViewer.MaxWidth = maxWidth;
                     }
@@ -598,6 +608,7 @@ public partial class MainWindow
             }
 
             _magnificationLayoutActive = false;
+            DockScrollViewer.SuppressOverflowIndicators = false;
         }
         finally
         {

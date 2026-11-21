@@ -1081,6 +1081,45 @@ internal static class DockLayoutChecks
                 Check(previewClearanceConstrained >= 0 && previewClearanceConstrained <= previewClearanceFull,
                     "Preview clearance must scale down proportionally when peak magnification is constrained.");
             }
+
+            // Issue #82: DockScrollViewer must suppress scroll indicators while magnification expands an unscrolled dock,
+            // and ignore sub-pixel (<= 1.0 DIP) rounding overflow.
+            {
+                var content = new Border { Width = 320, Height = 38 };
+                var prevBtn = new Button();
+                var nextBtn = new Button();
+                var viewer = new DockScrollViewer
+                {
+                    Style = (Style)app.FindResource("DockScrollViewerStyle"),
+                    HoverHeadroom = DockMetrics.Headroom,
+                    ContentInset = new Thickness(0),
+                    Content = content,
+                    Width = 200,
+                    Height = 62
+                };
+                viewer.SetExternalIndicators(prevBtn, nextBtn);
+                viewer.Measure(new Size(200, 62));
+                viewer.Arrange(new Rect(0, 0, 200, 62));
+                viewer.UpdateLayout();
+                Check(nextBtn.Visibility == Visibility.Visible && prevBtn.Visibility == Visibility.Collapsed,
+                    "Genuine horizontal overflow must show the next scroll indicator.");
+
+                viewer.SuppressOverflowIndicators = true;
+                Check(nextBtn.Visibility == Visibility.Collapsed && prevBtn.Visibility == Visibility.Collapsed && viewer.OpacityMask is null,
+                    "SuppressOverflowIndicators must hide scroll indicators and edge fade while magnification runs from an unscrolled state.");
+
+                viewer.SuppressOverflowIndicators = false;
+                Check(nextBtn.Visibility == Visibility.Visible,
+                    "Clearing SuppressOverflowIndicators must restore indicators when genuine overflow remains.");
+
+                // Sub-pixel overflow (0.6 DIP) must not flicker the scroll indicator.
+                content.Width = 200.6;
+                viewer.Measure(new Size(200, 62));
+                viewer.Arrange(new Rect(0, 0, 200, 62));
+                viewer.UpdateLayout();
+                Check(nextBtn.Visibility == Visibility.Collapsed && prevBtn.Visibility == Visibility.Collapsed,
+                    "Sub-pixel overflow under 1 DIP must not show scroll indicators.");
+            }
         }
 
         return checks;

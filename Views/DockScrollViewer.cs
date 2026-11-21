@@ -21,6 +21,22 @@ public sealed class DockScrollViewer : ScrollViewer
     private double _externalIndicatorCornerRadius = 19;
     private bool? _lastExternalVertical;
     private double _lastExternalRadius = double.NaN;
+    private bool _suppressOverflowIndicators;
+
+    /// <summary>
+    /// Temporarily suppresses overflow scroll indicators and edge fades while magnification expands the dock
+    /// from an unscrolled state, preventing sub-pixel layout jitter from flickering the scroll buttons.
+    /// </summary>
+    public bool SuppressOverflowIndicators
+    {
+        get => _suppressOverflowIndicators;
+        set
+        {
+            if (_suppressOverflowIndicators == value) return;
+            _suppressOverflowIndicators = value;
+            UpdateEdgeFade();
+        }
+    }
 
     public static readonly DependencyProperty CurrentHorizontalOffsetProperty = DependencyProperty.Register(
         nameof(CurrentHorizontalOffset), typeof(double), typeof(DockScrollViewer),
@@ -453,7 +469,16 @@ public sealed class DockScrollViewer : ScrollViewer
         if (_previousButton is null && _nextButton is null
             && _externalPreviousButton is null && _externalNextButton is null) return;
 
-        if (ScrollableHeight > 0)
+        if (_suppressOverflowIndicators && HorizontalOffset <= 0.5 && VerticalOffset <= 0.5)
+        {
+            if (_previousButton is not null) _previousButton.Visibility = Visibility.Collapsed;
+            if (_nextButton is not null) _nextButton.Visibility = Visibility.Collapsed;
+            if (_externalPreviousButton is not null) _externalPreviousButton.Visibility = Visibility.Collapsed;
+            if (_externalNextButton is not null) _externalNextButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (ScrollableHeight > 1.0)
         {
             var vHiddenBefore = VerticalOffset > 0.5;
             var vHiddenAfter = VerticalOffset < ScrollableHeight - 0.5;
@@ -471,7 +496,7 @@ public sealed class DockScrollViewer : ScrollViewer
             return;
         }
 
-        if (ScrollableWidth > 0)
+        if (ScrollableWidth > 1.0)
         {
             var hiddenBefore = HorizontalOffset > 0.5;
             var hiddenAfter = HorizontalOffset < ScrollableWidth - 0.5;
@@ -531,7 +556,13 @@ public sealed class DockScrollViewer : ScrollViewer
         UpdateIndicatorLayout();
         UpdateIndicators();
 
-        if (ScrollableHeight > 0)
+        if (_suppressOverflowIndicators && HorizontalOffset <= 0.5 && VerticalOffset <= 0.5)
+        {
+            ApplyOpacityMask(null);
+            return;
+        }
+
+        if (ScrollableHeight > 1.0)
         {
             var vHiddenBefore = VerticalOffset > 0.5;
             var vHiddenAfter = VerticalOffset < ScrollableHeight - 0.5;

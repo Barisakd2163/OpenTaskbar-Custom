@@ -138,6 +138,47 @@ internal static class RunningAppChecks
         Check(ReferenceEquals(background.Get(FrameHost, 8), generic) && background.HasPendingLookups,
             "A missing Start menu image must fall back to the file icon and keep its identity retries.");
 
+        // Issue #83: Pinned web apps (IconLocation) and packaged Store apps (WindowsApps + AppxManifest.xml)
+        {
+            Check(ApplicationIconProvider.TryParseIconLocation(@"C:\Web Applications\_crx_abc\YouTube Music.ico,0", out var pwaPath, out var pwaIdx)
+                  && pwaPath == @"C:\Web Applications\_crx_abc\YouTube Music.ico" && pwaIdx == 0,
+                "TryParseIconLocation must parse Chrome PWA .ico paths with index 0.");
+            Check(ApplicationIconProvider.TryParseIconLocation("\"%SystemRoot%\\System32\\imageres.dll\", -184", out var resPath, out var resIdx)
+                  && resPath.EndsWith(@"\System32\imageres.dll", StringComparison.OrdinalIgnoreCase) && resIdx == -184,
+                "TryParseIconLocation must expand environment variables, strip quotes, and parse negative resource indices.");
+            Check(!ApplicationIconProvider.TryParseIconLocation("   ", out _, out _),
+                "TryParseIconLocation must reject blank icon locations.");
+
+            var fakeRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"ot-winapps-{Guid.NewGuid():N}");
+            try
+            {
+                var pkgDir = System.IO.Path.Combine(fakeRoot, "WindowsApps", "5319275A.WhatsAppDesktop_2.2500.1.0_x64__cv1g1gvanyjgm");
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(pkgDir, "Sub"));
+                System.IO.File.WriteAllText(System.IO.Path.Combine(pkgDir, "AppxManifest.xml"), """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                      <Identity Name="5319275A.WhatsAppDesktop" Publisher="CN=Test" Version="2.2500.1.0" />
+                      <Applications>
+                        <Application Id="App" Executable="WhatsApp.Root.exe" />
+                        <Application Id="Helper" Executable="Sub\Helper.exe" />
+                      </Applications>
+                    </Package>
+                    """);
+                var mainExe = System.IO.Path.Combine(pkgDir, "WhatsApp.Root.exe");
+                var helperExe = System.IO.Path.Combine(pkgDir, "Sub", "Helper.exe");
+                Check(ApplicationIconProvider.TryResolvePackagedAppUserModelId(mainExe) == "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
+                    "TryResolvePackagedAppUserModelId must resolve the Store app AUMID from package folder + AppxManifest.xml.");
+                Check(ApplicationIconProvider.TryResolvePackagedAppUserModelId(helperExe) == "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!Helper",
+                    "TryResolvePackagedAppUserModelId must match nested relative executables in multi-app manifests.");
+                Check(ApplicationIconProvider.TryResolvePackagedAppUserModelId(@"C:\Program Files\App\app.exe") is null,
+                    "Non-WindowsApps executables must not resolve a packaged AUMID.");
+            }
+            finally
+            {
+                if (System.IO.Directory.Exists(fakeRoot)) System.IO.Directory.Delete(fakeRoot, recursive: true);
+            }
+        }
+
         return checks;
     }
 
