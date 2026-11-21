@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Xml.Linq;
 
 namespace OpenTaskbar.Services;
 
@@ -96,6 +97,140 @@ public static class ApplicationIconProvider
         });
 
         return icon;
+    }
+
+    /// <summary>
+    /// Resolves the best icon for a pinned taskbar application:
+    /// 1. Custom shortcut IconLocation (e.g. Chrome/Edge PWA .ico files when target is chrome_proxy.exe).
+    /// 2. Packaged Store app Start menu icon via shell:AppsFolder\{AUMID} from AppxManifest.xml under WindowsApps.
+    /// 3. Fallback to the executable's own icon.
+    /// </summary>
+    public static BitmapSource? GetForPinnedApp(string executablePath, string? iconLocation = null, string? appUserModelId = null, int targetSize = 0)
+    {
+        if (TryParseIconLocation(iconLocation, out var iconPath, out var iconIndex) && File.Exists(iconPath))
+        {
+            var sameAsExe = false;
+            try
+            {
+                sameAsExe = string.Equals(Path.GetFullPath(iconPath), Path.GetFullPath(executablePath), StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                sameAsExe = false;
+            }
+
+            if (!sameAsExe || iconIndex != 0)
+            {
+                var customIcon = iconIndex != 0
+                    ? GetForResource(iconPath, iconIndex, targetSize)
+                    : GetForResource(iconPath, 0, targetSize) ?? GetForFile(iconPath, targetSize);
+                if (customIcon is not null) return customIcon;
+            }
+        }
+
+        if ((string.IsNullOrWhiteSpace(appUserModelId) ? TryResolvePackagedAppUserModelId(executablePath) : appUserModelId) is { } aumid)
+        {
+            var shellSize = targetSize > 0 ? targetSize : PreferredIconPixels;
+            var packagedIcon = GetForShellItem($"shell:AppsFolder\\{aumid}", shellSize);
+            if (packagedIcon is not null) return packagedIcon;
+        }
+
+        return GetForFile(executablePath, targetSize);
+    }
+
+    internal static bool TryParseIconLocation(string? iconLocation, out string path, out int index)
+    {
+        path = string.Empty;
+        index = 0;
+        if (string.IsNullOrWhiteSpace(iconLocation)) return false;
+
+        var trimmed = iconLocation.Trim();
+        var lastComma = trimmed.LastIndexOf(',');
+        if (lastComma > 0 && int.TryParse(trimmed[(lastComma + 1)..].Trim(), out var parsedIndex))
+        {
+            index = parsedIndex;
+            trimmed = trimmed[..lastComma].Trim();
+        }
+
+        trimmed = trimmed.Trim('"').Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return false;
+        path = Environment.ExpandEnvironmentVariables(trimmed);
+        return !string.IsNullOrWhiteSpace(path);
+    }
+
+    /// <summary>
+    /// For executables inside <c>WindowsApps\&lt;PackageFullName&gt;\...</c>, reads <c>AppxManifest.xml</c> to
+    /// build the AppUserModelID (<c>&lt;PackageFamilyName&gt;!&lt;ApplicationId&gt;</c>) used by <c>shell:AppsFolder</c>.
+    /// </summary>
+    internal static string? TryResolvePackagedAppUserModelId(string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath)) return null;
+        string fullExePath;
+        try
+        {
+            fullExePath = Path.GetFullPath(executablePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        if (!fullExePath.Contains($"{Path.DirectorySeparatorChar}WindowsApps{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var dir = Path.GetDirectoryName(fullExePath);
+        string? packageRoot = null;
+        while (!string.IsNullOrEmpty(dir))
+        {
+            var folderName = Path.GetFileName(dir);
+            if (string.Equals(folderName, "WindowsApps", StringComparison.OrdinalIgnoreCase)) break;
+            if (File.Exists(Path.Combine(dir, "AppxManifest.xml")))
+            {
+                packageRoot = dir;
+                break;
+            }
+            dir = Path.GetDirectoryName(dir);
+        }
+
+        if (packageRoot is null) return null;
+
+        // Package folder name format: <Name>_<Version>_<Architecture>_<ResourceId>_<PublisherId>
+        var packageFolder = Path.GetFileName(packageRoot);
+        var parts = packageFolder.Split('_');
+        if (parts.Length < 5 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[^1]))
+        {
+            return null;
+        }
+        var packageFamilyName = $"{parts[0]}_{parts[^1]}";
+
+        try
+        {
+            var manifest = XDocument.Load(Path.Combine(packageRoot, "AppxManifest.xml"));
+            var applications = manifest.Descendants()
+                .Where(e => string.Equals(e.Name.LocalName, "Application", StringComparison.Ordinal))
+                .Select(e => (
+                    Id: e.Attribute("Id")?.Value?.Trim(),
+                    Executable: e.Attribute("Executable")?.Value?.Trim()))
+                .Where(a => !string.IsNullOrWhiteSpace(a.Id))
+                .ToArray();
+
+            if (applications.Length == 0) return null;
+
+            var relativeExe = Path.GetRelativePath(packageRoot, fullExePath).Replace('/', '\\');
+            var match = applications.FirstOrDefault(a =>
+                !string.IsNullOrWhiteSpace(a.Executable)
+                && string.Equals(a.Executable.Replace('/', '\\'), relativeExe, StringComparison.OrdinalIgnoreCase));
+
+            var appId = match.Id ?? (applications.Length == 1 ? applications[0].Id : null);
+            return string.IsNullOrWhiteSpace(appId) ? null : $"{packageFamilyName}!{appId}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            AppLog.Warning($"Failed to parse AppxManifest for '{packageFolder}': {ex.Message}");
+            return null;
+        }
     }
 
     public static BitmapSource? GetForFile(string path, int targetSize = 0)

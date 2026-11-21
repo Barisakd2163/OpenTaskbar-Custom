@@ -257,24 +257,16 @@ public partial class MainWindow
         _replacementSession?.RefreshPosition();
     }
 
-    private void SaveProfiles(IReadOnlyList<DockProfile>? profiles, string? active)
-    {
-        var error = _preferences.Save(_preferences.Current with { Profiles = profiles is { Count: > 0 } ? profiles : null, ActiveProfile = active });
-        if (error is not null) ReportError(error);
-    }
-
     private void PopulateProfilesMenu(MenuItem menu)
     {
         menu.Items.Clear();
-        var profiles = _preferences.Current.Profiles ?? [];
-        var active = ActiveProfile;
-        var all = new MenuItem { Header = UiText.Get("ProfileAll"), IsCheckable = true, IsChecked = active is null };
-        all.Click += (_, _) => SaveProfiles(profiles, null);
-        menu.Items.Add(all);
+        var settings = DockProfileService.EnsureDefaultProfile(_preferences.Current);
+        var profiles = settings.Profiles ?? [];
+        var active = profiles.FirstOrDefault(profile => string.Equals(profile.Name, settings.ActiveProfile, StringComparison.CurrentCultureIgnoreCase));
         foreach (var profile in profiles)
         {
             var item = new MenuItem { Header = profile.Name.Replace("_", "__"), IsCheckable = true, IsChecked = ReferenceEquals(profile, active) };
-            item.Click += (_, _) => SaveProfiles(profiles, profile.Name);
+            item.Click += (_, _) => SwitchProfile(profile.Name);
             menu.Items.Add(item);
         }
 
@@ -283,43 +275,75 @@ public partial class MainWindow
         create.Click += (_, _) => CreateProfile();
         menu.Items.Add(create);
         if (active is null) return;
+
+        var rename = new MenuItem { Header = UiText.Format("ProfileRename", active.Name.Replace("_", "__")), Icon = FindResource("IconSettings") };
+        rename.Click += (_, _) => RenameProfile(active.Name);
+        menu.Items.Add(rename);
         if (active.HiddenApps.Count > 0)
         {
             var reveal = new MenuItem { Header = UiText.Get("ProfileShowAll") };
-            reveal.Click += (_, _) => SaveProfiles(
-                profiles.Select(profile => ReferenceEquals(profile, active) ? profile with { HiddenApps = [] } : profile).ToList(), active.Name);
+            reveal.Click += (_, _) =>
+            {
+                var updated = DockProfileService.UpdateHiddenApps(_preferences.Current, active.Name, []);
+                SaveProfileSettings(updated);
+            };
             menu.Items.Add(reveal);
         }
 
-        var delete = new MenuItem { Header = UiText.Format("ProfileDelete", active.Name.Replace("_", "__")), Icon = FindResource("IconClose") };
-        delete.SetResourceReference(StyleProperty, "DestructiveMenuItem");
-        delete.Click += (_, _) => SaveProfiles(profiles.Where(profile => !ReferenceEquals(profile, active)).ToList(), null);
-        menu.Items.Add(delete);
+        if (profiles.Count > 1)
+        {
+            var delete = new MenuItem { Header = UiText.Format("ProfileDelete", active.Name.Replace("_", "__")), Icon = FindResource("IconClose") };
+            delete.SetResourceReference(StyleProperty, "DestructiveMenuItem");
+            delete.Click += (_, _) => DeleteProfile(active.Name);
+            menu.Items.Add(delete);
+        }
+    }
+
+    private void SaveProfileSettings(DockSettings updated)
+    {
+        DockFlyout.CloseAll(restoreFocus: false);
+        var error = _preferences.Save(updated);
+        if (error is not null) ReportError(error);
+    }
+
+    private void SwitchProfile(string name)
+    {
+        var (updated, error) = DockProfileService.Switch(_preferences.Current, name);
+        if (error is not null) ReportError(error);
+        else SaveProfileSettings(updated);
     }
 
     private void CreateProfile()
     {
         var name = TextPrompt.Ask(UiText.Get("ProfileNew"), UiText.Get("ProfileNamePrompt"));
-        if (string.IsNullOrWhiteSpace(name)) return;
-        name = name.Trim();
-        var profiles = (_preferences.Current.Profiles ?? []).ToList();
-        if (profiles.Any(profile => string.Equals(profile.Name, name, StringComparison.CurrentCultureIgnoreCase)))
-        {
-            ReportError("ErrorProfileExists");
-            return;
-        }
+        if (name is null) return;
+        var (updated, error) = DockProfileService.Create(_preferences.Current, name);
+        if (error is not null) ReportError(error);
+        else SaveProfileSettings(updated);
+    }
 
-        profiles.Add(new DockProfile(name, []));
-        SaveProfiles(profiles, name);
+    private void RenameProfile(string currentName)
+    {
+        var newName = TextPrompt.Ask(UiText.Format("ProfileRename", currentName), UiText.Get("ProfileRenamePrompt"), currentName);
+        if (newName is null) return;
+        if (string.Equals(newName.Trim(), currentName, StringComparison.Ordinal)) return;
+        var (updated, error) = DockProfileService.Rename(_preferences.Current, currentName, newName);
+        if (error is not null) ReportError(error);
+        else SaveProfileSettings(updated);
+    }
+
+    private void DeleteProfile(string name)
+    {
+        var (updated, error) = DockProfileService.Delete(_preferences.Current, name);
+        if (error is not null) ReportError(error);
+        else SaveProfileSettings(updated);
     }
 
     private void HideInProfile_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { CommandParameter: DockApp app } || ActiveProfile is not { } active) return;
-        var profiles = (_preferences.Current.Profiles ?? []).Select(profile => ReferenceEquals(profile, active)
-            ? profile with { HiddenApps = profile.HiddenApps.Append(app.ExecutablePath).Distinct(StringComparer.OrdinalIgnoreCase).ToList() }
-            : profile).ToList();
-        SaveProfiles(profiles, active.Name);
+        var updated = DockProfileService.UpdateHiddenApps(_preferences.Current, active.Name, [.. active.HiddenApps, app.ExecutablePath]);
+        SaveProfileSettings(updated);
     }
 
     /// <summary>Pinning an app the active profile hides only shows it again; the Windows pin already exists.</summary>
@@ -331,10 +355,9 @@ public partial class MainWindow
             return false;
         }
 
-        var profiles = (_preferences.Current.Profiles ?? []).Select(profile => ReferenceEquals(profile, active)
-            ? profile with { HiddenApps = profile.HiddenApps.Where(path => !string.Equals(path, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)).ToList() }
-            : profile).ToList();
-        SaveProfiles(profiles, active.Name);
+        var hiddenApps = active.HiddenApps.Where(path => !string.Equals(path, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var updated = DockProfileService.UpdateHiddenApps(_preferences.Current, active.Name, hiddenApps);
+        SaveProfileSettings(updated);
         return true;
     }
 

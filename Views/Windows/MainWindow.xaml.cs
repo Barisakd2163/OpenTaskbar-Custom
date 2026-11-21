@@ -77,7 +77,7 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
-    private (DockSize Size, double Scale)? _appliedDockGeometry;
+    private (DockSize Size, double Scale, double ShelfHeight)? _appliedDockGeometry;
     private bool _resizingDock;
     private bool _resizePending;
     private bool _resizingFromLeft;
@@ -469,9 +469,9 @@ public partial class MainWindow : Window
         session.OperationReported += ReportOperationStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
-        session.ShelfHeight = IsVertical ? Profile.Shelf + 16 : Profile.Shelf;
+        session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
-        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale);
+        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, EffectiveShelfHeight);
         session.Edge = Edge;
         session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
@@ -592,7 +592,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1163,6 +1163,23 @@ public partial class MainWindow : Window
     /// <summary>Starts an application through the shell and returns an error key, or null on success or UAC cancel.</summary>
     internal static string? StartApplication(string executablePath, string arguments, bool elevated)
     {
+        if (!elevated && string.IsNullOrWhiteSpace(arguments)
+            && ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath) is { } aumid)
+        {
+            try
+            {
+                using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{aumid}")
+                {
+                    UseShellExecute = true
+                });
+                return null;
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                // Fall through to standard executable launch below.
+            }
+        }
+
         if (!File.Exists(executablePath)) return "ErrorAppFileNotFound";
         try
         {
@@ -1933,9 +1950,9 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath, string? iconLocation = null, string? appUserModelId = null)
     {
-        var raw = ApplicationIconProvider.GetForFile(executablePath);
+        var raw = ApplicationIconProvider.GetForPinnedApp(executablePath, iconLocation, appUserModelId);
         return ThemePacks.ApplyIcon(raw, executablePath);
     }
 
@@ -1945,7 +1962,7 @@ public partial class MainWindow : Window
         ApplyStartIcon();
         foreach (var app in _pinnedApps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
         }
         if (_windowTracker is not null)
         {
@@ -1995,6 +2012,7 @@ public partial class MainWindow : Window
         _sizePreviewOverride = null;
         _radiusPreviewOverride = null;
         ResetMagnification(immediate: true);
+        DockFlyout.CloseAll(restoreFocus: false);
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
         ThemePacks_Changed(this, EventArgs.Empty);
@@ -2033,12 +2051,13 @@ public partial class MainWindow : Window
             PositionDock();
         }
 
-        // Windows only recalculates the work area when the AppBar is first registered. A size/scale change
-        // therefore needs a fresh replacement session to move the reserved taskbar strip, exactly as a restart does.
-        var geometry = (_preferences.Current.Size, _preferences.Current.DockScale);
+        // Windows only recalculates the work area when the AppBar is first registered. A size, scale, or
+        // bottom-gap/shelf change therefore needs a fresh replacement session to move the reserved taskbar strip.
+        var geometry = (Size: _preferences.Current.Size, Scale: _preferences.Current.DockScale, ShelfHeight: EffectiveShelfHeight);
         if (_appliedDockGeometry is { } applied && applied != geometry && _replacementSession is not null)
         {
-            AnimateDockScaleChange();
+            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001)
+                AnimateDockScaleChange();
             RestartReplacementSession();
         }
         _appliedDockGeometry = geometry;
@@ -2700,6 +2719,26 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
+    /// <summary>
+    /// Shelf thickness reserved for the dock surface plus its external bottom gap.
+    /// Always stays at least <c>requiredSurface + ExternalBottomGap + 1</c> so increasing the bottom gap
+    /// or border thickness never compresses <see cref="DockSurface"/> below <see cref="DockSizeProfile.Cell"/>
+    /// and triggers a WPF <c>LayoutClip</c> on dock buttons (which would cut off magnified/bouncing icons).
+    /// </summary>
+    private double EffectiveShelfHeight
+    {
+        get
+        {
+            var profile = Profile;
+            var border = _preferences.Current.DockBackground == SurfaceBackground.None
+                ? 0.0
+                : Math.Max(0.0, _preferences.Current.DockBorderThickness) * 2.0;
+            var requiredSurface = profile.Cell + profile.VerticalPadding * 2 + border;
+            if (IsVertical) return Math.Max(profile.Shelf + 16, requiredSurface + ExternalBottomGap + 16);
+            return Math.Max(profile.Shelf, requiredSurface + ExternalBottomGap + 1);
+        }
+    }
+
     private void ApplySizeProfile()
     {
         UpdatePreferredIconPixels();
@@ -2732,7 +2771,7 @@ public partial class MainWindow : Window
         var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;
         WidgetStrip.LayoutTransform = widgetTransform;
         DockWidgets.LayoutTransform = widgetTransform;
-        var effectiveShelf = IsVertical ? profile.Shelf + 16 : profile.Shelf;
+        var effectiveShelf = EffectiveShelfHeight;
         if (_replacementSession is not null)
         {
             _replacementSession.ShelfHeight = effectiveShelf;
@@ -2746,7 +2785,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            Height = EffectiveHeadroom + profile.Shelf;
+            Height = EffectiveHeadroom + effectiveShelf;
         }
         ApplySecondaryShelf();
     }

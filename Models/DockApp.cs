@@ -19,6 +19,12 @@ public sealed class DockApp(string name, string executablePath) : INotifyPropert
     [JsonIgnore]
     public string? ShortcutPath { get; init; }
 
+    [JsonIgnore]
+    public string? IconLocation { get; init; }
+
+    [JsonIgnore]
+    public string? AppUserModelId { get; init; }
+
     // Notifies because packaged apps can receive their icon after the dock entry is created.
     [JsonIgnore]
     public BitmapSource? Icon { get => _icon; set => SetField(ref _icon, value); }

@@ -1,6 +1,10 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
+using Microsoft.Win32;
 using OpenTaskbar.Models;
 
 namespace OpenTaskbar.Services;
@@ -17,9 +21,13 @@ public static class WindowsTaskbarPinImporter
             "User Pinned",
             "TaskBar");
 
+        var apps = new List<DockApp>();
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var skippedCount = 0;
         if (!Directory.Exists(taskbarPinsPath))
         {
-            return ([], null, 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, null, 0);
         }
 
         List<string> shortcutPaths;
@@ -31,16 +39,19 @@ public static class WindowsTaskbarPinImporter
         }
         catch (IOException)
         {
-            return ([], "ErrorTaskbarPinsRead", 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, "ErrorTaskbarPinsRead", 0);
         }
         catch (UnauthorizedAccessException)
         {
-            return ([], "ErrorTaskbarPinsAccess", 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, "ErrorTaskbarPinsAccess", 0);
         }
 
         if (shortcutPaths.Count == 0)
         {
-            return ([], null, 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, null, 0);
         }
 
         Type? shellType;
@@ -52,21 +63,20 @@ public static class WindowsTaskbarPinImporter
         }
         catch (COMException)
         {
-            return ([], "ErrorShortcutServiceImport", 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, "ErrorShortcutServiceImport", 0);
         }
         catch (TargetInvocationException ex) when (ex.InnerException is COMException)
         {
-            return ([], "ErrorShortcutServiceImport", 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, "ErrorShortcutServiceImport", 0);
         }
 
         if (shellType is null || shell is null)
         {
-            return ([], "ErrorShortcutServiceImport", 0);
+            ImportTaskbandPackagedPins(seenPaths, apps);
+            return (apps, "ErrorShortcutServiceImport", 0);
         }
-
-        var apps = new List<DockApp>();
-        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var skippedCount = 0;
         try
         {
             foreach (var shortcutPath in shortcutPaths)
@@ -101,7 +111,8 @@ public static class WindowsTaskbarPinImporter
                         apps.Add(new DockApp(Path.GetFileNameWithoutExtension(shortcutPath), executablePath)
                         {
                             LaunchArguments = string.IsNullOrWhiteSpace(arguments) ? null : arguments,
-                            ShortcutPath = Path.GetFullPath(shortcutPath)
+                            ShortcutPath = Path.GetFullPath(shortcutPath),
+                            IconLocation = string.IsNullOrWhiteSpace(iconLocation) ? null : iconLocation
                         });
                     }
                     finally
@@ -146,7 +157,130 @@ public static class WindowsTaskbarPinImporter
             }
         }
 
+        ImportTaskbandPackagedPins(seenPaths, apps);
         return (apps, null, skippedCount);
+    }
+
+    private static readonly Regex PackagedAumidPattern = new(
+        @"[A-Za-z0-9\.\-]+_[a-z0-9]{13}![A-Za-z0-9\.\-_]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Windows 11 stores Microsoft Store taskbar pins in the Explorer Taskband registry blob rather than
+    /// creating .lnk shortcuts under User Pinned\TaskBar. Import those packaged AUMIDs so Store pins stay
+    /// visible on the dock even when their windows are closed or minimized to the tray.
+    /// </summary>
+    private static void ImportTaskbandPackagedPins(HashSet<string> seenPaths, List<DockApp> apps)
+    {
+        byte[]? favorites;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband");
+            favorites = key?.GetValue("Favorites") as byte[];
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return;
+        }
+
+        if (favorites is null || favorites.Length < 16) return;
+
+        foreach (var aumid in ExtractAumidsFromTaskbandBytes(favorites))
+        {
+            var resolved = TryResolvePackagedApp(aumid);
+            if (resolved is not { } info || !seenPaths.Add(info.ExecutablePath)) continue;
+            apps.Add(new DockApp(info.DisplayName, info.ExecutablePath)
+            {
+                AppUserModelId = aumid
+            });
+        }
+    }
+
+    internal static IReadOnlyList<string> ExtractAumidsFromTaskbandBytes(byte[] bytes)
+    {
+        if (bytes.Length < 4) return [];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        // PIDL structures inside Taskband\Favorites are not guaranteed to be 2-byte aligned,
+        // so scan both even (0) and odd (1) UTF-16LE byte offsets.
+        for (var offset = 0; offset <= 1; offset++)
+        {
+            var count = bytes.Length - offset;
+            count -= count % 2;
+            if (count <= 0) continue;
+            var text = Encoding.Unicode.GetString(bytes, offset, count);
+            foreach (Match match in PackagedAumidPattern.Matches(text))
+            {
+                if (seen.Add(match.Value)) result.Add(match.Value);
+            }
+        }
+        return result;
+    }
+
+    internal static (string DisplayName, string ExecutablePath)? TryResolvePackagedApp(string aumid, string? windowsAppsRoot = null)
+    {
+        var bang = aumid.IndexOf('!');
+        if (bang <= 0 || bang >= aumid.Length - 1) return null;
+        var familyName = aumid[..bang];
+        var appId = aumid[(bang + 1)..];
+        var underscore = familyName.LastIndexOf('_');
+        if (underscore <= 0 || underscore >= familyName.Length - 1) return null;
+        var packageName = familyName[..underscore];
+        var publisherId = familyName[(underscore + 1)..];
+
+        var root = windowsAppsRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsApps");
+        if (!Directory.Exists(root)) return null;
+
+        IEnumerable<string> packageDirs;
+        try
+        {
+            packageDirs = Directory.EnumerateDirectories(root, $"{packageName}_*_{publisherId}")
+                .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        foreach (var packageDir in packageDirs)
+        {
+            var manifestPath = Path.Combine(packageDir, "AppxManifest.xml");
+            if (!File.Exists(manifestPath)) continue;
+            try
+            {
+                var doc = XDocument.Load(manifestPath);
+                var appElem = doc.Descendants()
+                    .FirstOrDefault(e => string.Equals(e.Name.LocalName, "Application", StringComparison.Ordinal)
+                        && string.Equals(e.Attribute("Id")?.Value?.Trim(), appId, StringComparison.OrdinalIgnoreCase));
+                var relExe = appElem?.Attribute("Executable")?.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(relExe)) continue;
+
+                var fullExe = Path.GetFullPath(Path.Combine(packageDir, relExe.Replace('/', '\\')));
+                if (!File.Exists(fullExe)) continue;
+
+                var displayName = appElem?.Descendants()
+                    .FirstOrDefault(e => string.Equals(e.Name.LocalName, "VisualElements", StringComparison.Ordinal))
+                    ?.Attribute("DisplayName")?.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(displayName) || displayName.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
+                {
+                    displayName = doc.Descendants()
+                        .FirstOrDefault(e => string.Equals(e.Name.LocalName, "DisplayName", StringComparison.Ordinal))
+                        ?.Value?.Trim();
+                }
+                if (string.IsNullOrWhiteSpace(displayName) || displayName.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
+                {
+                    displayName = Path.GetFileNameWithoutExtension(fullExe);
+                }
+
+                return (displayName, fullExe);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+            {
+                continue;
+            }
+        }
+
+        return null;
     }
 
     public static (string? ShortcutPath, string? Error) AddPin(string appName, string executablePath, string? launchArguments = null)
