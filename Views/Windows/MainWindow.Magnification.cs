@@ -45,11 +45,15 @@ public partial class MainWindow
 
     private void RebuildMagnificationTargets()
     {
-        // Reuse previously captured rest geometry. Sampling button positions while slots/frame are expanded feeds
-        // magnified geometry back into the falloff model, which makes the same hover alternate between a small and
-        // an oversized bloom (and can push icons past the dock edge).
-        var previousRest = new Dictionary<Button, MagnificationTarget>();
-        foreach (var target in _magnificationTargets) previousRest[target.Button] = target;
+        // Only reuse previously captured rest geometry while slots/frame are actively expanded; once at rest,
+        // always re-measure so dock resizes, scrolling, app changes, or edge switches never leave stale centers.
+        var atRest = !_magnificationLayoutActive && !_magnificationRendering;
+        Dictionary<Button, MagnificationTarget>? previousRest = null;
+        if (!atRest)
+        {
+            previousRest = new Dictionary<Button, MagnificationTarget>(_magnificationTargets.Count);
+            foreach (var target in _magnificationTargets) previousRest[target.Button] = target;
+        }
 
         _magnificationTargets.Clear();
         if (DockHost is null || !IsLoaded) return;
@@ -66,7 +70,7 @@ public partial class MainWindow
             // fisheye for application icons and stacks only.
             if (IsNativeShellButton(button)) continue;
 
-            if (previousRest.TryGetValue(button, out var known) && ReferenceEquals(known.Icon, icon))
+            if (previousRest is not null && previousRest.TryGetValue(button, out var known) && ReferenceEquals(known.Icon, icon))
             {
                 _magnificationTargets.Add(known);
                 continue;
@@ -81,7 +85,7 @@ public partial class MainWindow
 
         // Never sample the expansion budget from geometry that magnification itself has grown or an in-flight
         // width animation is still moving; that feedback is what made the same hover bloom to different sizes.
-        if (!_magnificationRendering && !_magnificationLayoutActive)
+        if (atRest)
         {
             CaptureMagnificationExpansionBudget();
             if (_hasMagnificationPointer) UpdateMagnificationTargetsForPointer(_lastMagnificationPointerAxis);
@@ -169,7 +173,7 @@ public partial class MainWindow
             _canExpandSurface = true;
             _availableExpansion = Math.Max(0.0, maximumSurfaceWidth - _restSurfaceWidth);
         }
-        else if (IsFullWidth
+        else if ((IsFullWidth || _dockWidthOverride is not null)
             && DockScrollViewer.ScrollableWidth <= 0.5
             && double.IsFinite(_restScrollMaxWidth)
             && DockContents.ActualWidth > 0)

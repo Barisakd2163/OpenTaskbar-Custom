@@ -2603,8 +2603,12 @@ public partial class MainWindow : Window
         ResizeDockToContent();
     }
 
-    /// <summary>Headroom above the dock surface: the user's external top gap (zero sits flush).</summary>
-    private double EffectiveHeadroom => ExternalTopGap;
+    /// <summary>
+    /// Transparent, click-through headroom above the dock surface. Always keeps at least <see cref="DockMetrics.Headroom"/>
+    /// so launch-bounce and hover magnification animations draw above neighbouring app windows instead of clipping at
+    /// the top edge of the dock window.
+    /// </summary>
+    private double EffectiveHeadroom => Math.Max(DockMetrics.Headroom, ExternalTopGap);
 
     /// <summary>External spacing above the visible bar, resolved from the user's pixels/percent preference.</summary>
     private double ExternalTopGap
