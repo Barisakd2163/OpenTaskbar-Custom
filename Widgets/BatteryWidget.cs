@@ -456,6 +456,10 @@ public sealed class BatteryWidget : DockWidget
             {
                 RepeatBehavior = RepeatBehavior.Forever
             };
+            // Without a frame-rate cap WPF re-rasterizes this CPU-bound clip geometry at 60 fps,
+            // consuming ~70% of a core while the PC simply sits charging. 15 fps is visually
+            // indistinguishable for a 1.6s wave and cuts the cost by ~4x.
+            Timeline.SetDesiredFrameRate(waveAnim, 15);
             _waveTransform.BeginAnimation(TranslateTransform.YProperty, waveAnim);
         }
         else
@@ -474,12 +478,14 @@ public sealed class BatteryWidget : DockWidget
             Duration = TimeSpan.FromMilliseconds(2800),
             RepeatBehavior = RepeatBehavior.Forever
         };
+
         sheenAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(startX, KeyTime.FromTimeSpan(TimeSpan.Zero)));
         sheenAnim.KeyFrames.Add(new EasingDoubleKeyFrame(
             endX,
             KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1400)),
             new CubicEase { EasingMode = EasingMode.EaseInOut }));
         sheenAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(endX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2800))));
+        Timeline.SetDesiredFrameRate(sheenAnim, 15);
         _sheenTransform.BeginAnimation(TranslateTransform.XProperty, sheenAnim);
     }
 
