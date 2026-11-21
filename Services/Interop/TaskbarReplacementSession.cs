@@ -602,7 +602,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             return;
         }
 
-        var headroomDips = HeadroomHeight;
+        var headroomDips = Math.Max(DockMetrics.Headroom, HeadroomHeight);
         // The shelf comes from the user's size + scale profile. Any Explorer strip that is still present is
         // accounted for in ReserveShelf via the current work area, so it must not impose a height floor here.
         var metrics = DockLayoutMetrics.Calculate(ShelfHeight, 0, headroomDips, dpi);
