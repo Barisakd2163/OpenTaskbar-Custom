@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 namespace OpenTaskbar.Models;
 
@@ -200,4 +201,14 @@ public sealed record DockSettings(
     int DockTopGapPercent = 0,
     DockGapUnit DockBottomGapUnit = DockGapUnit.Pixels,
     int DockBottomGapPixels = 6,
-    int DockBottomGapPercent = 0);
+    int DockBottomGapPercent = 0,
+    bool FocusModeEnabled = false)
+{
+    /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
+    [JsonIgnore]
+    public bool EffectiveAnimationsEnabled => AnimationsEnabled && !FocusModeEnabled;
+
+    /// <summary>Effective notification badge state, suppressed while focus mode is active.</summary>
+    [JsonIgnore]
+    public bool EffectiveNotificationBadgesEnabled => NotificationBadgesEnabled && !FocusModeEnabled;
+}

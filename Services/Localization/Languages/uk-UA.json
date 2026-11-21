@@ -543,6 +543,8 @@
   "AudioOutputDevices": "Пристрій виводу",
   "BuiltInThemes": "Вбудовані",
   "CheckUpdatesSettingDescription": "Сповіщати про наявність нової версії OpenTaskbar.",
+  "FocusMode": "Режим фокусування",
+  "FocusModeDescription": "Приховувати значки сповіщень, віджети й анімації без втрати налаштувань.",
   "ColorAddStop": "+ Точка",
   "ColorAngle": "Кут",
   "ColorBlue": "Синій",

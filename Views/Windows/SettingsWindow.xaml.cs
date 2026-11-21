@@ -223,7 +223,7 @@ public partial class SettingsWindow : Window
         _source?.AddHook(WindowProc);
         _sourceReady = true;
         UpdateBackdrop();
-        if (_preferences.Current.AnimationsEnabled)
+        if (_preferences.Current.EffectiveAnimationsEnabled)
         {
             PlayOpenAnimation();
         }
@@ -361,7 +361,8 @@ public partial class SettingsWindow : Window
                 ? position : _preferences.Current.Position,
             AnimationsEnabled = AnimationsToggle.IsChecked == true,
             PreviewsEnabled = PreviewsToggle.IsChecked == true,
-            NotificationBadgesEnabled = true,
+            NotificationBadgesEnabled = _preferences.Current.NotificationBadgesEnabled,
+            FocusModeEnabled = FocusModeToggle.IsChecked == true,
             AutoHide = Enum.TryParse<AutoHideMode>(Choice(AutoHideBox), out var autoHide) ? autoHide : AutoHideMode.Disabled,
             GlobalWidgetDensity = Enum.TryParse<WidgetDensityMode>(Choice(DensityBox), out var density) ? density : WidgetDensityMode.Auto,
             WidgetDensityOverrides = ReadWidgetDensityOverrides(),
@@ -1031,7 +1032,7 @@ public partial class SettingsWindow : Window
         if (!_initializing && ReferenceEquals(e.Source, SettingsTabs))
         {
             UpdateWidgetPreviewRefresh();
-            if (_preferences.Current.AnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
+            if (_preferences.Current.EffectiveAnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
             {
                 var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
                 easing.Freeze();
@@ -1310,6 +1311,7 @@ public partial class SettingsWindow : Window
         UpdateMultiMonitorControls();
         CurrentDesktopToggle.IsChecked = settings.CurrentDesktopOnly;
         UpdatesToggle.IsChecked = settings.CheckUpdates;
+        FocusModeToggle.IsChecked = settings.FocusModeEnabled;
         SelectChoice(EdgeBox, settings.Edge.ToString());
         SelectChoice(ClockFormatBox, settings.Clock24Hour ? "24" : "12");
         ClockSecondsToggle.IsChecked = settings.ClockShowSeconds;
@@ -1760,7 +1762,7 @@ public partial class SettingsWindow : Window
     {
         FlushPendingAutoSaves();
         if (_closingApplication || Application.Current.Dispatcher.HasShutdownStarted || _isClosingCompleted) return;
-        if (_preferences.Current.AnimationsEnabled && IsLoaded && !_isClosing)
+        if (_preferences.Current.EffectiveAnimationsEnabled && IsLoaded && !_isClosing)
         {
             e.Cancel = true;
             AnimateAndClose();

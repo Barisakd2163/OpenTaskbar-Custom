@@ -328,6 +328,8 @@
   "WheelVolumeDescription": "The mouse wheel over the dock changes the volume; over an icon it cycles that app’s windows.",
   "CheckUpdatesSetting": "Check for updates automatically",
   "CheckUpdatesSettingDescription": "Notify when a newer release of OpenTaskbar is available.",
+  "FocusMode": "Focus mode",
+  "FocusModeDescription": "Hide notification badges, widgets, and animations without losing your settings.",
   "ShowRecycleBin": "Show Recycle Bin",
   "ShowRecycleBinDescription": "Show the Recycle Bin icon at the end of the application list.",
   "SectionSystem": "General",

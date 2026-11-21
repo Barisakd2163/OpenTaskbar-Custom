@@ -45,6 +45,7 @@
             <MenuItem Header="{local:Loc Profiles}" Icon="{StaticResource IconLayers}" Tag="ProfilesMenu">
                 <MenuItem Header="…" />
             </MenuItem>
+            <MenuItem Header="{local:Loc FocusMode}" Icon="{StaticResource IconEyeOff}" Tag="FocusModeMenu" IsCheckable="True" Click="ToggleFocusMode_Click" />
             <Separator />
             <MenuItem Header="{local:Loc CheckForUpdates}" Icon="{StaticResource IconRefresh}" Tag="UpdateMenu" Click="CheckUpdates_Click" />
             <MenuItem Header="{local:Loc TaskManager}" Icon="{StaticResource IconTaskManager}" Click="OpenTaskManager_Click" />

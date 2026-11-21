@@ -366,7 +366,7 @@ public sealed class BatteryWidget : DockWidget
 
         var shouldAnimate = _renderedCharging
             && IsActive
-            && Settings.AnimationsEnabled
+            && Settings.EffectiveAnimationsEnabled
             && SystemParameters.ClientAreaAnimation;
 
         if (!shouldAnimate)

@@ -424,7 +424,7 @@ public partial class MainWindow
 
     private void AnimateActivationFeedback(Button button)
     {
-        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        if (!_preferences.Current.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             return;
         }
@@ -454,7 +454,7 @@ public partial class MainWindow
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!_preferences.Current.MagnificationEnabled || !_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        if (!_preferences.Current.MagnificationEnabled || !_preferences.Current.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
             return;
 
         if (LeftResizeThumb.IsDragging || RightResizeThumb.IsDragging || DockScrollViewer.IsPanning)

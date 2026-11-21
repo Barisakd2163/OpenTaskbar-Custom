@@ -543,6 +543,8 @@
   "AudioOutputDevices": "出力デバイス",
   "BuiltInThemes": "組み込み",
   "CheckUpdatesSettingDescription": "OpenTaskbar の新しいバージョンが利用可能なときに通知します。",
+  "FocusMode": "集中モード",
+  "FocusModeDescription": "通知バッジ、ウィジェット、アニメーションを設定を失うことなく非表示にします。",
   "ColorAddStop": "+ 停止点",
   "ColorAngle": "角度",
   "ColorBlue": "青",

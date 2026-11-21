@@ -225,7 +225,7 @@ public partial class MainWindow : Window
         _thumbnailPreview.PreviewClicked += ThumbnailPreview_PreviewClicked;
         _thumbnailPreview.CloseRequested += ThumbnailPreview_CloseRequested;
         _dockPosition = _preferences.Current.Position;
-        _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        _thumbnailPreview.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
         ShellShortcuts.IsMediaWidgetActive = () =>
             _preferences.Current.Widgets?.Contains("Media", StringComparer.OrdinalIgnoreCase) == true
@@ -316,7 +316,7 @@ public partial class MainWindow : Window
         _autoHideController.LastApplicationWindowProvider = () => _lastApplicationWindow;
         _autoHideController.BackgroundWindowsProvider = () => (_windowTracker?.Snapshot ?? []).Select(window => window.Handle);
         _startMenu.StartWatching();
-        _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        _autoHideController.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
 
@@ -721,7 +721,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<RunningAppCandidate> RunningWindowStates() =>
         RunningAppProjection.Project(VisibleSnapshot,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase), _foregroundWindow,
-            _preferences.Current.NotificationBadgesEnabled, static _ => true);
+            _preferences.Current.EffectiveNotificationBadgesEnabled, static _ => true);
 
     /// <summary>Current running apps after every gate: eligibility, virtual desktop, profile, pinned and disk path.</summary>
     private IReadOnlyList<RunningAppCandidate> RunningCandidates()
@@ -730,7 +730,7 @@ public partial class MainWindow : Window
         var pinnedPaths = _pinnedApps.Where(app => !IsHiddenByProfile(app)).Select(app => app.ExecutablePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return RunningAppProjection.Project(VisibleSnapshot, pinnedPaths, _foregroundWindow,
-            _preferences.Current.NotificationBadgesEnabled, File.Exists);
+            _preferences.Current.EffectiveNotificationBadgesEnabled, File.Exists);
     }
 
     /// <summary>Updates running apps and their layout together, including callers outside the window-event path.</summary>
@@ -890,7 +890,7 @@ public partial class MainWindow : Window
         Action afterRemoval)
     {
         var button = FindVisualChild<Button>(owner.ItemContainerGenerator.ContainerFromItem(app));
-        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform { IsFrozen: false, IsSealed: false } scale)
+        if (!_preferences.Current.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation || button?.RenderTransform is not ScaleTransform { IsFrozen: false, IsSealed: false } scale)
         {
             RemoveDockApp(apps, app);
             afterRemoval();
@@ -958,7 +958,7 @@ public partial class MainWindow : Window
 
     private void DockAppButton_Loaded(object sender, RoutedEventArgs e)
     {
-        if (!_preferences.Current.AnimationsEnabled || !SystemParameters.ClientAreaAnimation || sender is not Button button)
+        if (!_preferences.Current.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation || sender is not Button button)
         {
             return;
         }
@@ -1482,6 +1482,7 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "HideInProfile", isPinnedTarget && ActiveProfile is not null);
         if (FindMenuItem(contextMenu, "AddToGroup") is { } addToGroupMenu) PopulateAddToGroupMenu(addToGroupMenu, pinnedApp);
         if (FindMenuItem(contextMenu, "ProfilesMenu") is { } profilesMenu) PopulateProfilesMenu(profilesMenu);
+        if (FindMenuItem(contextMenu, "FocusModeMenu") is { } focusModeMenu) focusModeMenu.IsChecked = _preferences.Current.FocusModeEnabled;
         if (FindMenuItem(contextMenu, "UpdateMenu") is { } updateMenu)
         {
             updateMenu.Header = _availableUpdate is { } update
@@ -2005,16 +2006,15 @@ public partial class MainWindow : Window
         if (_replacementSession is not null) _replacementSession.DeferReservation = false;
         ResetMagnification(immediate: true);
         DockSurfaceTranslate.X = 0;
-        ApplyWidgets(_preferences.Current.Widgets);
         ThemePacks_Changed(this, EventArgs.Empty);
         _dockPosition = _preferences.Current.Position;
-        _thumbnailPreview.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
-        if (_autoHideController is not null) _autoHideController.AnimationsEnabled = _preferences.Current.AnimationsEnabled;
+        _thumbnailPreview.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
+        if (_autoHideController is not null) _autoHideController.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
         _autoHideController?.SetMode(_preferences.Current.AutoHide);
         _replacementSession?.UpdateAutoHide(_preferences.Current.AutoHide != AutoHideMode.Disabled);
         ApplyBackdropHitTesting();
         _widgetCoordinator.Apply(_preferences.Current);
-        RebuildDockOrder();
+        ApplyWidgets(_preferences.Current.Widgets);
         ApplyExtrasSettings();
         ApplyFeatureSettings();
         ApplyHeadroom();
@@ -2064,7 +2064,7 @@ public partial class MainWindow : Window
     /// <summary>Subtle settle animation when a new size/scale profile is committed.</summary>
     private void AnimateDockScaleChange()
     {
-        if (!_preferences.Current.AnimationsEnabled) return;
+        if (!_preferences.Current.EffectiveAnimationsEnabled) return;
         DockScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         DockScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         var animation = new DoubleAnimation(0.94, 1.0, TimeSpan.FromMilliseconds(220))
@@ -2129,9 +2129,10 @@ public partial class MainWindow : Window
         _widgetPanel.Close(restoreFocus: false);
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
         _widgets.Clear();
-        var clockStripActive = selected?.Contains(DockWidgetService.ClockId, StringComparer.OrdinalIgnoreCase) == true;
-        var statsStripActive = selected?.Contains(DockWidgetService.SystemStatsId, StringComparer.OrdinalIgnoreCase) == true;
-        var filtered = selected?.Where(id =>
+        var effectiveSelected = _preferences.Current.FocusModeEnabled ? null : selected;
+        var clockStripActive = effectiveSelected?.Contains(DockWidgetService.ClockId, StringComparer.OrdinalIgnoreCase) == true;
+        var statsStripActive = effectiveSelected?.Contains(DockWidgetService.SystemStatsId, StringComparer.OrdinalIgnoreCase) == true;
+        var filtered = effectiveSelected?.Where(id =>
             !WidgetCoordinator.HandlesWidget(id)
             && (!clockStripActive || id != DockWidgetService.DateId)
             && (!statsStripActive || id != DockWidgetService.BatteryId))
@@ -2148,7 +2149,7 @@ public partial class MainWindow : Window
 
         WidgetDivider.Visibility = Visibility.Collapsed;
         DockWidgets.Visibility = Visibility.Collapsed;
-        if (_widgets.Count > 0 || _widgetCoordinator.ActiveWidgets.Count > 0)
+        if (!_preferences.Current.FocusModeEnabled && (_widgets.Count > 0 || _widgetCoordinator.HasActiveWidgets))
         {
             DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
             if (!_widgetRefreshTimer.IsEnabled) _widgetRefreshTimer.Start();
@@ -2399,7 +2400,7 @@ public partial class MainWindow : Window
             foreach (var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 // Horizontal widgets are hidden on narrow vertical side docks so they never widen or clip the strip.
-                if (IsVertical && token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)) continue;
+                if ((IsVertical || _preferences.Current.FocusModeEnabled) && token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)) continue;
                 if (CreateDockItemElement(token) is { } element) pairs.Add((token, element));
             }
 
@@ -3040,7 +3041,7 @@ public partial class MainWindow : Window
             && _dockWidthOverride is null
             && LeftResizeThumb.IsDragging == false && RightResizeThumb.IsDragging == false
             && !_instantDockResize
-            && _preferences.Current.AnimationsEnabled
+            && _preferences.Current.EffectiveAnimationsEnabled
             && SystemParameters.ClientAreaAnimation
             && Math.Abs(DockSurface.ActualWidth - targetWidth) >= 1.0)
         {

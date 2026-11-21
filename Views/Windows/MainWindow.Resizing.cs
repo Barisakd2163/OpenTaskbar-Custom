@@ -88,7 +88,7 @@ public partial class MainWindow
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
 
         DockSurfaceTranslate.X = 0;
-        if (!_preferences.Current.AnimationsEnabled)
+        if (!_preferences.Current.EffectiveAnimationsEnabled)
         {
             DockSurface.Width = desiredWidth;
             ResizeDockToContent();

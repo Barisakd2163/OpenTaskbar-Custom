@@ -543,6 +543,8 @@
   "AudioOutputDevices": "输出设备",
   "BuiltInThemes": "内置",
   "CheckUpdatesSettingDescription": "当有新版本的 OpenTaskbar 可用时通知。",
+  "FocusMode": "专注模式",
+  "FocusModeDescription": "隐藏通知角标、小组件和动画效果，且不会丢失设置。",
   "ColorAddStop": "+ 色标",
   "ColorAngle": "角度",
   "ColorBlue": "蓝",

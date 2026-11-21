@@ -375,7 +375,7 @@ public partial class MainWindow
         _thumbnailPreview.Hide();
         ResetMagnification();
         stack.HasNewItems = false;
-        _stackFlyout.Toggle(button, () => BuildStackContent(stack), _preferences.Current.AnimationsEnabled);
+        _stackFlyout.Toggle(button, () => BuildStackContent(stack), _preferences.Current.EffectiveAnimationsEnabled);
     }
 
     private UIElement BuildStackContent(DockStack stack)
@@ -568,7 +568,7 @@ public partial class MainWindow
         var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
 
         button.Opacity = 0.55;
-        if (scale is not null && translate is not null && _preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation)
+        if (scale is not null && translate is not null && _preferences.Current.EffectiveAnimationsEnabled && SystemParameters.ClientAreaAnimation)
         {
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.10, animDuration) { EasingFunction = easeOut });
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.10, animDuration) { EasingFunction = easeOut });
@@ -636,7 +636,7 @@ public partial class MainWindow
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
 
-            if (_preferences.Current.AnimationsEnabled && SystemParameters.ClientAreaAnimation)
+            if (_preferences.Current.EffectiveAnimationsEnabled && SystemParameters.ClientAreaAnimation)
             {
                 UpdateDragDisplacements(targetButton, e);
             }
