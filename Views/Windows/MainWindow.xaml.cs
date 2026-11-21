@@ -77,7 +77,7 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
-    private (DockSize Size, double Scale, double ShelfHeight)? _appliedDockGeometry;
+    private (DockSize Size, double Scale, int Padding, double BottomGap)? _appliedDockGeometry;
     private bool _resizingDock;
     private bool _resizePending;
     private bool _resizingFromLeft;
@@ -91,7 +91,7 @@ public partial class MainWindow : Window
     private bool _rebuildingDockOrder;
     private bool _instantDockResize;
     private double _dockTopGap;
-    private (DockSize Size, double Scale)? _sizePreviewOverride;
+    private (DockSize Size, double Scale, int Padding)? _sizePreviewOverride;
     private double? _radiusPreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
     private int _wheelRemainder;
@@ -125,7 +125,10 @@ public partial class MainWindow : Window
         var startup = StartupStopwatch.Start("MainWindow constructor");
         InitializeComponent();
         StartupStopwatch.Mark("XAML inflated");
-        DockContents.LayoutUpdated += (_, _) => InvalidateMagnificationTargets();
+        // LayoutUpdated fires on every Arrange (including fisheye's per-frame slot writes). Rebuilding
+        // rest geometry from it created a feedback loop; subscribe to the concrete geometry changes instead.
+        DockContents.SizeChanged += (_, _) => InvalidateMagnificationTargets();
+        DockScrollViewer.ScrollChanged += (_, _) => InvalidateMagnificationTargets();
         _widgetPanel = new WidgetPanelHost(this);
         _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed += ReportError;
@@ -151,19 +154,20 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(500)
         };
         _previewCloseTimer.Tick += PreviewCloseTimer_Tick;
-        _widgetRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        // Non-interactive refresh work runs at idle priority so it never competes with rendering.
+        _widgetRefreshTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
         {
             Interval = TimeSpan.FromSeconds(15)
         };
         _widgetRefreshTimer.Tick += WidgetRefreshTimer_Tick;
-        _iconRetryTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _iconRetryTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
         {
             Interval = RunningAppIconCache.RetryDelay
         };
         _iconRetryTimer.Tick += IconRetryTimer_Tick;
         // Icons load off the UI thread; refresh the running apps once when one or more loads finish.
         _runningAppIcons.IconLoaded += QueueIconRefresh;
-        _timedWidgetRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _timedWidgetRefreshTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
         {
             Interval = TimeSpan.FromSeconds(1)
         };
@@ -471,7 +475,7 @@ public partial class MainWindow : Window
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
-        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, EffectiveShelfHeight);
+        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding, ExternalBottomGap);
         session.Edge = Edge;
         session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
@@ -592,7 +596,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1163,23 +1167,6 @@ public partial class MainWindow : Window
     /// <summary>Starts an application through the shell and returns an error key, or null on success or UAC cancel.</summary>
     internal static string? StartApplication(string executablePath, string arguments, bool elevated)
     {
-        if (!elevated && string.IsNullOrWhiteSpace(arguments)
-            && ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath) is { } aumid)
-        {
-            try
-            {
-                using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{aumid}")
-                {
-                    UseShellExecute = true
-                });
-                return null;
-            }
-            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
-            {
-                // Fall through to standard executable launch below.
-            }
-        }
-
         if (!File.Exists(executablePath)) return "ErrorAppFileNotFound";
         try
         {
@@ -1950,9 +1937,9 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath, string? iconLocation = null, string? appUserModelId = null)
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
     {
-        var raw = ApplicationIconProvider.GetForPinnedApp(executablePath, iconLocation, appUserModelId);
+        var raw = ApplicationIconProvider.GetForFile(executablePath);
         return ThemePacks.ApplyIcon(raw, executablePath);
     }
 
@@ -1962,7 +1949,7 @@ public partial class MainWindow : Window
         ApplyStartIcon();
         foreach (var app in _pinnedApps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
         }
         if (_windowTracker is not null)
         {
@@ -2012,7 +1999,6 @@ public partial class MainWindow : Window
         _sizePreviewOverride = null;
         _radiusPreviewOverride = null;
         ResetMagnification(immediate: true);
-        DockFlyout.CloseAll(restoreFocus: false);
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
         ThemePacks_Changed(this, EventArgs.Empty);
@@ -2051,13 +2037,19 @@ public partial class MainWindow : Window
             PositionDock();
         }
 
-        // Windows only recalculates the work area when the AppBar is first registered. A size, scale, or
-        // bottom-gap/shelf change therefore needs a fresh replacement session to move the reserved taskbar strip.
-        var geometry = (Size: _preferences.Current.Size, Scale: _preferences.Current.DockScale, ShelfHeight: EffectiveShelfHeight);
+        // Windows only recalculates the work area when the AppBar is first registered. A size/scale or bottom-gap
+        // change therefore needs a fresh replacement session to move the reserved taskbar strip, exactly as a restart does.
+        var geometry = (
+            Size: _preferences.Current.Size,
+            Scale: _preferences.Current.DockScale,
+            Padding: _preferences.Current.DockIconPadding,
+            BottomGap: ExternalBottomGap);
         if (_appliedDockGeometry is { } applied && applied != geometry && _replacementSession is not null)
         {
-            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001)
+            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001 || applied.Padding != geometry.Padding)
+            {
                 AnimateDockScaleChange();
+            }
             RestartReplacementSession();
         }
         _appliedDockGeometry = geometry;
@@ -2421,7 +2413,7 @@ public partial class MainWindow : Window
 
             foreach (var element in _dockItemElements.Values) DockContents.Children.Remove(element);
             _dockItemElements.Clear();
-            DockContents.Children.Remove(NativeGroupDivider);
+            DockContents.Children.Remove(StartDivider);
             DockContents.Children.Remove(TrayGroupDivider);
 
             var insertAt = DockContents.Children.IndexOf(StatusText);
@@ -2429,13 +2421,14 @@ public partial class MainWindow : Window
 
             var leadCount = pairs.Count(pair => DockItemOrdering.PinnedLeadTokens.Contains(pair.Token, StringComparer.OrdinalIgnoreCase));
             var trayIndex = pairs.FindIndex(pair => string.Equals(pair.Token, "tray", StringComparison.OrdinalIgnoreCase));
-            var showLeadDivider = leadCount > 0 && leadCount < pairs.Count;
+            // The shell group always gets its hairline; when Tray follows immediately its own divider avoids a double line.
+            var showLeadDivider = leadCount > 0 && trayIndex != leadCount;
             var showTrayDivider = trayIndex > 0;
 
             for (var i = 0; i < pairs.Count; i++)
             {
                 if (i == leadCount && showLeadDivider)
-                    DockContents.Children.Insert(insertAt++, NativeGroupDivider);
+                    DockContents.Children.Insert(insertAt++, StartDivider);
                 if (i == trayIndex && showTrayDivider)
                     DockContents.Children.Insert(insertAt++, TrayGroupDivider);
 
@@ -2445,8 +2438,10 @@ public partial class MainWindow : Window
                 DockContents.Children.Insert(insertAt++, element);
                 _dockItemElements[token] = element;
             }
+            if (showLeadDivider && leadCount >= pairs.Count)
+                DockContents.Children.Insert(insertAt++, StartDivider);
 
-            NativeGroupDivider.Visibility = showLeadDivider ? Visibility.Visible : Visibility.Collapsed;
+            StartDivider.Visibility = showLeadDivider ? Visibility.Visible : Visibility.Collapsed;
             TrayGroupDivider.Visibility = showTrayDivider ? Visibility.Visible : Visibility.Collapsed;
             InvalidateMagnificationTargets();
         }
@@ -2638,6 +2633,21 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Reserved shelf height (DIP) covering both the visible dock surface and the user's external bottom gap so
+    /// maximized windows never overlap the top edge of the dock.
+    /// </summary>
+    private double EffectiveShelfHeight
+    {
+        get
+        {
+            var profile = Profile;
+            return IsVertical
+                ? Math.Max(profile.Shelf + 16, profile.SurfaceHeight + ExternalBottomGap + 16)
+                : Math.Max(profile.Shelf, profile.SurfaceHeight + ExternalBottomGap + 2);
+        }
+    }
+
+    /// <summary>
     /// Transparent, click-through headroom above the dock surface. Always keeps at least <see cref="DockMetrics.Headroom"/>
     /// so launch-bounce and hover magnification animations draw above neighbouring app windows instead of clipping at
     /// the top edge of the dock window.
@@ -2692,12 +2702,14 @@ public partial class MainWindow : Window
             : Profile.Radius);
 
     private DockSizeProfile Profile => _sizePreviewOverride is { } preview
-        ? DockMetrics.For(preview.Size, preview.Scale)
-        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale);
+        ? DockMetrics.For(preview.Size, preview.Scale, preview.Padding)
+        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding);
 
-    internal void SetSizePreview(DockSize? size, double? scale)
+    internal void SetSizePreview(DockSize? size, double? scale, int? padding = null)
     {
-        _sizePreviewOverride = size is { } s && scale is { } sc ? (s, sc) : null;
+        _sizePreviewOverride = size is { } s && scale is { } sc
+            ? (s, sc, padding ?? _preferences.Current.DockIconPadding)
+            : null;
         if (_replacementSession is not null) _replacementSession.DeferReservation = _sizePreviewOverride is not null;
         ApplySizeProfile();
         if (_replacementSession?.IsActive == true)
@@ -2719,26 +2731,6 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
-    /// <summary>
-    /// Shelf thickness reserved for the dock surface plus its external bottom gap.
-    /// Always stays at least <c>requiredSurface + ExternalBottomGap + 1</c> so increasing the bottom gap
-    /// or border thickness never compresses <see cref="DockSurface"/> below <see cref="DockSizeProfile.Cell"/>
-    /// and triggers a WPF <c>LayoutClip</c> on dock buttons (which would cut off magnified/bouncing icons).
-    /// </summary>
-    private double EffectiveShelfHeight
-    {
-        get
-        {
-            var profile = Profile;
-            var border = _preferences.Current.DockBackground == SurfaceBackground.None
-                ? 0.0
-                : Math.Max(0.0, _preferences.Current.DockBorderThickness) * 2.0;
-            var requiredSurface = profile.Cell + profile.VerticalPadding * 2 + border;
-            if (IsVertical) return Math.Max(profile.Shelf + 16, requiredSurface + ExternalBottomGap + 16);
-            return Math.Max(profile.Shelf, requiredSurface + ExternalBottomGap + 1);
-        }
-    }
-
     private void ApplySizeProfile()
     {
         UpdatePreferredIconPixels();
@@ -2750,6 +2742,10 @@ public partial class MainWindow : Window
         RadiusManager.Apply((int)Math.Round(radius));
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
+        // Extra icon gap is an absolute DIP value applied as a Thickness resource so XAML styles can bind to it.
+        var iconPadding = profile.IconPadding;
+        Application.Current.Resources["DockIconPaddingResource"] = new Thickness(iconPadding, 0, iconPadding, 0);
+        ApplyDividerPadding(iconPadding);
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         Application.Current.Resources["DockUtilityGlyphSize"] = Math.Round(profile.Icon * 0.6);
         Application.Current.Resources["StartLogoSize"] = Application.Current.Resources["DockApplicationIconSize"] is double currentSize ? currentSize : 36.0;
@@ -2771,6 +2767,9 @@ public partial class MainWindow : Window
         var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;
         WidgetStrip.LayoutTransform = widgetTransform;
         DockWidgets.LayoutTransform = widgetTransform;
+        // The external bottom gap is subtracted from the shelf by DockSurface.Margin, so the frame's inner
+        // height must still fit the full DockCellHeight. Otherwise WPF gives every DockButton a LayoutClip
+        // (e.g. 0,0,38,36) and magnified icons get cut at the top edge of the dock. Grow the shelf instead.
         var effectiveShelf = EffectiveShelfHeight;
         if (_replacementSession is not null)
         {
@@ -2788,6 +2787,17 @@ public partial class MainWindow : Window
             Height = EffectiveHeadroom + effectiveShelf;
         }
         ApplySecondaryShelf();
+    }
+
+    /// <summary>
+    /// Grows the fixed divider margins by the configured icon gap so spacing stays visually even between icons
+    /// and the separators that group shell buttons, app groups and widgets. Zero preserves the original margins.
+    /// </summary>
+    private void ApplyDividerPadding(double padding)
+    {
+        StartDivider.Margin = new Thickness(3 + padding, 0, 4 + padding, 0);
+        TrayGroupDivider.Margin = new Thickness(6 + padding, 0, 4 + padding, 0);
+        WidgetDivider.Margin = new Thickness(6 + padding, 0, 6 + padding, 0);
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -3014,6 +3024,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        DockLayoutRoot.MinWidth = 0;
         var desiredWidth = Math.Ceiling(contentFixedWidth + DockHorizontalChrome);
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
@@ -3023,7 +3034,6 @@ public partial class MainWindow : Window
         if (!double.IsNaN(DockSurface.Width)
             && DockSurface.ActualWidth > 0
             && _dockWidthOverride is null
-            && !_magnificationRendering
             && LeftResizeThumb.IsDragging == false && RightResizeThumb.IsDragging == false
             && !_instantDockResize
             && _preferences.Current.AnimationsEnabled

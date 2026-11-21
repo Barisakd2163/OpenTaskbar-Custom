@@ -40,6 +40,20 @@ public partial class MainWindow
     private readonly List<(double Min, double Max)> _nonMagnifiedRestSpans = [];
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Image, BitmapSource> _restingIcons = new();
 
+    // Cache the transform pair per icon so the per-frame render loop never runs an
+    // OfType/FirstOrDefault LINQ walk after the first frame.
+    private sealed class IconTransforms(ScaleTransform scale, TranslateTransform translate, TransformGroup group)
+    {
+        public ScaleTransform Scale { get; } = scale;
+        public TranslateTransform Translate { get; } = translate;
+        public TransformGroup Group { get; } = group;
+    }
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, IconTransforms> s_iconTransforms = new();
+    private readonly Dictionary<Button, int> _zIndexCache = [];
+    // Threshold crossings call UseHoverIcon repeatedly for the same icon; avoid walking the visual
+    // tree each time by remembering the Image element found for it.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, Image> s_hoverImageCache = new();
+
     internal void InvalidateMagnificationTargets()
     {
         // Slot-size writes fire LayoutUpdated every frame; rebuilding targets from rest geometry while the spring
@@ -266,23 +280,39 @@ public partial class MainWindow
 
     internal static (ScaleTransform Scale, TranslateTransform Translate) GetIconTransforms(FrameworkElement icon)
     {
-        if (icon.RenderTransform is TransformGroup { IsFrozen: false, IsSealed: false } group)
+        if (s_iconTransforms.TryGetValue(icon, out var cached)
+            && !cached.Scale.IsFrozen && !cached.Scale.IsSealed
+            && !cached.Translate.IsFrozen && !cached.Translate.IsSealed
+            && ReferenceEquals(icon.RenderTransform, cached.Group))
         {
-            var s = group.Children.OfType<ScaleTransform>().FirstOrDefault();
-            var t = group.Children.OfType<TranslateTransform>().FirstOrDefault();
-            if (s is { IsFrozen: false, IsSealed: false } && t is { IsFrozen: false, IsSealed: false })
-            {
-                return (s, t);
-            }
+            return (cached.Scale, cached.Translate);
         }
 
-        var newScale = new ScaleTransform();
-        var newTranslate = new TranslateTransform();
-        var newGroup = new TransformGroup();
-        newGroup.Children.Add(newScale);
-        newGroup.Children.Add(newTranslate);
-        icon.RenderTransform = newGroup;
-        icon.RenderTransformOrigin = new Point(0.5, 0.5);
+        ScaleTransform newScale;
+        TranslateTransform newTranslate;
+        TransformGroup group;
+        if (icon.RenderTransform is TransformGroup { IsFrozen: false, IsSealed: false } existing
+            && existing.Children.Count == 2
+            && existing.Children[0] is ScaleTransform es
+            && existing.Children[1] is TranslateTransform et
+            && !es.IsFrozen && !es.IsSealed && !et.IsFrozen && !et.IsSealed)
+        {
+            newScale = es;
+            newTranslate = et;
+            group = existing;
+        }
+        else
+        {
+            newScale = new ScaleTransform();
+            newTranslate = new TranslateTransform();
+            group = new TransformGroup();
+            group.Children.Add(newScale);
+            group.Children.Add(newTranslate);
+            icon.RenderTransform = group;
+            icon.RenderTransformOrigin = new Point(0.5, 0.5);
+        }
+
+        s_iconTransforms.AddOrUpdate(icon, new IconTransforms(newScale, newTranslate, group));
         return (newScale, newTranslate);
     }
 
@@ -518,12 +548,15 @@ public partial class MainWindow
         var availableHeadroom = DockMetrics.Headroom + profile.VerticalPadding;
         var vertical = IsVertical;
         var liftSign = vertical ? (Edge == DockEdge.Left ? 1.0 : -1.0) : -1.0;
+        var scaleOrigin = IconScaleOrigin;
 
         // 1) Advance spring scales and apply icon transform + safe outward lift.
         foreach (var (icon, targetScale) in _magnificationScaleTargets)
         {
             var (scale, translate) = GetIconTransforms(icon);
-            icon.RenderTransformOrigin = IconScaleOrigin;
+            // Origin only depends on edge, not the pointer. Writing the same Point every frame is
+            // a needless dependency-property invalidation on each icon.
+            if (icon.RenderTransformOrigin != scaleOrigin) icon.RenderTransformOrigin = scaleOrigin;
             var current = scale.ScaleX;
             var velocity = _magnificationVelocity.GetValueOrDefault(icon);
             var (next, nextVelocity, iconSettled) = DockFisheyeLayout.StepSpring(current, targetScale, velocity, dtSeconds, maxScale);
@@ -577,6 +610,9 @@ public partial class MainWindow
                 scales[i] = scale.ScaleX;
                 baseSizes[i] = target.BaseSize;
                 var zIndex = (int)Math.Round(Math.Max(0.0, scale.ScaleX - 1.0) * 100.0);
+                // ZIndex is layout-affecting: rewriting it every frame forces an extra Arrange pass.
+                if (_zIndexCache.TryGetValue(target.Button, out var previousZ) && previousZ == zIndex) continue;
+                _zIndexCache[target.Button] = zIndex;
                 if (zIndex > 0) Panel.SetZIndex(target.Button, zIndex);
                 else target.Button.ClearValue(Panel.ZIndexProperty);
             }
@@ -713,6 +749,7 @@ public partial class MainWindow
         {
             target.Button.ClearValue(Panel.ZIndexProperty);
         }
+        _zIndexCache.Clear();
     }
 
     private void StopMagnificationRendering()
@@ -814,7 +851,17 @@ public partial class MainWindow
     /// </summary>
     private void UseHoverIcon(FrameworkElement icon, bool magnified)
     {
-        if ((icon as Image ?? FindVisualChild<Image>(icon)) is not { } image) return;
+        Image? image;
+        if (s_hoverImageCache.TryGetValue(icon, out var cached))
+        {
+            image = cached;
+        }
+        else if ((icon as Image ?? FindVisualChild<Image>(icon)) is { } found)
+        {
+            s_hoverImageCache.AddOrUpdate(icon, found);
+            image = found;
+        }
+        else return;
         if (magnified)
         {
             if (image.Source is not BitmapSource current
