@@ -35,6 +35,9 @@ public partial class MainWindow
     private bool _hasMagnificationPointer;
     private Point _lastDockMousePoint;
     private bool _hasLastDockMousePoint;
+    private double _magnifiedSpanMin;
+    private double _magnifiedSpanMax;
+    private readonly List<(double Min, double Max)> _nonMagnifiedRestSpans = [];
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Image, BitmapSource> _restingIcons = new();
 
     internal void InvalidateMagnificationTargets()
@@ -89,10 +92,79 @@ public partial class MainWindow
         // width animation is still moving; that feedback is what made the same hover bloom to different sizes.
         if (atRest)
         {
+            CaptureMagnifiedRestBounds();
             CaptureMagnificationExpansionBudget();
             if (_hasMagnificationPointer) UpdateMagnificationTargetsForPointer(_lastMagnificationPointerAxis);
         }
         _magnificationTargetsDirty = false;
+    }
+
+    /// <summary>
+    /// Captures the resting axis span of magnified targets and every non-magnified control (native shell buttons
+    /// and widgets) in <see cref="DockHost"/> coordinates. Deciding no-magnification zones from resting geometry
+    /// instead of live hit-testing prevents layout expansion from sliding a shell button under a stationary
+    /// pointer and causing a magnify/reset oscillation loop (#90).
+    /// </summary>
+    private void CaptureMagnifiedRestBounds()
+    {
+        _nonMagnifiedRestSpans.Clear();
+        if (_magnificationTargets.Count == 0)
+        {
+            _magnifiedSpanMin = double.PositiveInfinity;
+            _magnifiedSpanMax = double.NegativeInfinity;
+            return;
+        }
+
+        var min = double.PositiveInfinity;
+        var max = double.NegativeInfinity;
+        foreach (var target in _magnificationTargets)
+        {
+            var half = target.BaseSize / 2.0;
+            var left = target.RestCenter - half;
+            var right = target.RestCenter + half;
+            if (left < min) min = left;
+            if (right > max) max = right;
+        }
+        _magnifiedSpanMin = min;
+        _magnifiedSpanMax = max;
+
+        void AddNonMagnifiedSpan(FrameworkElement? element)
+        {
+            if (element is null || element.Visibility != Visibility.Visible
+                || element.ActualWidth <= 0 || element.ActualHeight <= 0
+                || !element.IsDescendantOf(DockHost))
+            {
+                return;
+            }
+
+            var topLeft = element.TranslatePoint(new Point(0, 0), DockHost);
+            var start = IsVertical ? topLeft.Y : topLeft.X;
+            var length = IsVertical ? element.ActualHeight : element.ActualWidth;
+            if (double.IsFinite(start) && double.IsFinite(length) && length > 0)
+            {
+                _nonMagnifiedRestSpans.Add((start, start + length));
+            }
+        }
+
+        foreach (var button in GetAllDockButtons())
+        {
+            if (IsNativeShellButton(button)) AddNonMagnifiedSpan(button);
+        }
+        foreach (var (token, element) in _dockItemElements)
+        {
+            if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)) AddNonMagnifiedSpan(element);
+        }
+        AddNonMagnifiedSpan(WidgetIsland);
+    }
+
+    private bool IsAxisInNonMagnifiedRestSpan(double axis)
+    {
+        for (var i = 0; i < _nonMagnifiedRestSpans.Count; i++)
+        {
+            var (min, max) = _nonMagnifiedRestSpans[i];
+            if (axis >= min && axis <= max) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -372,8 +444,7 @@ public partial class MainWindow
         _hasLastDockMousePoint = true;
 
         if (LeftResizeThumb.IsMouseOver || RightResizeThumb.IsMouseOver
-            || ScrollPrevOverlay.IsMouseOver || ScrollNextOverlay.IsMouseOver
-            || IsPointerOverNonMagnifiedZone(e.OriginalSource as DependencyObject))
+            || ScrollPrevOverlay.IsMouseOver || ScrollNextOverlay.IsMouseOver)
         {
             ResetMagnification();
             return;
@@ -384,9 +455,15 @@ public partial class MainWindow
             RebuildMagnificationTargets();
         }
 
-        if (_magnificationTargets.Count == 0) return;
-
         var mouseAxis = IsVertical ? mousePos.Y : mousePos.X;
+        if (_magnificationTargets.Count == 0
+            || mouseAxis < _magnifiedSpanMin
+            || mouseAxis > _magnifiedSpanMax
+            || IsAxisInNonMagnifiedRestSpan(mouseAxis))
+        {
+            ResetMagnification();
+            return;
+        }
         if (!_hasMagnificationPointer) _sessionMaxScale = _effectiveMaxScale;
         _hasMagnificationPointer = true;
         _lastMagnificationPointerAxis = mouseAxis;
