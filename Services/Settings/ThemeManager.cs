@@ -45,7 +45,10 @@ public static class ThemeManager
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            return key?.GetValue("AppsUseLightTheme") is int light && light != 0
+            // OpenTaskbar replaces the Windows taskbar, so follow the taskbar/Start mode first
+            // (SystemUsesLightTheme) and fall back to AppsUseLightTheme when absent.
+            var value = key?.GetValue("SystemUsesLightTheme") ?? key?.GetValue("AppsUseLightTheme");
+            return value is int light && light != 0
                 ? AppTheme.Light : AppTheme.Dark;
         }
         catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException)

@@ -511,7 +511,7 @@ public static class ThemePacks
     {
         const double size = RenderSize;
         var shape = CreateShape(fallback, size);
-        var isDark = ThemeManager.Current == AppTheme.Dark;
+        var isDark = ThemeManager.EffectiveTheme == AppTheme.Dark;
         var plate = ParseColor(fallback.Background) ?? (isDark ? DarkPlateColor(icon) : AutoBackground(icon));
         // A soft top-to-bottom shade gives the flat plate the depth of hand-drawn launcher icons.
         var fill = new LinearGradientBrush(Lighten(plate, isDark ? 0.22 : 0.18), Darken(plate, isDark ? 0.12 : 0.08), 90);

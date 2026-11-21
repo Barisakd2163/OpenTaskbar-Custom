@@ -73,7 +73,8 @@ public static class WindowsPalette
             }
         }
 
-        var dark = theme == AppTheme.Dark;
+        var resolved = theme == AppTheme.System ? ThemeManager.EffectiveTheme : theme;
+        var dark = resolved == AppTheme.Dark;
         var values = new Dictionary<string, object>(StringComparer.Ordinal);
         var foreground = ContrastForeground(accent);
 

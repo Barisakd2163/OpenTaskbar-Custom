@@ -148,7 +148,7 @@ public partial class App : Application
 
     private void ApplyWindowsPalette()
     {
-        WindowsPalette.Refresh(ThemeManager.Current);
+        WindowsPalette.Refresh(ThemeManager.EffectiveTheme);
         ThemeManager.SetWindowsPalette(WindowsPalette.Current);
     }
 
