@@ -23,6 +23,15 @@ public sealed class DockScrollViewer : ScrollViewer
     private double _lastExternalRadius = double.NaN;
     private bool _suppressOverflowIndicators;
 
+    // Edge-fade brushes are recreated on every scroll frame today (~6 allocations + a render
+    // invalidation per wheel tick). Cache one frozen brush per (axis, before, after) combination
+    // and reuse it while the viewport extent is unchanged.
+    private readonly LinearGradientBrush?[] _cachedFadeMasks = new LinearGradientBrush?[8];
+    private readonly double[] _cachedFadeExtents = new double[8];
+    private bool _lastIndicatorVertical;
+    private double _lastIndicatorTopOffset = double.NaN;
+    private double _lastIndicatorRadius = double.NaN;
+
     /// <summary>
     /// Temporarily suppresses overflow scroll indicators and edge fades while magnification expands the dock
     /// from an unscrolled state, preventing sub-pixel layout jitter from flickering the scroll buttons.
@@ -140,6 +149,9 @@ public sealed class DockScrollViewer : ScrollViewer
             Duration = TimeSpan.FromMilliseconds(100),
             EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
+        // Each animation frame calls ScrollToHorizontalOffset -> layout + render of the dock content.
+        // Cap at 30 fps so a burst of wheel events cannot drive hundreds of full layout passes per second.
+        Timeline.SetDesiredFrameRate(animation, 30);
         BeginAnimation(CurrentHorizontalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
@@ -160,6 +172,7 @@ public sealed class DockScrollViewer : ScrollViewer
             Duration = TimeSpan.FromMilliseconds(100),
             EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
+        Timeline.SetDesiredFrameRate(animation, 30);
         BeginAnimation(CurrentVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
@@ -282,6 +295,7 @@ public sealed class DockScrollViewer : ScrollViewer
         _externalNextButton = next;
         _lastExternalVertical = null;
         _lastExternalRadius = double.NaN;
+        _lastIndicatorTopOffset = double.NaN;
         UpdateIndicatorLayout();
         UpdateIndicators();
     }
@@ -324,6 +338,15 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         var topOffset = HoverHeadroom;
         var vertical = ScrollableHeight > 0;
+        var radius = _externalIndicatorCornerRadius;
+        // These values only change on resize/edge/hover-headroom changes, never during a scroll. Reapplying
+        // a dozen template properties (with resource lookups and Thickness/CornerRadius allocations) on
+        // every scroll frame was the second-largest cost after the gradient brush.
+        if (_lastIndicatorVertical == vertical && Math.Abs(_lastIndicatorTopOffset - topOffset) < 0.01
+            && Math.Abs(_lastIndicatorRadius - radius) < 0.01) return;
+        _lastIndicatorVertical = vertical;
+        _lastIndicatorTopOffset = topOffset;
+        _lastIndicatorRadius = radius;
         if (vertical)
         {
             if (_previousButton is not null)
@@ -464,6 +487,11 @@ public sealed class DockScrollViewer : ScrollViewer
         }
     }
 
+    private static void SetVisibility(UIElement? element, Visibility value)
+    {
+        if (element is not null && element.Visibility != value) element.Visibility = value;
+    }
+
     private void UpdateIndicators()
     {
         if (_previousButton is null && _nextButton is null
@@ -471,10 +499,10 @@ public sealed class DockScrollViewer : ScrollViewer
 
         if (_suppressOverflowIndicators && HorizontalOffset <= 0.5 && VerticalOffset <= 0.5)
         {
-            if (_previousButton is not null) _previousButton.Visibility = Visibility.Collapsed;
-            if (_nextButton is not null) _nextButton.Visibility = Visibility.Collapsed;
-            if (_externalPreviousButton is not null) _externalPreviousButton.Visibility = Visibility.Collapsed;
-            if (_externalNextButton is not null) _externalNextButton.Visibility = Visibility.Collapsed;
+            SetVisibility(_previousButton, Visibility.Collapsed);
+            SetVisibility(_nextButton, Visibility.Collapsed);
+            SetVisibility(_externalPreviousButton, Visibility.Collapsed);
+            SetVisibility(_externalNextButton, Visibility.Collapsed);
             return;
         }
 
@@ -485,14 +513,10 @@ public sealed class DockScrollViewer : ScrollViewer
             var prevVis = vHiddenBefore ? Visibility.Visible : Visibility.Collapsed;
             var nextVis = vHiddenAfter ? Visibility.Visible : Visibility.Collapsed;
             // Template buttons: keep in sync for tests; hide visually when external overlay is active.
-            if (_previousButton is not null)
-                _previousButton.Visibility = _externalPreviousButton is null ? prevVis : Visibility.Collapsed;
-            if (_nextButton is not null)
-                _nextButton.Visibility = _externalNextButton is null ? nextVis : Visibility.Collapsed;
-            if (_externalPreviousButton is not null)
-                _externalPreviousButton.Visibility = prevVis;
-            if (_externalNextButton is not null)
-                _externalNextButton.Visibility = nextVis;
+            SetVisibility(_previousButton, _externalPreviousButton is null ? prevVis : Visibility.Collapsed);
+            SetVisibility(_nextButton, _externalNextButton is null ? nextVis : Visibility.Collapsed);
+            SetVisibility(_externalPreviousButton, prevVis);
+            SetVisibility(_externalNextButton, nextVis);
             return;
         }
 
@@ -502,31 +526,29 @@ public sealed class DockScrollViewer : ScrollViewer
             var hiddenAfter = HorizontalOffset < ScrollableWidth - 0.5;
             var prevVis = hiddenBefore ? Visibility.Visible : Visibility.Collapsed;
             var nextVis = hiddenAfter ? Visibility.Visible : Visibility.Collapsed;
-            if (_previousButton is not null)
-                _previousButton.Visibility = _externalPreviousButton is null ? prevVis : Visibility.Collapsed;
-            if (_nextButton is not null)
-                _nextButton.Visibility = _externalNextButton is null ? nextVis : Visibility.Collapsed;
-            if (_externalPreviousButton is not null)
-                _externalPreviousButton.Visibility = prevVis;
-            if (_externalNextButton is not null)
-                _externalNextButton.Visibility = nextVis;
+            SetVisibility(_previousButton, _externalPreviousButton is null ? prevVis : Visibility.Collapsed);
+            SetVisibility(_nextButton, _externalNextButton is null ? nextVis : Visibility.Collapsed);
+            SetVisibility(_externalPreviousButton, prevVis);
+            SetVisibility(_externalNextButton, nextVis);
             return;
         }
 
-        if (_previousButton is not null) _previousButton.Visibility = Visibility.Collapsed;
-        if (_nextButton is not null) _nextButton.Visibility = Visibility.Collapsed;
-        if (_externalPreviousButton is not null) _externalPreviousButton.Visibility = Visibility.Collapsed;
-        if (_externalNextButton is not null) _externalNextButton.Visibility = Visibility.Collapsed;
+        SetVisibility(_previousButton, Visibility.Collapsed);
+        SetVisibility(_nextButton, Visibility.Collapsed);
+        SetVisibility(_externalPreviousButton, Visibility.Collapsed);
+        SetVisibility(_externalNextButton, Visibility.Collapsed);
     }
 
     private void ApplyOpacityMask(Brush? mask)
     {
         if (_scrollContentPresenter is not null)
         {
-            _scrollContentPresenter.OpacityMask = mask;
-            ClearValue(OpacityMaskProperty);
+            if (!ReferenceEquals(_scrollContentPresenter.OpacityMask, mask))
+                _scrollContentPresenter.OpacityMask = mask;
+            if (ReadLocalValue(OpacityMaskProperty) != DependencyProperty.UnsetValue)
+                ClearValue(OpacityMaskProperty);
         }
-        else
+        else if (!ReferenceEquals(OpacityMask, mask))
         {
             OpacityMask = mask;
         }
@@ -571,14 +593,7 @@ public sealed class DockScrollViewer : ScrollViewer
                 ApplyOpacityMask(null);
                 return;
             }
-            var vFade = EdgeFadeWidth / ActualHeight;
-            var vMask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-            vMask.GradientStops.Add(new GradientStop(Color.FromArgb(vHiddenBefore ? (byte)0 : (byte)255, 0, 0, 0), 0));
-            vMask.GradientStops.Add(new GradientStop(Colors.Black, vFade));
-            vMask.GradientStops.Add(new GradientStop(Colors.Black, 1 - vFade));
-            vMask.GradientStops.Add(new GradientStop(Color.FromArgb(vHiddenAfter ? (byte)0 : (byte)255, 0, 0, 0), 1));
-            vMask.Freeze();
-            ApplyOpacityMask(vMask);
+            ApplyOpacityMask(GetFadeMask(vertical: true, vHiddenBefore, vHiddenAfter, ActualHeight));
             return;
         }
 
@@ -590,14 +605,29 @@ public sealed class DockScrollViewer : ScrollViewer
             return;
         }
 
-        var fade = EdgeFadeWidth / ActualWidth;
-        var mask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        ApplyOpacityMask(GetFadeMask(vertical: false, hiddenBefore, hiddenAfter, ActualWidth));
+    }
+
+    private LinearGradientBrush GetFadeMask(bool vertical, bool hiddenBefore, bool hiddenAfter, double extent)
+    {
+        var key = (vertical ? 4 : 0) | (hiddenBefore ? 2 : 0) | (hiddenAfter ? 1 : 0);
+        var cached = _cachedFadeMasks[key];
+        if (cached is not null && Math.Abs(_cachedFadeExtents[key] - extent) < 0.5) return cached;
+
+        var fade = EdgeFadeWidth / extent;
+        var mask = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = vertical ? new Point(0, 1) : new Point(1, 0)
+        };
         mask.GradientStops.Add(new GradientStop(Color.FromArgb(hiddenBefore ? (byte)0 : (byte)255, 0, 0, 0), 0));
         mask.GradientStops.Add(new GradientStop(Colors.Black, fade));
         mask.GradientStops.Add(new GradientStop(Colors.Black, 1 - fade));
         mask.GradientStops.Add(new GradientStop(Color.FromArgb(hiddenAfter ? (byte)0 : (byte)255, 0, 0, 0), 1));
         mask.Freeze();
-        ApplyOpacityMask(mask);
+        _cachedFadeMasks[key] = mask;
+        _cachedFadeExtents[key] = extent;
+        return mask;
     }
 
     private static void LayoutChanged(DependencyObject owner, DependencyPropertyChangedEventArgs e)
