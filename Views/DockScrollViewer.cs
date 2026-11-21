@@ -149,9 +149,6 @@ public sealed class DockScrollViewer : ScrollViewer
             Duration = TimeSpan.FromMilliseconds(100),
             EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
-        // Each animation frame calls ScrollToHorizontalOffset -> layout + render of the dock content.
-        // Cap at 30 fps so a burst of wheel events cannot drive hundreds of full layout passes per second.
-        Timeline.SetDesiredFrameRate(animation, 30);
         BeginAnimation(CurrentHorizontalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
@@ -172,7 +169,6 @@ public sealed class DockScrollViewer : ScrollViewer
             Duration = TimeSpan.FromMilliseconds(100),
             EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
-        Timeline.SetDesiredFrameRate(animation, 30);
         BeginAnimation(CurrentVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
@@ -270,6 +266,11 @@ public sealed class DockScrollViewer : ScrollViewer
             _nextButton.Click -= OnNextButtonClick;
 
         _scrollContentPresenter = GetTemplateChild("PART_ScrollContentPresenter") as ScrollContentPresenter;
+        // Cache the dock content once so wheel scrolling only blits the bitmap on the GPU instead of
+        // re-laying-out and re-rasterizing every icon on every offset change. Without this, each
+        // ScrollToHorizontalOffset triggers a full Measure/Arrange of the 2560px-wide dock strip.
+        if (_scrollContentPresenter is not null)
+            _scrollContentPresenter.CacheMode = new BitmapCache(1.0);
         _previousButton = GetTemplateChild("PART_PreviousButton") as Button;
         _nextButton = GetTemplateChild("PART_NextButton") as Button;
 
