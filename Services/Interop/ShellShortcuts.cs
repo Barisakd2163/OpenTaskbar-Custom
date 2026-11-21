@@ -520,10 +520,11 @@ public static class ShellShortcuts
                 ComputeSideFlyoutY(anchorTop, anchorBottom, windowHeight, workTop, workBottom)
             ),
             // Left-align with the Search button (matching Start) so wide Search panels open above the button
-            // instead of sticking hundreds of pixels to the left of the dock.
+            // instead of sticking hundreds of pixels to the left of the dock. SearchHost's window rect already
+            // includes ~8 DIP of invisible bottom shadow, so use an 8 DIP offset to match Start's visible gap.
             _ => (
                 Math.Clamp((int)Math.Round(anchorLeft - margin), minX, maxX),
-                Math.Clamp((int)Math.Round(anchorTop) - windowHeight - gap, minY, maxY)
+                Math.Clamp((int)Math.Round(anchorTop) - windowHeight - margin, minY, maxY)
             )
         };
     }
@@ -558,8 +559,9 @@ public static class ShellShortcuts
         {
             // anchorLeft/anchorTop from PointToScreen are already in physical device pixels.
             // UIA bounds stop at the inner footer controls (~8 DIP inside the Start panel's rounded bottom border),
-            // and anchorTop sits ~6 DIP inside the dock's top frame, so reserve 22 DIP for a clean ~8 DIP visible gap.
-            var bottomGap = (int)Math.Round(22 * dpiScale);
+            // and anchorTop sits ~6 DIP inside the dock's top frame, so reserve 26 DIP for a ~10-12 DIP visible gap
+            // matching Search and other dock flyouts.
+            var bottomGap = (int)Math.Round(26 * dpiScale);
             desiredX = Math.Clamp((int)Math.Round(anchorLeft - margin), minX, maxX);
             desiredY = Math.Clamp((int)Math.Round(anchorTop) - measuredH - bottomGap, minY, maxY);
         }

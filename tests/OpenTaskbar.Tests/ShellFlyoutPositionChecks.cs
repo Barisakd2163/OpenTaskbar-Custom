@@ -127,8 +127,8 @@ internal static class ShellFlyoutPositionChecks
             var resolvedBottom = ty + flyoutTop + flyoutHeight;
             Check(resolvedLeft == 620,
                 $"Measured Start flyout left must align above Start button (got {resolvedLeft}).");
-            Check(resolvedBottom == 1013,
-                $"Measured Start flyout bottom must sit 22px above anchorTop=1035 for height={flyoutHeight} (got {resolvedBottom}).");
+            Check(resolvedBottom == 1009,
+                $"Measured Start flyout bottom must sit 26px above anchorTop=1035 for height={flyoutHeight} (got {resolvedBottom}).");
         }
 
         // Bottom-edge measured Start menu at 150% DPI: anchorLeft is already in physical pixels and must not
@@ -144,8 +144,8 @@ internal static class ShellFlyoutPositionChecks
             var resolvedBottom = ty + 300 + 1050;
             Check(resolvedLeft == 930,
                 $"High-DPI measured Start flyout must not double-scale anchorLeft (got {resolvedLeft}).");
-            Check(resolvedBottom == 1519,
-                $"High-DPI measured Start flyout bottom must sit 33px above anchorTop=1552 (got {resolvedBottom}).");
+            Check(resolvedBottom == 1513,
+                $"High-DPI measured Start flyout bottom must sit 39px above anchorTop=1552 (got {resolvedBottom}).");
         }
 
         // Bottom-edge Search: left-align with the Search button so wide panels open directly above the button
@@ -156,7 +156,7 @@ internal static class ShellFlyoutPositionChecks
                 anchorLeft: 666, anchorTop: 1035, anchorRight: 704, anchorBottom: 1073,
                 edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.0);
             Check(sx == 658, $"Bottom-edge Search must left-align above the Search button (got {sx}).");
-            Check(sy + 938 == 1023, $"Bottom-edge Search bottom must sit 12px above anchorTop=1035 (got {sy + 938}).");
+            Check(sy + 938 == 1027, $"Bottom-edge Search bottom must sit 8px above anchorTop=1035 (got {sy + 938}).");
 
             // Near the right edge of the work area, Search must clamp inside the monitor work area.
             var (clampedX, _) = ShellShortcuts.ComputeSearchPosition(
