@@ -306,6 +306,11 @@ public partial class MainWindow
         if (error is not null) ReportError(error);
     }
 
+    private void ToggleFocusMode_Click(object sender, RoutedEventArgs e)
+    {
+        SaveProfileSettings(_preferences.Current with { FocusModeEnabled = !_preferences.Current.FocusModeEnabled });
+    }
+
     private void SwitchProfile(string name)
     {
         var (updated, error) = DockProfileService.Switch(_preferences.Current, name);
@@ -485,16 +490,17 @@ public partial class MainWindow
             _secondaryDocks.Remove(dock);
         }
 
+        var showSecondaryWidgets = _preferences.Current.SecondaryWidgets && !_preferences.Current.FocusModeEnabled;
         foreach (var monitor in wanted.Where(monitor => _secondaryDocks.All(dock => dock.Monitor != monitor)))
         {
-            var dock = new SecondaryDockWindow(monitor, _runningAppIcons, _preferences.Current.SecondaryApps, _preferences.Current.SecondaryWidgets);
+            var dock = new SecondaryDockWindow(monitor, _runningAppIcons, _preferences.Current.SecondaryApps, showSecondaryWidgets);
             dock.Show();
             _secondaryDocks.Add(dock);
         }
 
         foreach (var dock in _secondaryDocks)
         {
-            dock.Configure(_preferences.Current.SecondaryApps, _preferences.Current.SecondaryWidgets);
+            dock.Configure(_preferences.Current.SecondaryApps, showSecondaryWidgets);
             dock.ApplyShelfHeight(Profile.Shelf);
             dock.PositionOnMonitor();
         }

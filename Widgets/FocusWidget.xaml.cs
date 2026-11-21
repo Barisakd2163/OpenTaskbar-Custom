@@ -419,7 +419,7 @@ public partial class FocusWidget : DockWidget
 
     private void Pulse()
     {
-        if (!Settings.AnimationsEnabled || !SystemParameters.ClientAreaAnimation) return;
+        if (!Settings.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation) return;
         var pulse = new DoubleAnimation(1, 0.35, TimeSpan.FromMilliseconds(260))
         {
             AutoReverse = true,

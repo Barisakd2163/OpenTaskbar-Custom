@@ -122,6 +122,8 @@ public sealed class WidgetCoordinator : IDisposable
         .Where(slot => slot.Widget is not null)
         .ToDictionary(slot => slot.Id, slot => slot.Widget!);
 
+    public bool HasActiveWidgets { get; private set; }
+
     /// <summary>Raised when a widget appears or disappears and the dock must refit its layout.</summary>
     public event Action? AvailabilityChanged;
 
@@ -236,7 +238,7 @@ public sealed class WidgetCoordinator : IDisposable
         var stripNeedsSync = false;
         foreach (var slot in _widgets)
         {
-            if (slot.IsEnabled(settings))
+            if (!settings.FocusModeEnabled && slot.IsEnabled(settings))
             {
                 var wasCreated = slot.Widget is null;
                 var widget = EnsureWidget(slot);
@@ -256,6 +258,8 @@ public sealed class WidgetCoordinator : IDisposable
         {
             PlaceWidgets();
         }
+
+        HasActiveWidgets = anyActive;
 
         if (anyActive)
         {
@@ -651,6 +655,7 @@ public sealed class WidgetCoordinator : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        HasActiveWidgets = false;
         _hoverCoordinator.Dispose();
         _timer.Stop();
         _timer.Tick -= Timer_Tick;

@@ -543,6 +543,8 @@
   "AudioOutputDevices": "출력 장치",
   "BuiltInThemes": "기본 제공",
   "CheckUpdatesSettingDescription": "OpenTaskbar의 새 버전이 있으면 알립니다.",
+  "FocusMode": "포커스 모드",
+  "FocusModeDescription": "설정을 잃지 않고 알림 배지, 위젯 및 애니메이션을 숨깁니다.",
   "ColorAddStop": "+ 중지점",
   "ColorAngle": "각도",
   "ColorBlue": "파랑",

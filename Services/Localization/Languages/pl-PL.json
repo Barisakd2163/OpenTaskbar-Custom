@@ -543,6 +543,8 @@
   "AudioOutputDevices": "Urządzenie wyjściowe",
   "BuiltInThemes": "Wbudowane",
   "CheckUpdatesSettingDescription": "Powiadom o dostępności nowszej wersji OpenTaskbar.",
+  "FocusMode": "Tryb skupienia",
+  "FocusModeDescription": "Ukryj plakietki powiadomień, widżety i animacje bez utraty ustawień.",
   "ColorAddStop": "+ Punkt",
   "ColorAngle": "Kąt",
   "ColorBlue": "Niebieski",

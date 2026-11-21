@@ -543,6 +543,8 @@
   "AudioOutputDevices": "Ausgabegerät",
   "BuiltInThemes": "Integriert",
   "CheckUpdatesSettingDescription": "Benachrichtigen, wenn eine neuere Version von OpenTaskbar verfügbar ist.",
+  "FocusMode": "Fokusmodus",
+  "FocusModeDescription": "Benachrichtigungsabzeichen, Widgets und Animationen ausblenden, ohne die Einstellungen zu verlieren.",
   "ColorAddStop": "+ Stopp",
   "ColorAngle": "Winkel",
   "ColorBlue": "Blau",

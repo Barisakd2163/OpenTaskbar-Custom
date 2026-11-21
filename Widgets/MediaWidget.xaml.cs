@@ -252,7 +252,7 @@ public partial class MediaWidget : DockWidget
 
     private void AnimateArtTint(Color targetColor)
     {
-        if (!Settings.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        if (!Settings.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             ArtTintBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
             ArtTintBrush.Color = targetColor;
@@ -331,7 +331,7 @@ public partial class MediaWidget : DockWidget
 
     private void VolumePopup_Opened(object? sender, EventArgs e)
     {
-        if (!Settings.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        if (!Settings.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             VolumePopoverSurface.Opacity = 1;
             VolumePopoverTranslate.Y = 0;

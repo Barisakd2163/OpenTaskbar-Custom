@@ -757,6 +757,14 @@
                                         <TextBlock Text="{local:Loc CheckUpdatesSettingDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <CheckBox x:Name="FocusModeToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                              AutomationProperties.Name="{local:Loc FocusMode}" AutomationProperties.HelpText="{local:Loc FocusModeDescription}" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc FocusMode}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc FocusModeDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
                                 <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
                                     <ComboBox x:Name="LanguageBox" DockPanel.Dock="Right" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center"
                                               Foreground="{DynamicResource TextPrimary}"

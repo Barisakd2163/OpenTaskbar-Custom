@@ -543,6 +543,8 @@
   "AudioOutputDevices": "Uitvoerapparaat",
   "BuiltInThemes": "Ingebouwd",
   "CheckUpdatesSettingDescription": "Melden wanneer een nieuwere versie van OpenTaskbar beschikbaar is.",
+  "FocusMode": "Focusmodus",
+  "FocusModeDescription": "Meldingsbadges, widgets en animaties verbergen zonder uw instellingen te verliezen.",
   "ColorAddStop": "+ Stop",
   "ColorAngle": "Hoek",
   "ColorBlue": "Blauw",

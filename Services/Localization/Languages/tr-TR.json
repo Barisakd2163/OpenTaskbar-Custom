@@ -325,6 +325,8 @@
   "WheelVolumeDescription": "Dock üzerinde fare tekerleği ses düzeyini değiştirir; simge üzerinde pencereler arasında geçer.",
   "CheckUpdatesSetting": "Güncellemeleri otomatik denetle",
   "CheckUpdatesSettingDescription": "Yeni bir OpenTaskbar sürümü çıktığında bildirim gösterir.",
+  "FocusMode": "Odak modu",
+  "FocusModeDescription": "Bildirim göstergelerini, widget’leri ve animasyonları ayarlarınızı kaybetmeden gizler.",
   "ShowRecycleBin": "Geri Dönüşüm Kutusu’nu göster",
   "ShowRecycleBinDescription": "Uygulama listesinin sonunda Geri Dönüşüm Kutusu simgesini gösterir.",
   "SectionSystem": "Sistem ve Başlangıç",

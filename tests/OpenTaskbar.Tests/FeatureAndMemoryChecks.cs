@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -256,6 +257,13 @@ internal static class FeatureAndMemoryChecks
 
             // 11. Dock profiles lifecycle, migration, sync, validation, and localization checks
             CheckDockProfiles(Check);
+
+            // 12. Focus mode toggle, non-destructive restore, widget polling stop, profile interaction, and localization checks
+            CheckFocusModeFlags(Check);
+            CheckFocusModeWidgets(Check);
+            CheckFocusModeProfiles(Check);
+            CheckFocusModePersistenceAndSettingsWindow(app.Dispatcher, Check);
+            CheckLocalization("Focus Mode localization", ["FocusMode", "FocusModeDescription"], Check);
         }
         finally
         {
@@ -263,6 +271,197 @@ internal static class FeatureAndMemoryChecks
         }
 
         return checks;
+    }
+
+    private static void CheckFocusModeFlags(Action<bool, string> Check)
+    {
+        var focused = new DockSettings(AnimationsEnabled: true, NotificationBadgesEnabled: true, FocusModeEnabled: true);
+        Check(!focused.EffectiveAnimationsEnabled && !focused.EffectiveNotificationBadgesEnabled,
+            "Focus Mode must suppress effective animations and notification badges.");
+        Check(focused.AnimationsEnabled && focused.NotificationBadgesEnabled,
+            "Focus Mode must preserve enabled animation and notification badge preferences.");
+
+        var restored = focused with { FocusModeEnabled = false };
+        Check(restored.EffectiveAnimationsEnabled && restored.EffectiveNotificationBadgesEnabled,
+            "Turning off Focus Mode must restore enabled animations and notification badges.");
+
+        foreach (var (animations, badges) in new[] { (false, true), (true, false), (false, false) })
+        {
+            var settings = restored with { AnimationsEnabled = animations, NotificationBadgesEnabled = badges };
+            var suppressed = settings with { FocusModeEnabled = true };
+            var resumed = suppressed with { FocusModeEnabled = false };
+            Check(!suppressed.EffectiveAnimationsEnabled && !suppressed.EffectiveNotificationBadgesEnabled
+                && resumed.EffectiveAnimationsEnabled == animations && resumed.EffectiveNotificationBadgesEnabled == badges,
+                $"Toggling Focus Mode must honor AnimationsEnabled={animations} and NotificationBadgesEnabled={badges}.");
+        }
+
+        using var json = JsonDocument.Parse(SerializeSettings(focused));
+        Check(!json.RootElement.TryGetProperty(nameof(DockSettings.EffectiveAnimationsEnabled), out _)
+            && !json.RootElement.TryGetProperty(nameof(DockSettings.EffectiveNotificationBadgesEnabled), out _),
+            "Serialized settings must omit both computed Focus Mode properties.");
+    }
+
+    private static void CheckFocusModeWidgets(Action<bool, string> Check)
+    {
+        var strip = new StackPanel();
+        using var coordinator = new WidgetCoordinator(strip, Dispatcher.CurrentDispatcher, _ => { }, lazy: true);
+        var isActive = typeof(OpenTaskbar.Widgets.DockWidget)
+            .GetProperty("IsActive", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Missing DockWidget.IsActive property.");
+        var timer = typeof(WidgetCoordinator).GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.GetValue(coordinator) as DispatcherTimer
+            ?? throw new InvalidOperationException("Missing WidgetCoordinator polling timer.");
+
+        var settings = new DockSettings(Widgets: ["Clock", "Focus"], FocusModeEnabled: false);
+        coordinator.Apply(settings);
+        var widgets = coordinator.ActiveWidgets;
+        Check(widgets.Count == 2 && widgets.GetValueOrDefault("Clock") is ClockWidget
+            && widgets.GetValueOrDefault("Focus") is FocusWidget,
+            "The lazy coordinator must create only the Clock and Focus widgets.");
+        CheckWidgetState(active: true, Visibility.Visible, "Before enabling Focus Mode");
+
+        var focused = settings with { FocusModeEnabled = true };
+        coordinator.Apply(focused);
+        CheckWidgetState(active: false, Visibility.Collapsed, "While Focus Mode is enabled");
+        Check(focused.Widgets is ["Clock", "Focus"] && settings.Widgets is ["Clock", "Focus"],
+            "Enabling Focus Mode must preserve the configured Clock and Focus widgets.");
+
+        coordinator.Apply(focused with { FocusModeEnabled = false });
+        CheckWidgetState(active: true, Visibility.Visible, "After disabling Focus Mode");
+        var restored = coordinator.ActiveWidgets;
+        Check(restored.Count == widgets.Count
+            && widgets.All(pair => ReferenceEquals(pair.Value, restored.GetValueOrDefault(pair.Key))
+                && strip.Children.Contains(pair.Value)),
+            "Disabling Focus Mode must reactivate the original widget instances.");
+
+        void CheckWidgetState(bool active, Visibility visibility, string context)
+        {
+            Check(coordinator.HasActiveWidgets == active, $"{context}, HasActiveWidgets must be {active}.");
+            Check(timer.IsEnabled == active, $"{context}, the widget polling timer's enabled state must be {active}.");
+            foreach (var (id, widget) in widgets)
+            {
+                Check(isActive.GetValue(widget) is bool widgetActive && widgetActive == active,
+                    $"{context}, {id}.IsActive must be {active}.");
+                Check(widget.Visibility == visibility, $"{context}, {id} must be {visibility}.");
+            }
+        }
+    }
+
+    private static void CheckFocusModeProfiles(Action<bool, string> Check)
+    {
+        var defaults = DockProfileService.EnsureDefaultProfile(new DockSettings(
+            Widgets: ["Clock"], InstalledWidgets: ["Clock", "Focus"], FocusModeEnabled: true));
+        var (work, createError) = DockProfileService.Create(defaults, "Work");
+        Check(createError is null && work is { ActiveProfile: "Work", FocusModeEnabled: true, Widgets: ["Clock"] },
+            "Creating a profile in Focus Mode must preserve the global toggle and the enabled widget list.");
+        Check(work.Profiles?.SingleOrDefault(profile => profile.Name == "Work")?.Widgets is ["Clock"],
+            "Creating a profile in Focus Mode must capture its configured widgets.");
+
+        var (restoredDefault, defaultError) = DockProfileService.Switch(work with { Widgets = ["Focus"] }, "Default");
+        Check(defaultError is null && restoredDefault is { ActiveProfile: "Default", FocusModeEnabled: true, Widgets: ["Clock"] },
+            "Switching to Default must keep Focus Mode enabled and restore its Clock widget.");
+        var (restoredWork, workError) = DockProfileService.Switch(restoredDefault, "Work");
+        Check(workError is null && restoredWork is { ActiveProfile: "Work", FocusModeEnabled: true, Widgets: ["Focus"] },
+            "Switching back to Work must keep Focus Mode enabled and restore its Focus widget.");
+
+        var unfocusedWork = restoredWork with { FocusModeEnabled = false };
+        Check(unfocusedWork.Widgets is ["Focus"], "Turning off Focus Mode must preserve Work's Focus widget.");
+        var (unfocusedDefault, switchError) = DockProfileService.Switch(unfocusedWork, "Default");
+        Check(switchError is null && unfocusedDefault is { ActiveProfile: "Default", FocusModeEnabled: false, Widgets: ["Clock"] },
+            "Switching after disabling Focus Mode must keep it off and restore Default's Clock widget.");
+        Check(unfocusedDefault.Profiles is [{ Name: "Default", Widgets: ["Clock"] }, { Name: "Work", Widgets: ["Focus"] }],
+            "Each profile must retain its configured widget snapshot through Focus Mode toggles and profile switches.");
+    }
+
+    private static void CheckFocusModePersistenceAndSettingsWindow(Dispatcher dispatcher, Action<bool, string> Check)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ot-focus-mode-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(tempPath);
+            File.WriteAllText(tempPath, "{}");
+            var (legacy, legacyError) = store.Load();
+            Check(legacyError is null && !legacy.FocusModeEnabled, "An empty settings object must load with Focus Mode off.");
+
+            var initial = new DockSettings(Theme: ThemeManager.Current, Language: UiText.Current.Language,
+                AnimationsEnabled: true, Widgets: ["Clock"], InstalledWidgets: ["Clock"],
+                ThemePack: ThemePacks.Current?.Id, FocusModeEnabled: false);
+            foreach (var enabled in new[] { true, false })
+            {
+                Check(store.Save(initial with { FocusModeEnabled = enabled }) is null,
+                    $"Settings must save cleanly with FocusModeEnabled={enabled}.");
+                var (loaded, loadError) = store.Load();
+                Check(loadError is null && loaded.FocusModeEnabled == enabled,
+                    $"Reloading settings must preserve FocusModeEnabled={enabled}.");
+            }
+
+            CheckFocusModeSettingsWindow(new ApplicationPreferences(store), dispatcher, Check);
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
+    }
+
+    private static void CheckFocusModeSettingsWindow(ApplicationPreferences preferences, Dispatcher dispatcher, Action<bool, string> Check)
+    {
+        Check(preferences.LoadError is null, "The Focus Mode SettingsWindow fixture must load cleanly.");
+        var changeCount = 0;
+        preferences.Changed += (_, _) => changeCount++;
+        var window = new SettingsWindow(preferences)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20000,
+            Top = -20000,
+            ShowInTaskbar = false,
+            ShowActivated = false
+        };
+        try
+        {
+            window.Show();
+            PumpDispatcher();
+            Check(window.FocusModeToggle.IsChecked == false && window.AnimationsToggle.IsChecked == true,
+                "SettingsWindow must initially show Focus Mode off and animations enabled.");
+            Check(changeCount == 0, "Opening SettingsWindow must leave the Focus Mode preferences untouched.");
+
+            Check(preferences.Save(preferences.Current with { FocusModeEnabled = true }) is null,
+                "Enabling Focus Mode externally must save cleanly.");
+            PumpDispatcher();
+            Check(window.FocusModeToggle.IsChecked == true && window.AnimationsToggle.IsChecked == true,
+                "SettingsWindow must reflect externally enabled Focus Mode and keep the animation toggle checked.");
+            Check(changeCount == 1, "Syncing enabled Focus Mode must raise only the external Changed event.");
+
+            Check(preferences.Save(preferences.Current with { FocusModeEnabled = false }) is null,
+                "Disabling Focus Mode externally must save cleanly.");
+            PumpDispatcher();
+            Check(window.FocusModeToggle.IsChecked == false && window.AnimationsToggle.IsChecked == true,
+                "SettingsWindow must reflect externally disabled Focus Mode and keep the animation toggle checked.");
+            Check(preferences.Current is { FocusModeEnabled: false, AnimationsEnabled: true, Widgets: ["Clock"], InstalledWidgets: ["Clock"] },
+                "External Focus Mode toggles must preserve widget and animation preferences.");
+        }
+        finally
+        {
+            window.CloseForShutdown();
+        }
+
+        Check(changeCount == 2, "Each external Focus Mode toggle must raise exactly one Changed event through window close.");
+
+        void PumpDispatcher()
+        {
+            // Allow the settings window's debounced autosave to fire if syncing queued one.
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Background,
+                (_, _) => frame.Continue = false, dispatcher);
+            try
+            {
+                timer.Start();
+                Dispatcher.PushFrame(frame);
+            }
+            finally
+            {
+                timer.Stop();
+            }
+        }
     }
 
     private static void CheckDockProfiles(Action<bool, string> Check)
@@ -296,7 +495,8 @@ internal static class FeatureAndMemoryChecks
         }
 
         CheckDockProfileValidation(Check);
-        CheckDockProfileLocalization(Check);
+        CheckLocalization("dock profile localization",
+            ["ProfileRename", "ProfileRenamePrompt", "ErrorProfileNameEmpty", "ErrorProfileNotFound", "ErrorProfileDeleteLast"], Check);
 
         static bool HasDefaultProfile(DockSettings settings) =>
             settings is { ActiveProfile: "Default", Profiles: [{ Name: "Default" }] };
@@ -589,14 +789,13 @@ internal static class FeatureAndMemoryChecks
         }
     }
 
-    private static void CheckDockProfileLocalization(Action<bool, string> Check)
+    private static void CheckLocalization(string context, IReadOnlyList<string> keys, Action<bool, string> Check)
     {
-        string[] keys = ["ProfileRename", "ProfileRenamePrompt", "ErrorProfileNameEmpty", "ErrorProfileNotFound", "ErrorProfileDeleteLast"];
         var assembly = typeof(LanguageCatalog).Assembly;
         var resources = assembly.GetManifestResourceNames()
             .Where(name => name.StartsWith("OpenTaskbar.Localization.Languages.", StringComparison.Ordinal))
             .ToArray();
-        Check(resources.Length == 14, "There must be 14 embedded language resources for dock profile localization.");
+        Check(resources.Length == 14, $"There must be 14 embedded language resources for {context}.");
         foreach (var resource in resources)
         {
             using var stream = assembly.GetManifestResourceStream(resource)!;
