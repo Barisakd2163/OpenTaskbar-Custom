@@ -387,7 +387,7 @@ internal static class FeatureAndMemoryChecks
         var (createdWork, createWorkError) = DockProfileService.Create(defaults, "Work");
         Check(createWorkError is null && createdWork is { ActiveProfile: "Work", Profiles: { Count: 2 } },
             "Create must append and activate Work.");
-        CheckProfileSnapshot(createdWork, "Work", defaultFields, [], "Creating Work from Default", Check);
+        CheckProfileSnapshot(createdWork, "Work", WithoutWidgets(defaultFields), [], "Creating Work from Default", Check);
 
         var work = DockProfileService.UpdateHiddenApps(
             workFields with { Profiles = createdWork.Profiles, ActiveProfile = createdWork.ActiveProfile }, "Work",
@@ -395,7 +395,7 @@ internal static class FeatureAndMemoryChecks
         var (createdGaming, createGamingError) = DockProfileService.Create(work, "Gaming");
         Check(createGamingError is null && createdGaming is { ActiveProfile: "Gaming", Profiles: { Count: 3 } },
             "Create must append and activate Gaming.");
-        CheckProfileSnapshot(createdGaming, "Gaming", workFields, [], "Creating Gaming from Work", Check);
+        CheckProfileSnapshot(createdGaming, "Gaming", WithoutWidgets(workFields), [], "Creating Gaming from Work", Check);
         CheckProfileSnapshot(createdGaming, "Work", workFields, workHidden, "Capturing Work before creating Gaming", Check);
 
         var gaming = DockProfileService.UpdateHiddenApps(
@@ -421,6 +421,15 @@ internal static class FeatureAndMemoryChecks
 
         CheckDockProfileRenameAndDelete(workActive, defaultActive, workFields, workHidden, gamingFields, gamingHidden, Check);
         CheckDockProfilePersistence(store, workActive, defaultFields, defaultHidden, Check);
+
+        static DockSettings WithoutWidgets(DockSettings settings) => settings with
+        {
+            Widgets = [],
+            InstalledWidgets = [],
+            WidgetOrder = null,
+            DockItemOrder = settings.DockItemOrder?
+                .Where(token => !token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)).ToArray()
+        };
 
         DockSettings SwitchTo(DockSettings source, string name, DockSettings expected, IReadOnlyList<string> hiddenApps)
         {

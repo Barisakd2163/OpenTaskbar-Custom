@@ -93,8 +93,25 @@ public static class DockProfileService
             return (settings, "ErrorProfileExists");
 
         var synced = SyncActive(settings);
-        var created = Capture(name, synced, []);
-        return (synced with { Profiles = [.. synced.Profiles!, created], ActiveProfile = name }, null);
+        // A new profile starts with an empty widget set; only existing profiles carry widgets.
+        // Clear both the captured snapshot and the live settings so Preferences_Changed rebuilds the dock
+        // without the outgoing profile's widgets.
+        var created = Capture(name, synced, []) with
+        {
+            Widgets = [],
+            InstalledWidgets = [],
+            WidgetOrder = null,
+            DockItemOrder = RemoveWidgetTokens(synced.DockItemOrder)
+        };
+        return (synced with
+        {
+            Widgets = [],
+            InstalledWidgets = [],
+            WidgetOrder = null,
+            DockItemOrder = created.DockItemOrder,
+            Profiles = [.. synced.Profiles!, created],
+            ActiveProfile = name
+        }, null);
     }
 
     /// <summary>Renames an existing profile and updates <see cref="DockSettings.ActiveProfile"/> if it was active.</summary>
@@ -171,6 +188,14 @@ public static class DockProfileService
 
     private static string[] MergeInstalledWidgets(IReadOnlyList<string>? installed, IReadOnlyList<string> widgets) =>
         (installed ?? []).Concat(widgets).Distinct(StringComparer.Ordinal).ToArray();
+
+    /// <summary>Drops widget tokens from a dock item order so a widgets-free profile has no stale widget slots.</summary>
+    private static IReadOnlyList<string>? RemoveWidgetTokens(IReadOnlyList<string>? order)
+    {
+        if (order is null) return null;
+        var kept = order.Where(token => !token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)).ToArray();
+        return kept.Length == order.Count ? order : kept;
+    }
 
     private static bool IsLegacyProfile(DockProfile profile) =>
         profile.Widgets is null
