@@ -596,7 +596,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1937,10 +1937,13 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath)
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(DockApp app)
     {
-        var raw = ApplicationIconProvider.GetForFile(executablePath);
-        return ThemePacks.ApplyIcon(raw, executablePath);
+        // Pinned apps need IconLocation (Chrome/Edge PWA .ico) or AUMID (Store apps); the
+        // executable alone has no icon resource for those. GetForPinnedApp tries both before
+        // falling back to the executable's own icon.
+        var raw = ApplicationIconProvider.GetForPinnedApp(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
+        return ThemePacks.ApplyIcon(raw, app.ExecutablePath);
     }
 
     private void ThemePacks_Changed(object? sender, EventArgs e)
@@ -1949,7 +1952,7 @@ public partial class MainWindow : Window
         ApplyStartIcon();
         foreach (var app in _pinnedApps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath);
+            app.Icon = ApplyApplicationIcon(app);
         }
         if (_windowTracker is not null)
         {

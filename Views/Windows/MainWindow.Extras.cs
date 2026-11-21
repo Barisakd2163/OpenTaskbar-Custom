@@ -707,7 +707,9 @@ public partial class MainWindow
 
             _pinnedApps.Add(new DockApp(pin.Name, pin.ExecutablePath)
             {
-                Icon = ApplicationIconProvider.GetForFile(pin.ExecutablePath),
+                // GetForPinnedApp resolves Store app AUMIDs from the executable path as a fallback,
+                // so backed-up pins of packaged apps keep their real icon too.
+                Icon = ApplicationIconProvider.GetForPinnedApp(pin.ExecutablePath),
                 LaunchArguments = pin.Arguments,
                 ShortcutPath = shortcutPath
             });
