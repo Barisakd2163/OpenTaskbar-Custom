@@ -54,6 +54,8 @@ public sealed class DockSettingsStore
                 settings = MigrateLegacyAiUsage(settings);
             if (settings is not null)
                 settings = MigrateSurfaceStyles(settings, document.RootElement);
+            if (settings is not null)
+                settings = DockProfileService.EnsureDefaultProfile(settings);
             if (settings is null || !IsValid(settings))
             {
                 return (CreateDefaultSettings(), "ErrorDockSettingsInvalid");
@@ -75,7 +77,7 @@ public sealed class DockSettingsStore
         }
     }
 
-    private DockSettings CreateDefaultSettings() => new(Language: _defaultLanguage);
+    private DockSettings CreateDefaultSettings() => DockProfileService.EnsureDefaultProfile(new(Language: _defaultLanguage));
 
     /// <summary>
     /// Drops identifiers for retired widgets from every setting that can carry one. Search stopped being a widget
@@ -115,6 +117,13 @@ public sealed class DockSettingsStore
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         }
         var removedTokens = RemovedIds.Select(id => "widget:" + id).ToArray();
+        var profiles = settings.Profiles?.Select(profile => profile with
+        {
+            Widgets = Without(profile.Widgets, RemovedIds),
+            InstalledWidgets = Without(profile.InstalledWidgets, RemovedIds),
+            WidgetOrder = Without(profile.WidgetOrder, RemovedIds),
+            DockItemOrder = Without(profile.DockItemOrder, removedTokens)
+        }).ToArray();
 
         return settings with
         {
@@ -123,6 +132,7 @@ public sealed class DockSettingsStore
             WidgetOrder = Without(settings.WidgetOrder, RemovedIds),
             DockItemOrder = Without(settings.DockItemOrder, removedTokens),
             WidgetDensityOverrides = densities,
+            Profiles = profiles,
             // Only override the default when the file actually mentioned the old widget.
             ShowSearchButton = mentionedSearch ? enabledSearch : settings.ShowSearchButton,
             ShowTaskViewButton = mentionedDesktops ? enabledDesktops : settings.ShowTaskViewButton,
@@ -155,13 +165,23 @@ public sealed class DockSettingsStore
             densities = migrated;
         }
 
+        var allTokens = all.Select(id => "widget:" + id).ToArray();
+        var profiles = settings.Profiles?.Select(profile => profile with
+        {
+            Widgets = Replace(profile.Widgets, LegacyAiUsageWidgetId, enabled),
+            InstalledWidgets = Replace(profile.InstalledWidgets, LegacyAiUsageWidgetId, all),
+            WidgetOrder = Replace(profile.WidgetOrder, LegacyAiUsageWidgetId, all),
+            DockItemOrder = Replace(profile.DockItemOrder, "widget:" + LegacyAiUsageWidgetId, allTokens)
+        }).ToArray();
+
         return settings with
         {
             Widgets = Replace(settings.Widgets, LegacyAiUsageWidgetId, enabled),
             InstalledWidgets = Replace(settings.InstalledWidgets, LegacyAiUsageWidgetId, all),
             WidgetOrder = Replace(settings.WidgetOrder, LegacyAiUsageWidgetId, all),
-            DockItemOrder = Replace(settings.DockItemOrder, "widget:" + LegacyAiUsageWidgetId, all.Select(id => "widget:" + id)),
+            DockItemOrder = Replace(settings.DockItemOrder, "widget:" + LegacyAiUsageWidgetId, allTokens),
             WidgetDensityOverrides = densities,
+            Profiles = profiles,
             AiUsageProviders = AiProviders.None
         };
     }
@@ -272,7 +292,7 @@ public sealed class DockSettingsStore
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.WidgetOrder?.Count
-        && settings.Profiles?.Any(profile => string.IsNullOrWhiteSpace(profile.Name) || profile.HiddenApps is null) != true
+        && settings.Profiles?.All(IsValidProfile) != false
         && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count
         && settings.AppGroups?.Any(group => string.IsNullOrWhiteSpace(group.Id)
             || string.IsNullOrWhiteSpace(group.Name) || group.ExecutablePaths is null) != true
@@ -282,6 +302,25 @@ public sealed class DockSettingsStore
             .Distinct(StringComparer.OrdinalIgnoreCase).Count()
             == settings.AppGroups?.Sum(group => (group.ExecutablePaths ?? []).Count)
         && (settings.DockCornerRadius is null || settings.DockCornerRadius is >= 0 and <= 48);
+
+    private static bool IsValidProfile(DockProfile profile) =>
+        !string.IsNullOrWhiteSpace(profile.Name)
+        && profile.HiddenApps is not null
+        && profile.Widgets?.Any(widget => !DockWidgetService.SupportedIds.Contains(widget)) != true
+        && profile.Widgets?.Distinct(StringComparer.Ordinal).Count() == profile.Widgets?.Count
+        && profile.InstalledWidgets?.Any(widget => !DockWidgetService.SupportedIds.Contains(widget)) != true
+        && profile.InstalledWidgets?.Distinct(StringComparer.Ordinal).Count() == profile.InstalledWidgets?.Count
+        && (profile.Widgets is null || profile.InstalledWidgets is null
+            || profile.Widgets.All(widget => profile.InstalledWidgets.Contains(widget, StringComparer.Ordinal)))
+        && profile.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
+        && profile.WidgetOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == profile.WidgetOrder?.Count
+        && (profile.DockWidthMode is null || Enum.IsDefined(profile.DockWidthMode.Value))
+        && (profile.DockWidthPixels is null || profile.DockWidthPixels is >= 100 and <= 5000)
+        && (profile.DockWidthPercent is null || profile.DockWidthPercent is >= 10 and <= 100)
+        && (profile.Theme is null || Enum.IsDefined(profile.Theme.Value))
+        && (profile.LauncherHotkey is null || Enum.IsDefined(profile.LauncherHotkey.Value))
+        && (profile.DockHotkey is null || Enum.IsDefined(profile.DockHotkey.Value))
+        && (profile.AutoHide is null || Enum.IsDefined(profile.AutoHide.Value));
 
     public static bool Validate(DockSettings settings) => IsValid(settings);
 
