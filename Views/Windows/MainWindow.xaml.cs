@@ -77,7 +77,7 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
-    private (DockSize Size, double Scale)? _appliedDockGeometry;
+    private (DockSize Size, double Scale, double ShelfHeight)? _appliedDockGeometry;
     private bool _resizingDock;
     private bool _resizePending;
     private bool _resizingFromLeft;
@@ -471,7 +471,7 @@ public partial class MainWindow : Window
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
-        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale);
+        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, EffectiveShelfHeight);
         session.Edge = Edge;
         session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
@@ -2034,12 +2034,13 @@ public partial class MainWindow : Window
             PositionDock();
         }
 
-        // Windows only recalculates the work area when the AppBar is first registered. A size/scale change
-        // therefore needs a fresh replacement session to move the reserved taskbar strip, exactly as a restart does.
-        var geometry = (_preferences.Current.Size, _preferences.Current.DockScale);
+        // Windows only recalculates the work area when the AppBar is first registered. A size, scale, or
+        // bottom-gap/shelf change therefore needs a fresh replacement session to move the reserved taskbar strip.
+        var geometry = (Size: _preferences.Current.Size, Scale: _preferences.Current.DockScale, ShelfHeight: EffectiveShelfHeight);
         if (_appliedDockGeometry is { } applied && applied != geometry && _replacementSession is not null)
         {
-            AnimateDockScaleChange();
+            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001)
+                AnimateDockScaleChange();
             RestartReplacementSession();
         }
         _appliedDockGeometry = geometry;
