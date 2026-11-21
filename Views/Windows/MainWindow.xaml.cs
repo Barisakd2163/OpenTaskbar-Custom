@@ -2054,9 +2054,9 @@ public partial class MainWindow : Window
             {
                 AnimateDockScaleChange();
             }
-            // ApplySizeProfile() already updated ShelfHeight in place via ABM_QUERYPOS + ABM_SETPOS (plus verified
-            // SPI_SETWORKAREA sync) without tearing down the AppBar or flashing the native taskbar (#86, #92).
-            _replacementSession.RefreshPosition();
+            // Re-register the AppBar in place without touching Shell_TrayWnd so Windows 11 recalculates the
+            // monitor work area immediately without flashing the native taskbar (#86, #92).
+            _replacementSession.ReapplyReservation();
         }
         _appliedDockGeometry = geometry;
     }

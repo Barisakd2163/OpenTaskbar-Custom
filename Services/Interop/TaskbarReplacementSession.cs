@@ -32,8 +32,6 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint AbnFullScreenApp = 2;
     private const uint WmDisplayChange = 0x007E;
     private const uint WmDpiChanged = 0x02E0;
-    private const uint SpiSetWorkArea = 0x002F;
-    private const uint SpifSendChange = 0x0002;
     private const uint CallbackMessage = 0x8000 + 0x52;
     private const uint MonitorDefaultToNearest = 2;
     private const uint GaRootOwner = 3;
@@ -75,7 +73,6 @@ public sealed class TaskbarReplacementSession : IDisposable
     // ABM_SETPOS notifies appbars synchronously, and _edge may already point at the new edge.
     private bool _clearingReservation;
     private (int Left, int Bottom, int NativePixels, int ExtraHeight)? _reservation;
-    private int _workAreaNudgeCount;
     private (int Left, int Top, int Width, int Height, bool FullScreenSuppressed)? _lastWindowPos;
     private Size _lastLayout;
     private int _stopInProgress;
@@ -554,6 +551,35 @@ public sealed class TaskbarReplacementSession : IDisposable
         PositionDockWindow();
     }
 
+    /// <summary>
+    /// Re-registers the AppBar in place (ABM_SETPOS(0) -> ABM_REMOVE -> ABM_NEW -> ABM_SETPOS) without touching
+    /// Shell_TrayWnd or restarting the session. Windows 11 only recalculates the monitor work area reliably when
+    /// an AppBar is freshly registered; doing this in place updates maximized-window bounds immediately while
+    /// keeping the native Windows taskbar hidden (#86, #92).
+    /// </summary>
+    public void ReapplyReservation()
+    {
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
+        if (_registered)
+        {
+            ZeroAndRemoveAppBar();
+        }
+        var data = CreateData();
+        data.uCallbackMessage = CallbackMessage;
+        if (SHAppBarMessage(AbmNew, ref data) != 0)
+        {
+            _registered = true;
+        }
+        else
+        {
+            AppLog.Warning("ReapplyReservation: ABM_NEW failed; falling back to existing window placement.");
+        }
+        _reservation = null;
+        _sideReservation = null;
+        _lastWindowPos = null;
+        PositionDockWindow();
+    }
+
     public void UpdateAutoHide(bool autoHide)
     {
         _autoHideEnabled = autoHide;
@@ -695,12 +721,8 @@ public sealed class TaskbarReplacementSession : IDisposable
             _autoHideEnabled, ReleaseNativeStrip, _nativeTaskbarAtBottom,
             (_previousTaskbarState & AbsAutoHide) != 0);
         var request = (monitor.Left, monitor.Bottom, nativePixels, extraHeight);
-        if (_reservation == request && workArea.Bottom == expectedWorkBottom) return;
-        if (_reservation != request)
-        {
-            _reservation = request;
-            _workAreaNudgeCount = 0;
-        }
+        if (_reservation == request) return;
+        _reservation = request;
         var data = CreateData();
         data.uEdge = AbeBottom;
         // Official two-step Win32 AppBar protocol: query against higher-priority bars, pin the bottom edge so a
@@ -717,22 +739,9 @@ public sealed class TaskbarReplacementSession : IDisposable
             return;
         }
 
-        // On Windows 11 builds (e.g. 26300), resizing an active bottom AppBar while Shell_TrayWnd stays hidden
-        // updates Explorer's AppBar table but can skip propagating SPI_SETWORKAREA to maximized windows (#86).
-        // Verify rcWork directly and broadcast SPI_SETWORKAREA once if it is still stale.
         var verified = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
-        if (GetMonitorInfo(monitorHandle, ref verified)
-            && verified.rcWork.Bottom != expectedWorkBottom
-            && _workAreaNudgeCount < 2)
-        {
-            var desiredWork = new Rect(verified.rcWork.Left, verified.rcWork.Top, verified.rcWork.Right, expectedWorkBottom);
-            if (desiredWork.Bottom > desiredWork.Top + 100 && desiredWork.Right > desiredWork.Left + 100)
-            {
-                _workAreaNudgeCount++;
-                SystemParametersInfo(SpiSetWorkArea, 0, ref desiredWork, SpifSendChange);
-                AppLog.Info($"ReserveShelf: synced work area bottom {verified.rcWork.Bottom} -> {expectedWorkBottom} (shelf={metrics.ShelfPixels}px, native={nativePixels}px, extra={extraHeight}px).");
-            }
-        }
+        var workAfter = GetMonitorInfo(monitorHandle, ref verified) ? verified.rcWork.Bottom : workArea.Bottom;
+        AppLog.Info($"ReserveShelf: shelf={metrics.ShelfPixels}px native={nativePixels}px extra={extraHeight}px setPos=({data.rc.Top}..{data.rc.Bottom}) workBottom={workAfter} (expected={expectedWorkBottom}).");
     }
 
     /// <summary>
@@ -1341,10 +1350,6 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     [DllImport("shell32.dll")]
     private static extern nuint SHAppBarMessage(uint message, ref AppBarData data);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref Rect pvParam, uint fWinIni);
 
     [DllImport("user32.dll")]
     private static extern nint MonitorFromWindow(nint windowHandle, uint flags);
