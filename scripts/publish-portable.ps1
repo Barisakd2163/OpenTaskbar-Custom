@@ -44,39 +44,12 @@ public class PortableRestorer {
 
 Write-Host "Publishing OpenTaskbar as self-contained portable executable..." -ForegroundColor Cyan
 
-# Always start from an empty output directory so stale DLLs from a previous
-# publish cannot trip check-portable.ps1 or end up in the release artifact.
-# Resolve relative paths against the repository root, not the current location,
-# so CI (D:\a\<repo>\<repo>) and local runs behave identically.
-$repoRoot = (Resolve-Path -LiteralPath "$PSScriptRoot\..").Path
-$resolvedOutput = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
-    $OutputDir
-} else {
-    Join-Path $repoRoot $OutputDir
-}
-if (Test-Path -LiteralPath $resolvedOutput -ErrorAction SilentlyContinue) {
-    # A stale locked file must not abort an otherwise valid publish; check-portable.ps1
-    # is the authoritative guard against leftover sidecar DLLs.
-    Remove-Item -LiteralPath $resolvedOutput -Recurse -Force -ErrorAction SilentlyContinue
-}
-New-Item -ItemType Directory -Path $resolvedOutput -Force | Out-Null
-
-# Show a repo-relative path in the logs instead of the runner's absolute
-# workspace path (e.g. D:\a\opentaskbar\opentaskbar\release -> release\).
-$displayOutput = $resolvedOutput
-if ($displayOutput.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $displayOutput = $displayOutput.Substring($repoRoot.Length).TrimStart('\', '/')
-    if ([string]::IsNullOrWhiteSpace($displayOutput)) { $displayOutput = '.' }
-}
-
 $watchdogScript = "$PSScriptRoot\..\tools\watchdog\build.ps1"
 if (Test-Path $watchdogScript) {
     & powershell -ExecutionPolicy Bypass -File $watchdogScript
 }
 
 $projectPath = "$PSScriptRoot\..\OpenTaskbar.csproj"
-
-Write-Host "Publishing to '$displayOutput'..." -ForegroundColor Cyan
 
 dotnet publish $projectPath `
     -c Release `
@@ -86,10 +59,10 @@ dotnet publish $projectPath `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:PublishReadyToRun=false `
     -p:EnableCompressionInSingleFile=false `
-    -o $resolvedOutput
+    -o $OutputDir
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Publish succeeded! Portable executable is ready at: $displayOutput\OpenTaskbar.exe" -ForegroundColor Green
+    Write-Host "Publish succeeded! Portable executable is ready at: $OutputDir\OpenTaskbar.exe" -ForegroundColor Green
 } else {
     Write-Error "Publish failed with exit code $LASTEXITCODE"
 }
