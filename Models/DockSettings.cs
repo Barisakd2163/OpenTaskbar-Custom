@@ -9,7 +9,7 @@ public enum DockPosition
     Right
 }
 
-public enum AppTheme { Dark, Light }
+public enum AppTheme { Dark, Light, System }
 public readonly record struct AppLanguage
 {
     private readonly string? _cultureName;
@@ -39,6 +39,24 @@ public enum StartButtonPlacement { Start, End, Hidden, InWidgets }
 public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
 public enum SecondaryAppScope { CurrentMonitorOnly, AllMonitors }
 public enum WidgetDensityMode { Auto, Compact, Full }
+/// <summary>How the dock's horizontal width is determined. Auto fits content; Fixed/Pin modes pin it; Fill spans edge-to-edge.</summary>
+public enum DockWidthMode { Auto, Pixels, Percent, Fill }
+
+/// <summary>Unit used for the dock's external top/bottom spacing.</summary>
+public enum DockGapUnit { Pixels, Percent }
+
+/// <summary>How a translucent UI surface is filled. None removes the fill, its rim and its shadow.</summary>
+public enum SurfaceBackground { Glass, Solid, None }
+
+/// <summary>The independently configurable parts of the application.</summary>
+public enum SurfaceKind { Dock, Menu, Widget, Settings }
+
+/// <summary>Per-surface material style. BorderColor is an optional "#AARRGGBB" override; null keeps the theme source.</summary>
+public readonly record struct SurfaceStyle(
+    SurfaceBackground Background,
+    double Opacity,
+    double BorderThickness = 1.0,
+    string? BorderColor = null);
 
 /// <summary>The individual meters of the System meters widget; a cleared flag hides that meter.</summary>
 [Flags]
@@ -48,10 +66,10 @@ public enum SystemMeters
     Cpu = 1,
     Memory = 2,
     Battery = 4,
-    CpuTemperature = 8,
+    // 8 was CpuTemperature; kept unused so persisted numeric values stay stable.
     Gpu = 16,
     GpuTemperature = 32,
-    All = Cpu | Memory | Battery | CpuTemperature | Gpu | GpuTemperature
+    All = Cpu | Memory | Gpu | GpuTemperature
 }
 
 [Flags]
@@ -63,17 +81,37 @@ public enum AiUsageRing { Highest, Session, Weekly }
 /// <summary>A named view of the dock that hides some pinned apps; pins themselves are never removed.</summary>
 public sealed record DockProfile(string Name, IReadOnlyList<string> HiddenApps);
 
+/// <summary>A user-defined group of applications shown as a single dock icon with a flyout.</summary>
+public sealed record DockAppGroup(string Id, string Name, IReadOnlyList<string> ExecutablePaths);
+
 // Missing JSON properties fall back to these constructor defaults, so older settings files stay valid.
 public sealed record DockSettings(
     DockPosition Position = DockPosition.Center,
     IReadOnlyList<string>? PinOrder = null,
-    AppTheme Theme = AppTheme.Dark,
+    AppTheme Theme = AppTheme.System,
     AppLanguage Language = default,
     bool AnimationsEnabled = true,
     bool PreviewsEnabled = true,
     bool NotificationBadgesEnabled = true,
     AutoHideMode AutoHide = AutoHideMode.Disabled,
+    // Legacy: migrated into the four per-surface styles on load, no longer edited by the UI.
     double SurfaceOpacity = 0.9,
+    SurfaceBackground DockBackground = SurfaceBackground.Glass,
+    double DockOpacity = 0.9,
+    double DockBorderThickness = 1.0,
+    string? DockBorderColor = null,
+    SurfaceBackground MenuBackground = SurfaceBackground.Glass,
+    double MenuOpacity = 0.9,
+    double MenuBorderThickness = 1.0,
+    string? MenuBorderColor = null,
+    SurfaceBackground WidgetBackground = SurfaceBackground.Glass,
+    double WidgetOpacity = 0.9,
+    double WidgetBorderThickness = 1.0,
+    string? WidgetBorderColor = null,
+    SurfaceBackground SettingsBackground = SurfaceBackground.Glass,
+    double SettingsOpacity = 0.9,
+    double SettingsBorderThickness = 1.0,
+    string? SettingsBorderColor = null,
     IReadOnlyList<string>? Widgets = null,
     IReadOnlyList<string>? InstalledWidgets = null,
     DockLayout Layout = DockLayout.Floating,
@@ -98,9 +136,7 @@ public sealed record DockSettings(
     bool CheckUpdates = true,
     bool ShowWeather = false,
     string WeatherCity = "",
-    bool ShowVirtualDesktops = false,
     bool CurrentDesktopOnly = false,
-    bool ShowTray = false,
     bool ShowOnAllMonitors = true,
     string? TargetDisplay = null,
     SecondaryAppScope SecondaryApps = SecondaryAppScope.CurrentMonitorOnly,
@@ -121,11 +157,32 @@ public sealed record DockSettings(
     bool ThemeApplicationIcons = true,
     WidgetDensityMode GlobalWidgetDensity = WidgetDensityMode.Auto,
     IReadOnlyDictionary<string, WidgetDensityMode>? WidgetDensityOverrides = null,
-    // Free-form dock order: "start", "app:<path>", "stack:<path>", "widget:<id>", "bin".
+    // Free-form dock order: "start", "search", "taskview", "tray", "peek", "app:<path>", "stack:<path>", "widget:<id>", "bin".
     // Null keeps the legacy grouped layout until the user drags an item.
     IReadOnlyList<string>? DockItemOrder = null,
-    // Custom taskbar geometry overrides (null = auto from size profile).
+    // Custom taskbar corner radius override (null = auto from size profile).
     int? DockCornerRadius = null,
-    int? DockBottomGap = null,
+    // Legacy: read only to migrate the retired single AI usage widget; every provider is now its own widget.
     AiProviders AiUsageProviders = AiProviders.None,
-    AiUsageRing AiUsageRing = AiUsageRing.Highest);
+    AiUsageRing AiUsageRing = AiUsageRing.Highest,
+    // User-defined application groups. Each app belongs to at most one group.
+    IReadOnlyList<DockAppGroup>? AppGroups = null,
+    // Shows the Search button beside Start. Search used to be a widget; the setting keeps the same opt-out.
+    bool ShowSearchButton = true,
+    // Permanent shell buttons that used to be (or would have been) widgets.
+    bool ShowTaskViewButton = true,
+    bool ShowTrayButton = true,
+    bool ShowDesktopButton = true,
+    // Optional fixed dock width. Auto keeps the current content-fitted behaviour;
+    // Pixels pins an exact DIP width; Percent pins a share of the target monitor.
+    DockWidthMode DockWidthMode = DockWidthMode.Auto,
+    int DockWidthPixels = 900,
+    int DockWidthPercent = 60,
+    // External spacing around the dock surface (outside the visible bar, not inner padding). Each side can be
+    // zero to sit flush against the screen edge, and can be expressed in pixels or a share of the screen.
+    DockGapUnit DockTopGapUnit = DockGapUnit.Pixels,
+    int DockTopGapPixels = 0,
+    int DockTopGapPercent = 0,
+    DockGapUnit DockBottomGapUnit = DockGapUnit.Pixels,
+    int DockBottomGapPixels = 6,
+    int DockBottomGapPercent = 0);

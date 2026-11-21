@@ -8,21 +8,18 @@ namespace OpenTaskbar.Services;
 
 /// <summary>
 /// Optional hardware readings for the system meters. Sensors are initialized on-demand only for enabled meters:
-/// GPU usage uses lightweight WDDM <c>D3DKMTQueryStatistics</c> (with PDH fallback), CPU temperature uses ACPI
-/// thermal zone counters, and GPU temperature uses NVIDIA NVAPI (with NVML fallback). No admin rights or kernel drivers are used.
+/// GPU usage uses lightweight WDDM <c>D3DKMTQueryStatistics</c> (with PDH fallback) and GPU temperature uses
+/// NVIDIA NVAPI (with NVML fallback). No admin rights or kernel drivers are used.
 /// </summary>
 public sealed partial class SystemSensors : IDisposable
 {
-    private const double KelvinOffset = 273.15;
     private const double MaxPlausibleCelsius = 150;
 
     private D3dKmtGpuSampler? _d3dGpu;
     private PdhCounterArray? _pdhGpuFallback;
-    private PerfThermalZoneReader? _thermalZones;
     private GpuThermalReader? _gpuThermal;
     private SystemMeters _configured;
     private bool _gpuInitialized;
-    private bool _thermalInitialized;
     private bool _gpuThermalInitialized;
     private bool _disposed;
 
@@ -47,13 +44,6 @@ public sealed partial class SystemSensors : IDisposable
             _pdhGpuFallback?.Dispose();
             _pdhGpuFallback = null;
             _gpuInitialized = false;
-        }
-
-        if (!meters.HasFlag(SystemMeters.CpuTemperature))
-        {
-            _thermalZones?.Dispose();
-            _thermalZones = null;
-            _thermalInitialized = false;
         }
 
         if (!meters.HasFlag(SystemMeters.GpuTemperature))
@@ -93,19 +83,6 @@ public sealed partial class SystemSensors : IDisposable
         return busiestGpu.Count == 0 ? null : Math.Clamp(busiestGpu.Max() / 100, 0, 1);
     }
 
-    /// <summary>Hottest ACPI thermal zone in °C. Many desktops do not expose any zone.</summary>
-    public double? SampleCpuTemperature()
-    {
-        if (_disposed) return null;
-        if (!_thermalInitialized)
-        {
-            _thermalInitialized = true;
-            _thermalZones = PerfThermalZoneReader.TryCreate();
-        }
-
-        return _thermalZones?.ReadHottestCelsius(KelvinOffset, MaxPlausibleCelsius);
-    }
-
     /// <summary>Hottest NVIDIA GPU in °C; null for other vendors or when the NVIDIA driver is missing.</summary>
     public double? SampleGpuTemperature()
     {
@@ -126,176 +103,8 @@ public sealed partial class SystemSensors : IDisposable
         _d3dGpu = null;
         _pdhGpuFallback?.Dispose();
         _pdhGpuFallback = null;
-        _thermalZones?.Dispose();
-        _thermalZones = null;
         _gpuThermal?.Dispose();
         _gpuThermal = null;
-    }
-
-    /// <summary>
-    /// Reads <c>Thermal Zone Information\Temperature</c> directly from <c>HKEY_PERFORMANCE_DATA</c> by numeric
-    /// Perflib object index, avoiding <c>pdh.dll</c> loading WMI/perflib provider tables (~19 MB PrivateWS).
-    /// </summary>
-    private sealed class PerfThermalZoneReader : IDisposable
-    {
-        private static readonly nint HkeyPerformanceData = unchecked((nint)0x80000004);
-        private const int ErrorMoreData = 234;
-        private const int PerfSizeMask = 0x300;
-        private const int PerfSizeLarge = 0x100;
-
-        private readonly string _objectIndexString;
-        private readonly int _objectIndex;
-        private readonly int _temperatureCounterIndex;
-        private byte[] _buffer = new byte[4096];
-        private bool _disposed;
-
-        private PerfThermalZoneReader(int objectIndex, int temperatureCounterIndex)
-        {
-            _objectIndex = objectIndex;
-            _objectIndexString = objectIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            _temperatureCounterIndex = temperatureCounterIndex;
-        }
-
-        public static PerfThermalZoneReader? TryCreate()
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
-                    @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Perflib\009");
-                if (key?.GetValue("Counter") is not string[] table) return null;
-
-                int objIdx = 0, tempIdx = 0;
-                for (var i = 0; i + 1 < table.Length; i += 2)
-                {
-                    if (objIdx == 0)
-                    {
-                        if (table[i + 1] == "Thermal Zone Information" && int.TryParse(table[i], out var o))
-                            objIdx = o;
-                    }
-                    else if (table[i + 1] == "Temperature" && int.TryParse(table[i], out var c) && c > objIdx)
-                    {
-                        tempIdx = c;
-                        break;
-                    }
-                }
-
-                // Fallback in case Perflib entries are not ordered sequentially.
-                if (objIdx != 0 && tempIdx == 0)
-                {
-                    for (var i = 0; i + 1 < table.Length; i += 2)
-                    {
-                        if (table[i + 1] == "Temperature" && int.TryParse(table[i], out var c))
-                        {
-                            tempIdx = c;
-                            if (c > objIdx) break;
-                        }
-                    }
-                }
-
-                return objIdx > 0 && tempIdx > 0 ? new PerfThermalZoneReader(objIdx, tempIdx) : null;
-            }
-            catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
-            {
-                return null;
-            }
-        }
-
-        public double? ReadHottestCelsius(double kelvinOffset, double maxPlausibleCelsius)
-        {
-            if (_disposed) return null;
-            var size = _buffer.Length;
-            int rc;
-            while ((rc = RegQueryValueExW(HkeyPerformanceData, _objectIndexString, 0, out _, _buffer, ref size)) == ErrorMoreData)
-            {
-                size = Math.Max(size, _buffer.Length * 2);
-                _buffer = new byte[size];
-            }
-
-            if (rc != 0 || size < 48) return null;
-            var headerLen = BitConverter.ToInt32(_buffer, 24);
-            var numObjects = BitConverter.ToInt32(_buffer, 28);
-            var off = headerLen;
-
-            for (var o = 0; o < numObjects && off + 48 <= size; o++)
-            {
-                var totalLen = BitConverter.ToInt32(_buffer, off);
-                var defLen = BitConverter.ToInt32(_buffer, off + 4);
-                var hdrLen = BitConverter.ToInt32(_buffer, off + 8);
-                var objIdx = BitConverter.ToInt32(_buffer, off + 12);
-                var numCounters = BitConverter.ToInt32(_buffer, off + 32);
-                var numInstances = BitConverter.ToInt32(_buffer, off + 40);
-                if (totalLen <= 0 || off + totalLen > size) break;
-
-                if (objIdx == _objectIndex)
-                {
-                    if (numInstances <= 0) return null;
-                    var cOff = off + hdrLen;
-                    var valOffset = -1;
-                    var valLarge = false;
-                    for (var c = 0; c < numCounters && cOff + 40 <= off + totalLen; c++)
-                    {
-                        var cLen = BitConverter.ToInt32(_buffer, cOff);
-                        var cIdx = BitConverter.ToInt32(_buffer, cOff + 4);
-                        if (cIdx == _temperatureCounterIndex)
-                        {
-                            var cType = BitConverter.ToInt32(_buffer, cOff + 28);
-                            valLarge = (cType & PerfSizeMask) == PerfSizeLarge;
-                            valOffset = BitConverter.ToInt32(_buffer, cOff + 36);
-                            break;
-                        }
-                        if (cLen <= 0) break;
-                        cOff += cLen;
-                    }
-
-                    if (valOffset < 0) return null;
-
-                    double? hottest = null;
-                    var iOff = off + defLen;
-                    for (var i = 0; i < numInstances && iOff + 24 <= off + totalLen; i++)
-                    {
-                        var iLen = BitConverter.ToInt32(_buffer, iOff);
-                        if (iLen <= 0 || iOff + iLen + 4 > off + totalLen) break;
-                        var cbOff = iOff + iLen;
-                        var cbLen = BitConverter.ToInt32(_buffer, cbOff);
-                        if (cbLen <= 0 || cbOff + cbLen > off + totalLen) break;
-
-                        if (valOffset + (valLarge ? 8 : 4) <= cbLen)
-                        {
-                            double kelvin = valLarge
-                                ? BitConverter.ToInt64(_buffer, cbOff + valOffset)
-                                : BitConverter.ToUInt32(_buffer, cbOff + valOffset);
-                            var celsius = kelvin - kelvinOffset;
-                            if (celsius > 0 && celsius < maxPlausibleCelsius)
-                            {
-                                hottest = hottest.HasValue ? Math.Max(hottest.Value, celsius) : celsius;
-                            }
-                        }
-
-                        iOff = cbOff + cbLen;
-                    }
-
-                    return hottest;
-                }
-
-                off += totalLen;
-            }
-
-            return null;
-        }
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            _buffer = [];
-            RegCloseKey(HkeyPerformanceData);
-        }
-
-        [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
-        private static extern int RegQueryValueExW(nint key, string valueName, nint reserved, out uint type, byte[] data, ref int dataSize);
-
-        [DllImport("advapi32.dll")]
-        private static extern int RegCloseKey(nint key);
     }
 
     // Instance names look like pid_1234_luid_0x00000000_0x0000F3A1_phys_0_eng_0_engtype_3D.

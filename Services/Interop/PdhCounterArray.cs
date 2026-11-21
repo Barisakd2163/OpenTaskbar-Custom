@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace OpenTaskbar.Services;
 
 /// <summary>
-/// A wildcard Windows performance counter (for example <c>\Thermal Zone Information(*)\Temperature</c>) read through PDH.
+/// A wildcard Windows performance counter (for example <c>\GPU Engine(*)\Utilization Percentage</c>) read through PDH.
 /// Rate counters need two collections, so the first read after creation returns no values.
 /// </summary>
 internal sealed class PdhCounterArray : IDisposable

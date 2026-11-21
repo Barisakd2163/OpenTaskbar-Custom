@@ -1,145 +1,197 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
-using System.Windows.Data;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Widgets;
 
+/// <summary>
+/// V19 System Stats widget: compact horizontal CPU / RAM / GPU metrics on the dock,
+/// with a dedicated metrics flyout showing progress bars, temperatures, and Task Manager shortcut.
+/// </summary>
 public partial class SystemStatsWidget : DockWidget
 {
-    private const int LowBatteryPercent = 15;
     private const double TemperatureScaleCelsius = 100;
-    private const double RingValueEpsilon = 0.005;
+    private const double ValueEpsilon = 0.005;
     private const long FastSamplePeriodMs = 1800;
     private const long SensorSamplePeriodMs = 3800;
+    private const int SensorHideMisses = 5;
+    private const int SensorShowSamples = 2;
 
-    private struct RingState
+    private struct MetricState
     {
         public bool Initialized;
         public int Shown;
         public double Value;
-        public string? BrushKey;
         public AppLanguage Language;
     }
 
     private readonly SystemStats _stats = new();
     private readonly object _sensorGate = new();
-    private readonly TwoStepConfirm _confirm;
+    private readonly DockFlyout _flyout = new();
     private SystemSensors? _sensors;
     private int _sensorGeneration;
     private int _sensorSampling;
     private long _lastFastSampleTickMs;
     private long _lastSensorSampleTickMs;
 
-    private RingState _cpuState;
-    private RingState _memoryState;
-    private RingState _gpuState;
-    private RingState _cpuTempState;
-    private RingState _gpuTempState;
-    private BatteryStatus _batteryState;
-    private bool _batteryInitialized;
-    private AppLanguage _batteryLanguage;
+    private MetricState _cpuState;
+    private MetricState _memoryState;
+    private MetricState _gpuState;
+    private MetricState _gpuTempState;
     private bool _hasGpu;
-    private bool _hasCpuTemp;
     private bool _hasGpuTemp;
+    private SystemMeters _configuredMeters;
     private readonly Dictionary<FrameworkElement, int> _missingSensorSamples = [];
+    private readonly Dictionary<FrameworkElement, int> _validSensorSamples = [];
+
+    private Border? _flyoutHost;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 30;
-    public override double CompactWidthEstimate => 88;
+    public override double CompactWidthEstimate => 112;
     public override double FullWidthEstimate
     {
         get
         {
             var meters = Settings.StatsMeters;
             var count = 0;
-            if (meters.HasFlag(SystemMeters.Battery) && _batteryState.Present) count++;
             if (meters.HasFlag(SystemMeters.Cpu)) count++;
             if (meters.HasFlag(SystemMeters.Memory)) count++;
-            if (meters.HasFlag(SystemMeters.CpuTemperature) && _hasCpuTemp) count++;
             if (meters.HasFlag(SystemMeters.Gpu) && _hasGpu) count++;
             if (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp) count++;
-            return Math.Max(52, count * 52);
+            return Math.Max(96, 36 + count * 48);
         }
     }
 
     public SystemStatsWidget()
     {
         InitializeComponent();
-        _confirm = new TwoStepConfirm(Dispatcher);
+        _flyout.Closed += (_, _) => _flyoutHost = null;
     }
 
     protected override void OnCompactChanged(bool compact) => SyncMeterVisibility();
     protected override void OnHoverExpandedChanged(bool expanded) => SyncMeterVisibility();
 
-    public override UIElement? BuildHoverFlyoutContent()
+    public override UIElement? BuildHoverFlyoutContent() => BuildMetricsFlyout();
+
+    private void StatsCardButton_Click(object sender, RoutedEventArgs e)
     {
-        var panel = new System.Windows.Controls.WrapPanel { MaxWidth = 300 };
-        var meters = Settings.StatsMeters;
-
-        if (meters.HasFlag(SystemMeters.Battery) && _batteryState.Present)
-            panel.Children.Add(MakeStatTile(UiText.Get("Battery"), UiText.Format("Percent", _batteryState.Percent), _batteryState.Percent / 100.0, BatteryButton, BatteryRing));
-        if (meters.HasFlag(SystemMeters.Cpu))
-            panel.Children.Add(MakeStatTile("CPU", $"{_cpuState.Shown}%", _cpuState.Value, CpuButton, CpuRing));
-        if (meters.HasFlag(SystemMeters.Memory))
-            panel.Children.Add(MakeStatTile("RAM", $"{_memoryState.Shown}%", _memoryState.Value, MemoryButton, MemoryRing));
-        if (meters.HasFlag(SystemMeters.CpuTemperature) && _hasCpuTemp)
-            panel.Children.Add(MakeStatTile("CPU°", $"{_cpuTempState.Shown}°", _cpuTempState.Value, CpuTemperatureButton, CpuTemperatureRing));
-        if (meters.HasFlag(SystemMeters.Gpu) && _hasGpu)
-            panel.Children.Add(MakeStatTile("GPU", $"{_gpuState.Shown}%", _gpuState.Value, GpuButton, GpuRing));
-        if (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp)
-            panel.Children.Add(MakeStatTile("GPU°", $"{_gpuTempState.Shown}°", _gpuTempState.Value, GpuTemperatureButton, GpuTemperatureRing));
-
-        return panel.Children.Count > 0 ? panel : null;
-
-        System.Windows.Controls.Button MakeStatTile(string caption, string valueText, double normalized, System.Windows.Controls.Button sourceButton, RingMeter sourceRing)
+        _flyout.Toggle(StatsCardButton, () =>
         {
-            var ring = new RingMeter
-            {
-                Width = 42,
-                Height = 42,
-                StrokeThickness = 3.5,
-                FontSize = 11.5,
-                Caption = caption,
-                Text = valueText,
-                Value = normalized
-            };
-            ring.SetResourceReference(RingMeter.CaptionBrushProperty, "TextSecondary");
-            ring.SetResourceReference(RingMeter.TrackBrushProperty, "WidgetTrack");
-            ring.SetBinding(RingMeter.ValueProperty, new Binding(nameof(RingMeter.Value)) { Source = sourceRing, Mode = BindingMode.OneWay });
-            ring.SetBinding(RingMeter.TextProperty, new Binding(nameof(RingMeter.Text)) { Source = sourceRing, Mode = BindingMode.OneWay });
-            ring.SetBinding(RingMeter.ValueBrushProperty, new Binding(nameof(RingMeter.ValueBrush)) { Source = sourceRing, Mode = BindingMode.OneWay });
-            ring.SetResourceReference(ForegroundProperty, "TextPrimary");
-            var btn = new System.Windows.Controls.Button
-            {
-                Width = 54,
-                Height = 54,
-                Padding = new Thickness(3),
-                Margin = new Thickness(3),
-                Content = ring,
-                ToolTip = sourceButton.ToolTip
-            };
-            btn.SetResourceReference(StyleProperty, "WidgetCardButton");
-            btn.Click += TaskManager_Click;
-            return btn;
+            var host = new Border { Width = 292 };
+            _flyoutHost = host;
+            host.Child = BuildMetricsFlyout();
+            return host;
+        }, animate: true, focusable: false);
+    }
+
+    private void RefreshOpenFlyout()
+    {
+        if (_flyout.IsOpen && _flyoutHost is not null)
+        {
+            _flyoutHost.Child = BuildMetricsFlyout();
         }
+    }
+
+    internal UIElement BuildMetricsFlyout()
+    {
+        var root = new StackPanel();
+        root.Children.Add(DockFlyout.Heading(UiText.Get("WidgetSystemStats")));
+
+        var meters = Settings.StatsMeters;
+        if (meters.HasFlag(SystemMeters.Cpu))
+            AddMetricRow(root, UiText.Get("Cpu"), _cpuState.Initialized ? $"{_cpuState.Shown}%" : "—", _cpuState.Value);
+        if (meters.HasFlag(SystemMeters.Memory))
+            AddMetricRow(root, UiText.Get("Memory"), _memoryState.Initialized ? $"{_memoryState.Shown}%" : "—", _memoryState.Value);
+        if (meters.HasFlag(SystemMeters.Gpu) && _hasGpu)
+            AddMetricRow(root, UiText.Get("Gpu"), $"{_gpuState.Shown}%", _gpuState.Value);
+        if (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp)
+            AddPlainRow(root, UiText.Get("GpuTemperature"), $"{_gpuTempState.Shown} °C");
+
+        var divider = new Border { Height = 1, Margin = new Thickness(0, 10, 0, 8) };
+        divider.SetResourceReference(Border.BackgroundProperty, "StrokeSubtle");
+        root.Children.Add(divider);
+
+        var tmBtn = new Button
+        {
+            Content = UiText.Get("TaskManager"),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        tmBtn.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
+        tmBtn.Click += (_, _) =>
+        {
+            _flyout.Close();
+            Report(ShellShortcuts.OpenTaskManager());
+        };
+        root.Children.Add(tmBtn);
+
+        return root;
+    }
+
+    private static void AddMetricRow(Panel parent, string label, string valueText, double normalized)
+    {
+        var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+        var val = new TextBlock
+        {
+            Text = valueText,
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        };
+        val.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        DockPanel.SetDock(val, Dock.Right);
+        row.Children.Add(val);
+
+        var lbl = new TextBlock { Text = label, FontSize = 12 };
+        lbl.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        row.Children.Add(lbl);
+        parent.Children.Add(row);
+
+        var track = new Border { Height = 6, CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 0, 8), ClipToBounds = true };
+        track.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
+
+        var pct = Math.Clamp(normalized, 0, 1);
+        var fillGrid = new Grid();
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(pct, GridUnitType.Star) });
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - pct, GridUnitType.Star) });
+
+        var fill = new Border { CornerRadius = new CornerRadius(3) };
+        fill.SetResourceReference(Border.BackgroundProperty,
+            pct >= 0.9 ? "WidgetFocusAccent" : pct >= 0.75 ? "WidgetWarning" : "WidgetBlue");
+        Grid.SetColumn(fill, 0);
+        fillGrid.Children.Add(fill);
+        track.Child = fillGrid;
+        parent.Children.Add(track);
+    }
+
+    private static void AddPlainRow(Panel parent, string label, string valueText)
+    {
+        var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+        var val = new TextBlock
+        {
+            Text = valueText,
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        };
+        val.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        DockPanel.SetDock(val, Dock.Right);
+        row.Children.Add(val);
+
+        var lbl = new TextBlock { Text = label, FontSize = 12 };
+        lbl.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        row.Children.Add(lbl);
+        parent.Children.Add(row);
     }
 
     protected override void OnActivated()
     {
         _stats.SampleCpu();
-        // Opening the widget must never wait for a slow native sensor query.
         Interlocked.Increment(ref _sensorGeneration);
-
-        var meters = Settings.StatsMeters;
-        _hasGpu = meters.HasFlag(SystemMeters.Gpu);
-        _hasCpuTemp = meters.HasFlag(SystemMeters.CpuTemperature);
-        _hasGpuTemp = meters.HasFlag(SystemMeters.GpuTemperature);
-
         ApplyMeterSelection();
-        // Show Memory & Battery right away, and schedule the first CPU/sensor sample.
         SampleFastCounters(sampleCpu: false);
         var nowMs = Environment.TickCount64;
         _lastFastSampleTickMs = nowMs - 900;
@@ -149,9 +201,8 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnDeactivated()
     {
-        _confirm.Disarm();
+        _flyout.Close();
         var generation = Interlocked.Increment(ref _sensorGeneration);
-        // Dispose from the worker after any in-flight native query completes.
         _ = Task.Run(() =>
         {
             lock (_sensorGate)
@@ -167,19 +218,13 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnDisposed()
     {
-        _confirm.Dispose();
+        _flyout.Close();
         base.OnDisposed();
     }
 
     protected override void OnSettingsChanged()
     {
         Interlocked.Increment(ref _sensorGeneration);
-
-        var meters = Settings.StatsMeters;
-        _hasGpu = meters.HasFlag(SystemMeters.Gpu);
-        _hasCpuTemp = meters.HasFlag(SystemMeters.CpuTemperature);
-        _hasGpuTemp = meters.HasFlag(SystemMeters.GpuTemperature);
-
         ApplyMeterSelection();
         if (IsActive)
         {
@@ -191,7 +236,6 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnTick(DateTime now)
     {
-        // CPU/RAM update every ~2s; heavy PDH/NVML sensors update every ~4s.
         var tickMs = Environment.TickCount64;
         if (_lastFastSampleTickMs == 0 || tickMs - _lastFastSampleTickMs >= FastSamplePeriodMs)
         {
@@ -210,22 +254,22 @@ public partial class SystemStatsWidget : DockWidget
     {
         var meters = Settings.StatsMeters;
         if (sampleCpu && meters.HasFlag(SystemMeters.Cpu) && _stats.SampleCpu() is { } cpu)
-            SetUsage(CpuRing, CpuButton, ref _cpuState, cpu, "Cpu");
+            SetUsage(CpuValueText, ref _cpuState, cpu);
         if (meters.HasFlag(SystemMeters.Memory) && SystemStats.SampleMemory() is { } memory)
-            SetUsage(MemoryRing, MemoryButton, ref _memoryState, memory, "Memory");
-        UpdateBattery(meters.HasFlag(SystemMeters.Battery) ? SystemStats.SampleBattery() : new BatteryStatus(false, 0, false, false));
+            SetUsage(RamValueText, ref _memoryState, memory);
+        UpdateTooltip();
+        RefreshOpenFlyout();
     }
 
     private void PrimeSensorBaselineIfNeeded()
     {
         var meters = Settings.StatsMeters;
-        if ((meters & (SystemMeters.Gpu | SystemMeters.CpuTemperature | SystemMeters.GpuTemperature)) == 0) return;
+        if ((meters & (SystemMeters.Gpu | SystemMeters.GpuTemperature)) == 0) return;
         if (Interlocked.CompareExchange(ref _sensorSampling, 1, 0) != 0) return;
         var generation = Volatile.Read(ref _sensorGeneration);
         _ = Task.Run(async () =>
         {
             double? gpu = null;
-            double? cpuTemp = null;
             double? gpuTemp = null;
             try
             {
@@ -237,14 +281,12 @@ public partial class SystemStatsWidget : DockWidget
                     if (meters.HasFlag(SystemMeters.Gpu)) _sensors.SampleGpuUsage();
                 }
 
-                // Short delay so D3DKMT counters can compute a valid initial delta without waiting 4s
                 await Task.Delay(350).ConfigureAwait(false);
 
                 lock (_sensorGate)
                 {
                     if (generation != Volatile.Read(ref _sensorGeneration)) return;
                     if (meters.HasFlag(SystemMeters.Gpu)) gpu = _sensors?.SampleGpuUsage();
-                    if (meters.HasFlag(SystemMeters.CpuTemperature)) cpuTemp = _sensors?.SampleCpuTemperature();
                     if (meters.HasFlag(SystemMeters.GpuTemperature)) gpuTemp = _sensors?.SampleGpuTemperature();
                 }
             }
@@ -261,27 +303,20 @@ public partial class SystemStatsWidget : DockWidget
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
             {
                 if (!IsActive || generation != Volatile.Read(ref _sensorGeneration)) return;
-                var currentMeters = Settings.StatsMeters;
-                UpdateSensor(GpuButton, currentMeters.HasFlag(SystemMeters.Gpu) ? gpu : null,
-                    usage => SetUsage(GpuRing, GpuButton, ref _gpuState, usage, "Gpu"));
-                UpdateSensor(CpuTemperatureButton, currentMeters.HasFlag(SystemMeters.CpuTemperature) ? cpuTemp : null,
-                    celsius => SetTemperature(CpuTemperatureRing, CpuTemperatureButton, ref _cpuTempState, celsius, "CpuTemperature"));
-                UpdateSensor(GpuTemperatureButton, currentMeters.HasFlag(SystemMeters.GpuTemperature) ? gpuTemp : null,
-                    celsius => SetTemperature(GpuTemperatureRing, GpuTemperatureButton, ref _gpuTempState, celsius, "GpuTemperature"));
+                ApplySensorBatch(gpu, gpuTemp);
             });
         });
     }
 
     private void QueueSensorSample(SystemMeters meters)
     {
-        if ((meters & (SystemMeters.Gpu | SystemMeters.CpuTemperature | SystemMeters.GpuTemperature)) == 0) return;
+        if ((meters & (SystemMeters.Gpu | SystemMeters.GpuTemperature)) == 0) return;
         if (Interlocked.CompareExchange(ref _sensorSampling, 1, 0) != 0) return;
         var generation = Volatile.Read(ref _sensorGeneration);
 
         _ = Task.Run(() =>
         {
             double? gpu = null;
-            double? cpuTemp = null;
             double? gpuTemp = null;
             try
             {
@@ -291,7 +326,6 @@ public partial class SystemStatsWidget : DockWidget
                     _sensors ??= new SystemSensors(meters);
                     _sensors.Configure(meters);
                     if (meters.HasFlag(SystemMeters.Gpu)) gpu = _sensors.SampleGpuUsage();
-                    if (meters.HasFlag(SystemMeters.CpuTemperature)) cpuTemp = _sensors.SampleCpuTemperature();
                     if (meters.HasFlag(SystemMeters.GpuTemperature)) gpuTemp = _sensors.SampleGpuTemperature();
                 }
             }
@@ -308,181 +342,145 @@ public partial class SystemStatsWidget : DockWidget
             _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
             {
                 if (!IsActive || generation != Volatile.Read(ref _sensorGeneration)) return;
-                var currentMeters = Settings.StatsMeters;
-                UpdateSensor(GpuButton, currentMeters.HasFlag(SystemMeters.Gpu) ? gpu : null,
-                    usage => SetUsage(GpuRing, GpuButton, ref _gpuState, usage, "Gpu"));
-                UpdateSensor(CpuTemperatureButton, currentMeters.HasFlag(SystemMeters.CpuTemperature) ? cpuTemp : null,
-                    celsius => SetTemperature(CpuTemperatureRing, CpuTemperatureButton, ref _cpuTempState, celsius, "CpuTemperature"));
-                UpdateSensor(GpuTemperatureButton, currentMeters.HasFlag(SystemMeters.GpuTemperature) ? gpuTemp : null,
-                    celsius => SetTemperature(GpuTemperatureRing, GpuTemperatureButton, ref _gpuTempState, celsius, "GpuTemperature"));
+                ApplySensorBatch(gpu, gpuTemp);
             });
         });
     }
 
-    private void ApplyMeterSelection() => SyncMeterVisibility();
+    private void ApplySensorBatch(double? gpu, double? gpuTemp)
+    {
+        var currentMeters = Settings.StatsMeters;
+        UpdateSensor(GpuButton, currentMeters.HasFlag(SystemMeters.Gpu) ? gpu : null,
+            usage => SetUsage(GpuValueText, ref _gpuState, usage));
+        UpdateSensor(GpuTemperatureButton, currentMeters.HasFlag(SystemMeters.GpuTemperature) ? gpuTemp : null,
+            celsius => SetTemperature(GpuTempValueText, ref _gpuTempState, celsius));
+        UpdateTooltip();
+        RefreshOpenFlyout();
+    }
+
+    private void ApplyMeterSelection()
+    {
+        var meters = Settings.StatsMeters;
+        if (_configuredMeters != meters)
+        {
+            _configuredMeters = meters;
+            _hasGpu = false;
+            _hasGpuTemp = false;
+            _missingSensorSamples.Clear();
+            _validSensorSamples.Clear();
+        }
+        SyncMeterVisibility();
+    }
 
     private void SyncMeterVisibility()
     {
         var compact = IsCompact && !IsHoverExpanded;
         var meters = Settings.StatsMeters;
-        CompactSummaryButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
-        BatteryButton.Visibility = !compact && meters.HasFlag(SystemMeters.Battery) && _batteryState.Present ? Visibility.Visible : Visibility.Collapsed;
-        CpuButton.Visibility = !compact && meters.HasFlag(SystemMeters.Cpu) ? Visibility.Visible : Visibility.Collapsed;
-        MemoryButton.Visibility = !compact && meters.HasFlag(SystemMeters.Memory) ? Visibility.Visible : Visibility.Collapsed;
-        GpuButton.Visibility = !compact && meters.HasFlag(SystemMeters.Gpu) && _hasGpu ? Visibility.Visible : Visibility.Collapsed;
-        CpuTemperatureButton.Visibility = !compact && meters.HasFlag(SystemMeters.CpuTemperature) && _hasCpuTemp ? Visibility.Visible : Visibility.Collapsed;
-        GpuTemperatureButton.Visibility = !compact && meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp ? Visibility.Visible : Visibility.Collapsed;
+        var changed = false;
+
+        var showCpu = meters.HasFlag(SystemMeters.Cpu);
+        var showRam = meters.HasFlag(SystemMeters.Memory);
+        var showGpu = !compact && meters.HasFlag(SystemMeters.Gpu) && _hasGpu;
+        var showGpuTemp = !compact && meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp;
+
+        CpuLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        RamLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        GpuLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+
+        Set(CpuButton, showCpu);
+        Set(RamDivider, showCpu && showRam);
+        Set(MemoryButton, showRam);
+        Set(GpuDivider, (showCpu || showRam) && showGpu);
+        Set(GpuButton, showGpu);
+        Set(GpuTempDivider, (showCpu || showRam || showGpu) && showGpuTemp);
+        Set(GpuTemperatureButton, showGpuTemp);
+
+        if (changed) RaiseContentWidthChanged();
+
+        void Set(FrameworkElement element, bool visible)
+        {
+            var target = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (element.Visibility == target) return;
+            element.Visibility = target;
+            changed = true;
+        }
     }
 
     private void UpdateSensor(FrameworkElement button, double? reading, Action<double> render)
     {
         if (reading is null)
         {
-            _missingSensorSamples.TryGetValue(button, out var misses);
-            misses = Math.Min(misses + 1, 3);
+            var misses = Math.Min(_missingSensorSamples.GetValueOrDefault(button) + 1, SensorHideMisses);
             _missingSensorSamples[button] = misses;
-            // A single missed sample should not make the dock jump in width.
-            if (misses < 3) return;
-        }
-        else
-        {
-            _missingSensorSamples.Remove(button);
-        }
-
-        var available = reading is not null;
-        if (button == GpuButton) _hasGpu = available;
-        else if (button == CpuTemperatureButton) _hasCpuTemp = available;
-        else if (button == GpuTemperatureButton) _hasGpuTemp = available;
-        if (reading is { } value) render(value);
-        SyncMeterVisibility();
-    }
-
-    private void SetUsage(RingMeter ring, FrameworkElement owner, ref RingState state, double value, string labelKey)
-    {
-        var percent = (int)Math.Round(value * 100);
-        var lang = Settings.Language;
-        var brushKey = value >= 0.9 ? "WidgetFocusAccent" : value >= 0.75 ? "WidgetWarning" : "WidgetAccent";
-        if (state.Initialized
-            && state.Shown == percent
-            && state.BrushKey == brushKey
-            && state.Language == lang
-            && Math.Abs(value - state.Value) < RingValueEpsilon)
-        {
+            _validSensorSamples.Remove(button);
+            if (misses >= SensorHideMisses) SetAvailability(button, false);
             return;
         }
 
-        if (!state.Initialized || Math.Abs(value - state.Value) >= RingValueEpsilon)
-        {
-            ring.Value = value;
-            state.Value = value;
-        }
-        if (!state.Initialized || state.Shown != percent)
-        {
-            ring.Text = percent.ToString(CultureInfo.InvariantCulture);
-        }
-        if (state.BrushKey != brushKey)
-        {
-            ring.SetResourceReference(RingMeter.ValueBrushProperty, brushKey);
-            state.BrushKey = brushKey;
-        }
-        if (!state.Initialized || state.Shown != percent || state.Language != lang)
-        {
-            owner.ToolTip = $"{UiText.Get(labelKey)}: {UiText.Format("Percent", percent)}";
-            state.Shown = percent;
-            state.Language = lang;
-            if (owner == CpuButton) CompactCpuText.Text = $"CPU {percent}%";
-            else if (owner == MemoryButton) CompactRamText.Text = $"RAM {percent}%";
-            CompactSummaryButton.ToolTip = $"{CompactCpuText.Text} · {CompactRamText.Text}";
-        }
-        state.Initialized = true;
+        _missingSensorSamples.Remove(button);
+        var valid = Math.Min(_validSensorSamples.GetValueOrDefault(button) + 1, SensorShowSamples);
+        _validSensorSamples[button] = valid;
+        render(reading.Value);
+        if (valid >= SensorShowSamples) SetAvailability(button, true);
     }
 
-    private void SetTemperature(RingMeter ring, FrameworkElement owner, ref RingState state, double celsius, string labelKey)
+    /// <summary>Test seam: feeds a reading through the same availability logic as the native sensors.</summary>
+    internal void ApplySensorReading(FrameworkElement button, double? reading, Action<double>? render = null) =>
+        UpdateSensor(button, reading, render ?? (_ => { }));
+
+    private void SetAvailability(FrameworkElement button, bool available)
+    {
+        if (button == GpuButton)
+        {
+            if (_hasGpu == available) return;
+            _hasGpu = available;
+        }
+        else if (button == GpuTemperatureButton)
+        {
+            if (_hasGpuTemp == available) return;
+            _hasGpuTemp = available;
+        }
+        else return;
+
+        SyncMeterVisibility();
+    }
+
+    private void SetUsage(TextBlock target, ref MetricState state, double value)
+    {
+        var percent = (int)Math.Round(value * 100);
+        var lang = Settings.Language;
+        if (state.Initialized && state.Shown == percent && state.Language == lang && Math.Abs(value - state.Value) < ValueEpsilon)
+            return;
+
+        state.Value = value;
+        state.Shown = percent;
+        state.Language = lang;
+        state.Initialized = true;
+        target.Text = $"{percent.ToString(CultureInfo.InvariantCulture)}%";
+    }
+
+    private void SetTemperature(TextBlock target, ref MetricState state, double celsius)
     {
         var rounded = (int)Math.Round(celsius);
         var normalized = celsius / TemperatureScaleCelsius;
         var lang = Settings.Language;
-        var brushKey = normalized >= 0.9 ? "WidgetFocusAccent" : normalized >= 0.75 ? "WidgetWarning" : "WidgetAccent";
-        if (state.Initialized
-            && state.Shown == rounded
-            && state.BrushKey == brushKey
-            && state.Language == lang
-            && Math.Abs(normalized - state.Value) < RingValueEpsilon)
-        {
+        if (state.Initialized && state.Shown == rounded && state.Language == lang && Math.Abs(normalized - state.Value) < ValueEpsilon)
             return;
-        }
 
-        if (!state.Initialized || Math.Abs(normalized - state.Value) >= RingValueEpsilon)
-        {
-            ring.Value = normalized;
-            state.Value = normalized;
-        }
-        if (!state.Initialized || state.Shown != rounded)
-        {
-            ring.Text = rounded.ToString(CultureInfo.InvariantCulture);
-        }
-        if (state.BrushKey != brushKey)
-        {
-            ring.SetResourceReference(RingMeter.ValueBrushProperty, brushKey);
-            state.BrushKey = brushKey;
-        }
-        if (!state.Initialized || state.Shown != rounded || state.Language != lang)
-        {
-            owner.ToolTip = $"{UiText.Get(labelKey)}: {rounded}°C";
-            state.Shown = rounded;
-            state.Language = lang;
-        }
+        state.Value = normalized;
+        state.Shown = rounded;
+        state.Language = lang;
         state.Initialized = true;
+        target.Text = $"{rounded.ToString(CultureInfo.InvariantCulture)}°";
     }
 
-    private void UpdateBattery(BatteryStatus battery)
+    private void UpdateTooltip()
     {
-        var lang = Settings.Language;
-        if (_batteryInitialized && _batteryState == battery && _batteryLanguage == lang) return;
-        _batteryInitialized = true;
-        _batteryState = battery;
-        _batteryLanguage = lang;
-
-        SyncMeterVisibility();
-        if (!battery.Present) return;
-        BatteryRing.Value = Math.Clamp(battery.Percent / 100.0, 0, 1);
-        BatteryRing.Text = battery.Percent.ToString(CultureInfo.InvariantCulture);
-        BatteryRing.Caption = lang == AppLanguage.Turkish ? "PİL" : "BAT";
-        BatteryRing.SetResourceReference(RingMeter.ValueBrushProperty,
-            battery.Percent <= LowBatteryPercent && !battery.PluggedIn ? "WidgetFocusAccent" : "WidgetAccent");
-        ChargingIcon.Visibility = battery.Charging ? Visibility.Visible : Visibility.Collapsed;
-        BatteryButton.ToolTip = $"{UiText.Get(battery.Charging ? "BatteryCharging" : "Battery")}: {UiText.Format("Percent", battery.Percent)}";
-    }
-
-    private void BatteryButton_Click(object sender, RoutedEventArgs e) => Report(ShellShortcuts.OpenUri("ms-settings:batterysaver"));
-
-    private void TaskManager_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not System.Windows.Controls.Button button)
-        {
-            Report(ShellShortcuts.OpenTaskManager());
-            return;
-        }
-
-        var previousToolTip = button.ToolTip;
-        if (!_confirm.ConsumeOrArm(
-            button,
-            onArm: () =>
-            {
-                button.BorderThickness = new Thickness(2);
-                button.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "AccentBrush");
-                button.ToolTip = UiText.Get("TaskManagerConfirm");
-            },
-            onDisarm: () =>
-            {
-                button.ClearValue(System.Windows.Controls.Control.BorderThicknessProperty);
-                button.ClearValue(System.Windows.Controls.Control.BorderBrushProperty);
-                button.ToolTip = previousToolTip;
-            }))
-        {
-            return;
-        }
-
-        Report(ShellShortcuts.OpenTaskManager());
+        var parts = new List<string>();
+        if (_cpuState.Initialized) parts.Add($"CPU {_cpuState.Shown}%");
+        if (_memoryState.Initialized) parts.Add($"RAM {_memoryState.Shown}%");
+        if (_hasGpu && _gpuState.Initialized) parts.Add($"GPU {_gpuState.Shown}%");
+        if (_hasGpuTemp && _gpuTempState.Initialized) parts.Add($"GPU {_gpuTempState.Shown}°C");
+        StatsCardButton.ToolTip = parts.Count > 0 ? string.Join(" · ", parts) : UiText.Get("WidgetSystemStats");
     }
 }

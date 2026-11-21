@@ -10,6 +10,7 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetI
     public const int MinimumMinutes = 1;
     public const int MaximumMinutes = 1440;
     private string _minutesText = string.Empty;
+    private TimeSpan _totalDuration;
     private TimeSpan _remaining;
     private long _startedAt;
 
@@ -19,9 +20,28 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetI
     public bool CanEditDuration => State is CountdownState.NotConfigured or CountdownState.Ready or CountdownState.Finished;
     public bool HasValidationError => State == CountdownState.NotConfigured && !string.IsNullOrWhiteSpace(MinutesText);
     public string DurationHelpText => UiText.Format("CountdownEditingHelp", MinimumMinutes, MaximumMinutes);
+    public string Preset5Label => UiText.Format("MinutesShort", 5);
+    public string Preset10Label => UiText.Format("MinutesShort", 10);
+    public string Preset15Label => UiText.Format("MinutesShort", 15);
+    public string Preset30Label => UiText.Format("MinutesShort", 30);
+
+    public void NotifyLanguageChanged()
+    {
+        NotifyChanged(nameof(DurationHelpText));
+        NotifyChanged(nameof(StatusText));
+        NotifyChanged(nameof(Preset5Label));
+        NotifyChanged(nameof(Preset10Label));
+        NotifyChanged(nameof(Preset15Label));
+        NotifyChanged(nameof(Preset30Label));
+    }
     public TimeSpan Remaining => IsRunning
         ? TimeSpan.FromTicks(Math.Max(0, (_remaining - timeProvider.GetElapsedTime(_startedAt)).Ticks))
         : _remaining;
+
+    public double ProgressPercent => _totalDuration.TotalSeconds > 0
+        ? Math.Clamp(Remaining.TotalSeconds / _totalDuration.TotalSeconds * 100.0, 0, 100)
+        : 0;
+
     public string StatusText => State switch
     {
         CountdownState.NotConfigured when HasValidationError => UiText.Format("CountdownDurationError", MinimumMinutes, MaximumMinutes),
@@ -43,6 +63,18 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetI
         }
     }
 
+    public void SetPresetMinutes(int minutes)
+    {
+        var clamped = Math.Clamp(minutes, MinimumMinutes, MaximumMinutes);
+        _minutesText = clamped.ToString(CultureInfo.InvariantCulture);
+        NotifyChanged(nameof(MinutesText));
+        _totalDuration = TimeSpan.FromMinutes(clamped);
+        _remaining = _totalDuration;
+        SetState(CountdownState.Ready);
+        NotifyChanged(nameof(HasValidationError));
+        Refresh();
+    }
+
     public void Toggle()
     {
         if (!CanToggle) return;
@@ -53,7 +85,11 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetI
         }
         else
         {
-            if (State == CountdownState.Finished) _remaining = ReadDuration();
+            if (State == CountdownState.Finished)
+            {
+                _totalDuration = ReadDuration();
+                _remaining = _totalDuration;
+            }
             _startedAt = timeProvider.GetTimestamp();
             SetState(CountdownState.Running);
         }
@@ -62,7 +98,8 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetI
 
     public void Reset()
     {
-        _remaining = ReadDuration();
+        _totalDuration = ReadDuration();
+        _remaining = _totalDuration;
         SetState(_remaining > TimeSpan.Zero ? CountdownState.Ready : CountdownState.NotConfigured);
         Refresh();
     }
@@ -78,6 +115,7 @@ public sealed class CountdownDockWidget(TimeProvider timeProvider) : DockWidgetI
         remaining = TimeSpan.FromSeconds(Math.Ceiling(remaining.TotalSeconds));
         Value = State == CountdownState.NotConfigured ? string.Empty
             : $"{(long)remaining.TotalHours:00}:{remaining.Minutes:00}:{remaining.Seconds:00}";
+        NotifyChanged(nameof(ProgressPercent));
         NotifyChanged(nameof(StatusText));
     }
 
