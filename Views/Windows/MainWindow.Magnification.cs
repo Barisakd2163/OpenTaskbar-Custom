@@ -33,6 +33,8 @@ public partial class MainWindow
     private TimeSpan? _magnificationLastFrame;
     private double _lastMagnificationPointerAxis;
     private bool _hasMagnificationPointer;
+    private Point _lastDockMousePoint;
+    private bool _hasLastDockMousePoint;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Image, BitmapSource> _restingIcons = new();
 
     internal void InvalidateMagnificationTargets()
@@ -356,6 +358,19 @@ public partial class MainWindow
         if (LeftResizeThumb.IsDragging || RightResizeThumb.IsDragging || DockScrollViewer.IsPanning)
             return;
 
+        var mousePos = e.GetPosition(DockHost);
+        // Layout expansion shifts non-magnified buttons (Recycle Bin, Start, Search, widgets) underneath a
+        // stationary pointer, causing WPF to emit synthetic MouseMove events at the same DockHost coordinates.
+        // Ignore those layout-driven moves so a sliding button cannot trigger a magnify/reset oscillation loop (#90).
+        if (_hasLastDockMousePoint
+            && Math.Abs(mousePos.X - _lastDockMousePoint.X) < 0.5
+            && Math.Abs(mousePos.Y - _lastDockMousePoint.Y) < 0.5)
+        {
+            return;
+        }
+        _lastDockMousePoint = mousePos;
+        _hasLastDockMousePoint = true;
+
         if (LeftResizeThumb.IsMouseOver || RightResizeThumb.IsMouseOver
             || ScrollPrevOverlay.IsMouseOver || ScrollNextOverlay.IsMouseOver
             || IsPointerOverNonMagnifiedZone(e.OriginalSource as DependencyObject))
@@ -371,7 +386,6 @@ public partial class MainWindow
 
         if (_magnificationTargets.Count == 0) return;
 
-        var mousePos = e.GetPosition(DockHost);
         var mouseAxis = IsVertical ? mousePos.Y : mousePos.X;
         if (!_hasMagnificationPointer) _sessionMaxScale = _effectiveMaxScale;
         _hasMagnificationPointer = true;
@@ -646,6 +660,7 @@ public partial class MainWindow
     private void DockSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _hasMagnificationPointer = false;
+        _hasLastDockMousePoint = false;
         ResetMagnification();
         _autoHideController?.OnMouseLeaveDock();
         NativeMemoryMethods.ScheduleIdleTrim(TimeSpan.FromSeconds(2));
@@ -665,6 +680,7 @@ public partial class MainWindow
 
         if (immediate)
         {
+            _hasLastDockMousePoint = false;
             StopMagnificationRendering();
             foreach (var icon in iconsToReset)
             {
