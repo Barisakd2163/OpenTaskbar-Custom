@@ -15,6 +15,7 @@ public partial class MainWindow
 {
     private DockFlyout? _groupFlyout;
     private DockAppGroup? _draggedGroup;
+    private Point _dragGroupStartPoint;
 
     /// <summary>Lightweight display model for a group icon (icon, name, live member count).</summary>
     private sealed class GroupViewModel(DockAppGroup group) : INotifyPropertyChanged
@@ -218,7 +219,7 @@ public partial class MainWindow
 
             var icon = new Image
             {
-                Source = app?.Icon,
+                Source = app?.Icon ?? ApplicationIconProvider.GetForFile(path),
                 Width = 22, Height = 22, Stretch = Stretch.Uniform,
                 Margin = new Thickness(2, 0, 10, 0)
             };
@@ -237,9 +238,11 @@ public partial class MainWindow
             menu.Items.Add(remove);
             row.ContextMenu = menu;
 
+            var capturedPathForLaunch = path;
             var button = DockFlyout.FlatButton(row, (_, _) =>
             {
-                if (app is not null) ActivateDockApp(app);
+                var targetApp = app ?? new DockApp(name, capturedPathForLaunch);
+                ActivateDockApp(targetApp);
                 _groupFlyout?.Close(restoreFocus: false);
             }, name);
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
@@ -262,9 +265,14 @@ public partial class MainWindow
     private void DockGroup_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: GroupViewModel vm })
+        {
             _draggedGroup = FindAppGroup(vm.Id);
+            _dragGroupStartPoint = e.GetPosition(this);
+        }
         else
+        {
             _draggedGroup = null;
+        }
     }
 
     private void DockGroup_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => _draggedGroup = null;
@@ -273,6 +281,12 @@ public partial class MainWindow
     {
         if (e.LeftButton != MouseButtonState.Pressed || _draggedGroup is null || sender is not FrameworkElement element)
             return;
+        var delta = e.GetPosition(this) - _dragGroupStartPoint;
+        if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
         var group = _draggedGroup;
         _draggedGroup = null;
         _foregroundAtAppPress = null;

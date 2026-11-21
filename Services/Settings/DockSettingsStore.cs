@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using OpenTaskbar.Models;
 
@@ -38,7 +39,9 @@ public sealed class DockSettingsStore
 
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(_path));
+            var rawJson = File.ReadAllText(_path);
+            var normalizedJson = NormalizeLegacyJson(rawJson);
+            using var document = JsonDocument.Parse(normalizedJson);
             var settings = document.RootElement.Deserialize<DockSettings>(JsonOptions);
             // Older files without a language follow the same system-language rule as a first launch.
             if (settings is not null && !document.RootElement.TryGetProperty(nameof(DockSettings.Language), out _))
@@ -54,6 +57,8 @@ public sealed class DockSettingsStore
                 settings = MigrateLegacyAiUsage(settings);
             if (settings is not null)
                 settings = MigrateSurfaceStyles(settings, document.RootElement);
+            if (settings is not null)
+                settings = settings with { StatsMeters = settings.StatsMeters & SystemMeters.All };
             if (settings is null || !IsValid(settings))
             {
                 return (CreateDefaultSettings(), "ErrorDockSettingsInvalid");
@@ -61,7 +66,7 @@ public sealed class DockSettingsStore
 
             return (settings, null);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException or FormatException)
         {
             return (CreateDefaultSettings(), "ErrorDockSettingsRead");
         }
@@ -73,6 +78,58 @@ public sealed class DockSettingsStore
         {
             return (CreateDefaultSettings(), "ErrorDockSettingsAccess");
         }
+    }
+
+    /// <summary>
+    /// Rewrites retired v0.2.x JSON tokens before System.Text.Json deserialization so upgrading users keep
+    /// their existing settings instead of failing enum parsing and falling back to factory defaults.
+    /// </summary>
+    private static string NormalizeLegacyJson(string rawJson)
+    {
+        if (JsonNode.Parse(rawJson) is not JsonObject obj)
+            return rawJson;
+
+        var changed = false;
+
+        // v0.2.x persisted "CpuTemperature" (removed from SystemMeters) and "Battery" (removed from SystemMeters.All).
+        if (obj.TryGetPropertyValue(nameof(DockSettings.StatsMeters), out var metersNode) && metersNode is JsonValue metersValue)
+        {
+            if (metersValue.TryGetValue<string>(out var meterString))
+            {
+                var kept = meterString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(token => !string.Equals(token, "CpuTemperature", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(token, "Battery", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                var replacement = kept.Length == 0 ? nameof(SystemMeters.None) : string.Join(", ", kept);
+                if (!string.Equals(replacement, meterString, StringComparison.Ordinal))
+                {
+                    obj[nameof(DockSettings.StatsMeters)] = replacement;
+                    changed = true;
+                }
+            }
+            else if (metersValue.TryGetValue<int>(out var meterBits))
+            {
+                var masked = meterBits & (int)SystemMeters.All;
+                if (masked != meterBits)
+                {
+                    obj[nameof(DockSettings.StatsMeters)] = masked;
+                    changed = true;
+                }
+            }
+        }
+
+        // v0.2.x stored bottom gap as "DockBottomGap" (int?); carry it over to DockBottomGapPixels when absent.
+        if (!obj.ContainsKey(nameof(DockSettings.DockBottomGapPixels))
+            && obj.TryGetPropertyValue("DockBottomGap", out var legacyBottomNode)
+            && legacyBottomNode is JsonValue legacyBottomValue
+            && legacyBottomValue.TryGetValue<int>(out var legacyBottomGap)
+            && legacyBottomGap is >= 0 and <= 200)
+        {
+            obj[nameof(DockSettings.DockBottomGapPixels)] = legacyBottomGap;
+            changed = true;
+        }
+
+        return changed ? obj.ToJsonString() : rawJson;
     }
 
     private DockSettings CreateDefaultSettings() => new(Language: _defaultLanguage);
