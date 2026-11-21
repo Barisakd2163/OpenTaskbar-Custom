@@ -127,8 +127,8 @@ internal static class ShellFlyoutPositionChecks
             var resolvedBottom = ty + flyoutTop + flyoutHeight;
             Check(resolvedLeft == 620,
                 $"Measured Start flyout left must align above Start button (got {resolvedLeft}).");
-            Check(resolvedBottom == 1023,
-                $"Measured Start flyout bottom must sit 12px above anchorTop=1035 for height={flyoutHeight} (got {resolvedBottom}).");
+            Check(resolvedBottom == 1013,
+                $"Measured Start flyout bottom must sit 22px above anchorTop=1035 for height={flyoutHeight} (got {resolvedBottom}).");
         }
 
         // Bottom-edge measured Start menu at 150% DPI: anchorLeft is already in physical pixels and must not
@@ -144,8 +144,8 @@ internal static class ShellFlyoutPositionChecks
             var resolvedBottom = ty + 300 + 1050;
             Check(resolvedLeft == 930,
                 $"High-DPI measured Start flyout must not double-scale anchorLeft (got {resolvedLeft}).");
-            Check(resolvedBottom == 1534,
-                $"High-DPI measured Start flyout bottom must sit 18px above anchorTop=1552 (got {resolvedBottom}).");
+            Check(resolvedBottom == 1519,
+                $"High-DPI measured Start flyout bottom must sit 33px above anchorTop=1552 (got {resolvedBottom}).");
         }
 
         // Bottom-edge Search: left-align with the Search button so wide panels open directly above the button

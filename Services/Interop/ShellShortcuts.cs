@@ -557,8 +557,11 @@ public static class ShellShortcuts
         if (edge == DockEdge.Bottom)
         {
             // anchorLeft/anchorTop from PointToScreen are already in physical device pixels.
+            // UIA bounds stop at the inner footer controls (~8 DIP inside the Start panel's rounded bottom border),
+            // and anchorTop sits ~6 DIP inside the dock's top frame, so reserve 22 DIP for a clean ~8 DIP visible gap.
+            var bottomGap = (int)Math.Round(22 * dpiScale);
             desiredX = Math.Clamp((int)Math.Round(anchorLeft - margin), minX, maxX);
-            desiredY = Math.Clamp((int)Math.Round(anchorTop) - measuredH - gap, minY, maxY);
+            desiredY = Math.Clamp((int)Math.Round(anchorTop) - measuredH - bottomGap, minY, maxY);
         }
         else
         {
@@ -674,15 +677,16 @@ public static class ShellShortcuts
             var rootRect = root.Current.BoundingRectangle;
 
             bool LooksLikeFlyout(System.Windows.Rect r) =>
-                r.Width is >= 350 and <= 1100 && r.Height is >= 400
+                r.Width >= 300 && r.Width < rootRect.Width - 100 && r.Height >= 350
                 && r.Left >= rootRect.Left - 2 && r.Right <= rootRect.Right + 2
                 && r.Top >= rootRect.Top - 2 && r.Bottom <= rootRect.Bottom + 2;
 
             AutomationElement? best = null;
-            double bestArea = double.MaxValue;
+            double bestArea = 0.0;
 
             // Preferred: the search box is a reliable landmark inside every Start flyout. Walk up its ancestors to
-            // the smallest container that still spans the whole panel.
+            // the largest panel container still smaller than the full-screen canvas, so the measured rect includes
+            // the outer frame and bottom footer (user/power bar) rather than stopping at an inner content pane.
             var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
             var search = root.FindFirst(TreeScope.Descendants, editCondition);
             if (search is not null)
@@ -691,7 +695,7 @@ public static class ShellShortcuts
                 while (current is not null && current != root)
                 {
                     var r = current.Current.BoundingRectangle;
-                    if (LooksLikeFlyout(r) && r.Width * r.Height < bestArea)
+                    if (LooksLikeFlyout(r) && r.Width * r.Height > bestArea)
                     {
                         best = current;
                         bestArea = r.Width * r.Height;
@@ -721,6 +725,26 @@ public static class ShellShortcuts
             if (best is null) return false;
             var boundsRect = best.Current.BoundingRectangle;
             bounds = new System.Windows.Rect(boundsRect.Left, boundsRect.Top, boundsRect.Width, boundsRect.Height);
+
+            // On Windows 11 builds (e.g. 26300) the bottom user/power footer can be a sibling of the search-box
+            // container under the full-screen canvas, so walking only ancestors of the search box misses the footer
+            // height. Expand vertically to include all on-screen elements within the flyout's horizontal column.
+            var visibleCondition = new PropertyCondition(AutomationElement.IsOffscreenProperty, false);
+            var visible = root.FindAll(TreeScope.Descendants, visibleCondition);
+            var colLeft = bounds.Left - 12;
+            var colRight = bounds.Right + 12;
+            foreach (AutomationElement element in visible)
+            {
+                var r = element.Current.BoundingRectangle;
+                if (r.IsEmpty || r.Width < 20 || r.Height < 16) continue;
+                if (r.Width >= rootRect.Width - 100 || r.Height >= rootRect.Height - 20) continue;
+                if (r.Left >= colLeft && r.Right <= colRight
+                    && r.Top >= rootRect.Top - 2 && r.Bottom <= rootRect.Bottom + 2)
+                {
+                    bounds.Union(r);
+                }
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -839,6 +863,7 @@ public static class ShellShortcuts
 
                 // Settle across extra frames to smoothly complete shell entrance transitions. Re-measure the real
                 // flyout and current canvas rect each frame so height changes or shell resets never leave a gap.
+                System.Windows.Rect lastSettled = default;
                 for (var frame = 0; frame < 6; frame++)
                 {
                     await Task.Delay(25, cancellation);
@@ -848,6 +873,7 @@ public static class ShellShortcuts
                         && GetWindowRect(mainHwnd, out var settledRect)
                         && TryGetStartFlyoutBounds(mainHwnd, out var settled))
                     {
+                        lastSettled = settled;
                         (targetX, targetY) = ComputeMeasuredStartMenuPosition(
                             settledRect.Left, settledRect.Top,
                             settled.Left, settled.Top, settled.Width, settled.Height,
@@ -856,6 +882,10 @@ public static class ShellShortcuts
                             edge, dpiScale);
                     }
                     SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+                }
+                if (!lastSettled.IsEmpty)
+                {
+                    AppLog.Info($"RepositionStartMenuAsync: settled flyout [{lastSettled.Left:F0},{lastSettled.Top:F0} {lastSettled.Width:F0}x{lastSettled.Height:F0}] -> ({targetX},{targetY})");
                 }
                 break;
             }
