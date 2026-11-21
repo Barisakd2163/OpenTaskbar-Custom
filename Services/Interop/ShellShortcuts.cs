@@ -359,11 +359,15 @@ public static class ShellShortcuts
                 if (width < 100 || height < 100) continue;
                 FlyoutPositions.Remember(mainHwnd, rect.Left, rect.Top);
 
+                var dpi = GetDpiForWindow(mainHwnd);
+                if (dpi == 0) dpi = 96;
+                var dpiScale = dpi / 96.0;
+
                 var (targetX, targetY) = ComputeSearchPosition(
                     width, height,
                     monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
                     topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
-                    edge);
+                    edge, dpiScale);
 
                 if (!CanMoveShellWindow(generation, cancellation)) return;
                 AppLog.Info($"RepositionSearchAsync: moving main window {mainHwnd:X} ({width}x{height}) from ({rect.Left},{rect.Top}) to ({targetX},{targetY})");
@@ -379,7 +383,7 @@ public static class ShellShortcuts
                             auxW, auxH,
                             monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
                             topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
-                            edge);
+                            edge, dpiScale);
                         FlyoutPositions.Remember(aux, auxRect.Left, auxRect.Top);
                         if (!CanMoveShellWindow(generation, cancellation)) return;
                         AppLog.Info($"RepositionSearchAsync: moving aux window {aux:X} ({auxW}x{auxH}) to ({auxX},{auxY})");
@@ -496,29 +500,75 @@ public static class ShellShortcuts
         int windowWidth, int windowHeight,
         int workLeft, int workTop, int workRight, int workBottom,
         double anchorLeft, double anchorTop, double anchorRight, double anchorBottom,
-        DockEdge edge)
+        DockEdge edge, double dpiScale = 1.0)
     {
-        var minX = workLeft + 8;
-        var maxX = Math.Max(minX, workRight - windowWidth - 8);
-        var minY = workTop + 8;
-        var maxY = Math.Max(minY, workBottom - windowHeight - 8);
-        var centerX = (int)Math.Round((anchorLeft + anchorRight) / 2.0);
+        var margin = (int)Math.Round(8 * dpiScale);
+        var gap = (int)Math.Round(12 * dpiScale);
+        var minX = workLeft + margin;
+        var maxX = Math.Max(minX, workRight - windowWidth - margin);
+        var minY = workTop + margin;
+        var maxY = Math.Max(minY, workBottom - windowHeight - margin);
 
         return edge switch
         {
             DockEdge.Left => (
-                Math.Clamp((int)Math.Round(anchorRight) + 12, minX, maxX),
+                Math.Clamp((int)Math.Round(anchorRight) + gap, minX, maxX),
                 ComputeSideFlyoutY(anchorTop, anchorBottom, windowHeight, workTop, workBottom)
             ),
             DockEdge.Right => (
-                Math.Clamp((int)Math.Round(anchorLeft) - windowWidth - 12, minX, maxX),
+                Math.Clamp((int)Math.Round(anchorLeft) - windowWidth - gap, minX, maxX),
                 ComputeSideFlyoutY(anchorTop, anchorBottom, windowHeight, workTop, workBottom)
             ),
+            // Left-align with the Search button (matching Start) so wide Search panels open above the button
+            // instead of sticking hundreds of pixels to the left of the dock.
             _ => (
-                Math.Clamp(centerX - windowWidth / 2, minX, maxX),
-                Math.Clamp((int)Math.Round(anchorTop) - windowHeight - 12, minY, maxY)
+                Math.Clamp((int)Math.Round(anchorLeft - margin), minX, maxX),
+                Math.Clamp((int)Math.Round(anchorTop) - windowHeight - gap, minY, maxY)
             )
         };
+    }
+
+    /// <summary>
+    /// Computes the full-screen Start canvas position from the measured inner flyout bounds so both axes
+    /// track the real flyout size and offset across Windows 11 builds and DPI scales.
+    /// </summary>
+    public static (int TargetX, int TargetY) ComputeMeasuredStartMenuPosition(
+        int windowLeft, int windowTop,
+        double flyoutLeft, double flyoutTop, double flyoutWidth, double flyoutHeight,
+        int workLeft, int workTop, int workRight, int workBottom,
+        double anchorLeft, double anchorTop, double anchorRight, double anchorBottom,
+        DockEdge edge, double dpiScale = 1.0)
+    {
+        var measuredW = (int)Math.Round(flyoutWidth);
+        var measuredH = (int)Math.Round(flyoutHeight);
+        var measuredLocalX = (int)Math.Round(flyoutLeft - windowLeft);
+        var measuredLocalY = (int)Math.Round(flyoutTop - windowTop);
+
+        var margin = (int)Math.Round(8 * dpiScale);
+        var gap = (int)Math.Round(12 * dpiScale);
+        var minX = workLeft + margin;
+        var maxX = Math.Max(minX, workRight - measuredW - margin);
+        var minY = workTop + margin;
+        var maxY = Math.Max(minY, workBottom - measuredH - margin);
+
+        int desiredX;
+        int desiredY;
+
+        if (edge == DockEdge.Bottom)
+        {
+            // anchorLeft/anchorTop from PointToScreen are already in physical device pixels.
+            desiredX = Math.Clamp((int)Math.Round(anchorLeft - margin), minX, maxX);
+            desiredY = Math.Clamp((int)Math.Round(anchorTop) - measuredH - gap, minY, maxY);
+        }
+        else
+        {
+            desiredX = edge == DockEdge.Left
+                ? Math.Clamp((int)Math.Round(anchorRight) + gap, minX, maxX)
+                : Math.Clamp((int)Math.Round(anchorLeft) - measuredW - gap, minX, maxX);
+            desiredY = ComputeSideFlyoutY(anchorTop, anchorBottom, measuredH, workTop, workBottom);
+        }
+
+        return (desiredX - measuredLocalX, desiredY - measuredLocalY);
     }
 
     /// <summary>
@@ -771,32 +821,16 @@ public static class ShellShortcuts
                     edge, dpiScale, isLeftAligned);
 
                 // When the real flyout panel can be measured, derive exact canvas offsets from the measured panel
-                // across all edges (Bottom, Left, Right) so the flyout never clips off screen regardless of dock height.
+                // across all edges (Bottom, Left, Right) so the flyout never clips off screen or leaves a vertical gap.
                 if (isFullScreenCanvas && TryGetStartFlyoutBounds(mainHwnd, out var flyoutBounds))
                 {
-                    var measuredW = (int)Math.Round(flyoutBounds.Width);
-                    var measuredH = (int)Math.Round(flyoutBounds.Height);
-                    var measuredLocalX = (int)Math.Round(flyoutBounds.Left - rect.Left);
-                    var measuredLocalY = (int)Math.Round(flyoutBounds.Top - rect.Top);
-                    var minX = monitorInfo.Work.Left + 8;
-                    var maxX = Math.Max(minX, monitorInfo.Work.Right - measuredW - 8);
-
-                    if (edge == DockEdge.Bottom)
-                    {
-                        var desiredXPhysical = (int)Math.Round((topLeft.X - 8) * dpiScale);
-                        var desiredX = Math.Clamp(desiredXPhysical, minX, maxX);
-                        targetX = desiredX - measuredLocalX;
-                    }
-                    else
-                    {
-                        var desiredX = edge == DockEdge.Left
-                            ? Math.Clamp((int)Math.Round(bottomRight.X) + 12, minX, maxX)
-                            : Math.Clamp((int)Math.Round(topLeft.X) - measuredW - 12, minX, maxX);
-                        var desiredY = ComputeSideFlyoutY(topLeft.Y, bottomRight.Y, measuredH, monitorInfo.Work.Top, monitorInfo.Work.Bottom);
-                        targetX = desiredX - measuredLocalX;
-                        targetY = desiredY - measuredLocalY;
-                    }
-                    AppLog.Info($"RepositionStartMenuAsync: measured flyout bounds [{flyoutBounds.Left:F0},{flyoutBounds.Top:F0} {measuredW}x{measuredH}], corrected ({targetX},{targetY})");
+                    (targetX, targetY) = ComputeMeasuredStartMenuPosition(
+                        rect.Left, rect.Top,
+                        flyoutBounds.Left, flyoutBounds.Top, flyoutBounds.Width, flyoutBounds.Height,
+                        monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
+                        topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
+                        edge, dpiScale);
+                    AppLog.Info($"RepositionStartMenuAsync: measured flyout bounds [{flyoutBounds.Left:F0},{flyoutBounds.Top:F0} {flyoutBounds.Width:F0}x{flyoutBounds.Height:F0}], corrected ({targetX},{targetY})");
                 }
 
                 if (!CanMoveShellWindow(generation, cancellation)) return;
@@ -804,29 +838,22 @@ public static class ShellShortcuts
                 SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
 
                 // Settle across extra frames to smoothly complete shell entrance transitions. Re-measure the real
-                // flyout each frame: if Windows finishes repositioning it after our first measurement, nudge the
-                // canvas so the flyout truly ends up inside the work area on both axes.
+                // flyout and current canvas rect each frame so height changes or shell resets never leave a gap.
                 for (var frame = 0; frame < 6; frame++)
                 {
                     await Task.Delay(25, cancellation);
                     if (!CanMoveShellWindow(generation, cancellation)) return;
                     EnsureNativeTaskbarHidden();
-                    if (TryGetStartFlyoutBounds(mainHwnd, out var settled))
+                    if (isFullScreenCanvas
+                        && GetWindowRect(mainHwnd, out var settledRect)
+                        && TryGetStartFlyoutBounds(mainHwnd, out var settled))
                     {
-                        var minX = monitorInfo.Work.Left + 8;
-                        var maxX = Math.Max(minX, monitorInfo.Work.Right - (int)Math.Round(settled.Width) - 8);
-                        var correctedLeft = Math.Clamp(settled.Left, minX, maxX);
-                        var deltaX = (int)Math.Round(correctedLeft - settled.Left);
-                        if (deltaX != 0) targetX += deltaX;
-
-                        if (edge != DockEdge.Bottom)
-                        {
-                            var minY = monitorInfo.Work.Top + 8;
-                            var maxY = Math.Max(minY, monitorInfo.Work.Bottom - (int)Math.Round(settled.Height) - 8);
-                            var correctedTop = Math.Clamp(settled.Top, minY, maxY);
-                            var deltaY = (int)Math.Round(correctedTop - settled.Top);
-                            if (deltaY != 0) targetY += deltaY;
-                        }
+                        (targetX, targetY) = ComputeMeasuredStartMenuPosition(
+                            settledRect.Left, settledRect.Top,
+                            settled.Left, settled.Top, settled.Width, settled.Height,
+                            monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
+                            topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
+                            edge, dpiScale);
                     }
                     SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
                 }

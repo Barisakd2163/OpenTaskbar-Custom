@@ -113,6 +113,59 @@ internal static class ShellFlyoutPositionChecks
             }
         }
 
+        // Bottom-edge measured Start menu: varying flyout heights on Windows 11 (e.g. build 26300) must land
+        // right above the Start button instead of leaving a large gap from a hard-coded 724 DIP estimate.
+        foreach (var (flyoutTop, flyoutHeight) in new[] { (180.0, 736.0), (348.0, 638.0), (280.0, 706.0) })
+        {
+            var (tx, ty) = ShellShortcuts.ComputeMeasuredStartMenuPosition(
+                windowLeft: 0, windowTop: 0,
+                flyoutLeft: 544, flyoutTop: flyoutTop, flyoutWidth: 832, flyoutHeight: flyoutHeight,
+                workLeft: 0, workTop: 0, workRight: 1920, workBottom: 1080,
+                anchorLeft: 628, anchorTop: 1035, anchorRight: 666, anchorBottom: 1073,
+                edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.0);
+            var resolvedLeft = tx + 544;
+            var resolvedBottom = ty + flyoutTop + flyoutHeight;
+            Check(resolvedLeft == 620,
+                $"Measured Start flyout left must align above Start button (got {resolvedLeft}).");
+            Check(resolvedBottom == 1023,
+                $"Measured Start flyout bottom must sit 12px above anchorTop=1035 for height={flyoutHeight} (got {resolvedBottom}).");
+        }
+
+        // Bottom-edge measured Start menu at 150% DPI: anchorLeft is already in physical pixels and must not
+        // be multiplied by dpiScale a second time.
+        {
+            var (tx, ty) = ShellShortcuts.ComputeMeasuredStartMenuPosition(
+                windowLeft: 0, windowTop: 0,
+                flyoutLeft: 816, flyoutTop: 300, flyoutWidth: 1248, flyoutHeight: 1050,
+                workLeft: 0, workTop: 0, workRight: 2880, workBottom: 1620,
+                anchorLeft: 942, anchorTop: 1552, anchorRight: 999, anchorBottom: 1609,
+                edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.5);
+            var resolvedLeft = tx + 816;
+            var resolvedBottom = ty + 300 + 1050;
+            Check(resolvedLeft == 930,
+                $"High-DPI measured Start flyout must not double-scale anchorLeft (got {resolvedLeft}).");
+            Check(resolvedBottom == 1534,
+                $"High-DPI measured Start flyout bottom must sit 18px above anchorTop=1552 (got {resolvedBottom}).");
+        }
+
+        // Bottom-edge Search: left-align with the Search button so wide panels open directly above the button
+        // instead of shifting hundreds of pixels left of the dock.
+        {
+            var (sx, sy) = ShellShortcuts.ComputeSearchPosition(
+                858, 938, 0, 0, 1920, 1080,
+                anchorLeft: 666, anchorTop: 1035, anchorRight: 704, anchorBottom: 1073,
+                edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.0);
+            Check(sx == 658, $"Bottom-edge Search must left-align above the Search button (got {sx}).");
+            Check(sy + 938 == 1023, $"Bottom-edge Search bottom must sit 12px above anchorTop=1035 (got {sy + 938}).");
+
+            // Near the right edge of the work area, Search must clamp inside the monitor work area.
+            var (clampedX, _) = ShellShortcuts.ComputeSearchPosition(
+                858, 938, 0, 0, 1920, 1080,
+                anchorLeft: 1700, anchorTop: 1035, anchorRight: 1738, anchorBottom: 1073,
+                edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.0);
+            Check(clampedX + 858 <= 1912, $"Right-side Search must clamp within work area (got {clampedX}).");
+        }
+
         return checks;
     }
 }
