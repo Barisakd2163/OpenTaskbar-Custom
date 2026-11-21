@@ -13,6 +13,11 @@ public sealed class DockScrollViewer : ScrollViewer
     private double _panOffset;
     private double _targetHorizontalOffset;
     private double _targetVerticalOffset;
+    // Continuous inertial scrolling: one render-clock loop eases the current offset toward the
+    // wheel target. Unlike a fresh 100ms animation per tick, rapid wheel events just move the
+    // target, so motion stays smooth and continuous instead of restarting and stuttering.
+    private bool _smoothScrolling;
+    private TimeSpan? _lastSmoothFrame;
     private ScrollContentPresenter? _scrollContentPresenter;
     private Button? _previousButton;
     private Button? _nextButton;
@@ -141,15 +146,7 @@ public sealed class DockScrollViewer : ScrollViewer
             ScrollToHorizontalOffset(target);
             return;
         }
-
-        var animation = new DoubleAnimation
-        {
-            From = HorizontalOffset,
-            To = target,
-            Duration = TimeSpan.FromMilliseconds(100),
-            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
-        };
-        BeginAnimation(CurrentHorizontalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        BeginSmoothScroll();
     }
 
     private void AnimateScrollVertical(double target)
@@ -161,15 +158,52 @@ public sealed class DockScrollViewer : ScrollViewer
             ScrollToVerticalOffset(target);
             return;
         }
+        BeginSmoothScroll();
+    }
 
-        var animation = new DoubleAnimation
+    private void BeginSmoothScroll()
+    {
+        if (_smoothScrolling) return;
+        // Cancel any in-flight property animation so the render loop owns the offset exclusively.
+        BeginAnimation(CurrentHorizontalOffsetProperty, null);
+        BeginAnimation(CurrentVerticalOffsetProperty, null);
+        _smoothScrolling = true;
+        _lastSmoothFrame = null;
+        CompositionTarget.Rendering += SmoothScrollFrame;
+    }
+
+    private void SmoothScrollFrame(object? sender, EventArgs e)
+    {
+        var now = e is RenderingEventArgs args ? args.RenderingTime : TimeSpan.Zero;
+        var dt = _lastSmoothFrame is { } last ? (now - last).TotalSeconds : 1.0 / 60.0;
+        _lastSmoothFrame = now;
+        // Frame-rate independent exponential approach: ~92% of the remaining distance per 60Hz frame.
+        var t = 1.0 - Math.Exp(-dt / 0.045);
+
+        var horizontal = ScrollableWidth > 0 && ScrollableHeight <= 0;
+        var current = horizontal ? HorizontalOffset : VerticalOffset;
+        var target = horizontal ? _targetHorizontalOffset : _targetVerticalOffset;
+        var next = current + (target - current) * t;
+
+        if (Math.Abs(target - next) < 0.3)
         {
-            From = VerticalOffset,
-            To = target,
-            Duration = TimeSpan.FromMilliseconds(100),
-            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
-        };
-        BeginAnimation(CurrentVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+            next = target;
+            if (horizontal) ScrollToHorizontalOffset(next);
+            else ScrollToVerticalOffset(next);
+            StopSmoothScroll();
+            return;
+        }
+
+        if (horizontal) ScrollToHorizontalOffset(next);
+        else ScrollToVerticalOffset(next);
+    }
+
+    private void StopSmoothScroll()
+    {
+        if (!_smoothScrolling) return;
+        CompositionTarget.Rendering -= SmoothScrollFrame;
+        _smoothScrolling = false;
+        _lastSmoothFrame = null;
     }
 
     protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
@@ -225,6 +259,7 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         if (e.ChangedButton == MouseButton.Middle && ScrollableWidth > 0 && CaptureMouse())
         {
+            StopSmoothScroll();
             BeginAnimation(CurrentHorizontalOffsetProperty, null);
             BeginAnimation(CurrentVerticalOffsetProperty, null);
             _panStart = e.GetPosition(this);
