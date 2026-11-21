@@ -120,6 +120,7 @@ public partial class MainWindow
             Grid.SetRow(WidgetIsland, 3); Grid.SetColumn(WidgetIsland, 0);
 
             DockLayoutRoot.MinWidth = 0;
+            DockScrollViewer.HorizontalAlignment = HorizontalAlignment.Center;
             DockScrollViewer.MaxWidth = double.PositiveInfinity;
             DockScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
             DockScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
@@ -141,6 +142,7 @@ public partial class MainWindow
             Grid.SetRow(WidgetIsland, 0); Grid.SetColumn(WidgetIsland, 3);
 
             DockLayoutRoot.MinHeight = 0;
+            DockScrollViewer.HorizontalAlignment = HorizontalAlignment.Left;
             DockScrollViewer.MaxHeight = double.PositiveInfinity;
             DockScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden;
             DockScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -173,10 +175,10 @@ public partial class MainWindow
         StackItems.ItemsPanel = panel;
         DockWidgets.ItemsPanel = panel;
         foreach (var divider in new[] { StartDivider, RunningAppsDivider, ExtrasDivider, WidgetDivider,
-            NativeGroupDivider, TrayGroupDivider })
+            TrayGroupDivider })
         {
-            divider.Width = vertical ? 22 : 1;
-            divider.Height = vertical ? 1 : 22;
+            divider.Width = vertical ? 22 : 2;
+            divider.Height = vertical ? 2 : 22;
             divider.Margin = vertical ? new Thickness(0, 4, 0, 4) : new Thickness(4, 0, 4, 0);
         }
 

@@ -93,6 +93,51 @@ internal static class TaskbarRecoveryChecks
         Check(natHide == 0 && extraHide == 0 && workHide == 1080,
             $"Auto-hide enabled must reserve 0px so workBottom matches monitor bottom (got {natHide},{extraHide},{workHide}).");
 
+        // TrayHost shared-memory AppBar forwarding (#86, #92): messages carrying SHAllocShared APPBARDATAV2 buffers
+        // must be re-allocated into Explorer's PID while non-shared messages pass through directly.
+        Check(TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_QUERYPOS)
+            && TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_SETPOS)
+            && TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_GETTASKBARPOS)
+            && TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_GETAUTOHIDEBAREX),
+            "TrayHost must re-allocate shared memory for ABM_QUERYPOS, ABM_SETPOS, ABM_GETTASKBARPOS, and ABM_GETAUTOHIDEBAREX.");
+        Check(!TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_NEW)
+            && !TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_REMOVE)
+            && !TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_SETSTATE)
+            && !TrayHost.UsesSharedMemory(ManagedShell.Interop.NativeMethods.ABMsg.ABM_GETSTATE),
+            "Non-shared AppBar messages must not attempt shared-memory re-allocation.");
+
+        // Verify ManagedShell SHAllocShared / SHLockShared roundtrip with APPBARDATAV2 on this architecture.
+        var selfPid = (uint)Environment.ProcessId;
+        var abdSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<ManagedShell.Interop.NativeMethods.APPBARDATAV2>();
+        var hShared = ManagedShell.Interop.NativeMethods.SHAllocShared(nint.Zero, abdSize, selfPid);
+        Check(hShared != nint.Zero, "SHAllocShared must allocate a valid APPBARDATAV2 shared handle.");
+        try
+        {
+            var ptr = ManagedShell.Interop.NativeMethods.SHLockShared(hShared, selfPid);
+            Check(ptr != nint.Zero, "SHLockShared must lock the allocated shared handle.");
+            try
+            {
+                var input = new ManagedShell.Interop.NativeMethods.APPBARDATAV2
+                {
+                    cbSize = (int)abdSize,
+                    uEdge = 3,
+                    rc = new ManagedShell.Interop.NativeMethods.Rect { Left = 0, Top = 1372, Right = 2560, Bottom = 1392 }
+                };
+                System.Runtime.InteropServices.Marshal.StructureToPtr(input, ptr, false);
+                var output = System.Runtime.InteropServices.Marshal.PtrToStructure<ManagedShell.Interop.NativeMethods.APPBARDATAV2>(ptr);
+                Check(output.uEdge == 3 && output.rc.Top == 1372 && output.rc.Bottom == 1392,
+                    "APPBARDATAV2 shared-memory roundtrip must preserve edge and rect coordinates.");
+            }
+            finally
+            {
+                ManagedShell.Interop.NativeMethods.SHUnlockShared(ptr);
+            }
+        }
+        finally
+        {
+            ManagedShell.Interop.NativeMethods.SHFreeShared(hShared, selfPid);
+        }
+
         return checks;
     }
 }

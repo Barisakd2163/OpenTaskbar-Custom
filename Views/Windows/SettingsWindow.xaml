@@ -106,7 +106,7 @@
                                     </StackPanel>
                                 </DockPanel></Border>
 
-                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <ComboBox x:Name="SizeBox" views:IconGlyph.Glyph="{StaticResource IconSliders}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center"
                                               AutomationProperties.Name="{local:Loc DockSize}" SelectionChanged="SegmentChoice_SelectionChanged">
                                         <ComboBoxItem Content="{local:Loc SizeCompact}" Tag="Compact" />
@@ -116,6 +116,19 @@
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
                                         <TextBlock Text="{local:Loc DockSize}" Style="{StaticResource SettingsRowLabel}" />
                                         <TextBlock Text="{local:Loc DockSizeDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center">
+                                        <Slider x:Name="DockIconPaddingSlider" Width="174" Minimum="0" Maximum="12" Value="0" TickFrequency="1"
+                                                IsSnapToTickEnabled="True" SmallChange="1" LargeChange="2" Style="{StaticResource SettingsOpacitySlider}"
+                                                AutomationProperties.Name="{local:Loc DockIconPadding}" AutomationProperties.HelpText="{local:Loc DockIconPaddingHelp}"
+                                                ValueChanged="DockIconPaddingSlider_ValueChanged" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="DockIconPaddingValue" Width="48" TextAlignment="Right" Foreground="{DynamicResource TextSecondary}" FontSize="11.5" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc DockIconPadding}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DockIconPaddingHelp}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
                             </StackPanel></Border>

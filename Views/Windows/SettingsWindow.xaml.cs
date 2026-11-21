@@ -39,7 +39,6 @@ public partial class SettingsWindow : Window
     private string? _selectedThemePackId;
     private bool _closingApplication;
     private bool _initializing = true;
-    private bool _isSaving;
     private AiUsageRing _aiUsageRing;
     private bool _closed;
     private bool _sourceReady;
@@ -79,7 +78,8 @@ public partial class SettingsWindow : Window
         CustomThemeEditor.ThemeCreated += (_, id) => ReloadThemePacks(id);
         var widgetView = new ListCollectionView(_widgetOptions);
         widgetView.SortDescriptions.Add(new SortDescription(nameof(DockWidgetOption.CategoryOrder), ListSortDirection.Ascending));
-        widgetView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(DockWidgetOption.Category)));
+        // Group by the localized label so the catalog headers follow the active UI language.
+        widgetView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(DockWidgetOption.CategoryLabel)));
         WidgetOptionsList.ItemsSource = widgetView;
         WeatherCountryBox.ItemsSource = CountryCityService.GetInitialCountries().Select(c => c.Name).ToList();
         WeatherCityCombo.LostFocus += WeatherCityCombo_LostFocus;
@@ -126,7 +126,11 @@ public partial class SettingsWindow : Window
         LoadSurfaceStyles(_applied);
         MagnificationToggle.IsChecked = _applied.MagnificationEnabled;
         SelectChoice(SizeBox, _applied.Size.ToString());
+        DockIconPaddingSlider.Value = _applied.DockIconPadding;
+        UpdateDockIconPaddingLabel();
         DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
+        DockScaleSlider.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
+            new System.Windows.Controls.Primitives.DragCompletedEventHandler((_, _) => CommitDockScale()));
         UpdateDockScaleLabel();
         SelectChoice(DockWidthModeBox, _applied.DockWidthMode.ToString());
         UpdateDockWidthControls();
@@ -284,20 +288,6 @@ public partial class SettingsWindow : Window
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
         }
-        if (!_isSaving && !ReferenceEquals(_preferences.Current, _applied))
-        {
-            _autoSaveTimer.Stop();
-            var wasInitializing = _initializing;
-            _initializing = true;
-            try
-            {
-                LoadAllSelections(_preferences.Current);
-            }
-            finally
-            {
-                _initializing = wasInitializing;
-            }
-        }
         ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
         LoadSurfaceStyles(_preferences.Current);
         ApplySettingsToLivePreviews(_preferences.Current);
@@ -315,7 +305,6 @@ public partial class SettingsWindow : Window
         UpdateDockScaleLabel();
         UpdateWidgetOptionState();
         UpdateBackdrop();
-        _applied = _preferences.Current;
     }
 
     private void UpdateBackdrop()
@@ -387,6 +376,7 @@ public partial class SettingsWindow : Window
             MagnificationEnabled = MagnificationToggle.IsChecked == true,
             Layout = Choice(PositionBox) == "FullWidth" ? DockLayout.FullWidth : DockLayout.Floating,
             Size = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact,
+            DockIconPadding = (int)Math.Round(DockIconPaddingSlider.Value),
             DockScale = Math.Round(DockScaleSlider.Value) / 100,
             DockWidthMode = Enum.TryParse<DockWidthMode>(Choice(DockWidthModeBox), out var widthMode) ? widthMode : DockWidthMode.Auto,
             DockWidthPixels = widthMode == DockWidthMode.Pixels ? (int)Math.Round(DockWidthSlider.Value) : _preferences.Current.DockWidthPixels,
@@ -1644,6 +1634,7 @@ public partial class SettingsWindow : Window
         LoadSurfaceStyles(settings);
         MagnificationToggle.IsChecked = settings.MagnificationEnabled;
         SelectChoice(SizeBox, settings.Size.ToString());
+        DockIconPaddingSlider.Value = settings.DockIconPadding;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         SelectChoice(DockWidthModeBox, settings.DockWidthMode.ToString());
         UpdateDockWidthControls();
@@ -1672,6 +1663,7 @@ public partial class SettingsWindow : Window
             SelectChoice(EdgeBox, defaults.Edge.ToString());
             SelectAlignment(defaults);
             SelectChoice(SizeBox, defaults.Size.ToString());
+            DockIconPaddingSlider.Value = defaults.DockIconPadding;
             DockScaleSlider.Value = Math.Round(defaults.DockScale * 100);
             SelectChoice(DockWidthModeBox, defaults.DockWidthMode.ToString());
             UpdateDockWidthControls();
@@ -1728,21 +1720,13 @@ public partial class SettingsWindow : Window
             return;
         }
         var settings = ReadSelection();
-        _isSaving = true;
-        try
+        if (_preferences.Save(settings) is { } error)
         {
-            if (_preferences.Save(settings) is { } error)
-            {
-                Trace.TraceWarning("Save settings error: {0}", error);
-                return;
-            }
-            _applied = _preferences.Current;
-            _startupEnabled = StartupToggle.IsChecked == true;
+            Trace.TraceWarning("Save settings error: {0}", error);
+            return;
         }
-        finally
-        {
-            _isSaving = false;
-        }
+        _applied = settings;
+        _startupEnabled = StartupToggle.IsChecked == true;
     }
 
     private bool _isClosing;
@@ -1808,7 +1792,8 @@ public partial class SettingsWindow : Window
         // saves explicitly. Named switches live in the per-widget settings panels and auto-save.
         if (e.OriginalSource is CheckBox { DataContext: DockWidgetOption, Name: "" }) return;
         var selectedSize = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact;
-        (Application.Current.MainWindow as MainWindow)?.SetSizePreview(selectedSize, Math.Round(DockScaleSlider.Value) / 100);
+        (Application.Current.MainWindow as MainWindow)?.SetSizePreview(
+            selectedSize, Math.Round(DockScaleSlider.Value) / 100, (int)Math.Round(DockIconPaddingSlider.Value));
         UpdateWidgetOptionState();
         UpdateMultiMonitorControls();
         // Reflect widget-related edits in the catalog immediately, without waiting for the
@@ -2071,11 +2056,32 @@ public partial class SettingsWindow : Window
         PreferenceEdited(sender, e);
     }
 
+    private void DockIconPaddingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_initializing) return;
+        UpdateDockIconPaddingLabel();
+        PreferenceEdited(sender, e);
+    }
+
+    private void UpdateDockIconPaddingLabel() =>
+        DockIconPaddingValue.Text = $"{(int)Math.Round(DockIconPaddingSlider.Value)} px";
+
+    // Padding affects layout only (no work-area reservation), so the debounced auto-save is enough:
+    // PreferenceEdited previews it live and SaveSettings persists + reapplies it through Preferences.Changed.
+
     private void DockScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_initializing) return;
         UpdateDockScaleLabel();
-        PreferenceEdited(sender, e);
+        var selectedSize = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact;
+        (Application.Current.MainWindow as MainWindow)?.SetSizePreview(
+            selectedSize, Math.Round(DockScaleSlider.Value) / 100, (int)Math.Round(DockIconPaddingSlider.Value));
+        // While dragging with the mouse button held, defer saving until PreviewMouseUp (CommitDockScale) so the
+        // replacement session is not restarted repeatedly mid-drag; still auto-save wheel/programmatic changes.
+        if (Mouse.LeftButton != MouseButtonState.Pressed)
+        {
+            TriggerAutoSave(immediate: false);
+        }
     }
 
     // Applying the scale commits the work-area reservation, which needs a fresh replacement session. Doing that on
@@ -2089,6 +2095,7 @@ public partial class SettingsWindow : Window
         if (_initializing || _closed) return;
         _autoSaveTimer.Stop();
         SaveSettings();
+        (Application.Current.MainWindow as MainWindow)?.SetSizePreview(null, null);
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);

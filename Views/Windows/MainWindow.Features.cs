@@ -79,8 +79,6 @@ public partial class MainWindow
         StartButton.Visibility = _preferences.Current.StartPlacement == StartButtonPlacement.Hidden
             ? Visibility.Collapsed
             : Visibility.Visible;
-        // The divider belonged to the old grouped layout and is no longer rendered.
-        StartDivider.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>Only controls visibility; the unified dock order decides where the Search button sits.</summary>
@@ -521,7 +519,7 @@ public partial class MainWindow
     private void ApplySecondaryShelf()
     {
         if (_secondaryDocks.Count == 0) return;
-        var shelf = Profile.Shelf;
+        var shelf = EffectiveShelfHeight;
         foreach (var dock in _secondaryDocks)
         {
             if (Math.Abs(dock.ShelfHeight - shelf) < 0.01) continue;

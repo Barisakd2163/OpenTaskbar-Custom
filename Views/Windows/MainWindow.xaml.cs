@@ -2054,9 +2054,9 @@ public partial class MainWindow : Window
             {
                 AnimateDockScaleChange();
             }
-            // Re-register the AppBar in place without touching Shell_TrayWnd so Windows 11 recalculates the
-            // monitor work area immediately without flashing the native taskbar (#86, #92).
-            _replacementSession.ReapplyReservation();
+            // Commit the updated work area in place (re-registering only if Explorer kept stale rcWork)
+            // without ever showing or flashing the native Windows taskbar (#86, #92).
+            _replacementSession.EnsureReservationSynced();
         }
         _appliedDockGeometry = geometry;
     }

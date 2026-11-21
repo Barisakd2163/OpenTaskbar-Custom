@@ -73,6 +73,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     // ABM_SETPOS notifies appbars synchronously, and _edge may already point at the new edge.
     private bool _clearingReservation;
     private (int Left, int Bottom, int NativePixels, int ExtraHeight)? _reservation;
+    private bool _lastBottomReserveSynced;
     private (int Left, int Top, int Width, int Height, bool FullScreenSuppressed)? _lastWindowPos;
     private Size _lastLayout;
     private int _stopInProgress;
@@ -552,6 +553,21 @@ public sealed class TaskbarReplacementSession : IDisposable
     }
 
     /// <summary>
+    /// Commits any pending AppBar work-area update after a dock geometry change (#86, #92). Applies the update
+    /// in place first (smooth single-step resize); only falls back to re-registering the AppBar if Explorer
+    /// still kept the previous work-area bottom.
+    /// </summary>
+    public void EnsureReservationSynced()
+    {
+        if (!_active || Volatile.Read(ref _stopInProgress) != 0) return;
+        PositionDockWindow();
+        if (!IsVertical && !_lastBottomReserveSynced)
+        {
+            ReapplyReservation();
+        }
+    }
+
+    /// <summary>
     /// Re-registers the AppBar in place (ABM_SETPOS(0) -> ABM_REMOVE -> ABM_NEW -> ABM_SETPOS) without touching
     /// Shell_TrayWnd or restarting the session. Windows 11 only recalculates the monitor work area reliably when
     /// an AppBar is freshly registered; doing this in place updates maximized-window bounds immediately while
@@ -741,6 +757,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         var verified = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
         var workAfter = GetMonitorInfo(monitorHandle, ref verified) ? verified.rcWork.Bottom : workArea.Bottom;
+        _lastBottomReserveSynced = workAfter == expectedWorkBottom;
         AppLog.Info($"ReserveShelf: shelf={metrics.ShelfPixels}px native={nativePixels}px extra={extraHeight}px setPos=({data.rc.Top}..{data.rc.Bottom}) workBottom={workAfter} (expected={expectedWorkBottom}).");
     }
 

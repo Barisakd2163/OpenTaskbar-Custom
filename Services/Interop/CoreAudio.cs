@@ -7,6 +7,34 @@ namespace OpenTaskbar.Services;
 
 public sealed record AudioDeviceInfo(string Id, string Name, bool IsDefault, bool IsInput);
 
+/// <summary>
+/// Conservative matching between a media session's AppUserModelId and a WASAPI app session
+/// process name. No match means the media widget simply offers no per-app volume control.
+/// </summary>
+internal static class AppAudioSessionMatcher
+{
+    public static bool Matches(string appToken, string mediaHint)
+    {
+        var app = Normalize(appToken);
+        var hint = Normalize(mediaHint);
+        if (app.Length == 0 || hint.Length == 0) return false;
+        return app.Contains(hint, StringComparison.OrdinalIgnoreCase)
+            || hint.Contains(app, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string Normalize(string value)
+    {
+        var span = value.AsSpan().Trim();
+        var slash = span.LastIndexOfAny(['\\', '/']);
+        if (slash >= 0) span = span[(slash + 1)..];
+        if (span.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) span = span[..^4];
+        var bang = span.LastIndexOf('!');
+        if (bang >= 0 && bang + 1 < span.Length) span = span[(bang + 1)..];
+        // Strip Nintendo-style AUMID suffix after underscore only when it looks like a package family token.
+        return span.ToString();
+    }
+}
+
 public sealed record AppAudioSession(
     int ProcessId,
     string Name,
@@ -15,9 +43,15 @@ public sealed record AppAudioSession(
     bool IsMuted,
     Func<float, bool> SetVolume,
     Func<bool, bool> SetMute,
-    Action? Release = null) : IDisposable
+    Action? Release = null,
+    Func<float>? GetVolume = null,
+    Func<bool>? GetMute = null) : IDisposable
 {
     private int _disposed;
+
+    /// <summary>Live value from the audio session, when the provider supplies one.</summary>
+    public float CurrentVolume => GetVolume?.Invoke() ?? Volume;
+    public bool CurrentMute => GetMute?.Invoke() ?? IsMuted;
 
     public void Dispose()
     {
@@ -345,7 +379,8 @@ public sealed class AudioEndpointMonitor : IDisposable
                                 var handle = new AppSessionVolumeHandle(control, simpleVolume);
                                 sessions.Add(new AppAudioSession(
                                     pid, appName, appIcon, vol, muted,
-                                    handle.SetVolume, handle.SetMute, handle.Dispose));
+                                    handle.SetVolume, handle.SetMute, handle.Dispose,
+                                    handle.GetVolume, handle.GetMute));
                                 retainedForMixer = true;
                             }
                             catch (Exception ex)
@@ -415,6 +450,46 @@ public sealed class AudioEndpointMonitor : IDisposable
         return sessions;
     }
 
+    /// <summary>
+    /// Finds a single running app audio session whose process name or AppUserModelId matches
+    /// one of the supplied hints. Returns a session that stays alive until disposed.
+    /// Matching is intentionally conservative: no match means no per-app control is offered.
+    /// </summary>
+    public AppAudioSession? FindAppSession(params string[] hints)
+    {
+        if (hints.Length == 0) return null;
+        var wanted = hints
+            .Where(h => !string.IsNullOrWhiteSpace(h))
+            .Select(AppAudioSessionMatcher.Normalize)
+            .Where(h => h.Length > 0)
+            .ToArray();
+        if (wanted.Length == 0) return null;
+
+        AppAudioSession? found = null;
+        var sessions = GetAppSessions();
+        foreach (var session in sessions)
+        {
+            if (wanted.Any(h => AppAudioSessionMatcher.Matches(session.Name, h)))
+            {
+                found = session;
+                break;
+            }
+        }
+
+        if (found is null)
+        {
+            foreach (var session in sessions) session.Dispose();
+        }
+        else
+        {
+            foreach (var session in sessions)
+            {
+                if (!ReferenceEquals(session, found)) session.Dispose();
+            }
+        }
+        return found;
+    }
+
     // Owns one audio session for as long as its mixer controls are on screen.
     private sealed class AppSessionVolumeHandle(IAudioSessionControl control, ISimpleAudioVolume volume) : IDisposable
     {
@@ -446,6 +521,20 @@ public sealed class AudioEndpointMonitor : IDisposable
             }
             catch (Exception ex) { AppLog.Warning($"Session mute change failed: {ex.Message}"); }
             return false;
+        }
+
+        public float GetVolume()
+        {
+            if (_control is null) return 0;
+            try { return _volume.GetMasterVolume(out var level) == 0 ? level : 0; }
+            catch { return 0; }
+        }
+
+        public bool GetMute()
+        {
+            if (_control is null) return false;
+            try { return _volume.GetMute(out var muted) == 0 && muted; }
+            catch { return false; }
         }
 
         public void Dispose()
@@ -595,6 +684,7 @@ public sealed class AudioEndpointMonitor : IDisposable
         public IReadOnlyList<AudioDeviceInfo> GetRecordingDevices() => _disposed ? [] : _owner.GetDevices(isRecording: true);
         public bool SelectDefaultDevice(string deviceId) => !_disposed && SetDefaultDevice(deviceId);
         public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null) => _disposed ? [] : _owner.GetAppSessions(targetDeviceId);
+        public AppAudioSession? FindAppSession(params string[] hints) => _disposed ? null : _owner.FindAppSession(hints);
 
         public void BindDefaultDevice()
         {

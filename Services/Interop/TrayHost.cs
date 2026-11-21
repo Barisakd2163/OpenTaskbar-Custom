@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
+using ManagedShell.Interop;
 using ManagedShell.WindowsTray;
 
 namespace OpenTaskbar.Services;
@@ -21,6 +22,8 @@ internal sealed class TrayHost : IDisposable
         new(NotificationArea.HEALTH_GUID), new(NotificationArea.MEETNOW_GUID), new(NotificationArea.LOCATION_GUID),
         new(NotificationArea.MICROPHONE_GUID)
     ];
+
+    private static readonly AppBarMessageDelegate SharedAppBarForwarder = ForwardSharedAppBarMessage;
 
     private TrayService? _trayService;
     private NotificationArea? _area;
@@ -47,6 +50,10 @@ internal sealed class TrayHost : IDisposable
             IsBroadcasting = true;
             host._trayService = new TrayService();
             host._area = new NotificationArea(host._trayService, new ExplorerTrayService());
+            // ManagedShell's invisible topmost Shell_TrayWnd intercepts SHAppBarMessage calls after startup.
+            // Re-allocate shared memory into Explorer's PID for ABM_QUERYPOS/ABM_SETPOS/ABM_GETTASKBARPOS so
+            // Explorer can lock the buffer and recalculate monitor work areas live (#86, #92).
+            host._area.SetAppBarMessageCallback(SharedAppBarForwarder);
             host._area.Initialize();
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or ExternalException or TypeInitializationException)
@@ -105,6 +112,105 @@ internal sealed class TrayHost : IDisposable
         if (ReferenceEquals(Current, this)) Current = null;
     }
 
+    internal static bool UsesSharedMemory(NativeMethods.ABMsg message) =>
+        message is NativeMethods.ABMsg.ABM_QUERYPOS
+            or NativeMethods.ABMsg.ABM_SETPOS
+            or NativeMethods.ABMsg.ABM_GETTASKBARPOS
+            or NativeMethods.ABMsg.ABM_GETAUTOHIDEBAREX;
+
+    /// <summary>
+    /// Forwards shared-memory SHAppBarMessage calls (ABM_QUERYPOS, ABM_SETPOS, ABM_GETTASKBARPOS,
+    /// ABM_GETAUTOHIDEBAREX) to Explorer's real Shell_TrayWnd by re-allocating APPBARDATAV2 in Explorer's PID
+    /// and copying Explorer's updated rectangle back to the caller's shared buffer (#86, #92).
+    /// </summary>
+    private static nint ForwardSharedAppBarMessage(NativeMethods.APPBARMSGDATAV3 amd, ref bool handled)
+    {
+        var message = (NativeMethods.ABMsg)amd.dwMessage;
+        if (!UsesSharedMemory(message) || amd.hSharedMemory == 0) return nint.Zero;
+
+        var explorerTray = NativeTaskbarWindow.Find();
+        if (explorerTray == 0) return nint.Zero;
+        _ = GetWindowThreadProcessId(explorerTray, out var explorerPid);
+        if (explorerPid == 0) return nint.Zero;
+
+        var sourceHandle = unchecked((nint)amd.hSharedMemory);
+        var sourcePid = unchecked((uint)amd.dwSourceProcessId);
+        var lockedOld = NativeMethods.SHLockShared(sourceHandle, sourcePid);
+        if (lockedOld == nint.Zero)
+        {
+            AppLog.Warning($"TrayHost: SHLockShared failed for AppBar {message} (srcPid={sourcePid}).");
+            return nint.Zero;
+        }
+
+        nint sharedNew = nint.Zero;
+        nint hAmd = nint.Zero;
+        nint hCopyData = nint.Zero;
+        try
+        {
+            var abdSize = Marshal.SizeOf<NativeMethods.APPBARDATAV2>();
+            sharedNew = NativeMethods.SHAllocShared(nint.Zero, (uint)abdSize, explorerPid);
+            if (sharedNew == nint.Zero) return nint.Zero;
+
+            var lockedNew = NativeMethods.SHLockShared(sharedNew, explorerPid);
+            if (lockedNew == nint.Zero) return nint.Zero;
+            try
+            {
+                var abdOld = Marshal.PtrToStructure<NativeMethods.APPBARDATAV2>(lockedOld);
+                Marshal.StructureToPtr(abdOld, lockedNew, fDeleteOld: false);
+            }
+            finally
+            {
+                NativeMethods.SHUnlockShared(lockedNew);
+            }
+
+            amd.hSharedMemory = sharedNew;
+            amd.dwSourceProcessId = unchecked((int)explorerPid);
+
+            var amdSize = Marshal.SizeOf<NativeMethods.APPBARMSGDATAV3>();
+            hAmd = Marshal.AllocHGlobal(amdSize);
+            Marshal.StructureToPtr(amd, hAmd, fDeleteOld: false);
+
+            var copyData = new NativeMethods.COPYDATASTRUCT
+            {
+                dwData = nint.Zero,
+                cbData = amdSize,
+                lpData = hAmd
+            };
+            hCopyData = Marshal.AllocHGlobal(Marshal.SizeOf<NativeMethods.COPYDATASTRUCT>());
+            Marshal.StructureToPtr(copyData, hCopyData, fDeleteOld: false);
+
+            var result = NativeMethods.SendMessage(
+                explorerTray,
+                (int)NativeMethods.WM.COPYDATA,
+                unchecked((nint)(int)amd.abd.hWnd),
+                hCopyData);
+
+            var lockedResult = NativeMethods.SHLockShared(sharedNew, explorerPid);
+            if (lockedResult != nint.Zero)
+            {
+                try
+                {
+                    var abdUpdated = Marshal.PtrToStructure<NativeMethods.APPBARDATAV2>(lockedResult);
+                    Marshal.StructureToPtr(abdUpdated, lockedOld, fDeleteOld: false);
+                }
+                finally
+                {
+                    NativeMethods.SHUnlockShared(lockedResult);
+                }
+            }
+
+            handled = true;
+            return result;
+        }
+        finally
+        {
+            if (hCopyData != nint.Zero) Marshal.FreeHGlobal(hCopyData);
+            if (hAmd != nint.Zero) Marshal.FreeHGlobal(hAmd);
+            if (sharedNew != nint.Zero) NativeMethods.SHFreeShared(sharedNew, explorerPid);
+            NativeMethods.SHUnlockShared(lockedOld);
+        }
+    }
+
     /// <summary>
     /// Asks every running app to register its tray icons again with whichever <c>Shell_TrayWnd</c> is current.
     /// Used after an unclean exit, when icons were left registered with this process's destroyed tray window.
@@ -121,6 +227,9 @@ internal sealed class TrayHost : IDisposable
         public int X;
         public int Y;
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

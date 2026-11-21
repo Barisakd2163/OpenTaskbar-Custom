@@ -202,6 +202,9 @@ public sealed record DockSettings(
     DockGapUnit DockBottomGapUnit = DockGapUnit.Pixels,
     int DockBottomGapPixels = 6,
     int DockBottomGapPercent = 0,
+    // Extra gap (DIP) between dock icons, independent of the size profile and DockScale.
+    // Zero keeps the original layout; older settings files fall back to this default.
+    int DockIconPadding = 0,
     bool FocusModeEnabled = false)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>

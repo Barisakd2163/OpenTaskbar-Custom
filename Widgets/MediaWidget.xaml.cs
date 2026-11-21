@@ -30,6 +30,10 @@ public partial class MediaWidget : DockWidget
     private MediaSessionManager? _manager;
     private MediaSession? _session;
     private AudioEndpointMonitor.SharedHandle? _audio;
+    private AppAudioSession? _mediaVolumeSession;
+
+    /// <summary>Test hook: supplies per-app audio sessions for the current media session.</summary>
+    internal Func<IReadOnlyList<AppAudioSession>>? AppSessionSource { get; set; }
     private readonly DispatcherTimer _volumeHoverCloseTimer;
     private int _activationVersion;
     private int _refreshVersion;
@@ -47,9 +51,12 @@ public partial class MediaWidget : DockWidget
     private bool? _lastAudioHasDevice;
     private int _lastAudioLevel = -1;
     private bool _lastAudioMuted;
-    private string? _lastAudioDeviceName;
     private string? _lastAudioIconKey;
     private AppLanguage _lastAudioLanguage;
+
+    // Locally confirmed per-app volume state (AppAudioSession.Volume is a snapshot, not live).
+    private float _mediaVolumeLevel = -1;
+    private bool _mediaVolumeMuted;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 10;
@@ -158,6 +165,8 @@ public partial class MediaWidget : DockWidget
         CloseVolumePopover();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         BindSession(null);
+        _mediaVolumeSession?.Dispose();
+        _mediaVolumeSession = null;
         ClearAlbumArt();
         if (_manager is not null)
         {
@@ -231,6 +240,20 @@ public partial class MediaWidget : DockWidget
         {
             UpdateProgressUI();
         }
+
+        RefreshMediaVolumeState();
+    }
+
+    private void RefreshMediaVolumeState()
+    {
+        var session = _mediaVolumeSession;
+        if (session is null) return;
+        var level = Math.Clamp(session.CurrentVolume, 0f, 1f);
+        var muted = session.CurrentMute;
+        if (Math.Abs(level - _mediaVolumeLevel) < 0.002f && muted == _mediaVolumeMuted) return;
+        _mediaVolumeLevel = level;
+        _mediaVolumeMuted = muted;
+        RenderVolume();
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RenderVolume();
@@ -240,7 +263,64 @@ public partial class MediaWidget : DockWidget
         _lastAudioHasDevice = null;
         _lastAudioLevel = -1;
         _lastAudioIconKey = null;
-        _lastAudioDeviceName = null;
+    }
+
+    /// <summary>
+    /// Resolves the WASAPI app audio session that belongs to the currently bound media session.
+    /// Only per-app sessions are used - the master endpoint volume is never changed here.
+    /// </summary>
+    private void BindMediaVolumeSession()
+    {
+        _mediaVolumeSession?.Dispose();
+        _mediaVolumeSession = null;
+
+        if (_session is null || _audio is null) return;
+
+        var hints = new List<string>();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_session.SourceAppUserModelId))
+                hints.Add(_session.SourceAppUserModelId);
+        }
+        catch { }
+
+        if (hints.Count == 0) return;
+
+        try
+        {
+            _mediaVolumeSession = AppSessionSource is not null
+                ? ResolveFromSource(hints)
+                : _audio.FindAppSession(hints.ToArray());
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Media app volume session lookup failed: {ex.Message}");
+            _mediaVolumeSession = null;
+        }
+
+        _mediaVolumeLevel = _mediaVolumeSession?.Volume ?? -1;
+        _mediaVolumeMuted = _mediaVolumeSession?.IsMuted ?? false;
+        InvalidateVolumeDisplayCache();
+    }
+
+    private AppAudioSession? ResolveFromSource(List<string> hints)
+    {
+        var sessions = AppSessionSource!();
+        var normalized = hints.Select(AppAudioSessionMatcher.Normalize).ToArray();
+        foreach (var session in sessions)
+        {
+            if (normalized.Any(h => AppAudioSessionMatcher.Matches(session.Name, h)))
+                return session;
+        }
+        foreach (var session in sessions) session.Dispose();
+        return null;
+    }
+
+    private void InvalidateVolumeDisplayCache()
+    {
+        _lastAudioHasDevice = null;
+        _lastAudioLevel = -1;
+        _lastAudioIconKey = null;
     }
 
     private void ClearAlbumArt()
@@ -350,7 +430,10 @@ public partial class MediaWidget : DockWidget
 
     private void VolumeTrigger_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (_audio?.HasDevice != true) return;
+        if (_mediaVolumeSession is null) return;
+        BindMediaVolumeSession();
+        RenderVolume();
+        if (_mediaVolumeSession is null) return;
         _volumeHoverCloseTimer.Stop();
         if (!VolumePopup.IsOpen) VolumePopup.IsOpen = true;
     }
@@ -454,21 +537,32 @@ public partial class MediaWidget : DockWidget
 
     private void Audio_VolumeChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
     {
-        if (IsActive) RenderVolume();
+        if (!IsActive) return;
+        // Master endpoint changes do not represent the playing app's volume. Only refresh
+        // when no app session is bound yet - it may have just appeared.
+        if (_mediaVolumeSession is null)
+        {
+            BindMediaVolumeSession();
+            RenderVolume();
+        }
     });
 
     private void Audio_DefaultDeviceChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
     {
         if (!IsActive || _audio is null) return;
         _audio.BindDefaultDevice();
+        BindMediaVolumeSession();
         RenderVolume();
     });
 
     private void RenderVolume()
     {
-        var hasDevice = _audio?.HasDevice == true;
         var lang = UiText.Current.Language;
-        if (!hasDevice)
+        var session = _mediaVolumeSession;
+
+        // Without a per-app audio session the slider stays disabled: system/master volume
+        // must never be changed from the media widget.
+        if (session is null)
         {
             if (_lastAudioHasDevice == false && _lastAudioLanguage == lang) return;
             _lastAudioHasDevice = false;
@@ -478,14 +572,14 @@ public partial class MediaWidget : DockWidget
             VolumeSlider.IsEnabled = false;
             VolumePercentText.Text = "—";
             SetVolumeIcon("IconVolumeMute");
+            MuteButton.ToolTip = UiText.Get("Volume");
             return;
         }
 
-        var level = (int)Math.Round(_audio!.Volume * 100);
-        var muted = _audio.Muted;
-        var deviceName = _audio.DeviceName;
+        var level = (int)Math.Round(Math.Clamp(_mediaVolumeLevel, 0f, 1f) * 100);
+        var muted = _mediaVolumeMuted;
         if (_lastAudioHasDevice == true && _lastAudioLevel == level && _lastAudioMuted == muted
-            && _lastAudioDeviceName == deviceName && _lastAudioLanguage == lang)
+            && _lastAudioLanguage == lang)
         {
             return;
         }
@@ -493,7 +587,6 @@ public partial class MediaWidget : DockWidget
         _lastAudioHasDevice = true;
         _lastAudioLevel = level;
         _lastAudioMuted = muted;
-        _lastAudioDeviceName = deviceName;
         _lastAudioLanguage = lang;
 
         MuteButton.IsEnabled = true;
@@ -501,7 +594,8 @@ public partial class MediaWidget : DockWidget
         SetVolumeIcon(muted || level == 0 ? "IconVolumeMute" : level < 50 ? "IconVolumeLow" : "IconVolume");
         var displayed = muted ? 0 : level;
         VolumePercentText.Text = $"{displayed}%";
-        MuteButton.ToolTip = muted ? UiText.Get("MuteToggle") : $"{deviceName ?? UiText.Get("Volume")}: {UiText.Format("Percent", level)}";
+        MuteButton.ToolTip = muted ? UiText.Get("MuteToggle")
+            : $"{session.Name}: {UiText.Format("Percent", level)}";
         _updatingVolume = true;
         VolumeSlider.Value = displayed;
         _updatingVolume = false;
@@ -632,6 +726,8 @@ public partial class MediaWidget : DockWidget
             _session.TimelinePropertiesChanged += Session_TimelinePropertiesChanged;
         }
 
+        BindMediaVolumeSession();
+        RenderVolume();
         Refresh(includeProperties: true);
     }
 
@@ -868,23 +964,52 @@ public partial class MediaWidget : DockWidget
 
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_updatingVolume || _audio is null) return;
-        if (_audio.SetVolume((float)(e.NewValue / 100.0))) RenderVolume();
-        else Report(UiText.Get("ErrorVolumeChange"));
+        if (_updatingVolume) return;
+        var session = _mediaVolumeSession;
+        if (session is null) return;
+        var next = (float)(e.NewValue / 100.0);
+        if (!session.SetVolume(next))
+        {
+            Report(UiText.Get("ErrorVolumeChange"));
+            InvalidateVolumeDisplayCache();
+            RenderVolume();
+            return;
+        }
+        _mediaVolumeLevel = next;
+        if (next > 0 && _mediaVolumeMuted && session.SetMute(false)) _mediaVolumeMuted = false;
+        RenderVolume();
     }
 
     private void MuteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_audio is null) return;
-        if (_audio.ToggleMute()) RenderVolume();
+        var session = _mediaVolumeSession;
+        if (session is null) return;
+        var nextMuted = !_mediaVolumeMuted;
+        if (session.SetMute(nextMuted))
+        {
+            _mediaVolumeMuted = nextMuted;
+            RenderVolume();
+        }
         else Report(UiText.Get("ErrorVolumeChange"));
     }
 
     private void Volume_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_audio?.HasDevice != true) return;
-        if (_audio.SetVolume(Math.Clamp(_audio.Volume + Math.Sign(e.Delta) * 0.02f, 0f, 1f))) RenderVolume();
-        else Report(UiText.Get("ErrorVolumeChange"));
+        var session = _mediaVolumeSession;
+        if (session is null) return;
+        var next = Math.Clamp(_mediaVolumeLevel + Math.Sign(e.Delta) * 0.02f, 0f, 1f);
+        if (!session.SetVolume(next))
+        {
+            Report(UiText.Get("ErrorVolumeChange"));
+            InvalidateVolumeDisplayCache();
+            RenderVolume();
+        }
+        else
+        {
+            _mediaVolumeLevel = next;
+            if (next > 0 && _mediaVolumeMuted && session.SetMute(false)) _mediaVolumeMuted = false;
+            RenderVolume();
+        }
         e.Handled = true;
     }
 

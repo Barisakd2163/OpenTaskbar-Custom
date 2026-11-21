@@ -200,10 +200,18 @@
                     <ScaleTransform x:Name="DockScaleTransform" ScaleX="1" ScaleY="1" />
                 </TransformGroup>
             </Grid.RenderTransform>
+            <!-- Keep DropShadowEffect on a sibling pill behind DockFrame so magnifying icons protruding above
+                 DockFrame never force WPF to resize/resample an offscreen Effect bitmap containing Start and widgets. -->
+            <Border x:Name="DockShadowLayer"
+                    Background="{DynamicResource DockMaterial}"
+                    BorderBrush="{DynamicResource DockBorderMaterial}"
+                    BorderThickness="{DynamicResource DockBorderThickness}"
+                    CornerRadius="{Binding CornerRadius, ElementName=DockFrame}"
+                    Effect="{DynamicResource DockShadow}"
+                    IsHitTestVisible="False" />
             <Border x:Name="DockFrame" Padding="{StaticResource DockPadding}"
-                    Background="{DynamicResource DockMaterial}" BorderBrush="{DynamicResource DockBorderMaterial}"
-                    BorderThickness="{DynamicResource DockBorderThickness}" CornerRadius="{DynamicResource DockRadius}"
-                    Effect="{DynamicResource DockShadow}">
+                    Background="Transparent" BorderBrush="Transparent"
+                    BorderThickness="{DynamicResource DockBorderThickness}" CornerRadius="{DynamicResource DockRadius}">
                 <Grid x:Name="DockFrameRoot">
                     <Grid x:Name="DockLayoutRoot">
                         <Grid.ColumnDefinitions>
@@ -293,9 +301,8 @@
                                                    PreviewMouseMove="ShellButton_PreviewMouseMove"
                                                    PreviewMouseLeftButtonUp="ShellButton_PreviewMouseLeftButtonUp"
                                                    ToolTipService.InitialShowDelay="650" />
-                            <Border x:Name="StartDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="3,0,4,0" IsHitTestVisible="False" Visibility="Collapsed" />
                         </StackPanel>
-                        <views:DockScrollViewer x:Name="DockScrollViewer" Grid.Column="1" Style="{StaticResource DockScrollViewerStyle}"
+                        <views:DockScrollViewer x:Name="DockScrollViewer" Grid.Column="1" HorizontalAlignment="Left" Style="{StaticResource DockScrollViewerStyle}"
                                               HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
                                               ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
                             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
@@ -319,10 +326,10 @@
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
-                                <!-- Boundaries of the two pinned shell groups; positioned by RebuildDockOrder. -->
-                                <Border x:Name="NativeGroupDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}"
-                                        Margin="4,0,6,0" IsHitTestVisible="False" Visibility="Collapsed" />
-                                <Border x:Name="TrayGroupDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}"
+                                <!-- Boundaries of the shell group and the tray button; positioned by RebuildDockOrder. -->
+                                <Border x:Name="StartDivider" Width="2" Height="22" Background="{DynamicResource TextSecondary}"
+                                        Margin="3,0,4,0" IsHitTestVisible="False" Visibility="Collapsed" />
+                                <Border x:Name="TrayGroupDivider" Width="2" Height="22" Background="{DynamicResource TextSecondary}"
                                         Margin="6,0,4,0" IsHitTestVisible="False" Visibility="Collapsed" />
                                 <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerText}" FontSize="{StaticResource TextSizeCaption}"
                                            MaxWidth="280" VerticalAlignment="Center" Margin="8,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
@@ -365,7 +372,7 @@
                                     </Image>
                                 </Grid>
                             </Button>
-                            <Border x:Name="WidgetDivider" Width="1" Height="22" Background="{DynamicResource StrokeSubtle}" Margin="6,0" Visibility="Collapsed" IsHitTestVisible="False" />
+                            <Border x:Name="WidgetDivider" Width="2" Height="22" Background="{DynamicResource TextSecondary}" Margin="6,0" Visibility="Collapsed" IsHitTestVisible="False" />
                             <ItemsControl x:Name="DockWidgets" SizeChanged="DockWidgets_SizeChanged" Visibility="Collapsed">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
