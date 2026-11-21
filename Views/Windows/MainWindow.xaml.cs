@@ -592,7 +592,7 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -1163,6 +1163,23 @@ public partial class MainWindow : Window
     /// <summary>Starts an application through the shell and returns an error key, or null on success or UAC cancel.</summary>
     internal static string? StartApplication(string executablePath, string arguments, bool elevated)
     {
+        if (!elevated && string.IsNullOrWhiteSpace(arguments)
+            && ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath) is { } aumid)
+        {
+            try
+            {
+                using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{aumid}")
+                {
+                    UseShellExecute = true
+                });
+                return null;
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                // Fall through to standard executable launch below.
+            }
+        }
+
         if (!File.Exists(executablePath)) return "ErrorAppFileNotFound";
         try
         {
@@ -1933,9 +1950,9 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath, string? iconLocation = null)
+    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(string executablePath, string? iconLocation = null, string? appUserModelId = null)
     {
-        var raw = ApplicationIconProvider.GetForPinnedApp(executablePath, iconLocation);
+        var raw = ApplicationIconProvider.GetForPinnedApp(executablePath, iconLocation, appUserModelId);
         return ThemePacks.ApplyIcon(raw, executablePath);
     }
 
@@ -1945,7 +1962,7 @@ public partial class MainWindow : Window
         ApplyStartIcon();
         foreach (var app in _pinnedApps)
         {
-            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation);
+            app.Icon = ApplyApplicationIcon(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
         }
         if (_windowTracker is not null)
         {

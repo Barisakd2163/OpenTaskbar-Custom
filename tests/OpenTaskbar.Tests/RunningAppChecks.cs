@@ -158,6 +158,7 @@ internal static class RunningAppChecks
                     <?xml version="1.0" encoding="utf-8"?>
                     <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
                       <Identity Name="5319275A.WhatsAppDesktop" Publisher="CN=Test" Version="2.2500.1.0" />
+                      <Properties><DisplayName>WhatsApp</DisplayName></Properties>
                       <Applications>
                         <Application Id="App" Executable="WhatsApp.Root.exe" />
                         <Application Id="Helper" Executable="Sub\Helper.exe" />
@@ -166,12 +167,27 @@ internal static class RunningAppChecks
                     """);
                 var mainExe = System.IO.Path.Combine(pkgDir, "WhatsApp.Root.exe");
                 var helperExe = System.IO.Path.Combine(pkgDir, "Sub", "Helper.exe");
+                System.IO.File.WriteAllBytes(mainExe, []);
                 Check(ApplicationIconProvider.TryResolvePackagedAppUserModelId(mainExe) == "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
                     "TryResolvePackagedAppUserModelId must resolve the Store app AUMID from package folder + AppxManifest.xml.");
                 Check(ApplicationIconProvider.TryResolvePackagedAppUserModelId(helperExe) == "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!Helper",
                     "TryResolvePackagedAppUserModelId must match nested relative executables in multi-app manifests.");
                 Check(ApplicationIconProvider.TryResolvePackagedAppUserModelId(@"C:\Program Files\App\app.exe") is null,
                     "Non-WindowsApps executables must not resolve a packaged AUMID.");
+
+                // Taskband Favorites binary blob extraction (both even and odd UTF-16 byte alignments)
+                var aumidBytes = System.Text.Encoding.Unicode.GetBytes("5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App");
+                var oddAligned = new byte[1 + aumidBytes.Length + 3];
+                Buffer.BlockCopy(aumidBytes, 0, oddAligned, 1, aumidBytes.Length);
+                var extracted = WindowsTaskbarPinImporter.ExtractAumidsFromTaskbandBytes(oddAligned);
+                Check(extracted.Count == 1 && extracted[0] == "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
+                    "ExtractAumidsFromTaskbandBytes must find Store AUMIDs even at odd byte offsets in Taskband\\Favorites.");
+
+                var resolvedPin = WindowsTaskbarPinImporter.TryResolvePackagedApp(
+                    "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
+                    System.IO.Path.Combine(fakeRoot, "WindowsApps"));
+                Check(resolvedPin is { DisplayName: "WhatsApp" } && string.Equals(resolvedPin.Value.ExecutablePath, mainExe, StringComparison.OrdinalIgnoreCase),
+                    "TryResolvePackagedApp must resolve DisplayName and ExecutablePath from WindowsApps + AppxManifest.xml.");
             }
             finally
             {

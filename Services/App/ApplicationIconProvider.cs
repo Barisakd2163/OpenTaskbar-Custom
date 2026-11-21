@@ -105,7 +105,7 @@ public static class ApplicationIconProvider
     /// 2. Packaged Store app Start menu icon via shell:AppsFolder\{AUMID} from AppxManifest.xml under WindowsApps.
     /// 3. Fallback to the executable's own icon.
     /// </summary>
-    public static BitmapSource? GetForPinnedApp(string executablePath, string? iconLocation = null, int targetSize = 0)
+    public static BitmapSource? GetForPinnedApp(string executablePath, string? iconLocation = null, string? appUserModelId = null, int targetSize = 0)
     {
         if (TryParseIconLocation(iconLocation, out var iconPath, out var iconIndex) && File.Exists(iconPath))
         {
@@ -128,7 +128,7 @@ public static class ApplicationIconProvider
             }
         }
 
-        if (TryResolvePackagedAppUserModelId(executablePath) is { } aumid)
+        if ((string.IsNullOrWhiteSpace(appUserModelId) ? TryResolvePackagedAppUserModelId(executablePath) : appUserModelId) is { } aumid)
         {
             var shellSize = targetSize > 0 ? targetSize : PreferredIconPixels;
             var packagedIcon = GetForShellItem($"shell:AppsFolder\\{aumid}", shellSize);
