@@ -301,11 +301,6 @@ public sealed class DockScrollViewer : ScrollViewer
             _nextButton.Click -= OnNextButtonClick;
 
         _scrollContentPresenter = GetTemplateChild("PART_ScrollContentPresenter") as ScrollContentPresenter;
-        // Cache the dock content once so wheel scrolling only blits the bitmap on the GPU instead of
-        // re-laying-out and re-rasterizing every icon on every offset change. Without this, each
-        // ScrollToHorizontalOffset triggers a full Measure/Arrange of the 2560px-wide dock strip.
-        if (_scrollContentPresenter is not null)
-            _scrollContentPresenter.CacheMode = new BitmapCache(1.0);
         _previousButton = GetTemplateChild("PART_PreviousButton") as Button;
         _nextButton = GetTemplateChild("PART_NextButton") as Button;
 
@@ -613,6 +608,16 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         UpdateIndicatorLayout();
         UpdateIndicators();
+
+        // When external edge scrim overlays (ScrollPrevOverlay / ScrollNextOverlay) are attached, they already
+        // draw the edge fade. Applying an OpacityMask to ScrollContentPresenter forces WPF to rasterize the entire
+        // dock strip into an offscreen intermediate bitmap whose bounds resize every frame when an icon magnifies
+        // above the bar, making Start and widgets visibly wobble vertically and blur/rescale.
+        if (_externalPreviousButton is not null || _externalNextButton is not null)
+        {
+            ApplyOpacityMask(null);
+            return;
+        }
 
         if (_suppressOverflowIndicators && HorizontalOffset <= 0.5 && VerticalOffset <= 0.5)
         {

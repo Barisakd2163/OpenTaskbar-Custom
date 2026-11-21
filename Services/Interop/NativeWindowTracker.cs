@@ -121,10 +121,13 @@ public sealed class NativeWindowTracker : IDisposable
         return foreground != 0 ? NormalizeRootWindow(foreground) : 0;
     }
 
-    /// <summary>Publishes a foreground change once, including the 0 handle when focus returns to the desktop.</summary>
-    private void PublishForeground(nint target)
+    /// <summary>
+    /// Publishes a foreground change, deduping repeat refreshes for the same handle while allowing location
+    /// updates (<paramref name="force"/> = true) to re-trigger overlap checks for smart auto-hide (#85).
+    /// </summary>
+    internal void PublishForeground(nint target, bool force = false)
     {
-        if (_foregroundPublished && _lastForegroundWindow == target) return;
+        if (!force && _foregroundPublished && _lastForegroundWindow == target) return;
         _foregroundPublished = true;
         _lastForegroundWindow = target;
         ForegroundWindowChanged?.Invoke(target);
@@ -215,7 +218,7 @@ public sealed class NativeWindowTracker : IDisposable
         var foreground = GetForegroundWindow();
         var target = foreground != 0 ? NormalizeRootWindow(foreground) : _pendingLocationForeground;
         _pendingLocationForeground = 0;
-        if (target != 0 && IsWindow(target)) PublishForeground(target);
+        if (target != 0 && IsWindow(target)) PublishForeground(target, force: true);
     }
 
     private void QueueRefresh(bool urgent = false)

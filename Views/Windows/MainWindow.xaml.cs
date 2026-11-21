@@ -77,7 +77,7 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
-    private (DockSize Size, double Scale, int Padding, double BottomGap)? _appliedDockGeometry;
+    private (DockSize Size, double Scale, int Padding, double BottomGap, double TopGap)? _appliedDockGeometry;
     private bool _resizingDock;
     private bool _resizePending;
     private bool _resizingFromLeft;
@@ -475,7 +475,7 @@ public partial class MainWindow : Window
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
-        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding, ExternalBottomGap);
+        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding, ExternalBottomGap, ExternalTopGap);
         session.Edge = Edge;
         session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
@@ -2001,6 +2001,8 @@ public partial class MainWindow : Window
     {
         _sizePreviewOverride = null;
         _radiusPreviewOverride = null;
+        // Clear any live-slider deferral so ApplySizeProfile commits the updated AppBar shelf immediately.
+        if (_replacementSession is not null) _replacementSession.DeferReservation = false;
         ResetMagnification(immediate: true);
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
@@ -2040,20 +2042,21 @@ public partial class MainWindow : Window
             PositionDock();
         }
 
-        // Windows only recalculates the work area when the AppBar is first registered. A size/scale or bottom-gap
-        // change therefore needs a fresh replacement session to move the reserved taskbar strip, exactly as a restart does.
         var geometry = (
             Size: _preferences.Current.Size,
             Scale: _preferences.Current.DockScale,
             Padding: _preferences.Current.DockIconPadding,
-            BottomGap: ExternalBottomGap);
+            BottomGap: ExternalBottomGap,
+            TopGap: ExternalTopGap);
         if (_appliedDockGeometry is { } applied && applied != geometry && _replacementSession is not null)
         {
             if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001 || applied.Padding != geometry.Padding)
             {
                 AnimateDockScaleChange();
             }
-            RestartReplacementSession();
+            // ApplySizeProfile() already updated ShelfHeight in place via ABM_QUERYPOS + ABM_SETPOS (plus verified
+            // SPI_SETWORKAREA sync) without tearing down the AppBar or flashing the native taskbar (#86, #92).
+            _replacementSession.RefreshPosition();
         }
         _appliedDockGeometry = geometry;
     }
@@ -2070,20 +2073,6 @@ public partial class MainWindow : Window
         };
         DockScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
         DockScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
-    }
-
-    private void RestartReplacementSession()
-    {
-        var session = _replacementSession;
-        if (session is null) return;
-        var error = session.StopForRestart();
-        session.OperationReported -= ReportOperationStatus;
-        session.LayoutChanged -= ApplyTaskbarLayout;
-        session.FullScreenChanged -= OnFullScreenChanged;
-        session.Dispose();
-        _replacementSession = null;
-        if (error is not null) ReportError(error);
-        StartReplacementMode();
     }
 
     private void RemoveDockWidget(string id)
@@ -2636,26 +2625,38 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Reserved shelf height (DIP) covering both the visible dock surface and the user's external bottom gap so
-    /// maximized windows never overlap the top edge of the dock.
+    /// Computes the reserved shelf height (DIP) covering the dock surface (including border thickness so Compact
+    /// buttons never receive a WPF LayoutClip, #81), the external bottom gap, and the external top gap (#92).
     /// </summary>
+    internal static double ComputeEffectiveShelfHeight(
+        DockSizeProfile profile, bool isVertical, double borderThickness, double externalBottomGap, double externalTopGap)
+    {
+        var border = Math.Max(0.0, borderThickness) * 2.0;
+        var requiredSurface = profile.Cell + profile.VerticalPadding * 2 + border;
+        var topGap = Math.Max(0.0, externalTopGap);
+        var bottomGap = Math.Max(0.0, externalBottomGap);
+        if (isVertical)
+            return Math.Max(profile.Shelf + 16, requiredSurface + bottomGap + 16) + topGap;
+        return Math.Max(profile.Shelf, requiredSurface + bottomGap + 2) + topGap;
+    }
+
     private double EffectiveShelfHeight
     {
         get
         {
-            var profile = Profile;
-            return IsVertical
-                ? Math.Max(profile.Shelf + 16, profile.SurfaceHeight + ExternalBottomGap + 16)
-                : Math.Max(profile.Shelf, profile.SurfaceHeight + ExternalBottomGap + 2);
+            var borderThickness = _preferences.Current.DockBackground == SurfaceBackground.None
+                ? 0.0
+                : _preferences.Current.DockBorderThickness;
+            return ComputeEffectiveShelfHeight(Profile, IsVertical, borderThickness, ExternalBottomGap, ExternalTopGap);
         }
     }
 
     /// <summary>
-    /// Transparent, click-through headroom above the dock surface. Always keeps at least <see cref="DockMetrics.Headroom"/>
-    /// so launch-bounce and hover magnification animations draw above neighbouring app windows instead of clipping at
-    /// the top edge of the dock window.
+    /// Transparent, click-through headroom above the reserved shelf so launch-bounce and hover magnification
+    /// animations draw above neighbouring app windows instead of clipping at the top edge of the dock window.
+    /// ExternalTopGap is reserved inside <see cref="EffectiveShelfHeight"/> so maximized windows respect it (#92).
     /// </summary>
-    private double EffectiveHeadroom => Math.Max(DockMetrics.Headroom, ExternalTopGap);
+    private double EffectiveHeadroom => DockMetrics.Headroom;
 
     /// <summary>External spacing above the visible bar, resolved from the user's pixels/percent preference.</summary>
     private double ExternalTopGap

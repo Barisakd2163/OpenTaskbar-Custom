@@ -28,7 +28,34 @@ internal static class SettingsAndAutoHideChecks
         CheckFlyoutState(application, Check);
         CheckClockWidgetFlyoutAndAutoHide(application, Check);
         CheckTrayTransientTooltips(Check);
+        CheckForegroundLocationForceRepublish(application, Check);
         return checks;
+    }
+
+    private static void CheckForegroundLocationForceRepublish(Application application, Action<bool, string> check)
+    {
+        // Issue #85: Smart auto-hide relies on ForegroundWindowChanged re-firing when the SAME foreground window
+        // moves, resizes, or restores, while normal refresh deduping must still suppress duplicate publishes.
+        using var tracker = new NativeWindowTracker(application.Dispatcher);
+        var published = new List<nint>();
+        tracker.ForegroundWindowChanged += h => published.Add(h);
+        const nint fakeWindow = 0x12345;
+        tracker.PublishForeground(fakeWindow);
+        tracker.PublishForeground(fakeWindow);
+        check(published.Count == 1,
+            $"Duplicate foreground publish without force must be deduped (got {published.Count}).");
+        tracker.PublishForeground(fakeWindow, force: true);
+        check(published.Count == 2 && published[1] == fakeWindow,
+            $"Location-change publish with force=true must re-emit ForegroundWindowChanged for smart auto-hide (#85, got {published.Count}).");
+
+        // Issue #86: StopForRestart followed by Dispose must mark the session as stopped for restart so Dispose
+        // skips Stop()/RestoreWithVerification and never flashes the native Windows taskbar.
+        var dummyWindow = new Window { ShowInTaskbar = false, ShowActivated = false };
+        using (var restartSession = new TaskbarReplacementSession(dummyWindow, 0, autoHideEnabled: false))
+        {
+            check(restartSession.StopForRestart() is null, "StopForRestart on an idle session must succeed.");
+            check(restartSession.StoppedForRestart, "StopForRestart must mark the session so Dispose skips native taskbar restore.");
+        }
     }
 
     private static void CheckFlyoutState(Application application, Action<bool, string> check)

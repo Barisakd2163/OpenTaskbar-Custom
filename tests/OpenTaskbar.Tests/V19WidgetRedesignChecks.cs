@@ -67,7 +67,7 @@ internal static class V19WidgetRedesignChecks
             Check(dayProgress.BuildHoverFlyoutContent() is null, "DayProgressWidget must not require a flyout.");
         }
 
-        // 4. WeatherWidget: inline weather + 3-day forecast, no flyout
+        // 4. WeatherWidget (#84): compact inline card matching Settings preview + full details in click flyout
         using (var weather = new WeatherWidget())
         {
             weather.ApplySettings(new DockSettings(Language: AppLanguage.English));
@@ -81,10 +81,19 @@ internal static class V19WidgetRedesignChecks
                 ],
                 Humidity: 58,
                 WindSpeed: 12));
-            var texts = LogicalDescendants<TextBlock>(weather).Select(t => t.Text).ToList();
-            Check(texts.Contains("18°") && texts.Contains("Ankara") && texts.Contains("21° / 14°") && texts.Contains("19° / 13°"),
-                "WeatherWidget must display current weather, today range, and forecast directly inline.");
-            Check(weather.BuildHoverFlyoutContent() is null, "WeatherWidget must not open a flyout.");
+            Check(weather.FullWidthEstimate <= 260,
+                $"WeatherWidget FullWidthEstimate ({weather.FullWidthEstimate}) must stay compact and match the Settings preview.");
+            var inlineTexts = LogicalDescendants<TextBlock>(weather).Select(t => t.Text).ToList();
+            Check(inlineTexts.Contains("18°") && inlineTexts.Contains("Ankara") && inlineTexts.Contains("21° / 14°"),
+                "WeatherWidget inline card must display current weather, place, and today range.");
+            Check(!inlineTexts.Contains("19° / 13°") && !inlineTexts.Contains("58%"),
+                "WeatherWidget inline card must keep 3-day forecast and secondary metrics out of the dock strip.");
+            Check(weather.BuildHoverFlyoutContent() is null, "WeatherWidget must not open a hover flyout.");
+            var flyout = weather.BuildFlyoutContent();
+            var flyoutTexts = LogicalDescendants<TextBlock>(flyout).Select(t => t.Text).ToList();
+            Check(flyoutTexts.Contains("17°") && flyoutTexts.Contains("58%")
+                  && flyoutTexts.Contains("19° / 13°") && flyoutTexts.Contains("17° / 12°") && flyoutTexts.Contains("16° / 11°"),
+                "WeatherWidget click flyout must display feels-like, humidity, and 3-day forecast.");
         }
 
         // 5. ClockWidget: system timezone & calendar flyout with year/month nav and Today jump

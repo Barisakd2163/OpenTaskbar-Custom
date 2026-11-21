@@ -67,13 +67,31 @@ internal static class TaskbarRecoveryChecks
         Check(SyntheticKeyboard.SendChord() is null, "An empty synthetic chord must be a no-op.");
         Check(SyntheticKeyboard.TrackedModifiers.Count == 0, "No modifier can remain tracked after an empty chord.");
 
-        // StopForRestart followed by Dispose must mark the session as stopped for restart without invoking
-        // Stop()/RestoreWithVerification (which would flash the native taskbar when a journal exists, #86).
-        using (var restartSession = new TaskbarReplacementSession(new System.Windows.Window(), 0, autoHideEnabled: false))
-        {
-            Check(restartSession.StopForRestart() is null, "StopForRestart on an idle session must succeed.");
-            Check(restartSession.StoppedForRestart, "StopForRestart must mark the session so Dispose skips native taskbar restore.");
-        }
+        // Deterministic bottom reservation math (#86, #92): must stack cleanly above Explorer's strip without
+        // depending on lagging workArea.Bottom values, and yield full strip control when auto-hide/release is active.
+        var (natGrow, extraGrow, workGrow) = TaskbarReplacementSession.ComputeBottomReservation(
+            monitorBottom: 1440, shelfPixels: 60, nativeBottomTaskbarDips: 48, dpi: 96,
+            autoHideEnabled: false, releaseNativeStrip: false, nativeTaskbarAtBottom: true, previousWasAutoHide: false);
+        Check(natGrow == 48 && extraGrow == 12 && workGrow == 1380,
+            $"60px shelf above 48px native taskbar must reserve 12px extra and put workBottom at 1380 (got {natGrow},{extraGrow},{workGrow}).");
+
+        var (natDpi, extraDpi, workDpi) = TaskbarReplacementSession.ComputeBottomReservation(
+            monitorBottom: 2160, shelfPixels: 108, nativeBottomTaskbarDips: 48, dpi: 144,
+            autoHideEnabled: false, releaseNativeStrip: false, nativeTaskbarAtBottom: true, previousWasAutoHide: false);
+        Check(natDpi == 72 && extraDpi == 36 && workDpi == 2052,
+            $"150% DPI 108px shelf above 72px native strip must reserve 36px extra (got {natDpi},{extraDpi},{workDpi}).");
+
+        var (natRelease, extraRelease, workRelease) = TaskbarReplacementSession.ComputeBottomReservation(
+            monitorBottom: 1080, shelfPixels: 40, nativeBottomTaskbarDips: 48, dpi: 96,
+            autoHideEnabled: false, releaseNativeStrip: true, nativeTaskbarAtBottom: true, previousWasAutoHide: false);
+        Check(natRelease == 0 && extraRelease == 40 && workRelease == 1040,
+            $"Shelf smaller than native taskbar must release native strip and reserve full 40px (got {natRelease},{extraRelease},{workRelease}).");
+
+        var (natHide, extraHide, workHide) = TaskbarReplacementSession.ComputeBottomReservation(
+            monitorBottom: 1080, shelfPixels: 60, nativeBottomTaskbarDips: 48, dpi: 96,
+            autoHideEnabled: true, releaseNativeStrip: false, nativeTaskbarAtBottom: true, previousWasAutoHide: false);
+        Check(natHide == 0 && extraHide == 0 && workHide == 1080,
+            $"Auto-hide enabled must reserve 0px so workBottom matches monitor bottom (got {natHide},{extraHide},{workHide}).");
 
         return checks;
     }

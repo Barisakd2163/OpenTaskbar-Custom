@@ -32,6 +32,8 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint AbnFullScreenApp = 2;
     private const uint WmDisplayChange = 0x007E;
     private const uint WmDpiChanged = 0x02E0;
+    private const uint SpiSetWorkArea = 0x002F;
+    private const uint SpifSendChange = 0x0002;
     private const uint CallbackMessage = 0x8000 + 0x52;
     private const uint MonitorDefaultToNearest = 2;
     private const uint GaRootOwner = 3;
@@ -73,6 +75,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     // ABM_SETPOS notifies appbars synchronously, and _edge may already point at the new edge.
     private bool _clearingReservation;
     private (int Left, int Bottom, int NativePixels, int ExtraHeight)? _reservation;
+    private int _workAreaNudgeCount;
     private (int Left, int Top, int Width, int Height, bool FullScreenSuppressed)? _lastWindowPos;
     private Size _lastLayout;
     private int _stopInProgress;
@@ -560,6 +563,8 @@ public sealed class TaskbarReplacementSession : IDisposable
             OperationReported?.Invoke("ErrorTaskbarAutoHideToggle", true);
             return;
         }
+        _reservation = null;
+        _sideReservation = null;
         PositionDockWindow();
     }
 
@@ -609,7 +614,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         // The shelf comes from the user's size + scale profile. Any Explorer strip that is still present is
         // accounted for in ReserveShelf via the current work area, so it must not impose a height floor here.
         var metrics = DockLayoutMetrics.Calculate(ShelfHeight, 0, headroomDips, dpi);
-        ReserveShelf(monitorInfo.rcMonitor, monitorInfo.rcWork, metrics, dpi);
+        ReserveShelf(monitor, monitorInfo.rcMonitor, monitorInfo.rcWork, metrics, dpi);
         var height = metrics.ShelfPixels;
         var totalHeight = metrics.WindowPixels;
         var layout = new Size((monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left) * 96d / dpi,
@@ -662,28 +667,71 @@ public sealed class TaskbarReplacementSession : IDisposable
         _nativeBottomTaskbarHeight = 48;
     }
 
-    private void ReserveShelf(Rect monitor, Rect workArea, DockLayoutMetrics metrics, uint dpi)
+    /// <summary>
+    /// Computes deterministic bottom-edge AppBar reservation components from the measured native taskbar state
+    /// so lagging <c>rcWork</c> values during <c>ABN_POSCHANGED</c> cannot create a feedback loop.
+    /// </summary>
+    internal static (int NativePixels, int ExtraHeight, int ExpectedWorkBottom) ComputeBottomReservation(
+        int monitorBottom, int shelfPixels, double nativeBottomTaskbarDips, uint dpi,
+        bool autoHideEnabled, bool releaseNativeStrip, bool nativeTaskbarAtBottom, bool previousWasAutoHide)
+    {
+        var nativeOwnsStrip = !autoHideEnabled
+            && !releaseNativeStrip
+            && nativeTaskbarAtBottom
+            && !previousWasAutoHide;
+        var nativePixels = nativeOwnsStrip
+            ? Math.Min((int)Math.Ceiling(nativeBottomTaskbarDips * dpi / 96d), shelfPixels)
+            : 0;
+        var extraHeight = autoHideEnabled ? 0 : Math.Max(0, shelfPixels - nativePixels);
+        var expectedWorkBottom = monitorBottom - (nativePixels + extraHeight);
+        return (nativePixels, extraHeight, expectedWorkBottom);
+    }
+
+    private void ReserveShelf(nint monitorHandle, Rect monitor, Rect workArea, DockLayoutMetrics metrics, uint dpi)
     {
         if (!_registered || DeferReservation) return;
-        var totalBottomStrip = Math.Max(0, monitor.Bottom - workArea.Bottom);
-        var ownReserved = _reservation?.ExtraHeight ?? 0;
-        var existingExternal = Math.Max(0, totalBottomStrip - ownReserved);
-        var nativePixels = _autoHideEnabled ? 0 : Math.Min(existingExternal, metrics.ShelfPixels);
-        var extraHeight = metrics.AdditionalReservation(nativePixels, _autoHideEnabled);
+        var (nativePixels, extraHeight, expectedWorkBottom) = ComputeBottomReservation(
+            monitor.Bottom, metrics.ShelfPixels, _nativeBottomTaskbarHeight, dpi,
+            _autoHideEnabled, ReleaseNativeStrip, _nativeTaskbarAtBottom,
+            (_previousTaskbarState & AbsAutoHide) != 0);
         var request = (monitor.Left, monitor.Bottom, nativePixels, extraHeight);
-        if (_reservation == request) return;
-        _reservation = request;
+        if (_reservation == request && workArea.Bottom == expectedWorkBottom) return;
+        if (_reservation != request)
+        {
+            _reservation = request;
+            _workAreaNudgeCount = 0;
+        }
         var data = CreateData();
         data.uEdge = AbeBottom;
-        // End the rectangle at the current work-area boundary, not at the screen bottom. ABM_QUERYPOS can return
-        // the screen bottom after Explorer's strip is briefly released; a rect ending there is accepted but does
-        // not move the work area, leaving the dock taller than its slot.
+        // Official two-step Win32 AppBar protocol: query against higher-priority bars, pin the bottom edge so a
+        // transient screen-bottom response cannot drop stacking, then commit via ABM_SETPOS.
         var bottom = monitor.Bottom - nativePixels;
         data.rc = new Rect(monitor.Left, bottom - extraHeight, monitor.Right, bottom);
+        SHAppBarMessage(AbmQueryPos, ref data);
+        var resolvedBottom = Math.Min(data.rc.Bottom, bottom);
+        data.rc = new Rect(monitor.Left, resolvedBottom - extraHeight, monitor.Right, resolvedBottom);
         if (SHAppBarMessage(AbmSetPos, ref data) == 0 && _reservation == request)
         {
             AppLog.Warning($"Could not reserve the {extraHeight}px taskbar shelf; the work area may keep its old height.");
             _reservation = null;
+            return;
+        }
+
+        // On Windows 11 builds (e.g. 26300), resizing an active bottom AppBar while Shell_TrayWnd stays hidden
+        // updates Explorer's AppBar table but can skip propagating SPI_SETWORKAREA to maximized windows (#86).
+        // Verify rcWork directly and broadcast SPI_SETWORKAREA once if it is still stale.
+        var verified = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (GetMonitorInfo(monitorHandle, ref verified)
+            && verified.rcWork.Bottom != expectedWorkBottom
+            && _workAreaNudgeCount < 2)
+        {
+            var desiredWork = new Rect(verified.rcWork.Left, verified.rcWork.Top, verified.rcWork.Right, expectedWorkBottom);
+            if (desiredWork.Bottom > desiredWork.Top + 100 && desiredWork.Right > desiredWork.Left + 100)
+            {
+                _workAreaNudgeCount++;
+                SystemParametersInfo(SpiSetWorkArea, 0, ref desiredWork, SpifSendChange);
+                AppLog.Info($"ReserveShelf: synced work area bottom {verified.rcWork.Bottom} -> {expectedWorkBottom} (shelf={metrics.ShelfPixels}px, native={nativePixels}px, extra={extraHeight}px).");
+            }
         }
     }
 
@@ -751,8 +799,18 @@ public sealed class TaskbarReplacementSession : IDisposable
         set
         {
             if (_shelfHeight == value) return;
+            var wasReleasingNative = ReleaseNativeStrip;
             _shelfHeight = value;
-            if (_active && Volatile.Read(ref _stopInProgress) == 0) PositionDockWindow();
+            if (_active && Volatile.Read(ref _stopInProgress) == 0)
+            {
+                if (wasReleasingNative != ReleaseNativeStrip)
+                {
+                    SetTaskbarState(ReplacementState, _handle);
+                    HideNativeTaskbar();
+                    _reservation = null;
+                }
+                PositionDockWindow();
+            }
         }
     }
 
@@ -1283,6 +1341,10 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     [DllImport("shell32.dll")]
     private static extern nuint SHAppBarMessage(uint message, ref AppBarData data);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref Rect pvParam, uint fWinIni);
 
     [DllImport("user32.dll")]
     private static extern nint MonitorFromWindow(nint windowHandle, uint flags);

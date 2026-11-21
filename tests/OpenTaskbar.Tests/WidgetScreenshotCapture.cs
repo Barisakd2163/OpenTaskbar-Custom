@@ -123,7 +123,11 @@ internal static class WidgetScreenshotCapture
                 Humidity: 58,
                 WindSpeed: 12));
             weatherWidget.Visibility = Visibility.Visible;
-            SavePng(app, weatherWidget, 620, 62, $"weather_{suffix}.png");
+            SavePng(app, weatherWidget, 280, 62, $"weather_{suffix}.png");
+
+            // 12a. Weather Flyout (#84: feels-like, humidity, wind, 3-day forecast)
+            var weatherFlyout = weatherWidget.BuildFlyoutContent();
+            SavePng(app, (FrameworkElement)weatherFlyout, 320, 300, $"weather_flyout_{suffix}.png");
 
             // 12b. Audio Flyout (V19 3-section vertical mixer)
             var audioFlyout = audioWidget.BuildFlyoutContent();
