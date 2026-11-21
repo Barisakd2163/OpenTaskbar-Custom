@@ -39,6 +39,7 @@ public partial class SettingsWindow : Window
     private string? _selectedThemePackId;
     private bool _closingApplication;
     private bool _initializing = true;
+    private bool _isSaving;
     private AiUsageRing _aiUsageRing;
     private bool _closed;
     private bool _sourceReady;
@@ -283,6 +284,20 @@ public partial class SettingsWindow : Window
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
         }
+        if (!_isSaving && !ReferenceEquals(_preferences.Current, _applied))
+        {
+            _autoSaveTimer.Stop();
+            var wasInitializing = _initializing;
+            _initializing = true;
+            try
+            {
+                LoadAllSelections(_preferences.Current);
+            }
+            finally
+            {
+                _initializing = wasInitializing;
+            }
+        }
         ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
         LoadSurfaceStyles(_preferences.Current);
         ApplySettingsToLivePreviews(_preferences.Current);
@@ -300,6 +315,7 @@ public partial class SettingsWindow : Window
         UpdateDockScaleLabel();
         UpdateWidgetOptionState();
         UpdateBackdrop();
+        _applied = _preferences.Current;
     }
 
     private void UpdateBackdrop()
@@ -1710,13 +1726,21 @@ public partial class SettingsWindow : Window
             return;
         }
         var settings = ReadSelection();
-        if (_preferences.Save(settings) is { } error)
+        _isSaving = true;
+        try
         {
-            Trace.TraceWarning("Save settings error: {0}", error);
-            return;
+            if (_preferences.Save(settings) is { } error)
+            {
+                Trace.TraceWarning("Save settings error: {0}", error);
+                return;
+            }
+            _applied = _preferences.Current;
+            _startupEnabled = StartupToggle.IsChecked == true;
         }
-        _applied = settings;
-        _startupEnabled = StartupToggle.IsChecked == true;
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private bool _isClosing;

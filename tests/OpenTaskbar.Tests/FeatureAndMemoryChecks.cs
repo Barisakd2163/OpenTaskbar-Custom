@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -252,6 +253,9 @@ internal static class FeatureAndMemoryChecks
             var liveEmptyContent = testTray.BuildLiveContent(Array.Empty<ManagedShell.WindowsTray.NotifyIcon>());
             Check(liveEmptyContent is StackPanel sp && sp.Children.Count >= 2,
                 "TrayShellButton.BuildLiveContent must render a heading, empty caption and settings for an empty icon list.");
+
+            // 11. Dock profiles lifecycle, migration, sync, validation, and localization checks
+            CheckDockProfiles(Check);
         }
         finally
         {
@@ -260,6 +264,398 @@ internal static class FeatureAndMemoryChecks
 
         return checks;
     }
+
+    private static void CheckDockProfiles(Action<bool, string> Check)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ot-profiles-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(tempPath);
+            Check(!File.Exists(tempPath), "The first-launch profile fixture must start without a settings file.");
+            var (missingFile, missingError) = store.Load();
+            Check(missingError is null && HasDefaultProfile(missingFile),
+                "Loading a missing settings file must seed and activate exactly one Default profile.");
+
+            File.WriteAllText(tempPath, "{}");
+            var (emptyJson, emptyError) = store.Load();
+            Check(emptyError is null && HasDefaultProfile(emptyJson),
+                "Loading an empty settings object must seed and activate exactly one Default profile.");
+
+            foreach (var settings in new[] { new DockSettings(Profiles: null), new DockSettings(Profiles: []) })
+            {
+                var seeded = DockProfileService.EnsureDefaultProfile(settings);
+                Check(HasDefaultProfile(seeded), "EnsureDefaultProfile must seed Default for null and empty profile lists.");
+            }
+
+            CheckLegacyDockProfiles(store, tempPath, Check);
+            CheckDockProfileLifecycle(store, Check);
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
+
+        CheckDockProfileValidation(Check);
+        CheckDockProfileLocalization(Check);
+
+        static bool HasDefaultProfile(DockSettings settings) =>
+            settings is { ActiveProfile: "Default", Profiles: [{ Name: "Default" }] };
+    }
+
+    private static void CheckLegacyDockProfiles(DockSettingsStore store, string tempPath, Action<bool, string> Check)
+    {
+        File.WriteAllText(tempPath, """
+            {
+              "Profiles": [
+                {"Name":"Work","HiddenApps":["C:\\Games\\game.exe"]},
+                {"Name":"Gaming","HiddenApps":[]}
+              ],
+              "ActiveProfile": "Work",
+              "Widgets": ["Clock"],
+              "InstalledWidgets": ["Clock", "Weather"],
+              "WidgetOrder": ["Weather", "Clock"],
+              "DockItemOrder": ["widget:Clock", "start"],
+              "DockWidthMode": "Percent",
+              "DockWidthPixels": 1100,
+              "DockWidthPercent": 75,
+              "Theme": "Dark",
+              "ThemePack": "Neon",
+              "ThemeApplicationIcons": false,
+              "LauncherHotkey": "CtrlSpace",
+              "DockHotkey": "WinAltD",
+              "AutoHide": "Always"
+            }
+            """);
+        var (legacy, loadError) = store.Load();
+        Check(loadError is null && legacy is { ActiveProfile: "Work", Profiles: [{ Name: "Work" }, { Name: "Gaming" }] },
+            "Legacy two-property profiles must deserialize with their original names and active profile.");
+        Check(legacy is { Widgets: ["Clock"], DockWidthMode: DockWidthMode.Percent, ThemePack: "Neon" },
+            "Loading legacy profiles must retain the existing live widget, width, and theme settings.");
+        var legacyWork = legacy.Profiles![0];
+        var legacyGaming = legacy.Profiles![1];
+        Check(legacyWork.HiddenApps.SequenceEqual([@"C:\Games\game.exe"]) && legacyGaming.HiddenApps.Count == 0,
+            "Legacy profiles must deserialize both populated and empty hidden-app lists.");
+        CheckProfileFields(new DockProfile("Work", []), legacyWork, "Deserializing legacy Work", Check);
+        CheckProfileFields(new DockProfile("Gaming", []), legacyGaming, "Deserializing legacy Gaming", Check);
+        var beforeEnsure = SerializeSettings(legacy);
+        var ensured = DockProfileService.EnsureDefaultProfile(legacy);
+        Check(SerializeSettings(ensured) == beforeEnsure && SerializeSettings(legacy) == beforeEnsure,
+            "EnsureDefaultProfile must preserve existing profiles and their active name.");
+
+        var (gaming, gamingError) = DockProfileService.Switch(legacy, "Gaming");
+        Check(gamingError is null && gaming.ActiveProfile == "Gaming",
+            "Switching to a legacy profile must update ActiveProfile.");
+        CheckProfileFields(LiveProfileFields(legacy), LiveProfileFields(gaming), "Switching to legacy Gaming", Check);
+
+        var edited = gaming with { Theme = AppTheme.Light, DockWidthPercent = 55 };
+        var synced = DockProfileService.SyncActive(edited);
+        Check(synced.ActiveProfile == "Gaming" && synced.Profiles![1].HiddenApps.Count == 0,
+            "SyncActive must keep the legacy target active and preserve its hidden apps.");
+        CheckProfileFields(LiveProfileFields(edited), synced.Profiles![1], "Syncing legacy Gaming", Check);
+        CheckProfileFields(LiveProfileFields(legacy), synced.Profiles![0], "Preserving the outgoing Work snapshot", Check);
+
+        var (work, workError) = DockProfileService.Switch(synced, "Work");
+        Check(workError is null && work.ActiveProfile == "Work"
+            && work.Profiles![0].HiddenApps.SequenceEqual([@"C:\Games\game.exe"]),
+            "Switching back to Work must restore its active name and keep its legacy hidden apps.");
+        CheckProfileFields(LiveProfileFields(legacy), LiveProfileFields(work), "Returning to legacy Work", Check);
+    }
+
+    private static void CheckDockProfileLifecycle(DockSettingsStore store, Action<bool, string> Check)
+    {
+        var defaultFields = new DockSettings(
+            Widgets: ["Clock"], InstalledWidgets: ["Clock", "Weather"], WidgetOrder: ["Weather", "Clock"],
+            DockItemOrder: null, DockWidthMode: DockWidthMode.Auto, DockWidthPixels: 900, DockWidthPercent: 60,
+            Theme: AppTheme.System, ThemePack: null, ThemeApplicationIcons: true,
+            LauncherHotkey: HotkeyChoice.AltSpace, DockHotkey: HotkeyChoice.CtrlAltD, AutoHide: AutoHideMode.Disabled);
+        var workFields = new DockSettings(
+            Widgets: ["Focus"], InstalledWidgets: ["Focus", "Storage"], WidgetOrder: ["Storage", "Focus"],
+            DockItemOrder: ["widget:Focus", "start"], DockWidthMode: DockWidthMode.Pixels, DockWidthPixels: 1200, DockWidthPercent: 70,
+            Theme: AppTheme.Light, ThemePack: "Neon", ThemeApplicationIcons: false,
+            LauncherHotkey: HotkeyChoice.CtrlSpace, DockHotkey: HotkeyChoice.WinAltD, AutoHide: AutoHideMode.Smart);
+        var gamingFields = new DockSettings(
+            Widgets: ["Media"], InstalledWidgets: ["Media", "Audio"], WidgetOrder: ["Audio", "Media"],
+            DockItemOrder: ["start", "widget:Media"], DockWidthMode: DockWidthMode.Percent, DockWidthPixels: 1600, DockWidthPercent: 85,
+            Theme: AppTheme.Dark, ThemePack: "Arcade", ThemeApplicationIcons: true,
+            LauncherHotkey: HotkeyChoice.CtrlAltSpace, DockHotkey: HotkeyChoice.Disabled, AutoHide: AutoHideMode.Always);
+        string[] defaultHidden = [@"C:\Apps\default.exe"];
+        string[] workHidden = [@"C:\Apps\work.exe"];
+        string[] gamingHidden = [@"C:\Games\game.exe"];
+
+        var defaults = DockProfileService.UpdateHiddenApps(
+            DockProfileService.EnsureDefaultProfile(defaultFields), "Default", defaultHidden);
+        var (createdWork, createWorkError) = DockProfileService.Create(defaults, "Work");
+        Check(createWorkError is null && createdWork is { ActiveProfile: "Work", Profiles: { Count: 2 } },
+            "Create must append and activate Work.");
+        CheckProfileSnapshot(createdWork, "Work", defaultFields, [], "Creating Work from Default", Check);
+
+        var work = DockProfileService.UpdateHiddenApps(
+            workFields with { Profiles = createdWork.Profiles, ActiveProfile = createdWork.ActiveProfile }, "Work",
+            [workHidden[0], @"c:\apps\WORK.exe"]);
+        var (createdGaming, createGamingError) = DockProfileService.Create(work, "Gaming");
+        Check(createGamingError is null && createdGaming is { ActiveProfile: "Gaming", Profiles: { Count: 3 } },
+            "Create must append and activate Gaming.");
+        CheckProfileSnapshot(createdGaming, "Gaming", workFields, [], "Creating Gaming from Work", Check);
+        CheckProfileSnapshot(createdGaming, "Work", workFields, workHidden, "Capturing Work before creating Gaming", Check);
+
+        var gaming = DockProfileService.UpdateHiddenApps(
+            gamingFields with { Profiles = createdGaming.Profiles, ActiveProfile = createdGaming.ActiveProfile }, "Gaming", gamingHidden);
+        var workActive = SwitchTo(gaming, "Work", workFields, workHidden);
+
+        // Edit globals after creating all snapshots so stale profile data cannot satisfy the isolation checks.
+        var globals = workActive with
+        {
+            Language = AppLanguage.Japanese,
+            Position = DockPosition.Right,
+            Edge = DockEdge.Left,
+            Size = DockSize.Large,
+            DockScale = 1.25,
+            WeatherCity = "Istanbul",
+            CheckUpdates = false
+        };
+        var defaultActive = SwitchTo(globals, "Default", defaultFields, defaultHidden);
+        Check(defaultActive is { ThemePack: null, DockItemOrder: null, DockWidthMode: DockWidthMode.Auto },
+            "Switching from Work to Default must clear ThemePack and DockItemOrder and restore automatic width.");
+        var gamingActive = SwitchTo(defaultActive, "Gaming", gamingFields, gamingHidden);
+        workActive = SwitchTo(gamingActive, "Work", workFields, workHidden);
+
+        CheckDockProfileRenameAndDelete(workActive, defaultActive, workFields, workHidden, gamingFields, gamingHidden, Check);
+        CheckDockProfilePersistence(store, workActive, defaultFields, defaultHidden, Check);
+
+        DockSettings SwitchTo(DockSettings source, string name, DockSettings expected, IReadOnlyList<string> hiddenApps)
+        {
+            var (switched, error) = DockProfileService.Switch(source, name);
+            Check(error is null && switched.ActiveProfile == name, $"Switch must activate {name}.");
+            CheckProfileFields(LiveProfileFields(expected), LiveProfileFields(switched), $"Switching to {name}", Check);
+            CheckProfileSnapshot(switched, name, expected, hiddenApps, $"Restoring the {name} snapshot", Check);
+            CheckGlobalSettings(source, switched, $"Switching to {name}", Check);
+            return switched;
+        }
+    }
+
+    private static void CheckDockProfileRenameAndDelete(
+        DockSettings work, DockSettings defaults,
+        DockSettings workFields, IReadOnlyList<string> workHidden,
+        DockSettings gamingFields, IReadOnlyList<string> gamingHidden, Action<bool, string> Check)
+    {
+        var (renamedActive, activeError) = DockProfileService.Rename(work, "Work", "  Workroom  ");
+        Check(activeError is null && renamedActive.ActiveProfile == "Workroom"
+            && renamedActive.Profiles!.Select(profile => profile.Name).SequenceEqual(["Default", "Workroom", "Gaming"]),
+            "Renaming the active profile must trim the name and update ActiveProfile.");
+        CheckProfileSnapshot(renamedActive, "Workroom", workFields, workHidden, "Renaming active Work", Check);
+
+        var (caseOnly, caseError) = DockProfileService.Rename(renamedActive, "Workroom", "WORKROOM");
+        Check(caseError is null && caseOnly.ActiveProfile == "WORKROOM",
+            "Renaming a profile with only a case change must succeed and update the active name.");
+        CheckProfileSnapshot(caseOnly, "WORKROOM", workFields, workHidden, "Changing the case of Workroom", Check);
+
+        var (renamedInactive, inactiveError) = DockProfileService.Rename(caseOnly, "Gaming", "  Play  ");
+        Check(inactiveError is null && renamedInactive.ActiveProfile == "WORKROOM"
+            && renamedInactive.Profiles!.Select(profile => profile.Name).SequenceEqual(["Default", "WORKROOM", "Play"]),
+            "Renaming an inactive profile must trim the name and preserve ActiveProfile.");
+        CheckProfileSnapshot(renamedInactive, "Play", gamingFields, gamingHidden, "Renaming inactive Gaming", Check);
+        CheckProfileFields(LiveProfileFields(work), LiveProfileFields(renamedInactive), "Renaming profiles", Check);
+
+        var beforeRename = SerializeSettings(renamedInactive);
+        foreach (var (currentName, newName, expectedError) in new[]
+        {
+            ("Play", " workroom ", "ErrorProfileExists"),
+            ("WORKROOM", "", "ErrorProfileNameEmpty"),
+            ("WORKROOM", " \t ", "ErrorProfileNameEmpty"),
+            ("Missing", "Personal", "ErrorProfileNotFound")
+        })
+        {
+            var (unchanged, error) = DockProfileService.Rename(renamedInactive, currentName, newName);
+            Check(error == expectedError && SerializeSettings(unchanged) == beforeRename
+                && SerializeSettings(renamedInactive) == beforeRename,
+                $"Rename must return {expectedError} and preserve the original settings.");
+        }
+
+        var (removedInactive, removeInactiveError) = DockProfileService.Delete(work, "Gaming");
+        Check(removeInactiveError is null && removedInactive.ActiveProfile == "Work"
+            && removedInactive.Profiles!.Select(profile => profile.Name).SequenceEqual(["Default", "Work"]),
+            "Deleting inactive Gaming must remove it and keep Work active.");
+        CheckProfileFields(LiveProfileFields(work), LiveProfileFields(removedInactive), "Deleting inactive Gaming", Check);
+
+        var (removedActive, removeActiveError) = DockProfileService.Delete(defaults, "Default");
+        Check(removeActiveError is null && removedActive.ActiveProfile == "Work"
+            && removedActive.Profiles!.Select(profile => profile.Name).SequenceEqual(["Work", "Gaming"]),
+            "Deleting active Default must activate Work, the first remaining profile.");
+        CheckProfileFields(LiveProfileFields(workFields), LiveProfileFields(removedActive), "Deleting active Default", Check);
+        CheckProfileSnapshot(removedActive, "Work", workFields, workHidden, "Activating Work after deletion", Check);
+        CheckGlobalSettings(defaults, removedActive, "Deleting active Default", Check);
+
+        var (lastProfile, removeGamingError) = DockProfileService.Delete(removedActive, "Gaming");
+        Check(removeGamingError is null && lastProfile is { ActiveProfile: "Work", Profiles: [{ Name: "Work" }] },
+            "Deleting the other inactive profile must leave only Work.");
+        var beforeDelete = SerializeSettings(lastProfile);
+        var (refused, lastError) = DockProfileService.Delete(lastProfile, "Work");
+        Check(lastError == "ErrorProfileDeleteLast" && SerializeSettings(refused) == beforeDelete
+            && SerializeSettings(lastProfile) == beforeDelete,
+            "Deleting the last profile must return ErrorProfileDeleteLast and preserve the settings.");
+    }
+
+    private static void CheckDockProfilePersistence(
+        DockSettingsStore store, DockSettings work, DockSettings defaultFields, IReadOnlyList<string> defaultHidden,
+        Action<bool, string> Check)
+    {
+        Check(store.Save(work) is null, "The Work profile fixture must save to the temporary settings file.");
+        var preferences = new ApplicationPreferences(store);
+        Check(preferences.LoadError is null && preferences.Current.ActiveProfile == "Work",
+            "ApplicationPreferences must open the settings file with Work active.");
+        CheckProfileFields(LiveProfileFields(work), LiveProfileFields(preferences.Current), "Opening Work before editing", Check);
+
+        var edited = preferences.Current with
+        {
+            Widgets = ["Countdown"],
+            InstalledWidgets = ["Countdown", "DayProgress"],
+            WidgetOrder = ["DayProgress", "Countdown"],
+            DockItemOrder = ["widget:Countdown", "search", "start"],
+            DockWidthMode = DockWidthMode.Fill,
+            DockWidthPixels = 1420,
+            DockWidthPercent = 92,
+            Theme = AppTheme.Dark,
+            ThemePack = null,
+            ThemeApplicationIcons = true,
+            LauncherHotkey = HotkeyChoice.Disabled,
+            DockHotkey = HotkeyChoice.CtrlAltD,
+            AutoHide = AutoHideMode.Always
+        };
+        string[] hiddenApps = [@"C:\Apps\edited.exe"];
+        edited = DockProfileService.UpdateHiddenApps(edited, "Work", hiddenApps);
+
+        var previousLanguage = UiText.Current.Language;
+        var previousPack = ThemePacks.Current?.Id;
+        var previousTheme = ThemeManager.Current;
+        try
+        {
+            Check(preferences.Save(edited) is null && preferences.Current.ActiveProfile == "Work",
+                "ApplicationPreferences.Save must persist the edits with Work active.");
+            CheckProfileSnapshot(preferences.Current, "Work", edited, hiddenApps, "Saving the active Work snapshot", Check);
+
+            var (defaults, defaultError) = DockProfileService.Switch(preferences.Current, "Default");
+            Check(defaultError is null && defaults.ActiveProfile == "Default", "Switching away from saved Work must activate Default.");
+            CheckProfileFields(LiveProfileFields(defaultFields), LiveProfileFields(defaults), "Switching away from saved Work", Check);
+            CheckProfileSnapshot(defaults, "Default", defaultFields, defaultHidden, "Preserving Default after saving Work", Check);
+            var (restoredWork, workError) = DockProfileService.Switch(defaults, "Work");
+            Check(workError is null && restoredWork.ActiveProfile == "Work", "Switching back must reactivate saved Work.");
+            CheckProfileFields(LiveProfileFields(edited), LiveProfileFields(restoredWork), "Switching back to saved Work", Check);
+            CheckProfileSnapshot(restoredWork, "Work", edited, hiddenApps, "Restoring saved Work", Check);
+
+            var (reloaded, loadError) = store.Load();
+            Check(loadError is null && reloaded.ActiveProfile == "Work", "Reloading the settings file must retain Work as active.");
+            CheckProfileFields(LiveProfileFields(edited), LiveProfileFields(reloaded), "Reloading live Work settings from disk", Check);
+            CheckProfileSnapshot(reloaded, "Work", edited, hiddenApps, "Reloading the Work snapshot from disk", Check);
+            CheckProfileSnapshot(reloaded, "Default", defaultFields, defaultHidden, "Reloading the Default snapshot from disk", Check);
+            CheckGlobalSettings(work, reloaded, "Reloading Work from disk", Check);
+        }
+        finally
+        {
+            UiText.Current.SetLanguage(previousLanguage);
+            ThemeManager.Apply(previousTheme);
+            ThemePacks.Select(previousPack);
+            ThemePacks.ApplyWidgets(previousTheme);
+        }
+    }
+
+    private static void CheckDockProfileValidation(Action<bool, string> Check)
+    {
+        var profile = new DockProfile("Work", [], Widgets: ["Clock"], InstalledWidgets: ["Clock"]);
+        var valid = new DockSettings(Profiles: [profile], ActiveProfile: "Work");
+        Check(DockSettingsStore.Validate(valid), "The valid profile fixture must pass settings validation.");
+        Check(!DockSettingsStore.Validate(valid with { Profiles = [profile, profile with { Name = "WORK" }] }),
+            "Validation must reject profile names that differ only in case.");
+
+        foreach (var (invalid, description) in new (DockProfile, string)[]
+        {
+            (profile with { Name = "" }, "an empty name"),
+            (profile with { Name = " " }, "a whitespace-only name"),
+            (profile with { Widgets = ["InvalidWidget"], InstalledWidgets = null }, "an invalid enabled widget ID"),
+            (profile with { InstalledWidgets = ["Clock", "InvalidWidget"] }, "an invalid installed widget ID"),
+            (profile with { InstalledWidgets = ["Weather"] }, "an enabled widget missing from InstalledWidgets"),
+            (profile with { DockWidthPixels = 99 }, "a pixel width below 100"),
+            (profile with { DockWidthPixels = 5001 }, "a pixel width above 5000"),
+            (profile with { DockWidthPercent = 9 }, "a width percentage below 10"),
+            (profile with { DockWidthPercent = 101 }, "a width percentage above 100"),
+            (profile with { DockWidthMode = (DockWidthMode)99 }, "an undefined width mode"),
+            (profile with { Theme = (AppTheme)99 }, "an undefined theme"),
+            (profile with { LauncherHotkey = (HotkeyChoice)99 }, "an undefined launcher hotkey"),
+            (profile with { DockHotkey = (HotkeyChoice)99 }, "an undefined dock hotkey"),
+            (profile with { AutoHide = (AutoHideMode)99 }, "an undefined auto-hide mode")
+        })
+        {
+            Check(!DockSettingsStore.Validate(valid with { Profiles = [invalid] }),
+                $"Profile validation must reject {description}.");
+        }
+    }
+
+    private static void CheckDockProfileLocalization(Action<bool, string> Check)
+    {
+        string[] keys = ["ProfileRename", "ProfileRenamePrompt", "ErrorProfileNameEmpty", "ErrorProfileNotFound", "ErrorProfileDeleteLast"];
+        var assembly = typeof(LanguageCatalog).Assembly;
+        var resources = assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith("OpenTaskbar.Localization.Languages.", StringComparison.Ordinal))
+            .ToArray();
+        Check(resources.Length == 14, "There must be 14 embedded language resources for dock profile localization.");
+        foreach (var resource in resources)
+        {
+            using var stream = assembly.GetManifestResourceStream(resource)!;
+            Check(stream.ReadByte() == 0x7B, $"{resource} must start with '{{' and have no UTF-8 BOM.");
+            stream.Position = 0;
+            using var document = JsonDocument.Parse(stream);
+            foreach (var key in keys)
+            {
+                Check(document.RootElement.ValueKind == JsonValueKind.Object
+                    && document.RootElement.TryGetProperty(key, out var value)
+                    && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()),
+                    $"{resource} must have a non-empty translation for {key}.");
+            }
+        }
+    }
+
+    private static void CheckProfileSnapshot(
+        DockSettings settings, string name, DockSettings expected, IReadOnlyList<string> hiddenApps,
+        string context, Action<bool, string> Check)
+    {
+        var profile = settings.Profiles?.SingleOrDefault(item => item.Name == name);
+        Check(profile is not null && profile.HiddenApps.SequenceEqual(hiddenApps), $"{context} must preserve the {name} hidden apps.");
+        CheckProfileFields(LiveProfileFields(expected), profile!, context, Check);
+    }
+
+    private static DockProfile LiveProfileFields(DockSettings settings) => new(
+        Name: string.Empty, HiddenApps: [], Widgets: settings.Widgets, InstalledWidgets: settings.InstalledWidgets,
+        WidgetOrder: settings.WidgetOrder, DockItemOrder: settings.DockItemOrder, DockWidthMode: settings.DockWidthMode,
+        DockWidthPixels: settings.DockWidthPixels, DockWidthPercent: settings.DockWidthPercent, Theme: settings.Theme,
+        ThemePack: settings.ThemePack, ThemeApplicationIcons: settings.ThemeApplicationIcons, LauncherHotkey: settings.LauncherHotkey,
+        DockHotkey: settings.DockHotkey, AutoHide: settings.AutoHide);
+
+    private static void CheckProfileFields(DockProfile expected, DockProfile actual, string context, Action<bool, string> Check)
+    {
+        Check(SameOrder(expected.Widgets, actual.Widgets), $"{context} must preserve Widgets.");
+        Check(SameOrder(expected.InstalledWidgets, actual.InstalledWidgets), $"{context} must preserve InstalledWidgets.");
+        Check(SameOrder(expected.WidgetOrder, actual.WidgetOrder), $"{context} must preserve WidgetOrder.");
+        Check(SameOrder(expected.DockItemOrder, actual.DockItemOrder), $"{context} must preserve DockItemOrder.");
+        Check(actual.DockWidthMode == expected.DockWidthMode && actual.DockWidthPixels == expected.DockWidthPixels
+            && actual.DockWidthPercent == expected.DockWidthPercent, $"{context} must preserve width mode, pixels, and percentage.");
+        Check(actual.Theme == expected.Theme && actual.ThemePack == expected.ThemePack
+            && actual.ThemeApplicationIcons == expected.ThemeApplicationIcons, $"{context} must preserve theme, theme pack, and icon theming.");
+        Check(actual.LauncherHotkey == expected.LauncherHotkey && actual.DockHotkey == expected.DockHotkey,
+            $"{context} must preserve both hotkeys.");
+        Check(actual.AutoHide == expected.AutoHide, $"{context} must preserve AutoHide.");
+
+        static bool SameOrder(IReadOnlyList<string>? expected, IReadOnlyList<string>? actual) =>
+            expected is null ? actual is null : actual is not null && expected.SequenceEqual(actual);
+    }
+
+    private static void CheckGlobalSettings(DockSettings expected, DockSettings actual, string context, Action<bool, string> Check)
+    {
+        Check(actual.Language == expected.Language && actual.Position == expected.Position && actual.Edge == expected.Edge
+            && actual.Size == expected.Size && actual.DockScale == expected.DockScale && actual.WeatherCity == expected.WeatherCity
+            && actual.CheckUpdates == expected.CheckUpdates, $"{context} must preserve all global settings.");
+    }
+
+    private static string SerializeSettings(DockSettings settings) =>
+        JsonSerializer.Serialize(settings, DockSettingsStore.SerializerOptions);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (DockFlyout Flyout, WeakReference ContentRef) ExerciseDockFlyout(

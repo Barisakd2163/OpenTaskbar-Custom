@@ -17,6 +17,7 @@ public sealed class ApplicationPreferences
 
     public string? Save(DockSettings settings)
     {
+        settings = DockProfileService.SyncActive(settings);
         var error = _store.Save(settings);
         if (error is not null) return error;
         Current = settings;

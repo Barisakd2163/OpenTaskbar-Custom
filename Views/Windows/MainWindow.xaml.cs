@@ -1979,6 +1979,7 @@ public partial class MainWindow : Window
         _sizePreviewOverride = null;
         _radiusPreviewOverride = null;
         ResetMagnification(immediate: true);
+        DockFlyout.CloseAll(restoreFocus: false);
         DockSurfaceTranslate.X = 0;
         ApplyWidgets(_preferences.Current.Widgets);
         ThemePacks_Changed(this, EventArgs.Empty);

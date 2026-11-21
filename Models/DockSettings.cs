@@ -78,8 +78,23 @@ public enum AiProviders { None = 0, Claude = 1, Codex = 2, Antigravity = 4, Open
 /// <summary>Which quota window the AI usage ring shows; Highest follows whichever window is closest to its limit.</summary>
 public enum AiUsageRing { Highest, Session, Weekly }
 
-/// <summary>A named view of the dock that hides some pinned apps; pins themselves are never removed.</summary>
-public sealed record DockProfile(string Name, IReadOnlyList<string> HiddenApps);
+/// <summary>A named dock configuration snapshot (widgets, layout, appearance, hotkeys, and hidden pinned apps).</summary>
+public sealed record DockProfile(
+    string Name,
+    IReadOnlyList<string> HiddenApps,
+    IReadOnlyList<string>? Widgets = null,
+    IReadOnlyList<string>? InstalledWidgets = null,
+    IReadOnlyList<string>? WidgetOrder = null,
+    IReadOnlyList<string>? DockItemOrder = null,
+    DockWidthMode? DockWidthMode = null,
+    int? DockWidthPixels = null,
+    int? DockWidthPercent = null,
+    AppTheme? Theme = null,
+    string? ThemePack = null,
+    bool? ThemeApplicationIcons = null,
+    HotkeyChoice? LauncherHotkey = null,
+    HotkeyChoice? DockHotkey = null,
+    AutoHideMode? AutoHide = null);
 
 /// <summary>A user-defined group of applications shown as a single dock icon with a flyout.</summary>
 public sealed record DockAppGroup(string Id, string Name, IReadOnlyList<string> ExecutablePaths);
