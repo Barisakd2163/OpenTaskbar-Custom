@@ -127,7 +127,38 @@ public partial class MainWindow
         return geom;
     }
 
-    internal static BitmapSource RenderModernFolderIcon(int size)
+    private static readonly Pen DownloadsArrowPen = CreateFrozenPen(Color.FromArgb(0xC8, 0x5A, 0x39, 0x06), 7.5);
+
+    private static Pen CreateFrozenPen(Color color, double thickness)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        var pen = new Pen(brush, thickness)
+        {
+            StartLineCap = PenLineCap.Round,
+            EndLineCap = PenLineCap.Round,
+            LineJoin = PenLineJoin.Round
+        };
+        pen.Freeze();
+        return pen;
+    }
+
+    private static bool IsDownloadsFolder(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+            var downloads = Path.TrimEndingDirectorySeparator(Path.GetFullPath(DownloadsFolder));
+            return string.Equals(normalized, downloads, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    internal static BitmapSource RenderModernFolderIcon(int size, bool isDownloads = false)
     {
         var target = Math.Max(16, size);
         var scale = target / 128.0;
@@ -155,6 +186,15 @@ public partial class MainWindow
             var frontPen = new Pen(FolderFrontStroke, Math.Max(0.5, 1.0 * scale));
             frontPen.Freeze();
             dc.DrawRoundedRectangle(FolderFrontBrush, frontPen, frontRect, 14 * scale, 14 * scale);
+
+            if (isDownloads)
+            {
+                dc.PushTransform(new ScaleTransform(scale, scale));
+                dc.DrawLine(DownloadsArrowPen, new Point(64, 60), new Point(64, 90));
+                dc.DrawLine(DownloadsArrowPen, new Point(51, 78), new Point(64, 91));
+                dc.DrawLine(DownloadsArrowPen, new Point(77, 78), new Point(64, 91));
+                dc.Pop();
+            }
         }
 
         var rtb = new RenderTargetBitmap(target, target, 96, 96, PixelFormats.Pbgra32);
@@ -165,11 +205,10 @@ public partial class MainWindow
 
     internal static BitmapSource? CreateStackIcon(DockStack stack, int targetSize = 128)
     {
-        var size = Math.Max(16, targetSize);
-        var icon = ApplicationIconProvider.GetForShellItem(stack.Path, size, iconOnly: true)
-                   ?? ApplicationIconProvider.GetForFile(stack.Path, size)
-                   ?? RenderModernFolderIcon(size);
-        return icon is null ? null : FillSquare(icon, size);
+        // Always render a consistent folder-backed icon instead of relying on Windows Shell's
+        // IShellItemImageFactory, which intermittently returns a bare arrow without a folder for Downloads.
+        var size = Math.Max(128, targetSize);
+        return FillSquare(RenderModernFolderIcon(size, isDownloads: IsDownloadsFolder(stack.Path)), size);
     }
 
     /// <summary>
