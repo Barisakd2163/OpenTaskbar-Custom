@@ -67,6 +67,14 @@ internal static class TaskbarRecoveryChecks
         Check(SyntheticKeyboard.SendChord() is null, "An empty synthetic chord must be a no-op.");
         Check(SyntheticKeyboard.TrackedModifiers.Count == 0, "No modifier can remain tracked after an empty chord.");
 
+        // StopForRestart followed by Dispose must mark the session as stopped for restart without invoking
+        // Stop()/RestoreWithVerification (which would flash the native taskbar when a journal exists, #86).
+        using (var restartSession = new TaskbarReplacementSession(new System.Windows.Window(), 0, autoHideEnabled: false))
+        {
+            Check(restartSession.StopForRestart() is null, "StopForRestart on an idle session must succeed.");
+            Check(restartSession.StoppedForRestart, "StopForRestart must mark the session so Dispose skips native taskbar restore.");
+        }
+
         return checks;
     }
 }

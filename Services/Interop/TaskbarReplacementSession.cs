@@ -56,6 +56,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _stateChangeStarted;
     private uint _previousTaskbarState;
     private bool _disposed;
+    private bool _stoppedForRestart;
     private bool _fullScreenSuppressed;
     private double _nativeBottomTaskbarHeight;
     private bool _nativeTaskbarAtBottom = true;
@@ -304,6 +305,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             return;
         }
+        _stoppedForRestart = false;
 
         var pending = HasPendingRecoveryFile(out var recoveryError, out var pendingState);
         if (recoveryError is not null)
@@ -491,6 +493,7 @@ public sealed class TaskbarReplacementSession : IDisposable
                 ZeroAndRemoveAppBar();
             }
             _stateChangeStarted = false;
+            _stoppedForRestart = true;
             return null;
         }
         finally
@@ -1200,6 +1203,9 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
     }
 
+    /// <summary>True when <see cref="StopForRestart"/> ended this session for an immediate replacement restart.</summary>
+    internal bool StoppedForRestart => _stoppedForRestart;
+
     public void Dispose()
     {
         if (_disposed)
@@ -1207,9 +1213,15 @@ public sealed class TaskbarReplacementSession : IDisposable
             return;
         }
 
-        var error = Stop();
-        if (error is not null) Trace.TraceError(error);
-        if (IsActive) return;
+        // StopForRestart intentionally leaves the native taskbar hidden and the journal on disk so the
+        // replacement session that starts immediately afterward can re-register its AppBar without flashing
+        // Explorer's taskbar. Calling Stop() here would see the journal and restore/show the taskbar (#86).
+        if (!_stoppedForRestart)
+        {
+            var error = Stop();
+            if (error is not null) Trace.TraceError(error);
+            if (IsActive) return;
+        }
         _disposed = true;
         _fullScreenPollTimer?.Stop();
         if (_fullScreenPollTimer is not null)
