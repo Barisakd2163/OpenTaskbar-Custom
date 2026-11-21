@@ -82,9 +82,6 @@ public sealed class DockSettingsStore
         }
     }
 
-<<<<<<< HEAD
-    private DockSettings CreateDefaultSettings() => DockProfileService.EnsureDefaultProfile(new(Language: _defaultLanguage));
-=======
     /// <summary>
     /// Rewrites retired v0.2.x JSON tokens before System.Text.Json deserialization so upgrading users keep
     /// their existing settings instead of failing enum parsing and falling back to factory defaults.
@@ -137,8 +134,7 @@ public sealed class DockSettingsStore
         return changed ? obj.ToJsonString() : rawJson;
     }
 
-    private DockSettings CreateDefaultSettings() => new(Language: _defaultLanguage);
->>>>>>> 1bf6bb8 (fix: restore auto-hide edge trigger, group click threshold, and v0.2.x settings migration)
+    private DockSettings CreateDefaultSettings() => DockProfileService.EnsureDefaultProfile(new(Language: _defaultLanguage));
 
     /// <summary>
     /// Drops identifiers for retired widgets from every setting that can carry one. Search stopped being a widget
