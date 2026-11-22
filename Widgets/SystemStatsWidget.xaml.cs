@@ -30,7 +30,6 @@ public partial class SystemStatsWidget : DockWidget
 
     private readonly SystemStats _stats = new();
     private readonly object _sensorGate = new();
-    private readonly DockFlyout _flyout = new();
     private SystemSensors? _sensors;
     private int _sensorGeneration;
     private int _sensorSampling;
@@ -46,8 +45,6 @@ public partial class SystemStatsWidget : DockWidget
     private SystemMeters _configuredMeters;
     private readonly Dictionary<FrameworkElement, int> _missingSensorSamples = [];
     private readonly Dictionary<FrameworkElement, int> _validSensorSamples = [];
-
-    private Border? _flyoutHost;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 30;
@@ -66,126 +63,13 @@ public partial class SystemStatsWidget : DockWidget
         }
     }
 
-    public SystemStatsWidget()
-    {
-        InitializeComponent();
-        _flyout.Closed += (_, _) => _flyoutHost = null;
-    }
+    public SystemStatsWidget() => InitializeComponent();
 
     protected override void OnCompactChanged(bool compact) => SyncMeterVisibility();
     protected override void OnHoverExpandedChanged(bool expanded) => SyncMeterVisibility();
 
-    public override UIElement? BuildHoverFlyoutContent() => BuildMetricsFlyout();
-
-    private void StatsCardButton_Click(object sender, RoutedEventArgs e)
-    {
-        _flyout.Toggle(StatsCardButton, () =>
-        {
-            var host = new Border { Width = 292 };
-            _flyoutHost = host;
-            host.Child = BuildMetricsFlyout();
-            return host;
-        }, animate: true, focusable: false);
-    }
-
-    private void RefreshOpenFlyout()
-    {
-        if (_flyout.IsOpen && _flyoutHost is not null)
-        {
-            _flyoutHost.Child = BuildMetricsFlyout();
-        }
-    }
-
-    internal UIElement BuildMetricsFlyout()
-    {
-        var root = new StackPanel();
-        root.Children.Add(DockFlyout.Heading(UiText.Get("WidgetSystemStats")));
-
-        var meters = Settings.StatsMeters;
-        if (meters.HasFlag(SystemMeters.Cpu))
-            AddMetricRow(root, UiText.Get("Cpu"), _cpuState.Initialized ? $"{_cpuState.Shown}%" : "—", _cpuState.Value);
-        if (meters.HasFlag(SystemMeters.Memory))
-            AddMetricRow(root, UiText.Get("Memory"), _memoryState.Initialized ? $"{_memoryState.Shown}%" : "—", _memoryState.Value);
-        if (meters.HasFlag(SystemMeters.Gpu) && _hasGpu)
-            AddMetricRow(root, UiText.Get("Gpu"), $"{_gpuState.Shown}%", _gpuState.Value);
-        if (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp)
-            AddPlainRow(root, UiText.Get("GpuTemperature"), $"{_gpuTempState.Shown} °C");
-
-        var divider = new Border { Height = 1, Margin = new Thickness(0, 10, 0, 8) };
-        divider.SetResourceReference(Border.BackgroundProperty, "StrokeSubtle");
-        root.Children.Add(divider);
-
-        var tmBtn = new Button
-        {
-            Content = UiText.Get("TaskManager"),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        tmBtn.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
-        tmBtn.Click += (_, _) =>
-        {
-            _flyout.Close();
-            Report(ShellShortcuts.OpenTaskManager());
-        };
-        root.Children.Add(tmBtn);
-
-        return root;
-    }
-
-    private static void AddMetricRow(Panel parent, string label, string valueText, double normalized)
-    {
-        var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
-        var val = new TextBlock
-        {
-            Text = valueText,
-            FontSize = 12.5,
-            FontWeight = FontWeights.SemiBold,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        val.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        DockPanel.SetDock(val, Dock.Right);
-        row.Children.Add(val);
-
-        var lbl = new TextBlock { Text = label, FontSize = 12 };
-        lbl.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        row.Children.Add(lbl);
-        parent.Children.Add(row);
-
-        var track = new Border { Height = 6, CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 0, 8), ClipToBounds = true };
-        track.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
-
-        var pct = Math.Clamp(normalized, 0, 1);
-        var fillGrid = new Grid();
-        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(pct, GridUnitType.Star) });
-        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - pct, GridUnitType.Star) });
-
-        var fill = new Border { CornerRadius = new CornerRadius(3) };
-        fill.SetResourceReference(Border.BackgroundProperty,
-            pct >= 0.9 ? "WidgetFocusAccent" : pct >= 0.75 ? "WidgetWarning" : "WidgetBlue");
-        Grid.SetColumn(fill, 0);
-        fillGrid.Children.Add(fill);
-        track.Child = fillGrid;
-        parent.Children.Add(track);
-    }
-
-    private static void AddPlainRow(Panel parent, string label, string valueText)
-    {
-        var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
-        var val = new TextBlock
-        {
-            Text = valueText,
-            FontSize = 12.5,
-            FontWeight = FontWeights.SemiBold,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        val.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        DockPanel.SetDock(val, Dock.Right);
-        row.Children.Add(val);
-
-        var lbl = new TextBlock { Text = label, FontSize = 12 };
-        lbl.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        row.Children.Add(lbl);
-        parent.Children.Add(row);
-    }
+    // System Meters is a pure info widget: metrics are already visible on the dock, so no hover/click flyout.
+    public override UIElement? BuildHoverFlyoutContent() => null;
 
     protected override void OnActivated()
     {
@@ -201,7 +85,6 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnDeactivated()
     {
-        _flyout.Close();
         var generation = Interlocked.Increment(ref _sensorGeneration);
         _ = Task.Run(() =>
         {
@@ -216,11 +99,7 @@ public partial class SystemStatsWidget : DockWidget
         _lastSensorSampleTickMs = 0;
     }
 
-    protected override void OnDisposed()
-    {
-        _flyout.Close();
-        base.OnDisposed();
-    }
+
 
     protected override void OnSettingsChanged()
     {
@@ -258,7 +137,6 @@ public partial class SystemStatsWidget : DockWidget
         if (meters.HasFlag(SystemMeters.Memory) && SystemStats.SampleMemory() is { } memory)
             SetUsage(RamValueText, ref _memoryState, memory);
         UpdateTooltip();
-        RefreshOpenFlyout();
     }
 
     private void PrimeSensorBaselineIfNeeded()
@@ -355,7 +233,6 @@ public partial class SystemStatsWidget : DockWidget
         UpdateSensor(GpuTemperatureButton, currentMeters.HasFlag(SystemMeters.GpuTemperature) ? gpuTemp : null,
             celsius => SetTemperature(GpuTempValueText, ref _gpuTempState, celsius));
         UpdateTooltip();
-        RefreshOpenFlyout();
     }
 
     private void ApplyMeterSelection()

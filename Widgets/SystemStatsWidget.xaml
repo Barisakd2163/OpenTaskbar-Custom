@@ -4,7 +4,7 @@
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
               xmlns:local="clr-namespace:OpenTaskbar.Services">
     <Button x:Name="StatsCardButton" Style="{StaticResource WidgetCardButton}" Padding="10,0"
-            Click="StatsCardButton_Click" AutomationProperties.Name="{local:Loc WidgetSystemStats}">
+            AutomationProperties.Name="{local:Loc WidgetSystemStats}">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconCpu}"
                             Width="15" Height="15" Margin="0,0,8,0" VerticalAlignment="Center"
