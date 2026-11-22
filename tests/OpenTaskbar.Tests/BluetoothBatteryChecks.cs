@@ -1,5 +1,8 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using OpenTaskbar.Models;
+using OpenTaskbar.Services;
 using OpenTaskbar.Widgets;
 
 internal static class BluetoothBatteryChecks
@@ -19,6 +22,8 @@ internal static class BluetoothBatteryChecks
         CheckClassification(Check);
         CheckNodeSelection(Check);
         CheckCompactMode(Check);
+        CheckHoverExpandedMode(Check);
+        CheckLanguageChangeRefresh(Check);
         CheckHoverFlyout(Check);
 
         return checks;
@@ -140,6 +145,104 @@ internal static class BluetoothBatteryChecks
         check(widget.IsCompact, "Widget must enter compact mode.");
         widget.SetCompactState(false);
         check(!widget.IsCompact, "Widget must exit compact mode.");
+    }
+
+    private static void CheckHoverExpandedMode(Action<bool, string> check)
+    {
+        var widget = new BluetoothBatteryWidget
+        {
+            BatteryReader = () => Task.FromResult<IReadOnlyList<BluetoothDeviceBatteryInfo>>(
+            [
+                new("Logitech MX Master", "m1", true, 64, BluetoothDeviceKind.Mouse)
+            ])
+        };
+        widget.Activate();
+        widget.RefreshBatteriesAsync().GetAwaiter().GetResult();
+
+        static Visibility PercentVisibility(BluetoothBatteryWidget w)
+        {
+            var tiles = (StackPanel)((Button)w.Content!).Content!;
+            var border = (Border)tiles.Children[0];
+            var stack = (StackPanel)border.Child!;
+            return stack.Children[1].Visibility;
+        }
+
+        check(PercentVisibility(widget) == Visibility.Visible,
+            "Battery percentage must be visible in normal density mode.");
+
+        widget.SetCompactState(true);
+        check(PercentVisibility(widget) == Visibility.Collapsed,
+            "Battery percentage must collapse in compact mode.");
+
+        widget.SetHoverExpanded(true);
+        check(widget.IsHoverExpanded && PercentVisibility(widget) == Visibility.Visible,
+            "Inline hover expansion must reveal battery percentages while compact.");
+
+        // Rebuilding tiles during a refresh while compact + hover-expanded must preserve expanded visibility.
+        widget.RefreshBatteriesAsync().GetAwaiter().GetResult();
+        check(PercentVisibility(widget) == Visibility.Visible,
+            "CreateDeviceTile must keep battery percentages visible when IsCompact && IsHoverExpanded.");
+
+        widget.SetHoverExpanded(false);
+        check(!widget.IsHoverExpanded && PercentVisibility(widget) == Visibility.Collapsed,
+            "Ending inline hover expansion must return compact tiles to icon-only.");
+
+        widget.SetCompactState(false);
+        check(PercentVisibility(widget) == Visibility.Visible,
+            "Exiting compact mode must restore battery percentages.");
+
+        widget.Deactivate();
+    }
+
+    private static void CheckLanguageChangeRefresh(Action<bool, string> check)
+    {
+        var originalLanguage = UiText.Current.Language;
+        try
+        {
+            UiText.Current.SetLanguage(AppLanguage.English);
+            var widget = new BluetoothBatteryWidget
+            {
+                BatteryReader = () => Task.FromResult<IReadOnlyList<BluetoothDeviceBatteryInfo>>([])
+            };
+            widget.Activate();
+            widget.UpdateDisplay();
+
+            var button = (Button)widget.Content!;
+            var englishTooltip = UiText.Get("WidgetBluetoothBatteryDescription");
+            var englishName = UiText.Get("WidgetBluetoothBattery");
+            check(Equals(button.ToolTip, englishTooltip)
+                  && AutomationProperties.GetName(button) == englishName
+                  && ((TextBlock)button.Content!).Text == UiText.Get("BluetoothNoDevicesAbbr"),
+                "Empty Bluetooth widget must initialize localized tooltip, automation name, and placeholder.");
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            var turkishTooltip = UiText.Get("WidgetBluetoothBatteryDescription");
+            var turkishName = UiText.Get("WidgetBluetoothBattery");
+            check(turkishTooltip != englishTooltip && turkishName != englishName,
+                "Test requires distinct English and Turkish localization strings.");
+            check(Equals(button.ToolTip, turkishTooltip)
+                  && AutomationProperties.GetName(button) == turkishName
+                  && ((TextBlock)button.Content!).Text == UiText.Get("BluetoothNoDevicesAbbr"),
+                "Switching language while active must refresh empty Bluetooth tooltip, automation name, and placeholder.");
+
+            widget.BatteryReader = () => Task.FromResult<IReadOnlyList<BluetoothDeviceBatteryInfo>>(
+            [
+                new("Sony WH-1000XM5", "h1", true, 80, BluetoothDeviceKind.Headphones)
+            ]);
+            widget.RefreshBatteriesAsync().GetAwaiter().GetResult();
+            check(AutomationProperties.GetName(button) == $"{turkishName}: Sony WH-1000XM5",
+                "Connected Bluetooth widget automation name must use the active language.");
+
+            UiText.Current.SetLanguage(AppLanguage.English);
+            check(AutomationProperties.GetName(button) == $"{englishName}: Sony WH-1000XM5",
+                "Switching language with connected devices must refresh Bluetooth automation name.");
+
+            widget.Deactivate();
+        }
+        finally
+        {
+            UiText.Current.SetLanguage(originalLanguage);
+        }
     }
 
     private static void CheckHoverFlyout(Action<bool, string> check)

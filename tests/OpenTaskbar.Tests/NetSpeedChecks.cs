@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using OpenTaskbar.Services;
 using OpenTaskbar.Widgets;
 
 internal static class NetSpeedChecks
@@ -20,6 +21,7 @@ internal static class NetSpeedChecks
         CheckWidgetLifecycleAndCalculations(Check);
         CheckRateCalculation(Check);
         CheckHoverFlyoutAndInteractions(Check);
+        CheckClickFlyoutLiveUpdates(Check);
         CheckSpeedTestExecution(Check);
 
         return checks;
@@ -120,6 +122,58 @@ internal static class NetSpeedChecks
         check(clickFlyout is StackPanel, "BuildClickFlyoutContent must return a non-null StackPanel.");
         var clickPanel = (StackPanel)clickFlyout;
         check(clickPanel.Children.Count >= 4, "Click flyout must include heading, metrics, speed test, and settings.");
+    }
+
+    private static void CheckClickFlyoutLiveUpdates(Action<bool, string> check)
+    {
+        var widget = new NetSpeedWidget();
+        var flyoutPanel = (StackPanel)widget.BuildClickFlyoutContent();
+        var anchor = (UIElement)widget.Content;
+
+        static List<string> CollectTexts(DependencyObject root)
+        {
+            var result = new List<string>();
+            foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            {
+                if (child is TextBlock tb) result.Add(tb.Text);
+                result.AddRange(CollectTexts(child));
+            }
+            return result;
+        }
+
+        try
+        {
+            widget.ClickFlyout.Show(anchor, flyoutPanel, animate: false, focusable: false);
+            check(widget.ClickFlyout.IsOpen, "NetSpeed click flyout must report IsOpen while shown.");
+
+            // First sample establishes baseline; second sample 1s later produces 2.0 KB/s down and 1.0 KB/s up.
+            widget.ApplySample((10_000, 5_000, "TestAdapter"), 1_000);
+            widget.ApplySample((10_000 + 2_048, 5_000 + 1_024, "TestAdapter"), 2_000);
+
+            var liveTexts = CollectTexts(flyoutPanel);
+            check(liveTexts.Contains(NetSpeedWidget.FormatSpeed(2_048)),
+                "Open NetSpeed click flyout must live-update download speed.");
+            check(liveTexts.Contains(NetSpeedWidget.FormatSpeed(1_024)),
+                "Open NetSpeed click flyout must live-update upload speed.");
+            check(liveTexts.Contains($"{UiText.Get("NetworkTotalReceived")}: {NetSpeedWidget.FormatBytes(2_048)}"),
+                "Open NetSpeed click flyout must live-update total received bytes.");
+            check(liveTexts.Contains($"{UiText.Get("NetworkTotalSent")}: {NetSpeedWidget.FormatBytes(1_024)}"),
+                "Open NetSpeed click flyout must live-update total sent bytes.");
+
+            widget.ClickFlyout.Close(restoreFocus: false);
+            check(!widget.ClickFlyout.IsOpen, "Closing NetSpeed click flyout must clear IsOpen.");
+
+            // Subsequent samples while closed must not mutate stale closed flyout TextBlocks.
+            widget.ApplySample((10_000 + 6_144, 5_000 + 3_072, "TestAdapter"), 3_000);
+            var closedTexts = CollectTexts(flyoutPanel);
+            check(closedTexts.Contains(NetSpeedWidget.FormatSpeed(2_048))
+                  && !closedTexts.Contains(NetSpeedWidget.FormatSpeed(4_096)),
+                "Closed NetSpeed click flyout references must be cleared and not updated after close.");
+        }
+        finally
+        {
+            widget.ClickFlyout.Close(restoreFocus: false);
+        }
     }
 
     private static void CheckSpeedTestExecution(Action<bool, string> check)

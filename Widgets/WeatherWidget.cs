@@ -324,7 +324,7 @@ public sealed class WeatherWidget : DockWidget
                 Padding = new Thickness(8, 6, 8, 6),
                 CornerRadius = new CornerRadius(8)
             };
-            tile.SetResourceReference(Border.BackgroundProperty, "SurfaceSubtle");
+            tile.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
             var pair = CreateMetricPair(label, value);
             pair.Margin = new Thickness(0);
             tile.Child = pair;
