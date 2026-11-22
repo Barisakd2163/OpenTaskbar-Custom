@@ -36,7 +36,10 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: csharp
-          queries: security-and-quality
+          # security-extended keeps all security queries. security-and-quality additionally runs
+          # quality queries that flag P/Invoke (unmanaged code) as "bad" — unavoidable for a
+          # taskbar replacement that must call Win32 APIs, and not a security vulnerability.
+          queries: security-extended
 
       - name: Build
         run: dotnet build OpenTaskbar.csproj --configuration Release --no-restore
