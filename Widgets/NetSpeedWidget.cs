@@ -46,6 +46,12 @@ public sealed class NetSpeedWidget : DockWidget
     private readonly DockFlyout _flyout = new();
     private StackPanel? _flyoutPanel;
     private StackPanel? _speedTestContainer;
+    private TextBlock? _flyoutDownloadText;
+    private TextBlock? _flyoutUploadText;
+    private TextBlock? _flyoutTotalReceivedText;
+    private TextBlock? _flyoutTotalSentText;
+
+    internal DockFlyout ClickFlyout => _flyout;
 
     private long _lastReceivedBytes = -1;
     private long _lastSentBytes = -1;
@@ -182,6 +188,7 @@ public sealed class NetSpeedWidget : DockWidget
         };
         _cardButton.SetResourceReference(StyleProperty, "WidgetCardButton");
         _cardButton.Click += CardButton_Click;
+        _flyout.Closed += (_, _) => ClearFlyoutReferences();
 
         Content = _cardButton;
         Localize();
@@ -207,6 +214,17 @@ public sealed class NetSpeedWidget : DockWidget
         _sampleInFlight = false;
         CancelSpeedTest();
         _flyout.Close();
+        ClearFlyoutReferences();
+    }
+
+    private void ClearFlyoutReferences()
+    {
+        _flyoutPanel = null;
+        _speedTestContainer = null;
+        _flyoutDownloadText = null;
+        _flyoutUploadText = null;
+        _flyoutTotalReceivedText = null;
+        _flyoutTotalSentText = null;
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => Localize();
@@ -218,6 +236,7 @@ public sealed class NetSpeedWidget : DockWidget
         _cardButton.ToolTip = description;
         AutomationProperties.SetName(_cardButton, heading);
         AutomationProperties.SetName(this, heading);
+        if (_flyout.IsOpen) UpdateLabels();
     }
 
     protected override void OnTick(DateTime now)
@@ -242,7 +261,7 @@ public sealed class NetSpeedWidget : DockWidget
         }), TaskScheduler.Default);
     }
 
-    private void ApplySample((long Received, long Sent, string PrimaryInterfaceName) sample, long sampledAtMs)
+    internal void ApplySample((long Received, long Sent, string PrimaryInterfaceName) sample, long sampledAtMs)
     {
         _primaryInterfaceName = sample.PrimaryInterfaceName;
         var rates = ComputeRates(_lastReceivedBytes, _lastSentBytes, _lastTickMs, sample.Received, sample.Sent, sampledAtMs);
@@ -277,10 +296,22 @@ public sealed class NetSpeedWidget : DockWidget
 
     private void UpdateLabels()
     {
-        _downloadText.Text = FormatSpeed(_downloadBytesPerSec);
-        _uploadText.Text = FormatSpeed(_uploadBytesPerSec);
+        var downloadSpeed = FormatSpeed(_downloadBytesPerSec);
+        var uploadSpeed = FormatSpeed(_uploadBytesPerSec);
+        _downloadText.Text = downloadSpeed;
+        _uploadText.Text = uploadSpeed;
 
-        var speedStatus = $"↓ {FormatSpeed(_downloadBytesPerSec)} · ↑ {FormatSpeed(_uploadBytesPerSec)}";
+        if (_flyout.IsOpen)
+        {
+            if (_flyoutDownloadText is not null) _flyoutDownloadText.Text = downloadSpeed;
+            if (_flyoutUploadText is not null) _flyoutUploadText.Text = uploadSpeed;
+            if (_flyoutTotalReceivedText is not null)
+                _flyoutTotalReceivedText.Text = $"{UiText.Get("NetworkTotalReceived")}: {FormatBytes(_sessionDownloadedBytes)}";
+            if (_flyoutTotalSentText is not null)
+                _flyoutTotalSentText.Text = $"{UiText.Get("NetworkTotalSent")}: {FormatBytes(_sessionUploadedBytes)}";
+        }
+
+        var speedStatus = $"↓ {downloadSpeed} · ↑ {uploadSpeed}";
         AutomationProperties.SetName(_cardButton, $"{UiText.Get("WidgetNetSpeed")}: {speedStatus}");
     }
 
@@ -381,20 +412,22 @@ public sealed class NetSpeedWidget : DockWidget
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("WidgetAccent")
         });
-        downCol.Children.Add(new TextBlock
+        _flyoutDownloadText = new TextBlock
         {
             Text = FormatSpeed(_downloadBytesPerSec),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        });
-        downCol.Children.Add(new TextBlock
+        };
+        downCol.Children.Add(_flyoutDownloadText);
+        _flyoutTotalReceivedText = new TextBlock
         {
             Text = $"{UiText.Get("NetworkTotalReceived")}: {FormatBytes(_sessionDownloadedBytes)}",
             FontSize = 9.5,
             Foreground = (Brush)FindResource("TextSecondary"),
             Margin = new Thickness(0, 2, 0, 0)
-        });
+        };
+        downCol.Children.Add(_flyoutTotalReceivedText);
 
         var upCol = new StackPanel { Margin = new Thickness(4, 0, 0, 0) };
         upCol.Children.Add(new TextBlock
@@ -404,20 +437,22 @@ public sealed class NetSpeedWidget : DockWidget
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextSecondary")
         });
-        upCol.Children.Add(new TextBlock
+        _flyoutUploadText = new TextBlock
         {
             Text = FormatSpeed(_uploadBytesPerSec),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        });
-        upCol.Children.Add(new TextBlock
+        };
+        upCol.Children.Add(_flyoutUploadText);
+        _flyoutTotalSentText = new TextBlock
         {
             Text = $"{UiText.Get("NetworkTotalSent")}: {FormatBytes(_sessionUploadedBytes)}",
             FontSize = 9.5,
             Foreground = (Brush)FindResource("TextSecondary"),
             Margin = new Thickness(0, 2, 0, 0)
-        });
+        };
+        upCol.Children.Add(_flyoutTotalSentText);
 
         Grid.SetColumn(downCol, 0);
         Grid.SetColumn(upCol, 1);

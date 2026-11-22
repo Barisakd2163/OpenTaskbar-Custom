@@ -126,9 +126,15 @@ public sealed class BluetoothBatteryWidget : DockWidget
         if (Environment.TickCount64 - _lastRefreshTickMs >= RefreshIntervalMs) RefreshBatteries();
     }
 
-    protected override void OnCompactChanged(bool compact)
+    protected override void OnLanguageChanged() => UpdateDisplay();
+
+    protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
+    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void ApplyDensityLayout()
     {
-        // Compact keeps only the type icons; percentages come back in the expanded dock.
+        var compact = IsCompact && !IsHoverExpanded;
+        // Compact keeps only the type icons; percentages come back in the expanded dock or inline hover expansion.
         foreach (var child in _deviceTiles.Children)
         {
             if (child is Border { Child: StackPanel stack } && stack.Children.Count > 1)
@@ -205,6 +211,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
     private FrameworkElement CreateDeviceTile(BluetoothDeviceBatteryInfo device, bool isLast)
     {
         var icon = CreateDeviceIcon(device.Kind);
+        var compact = IsCompact && !IsHoverExpanded;
         var percent = new TextBlock
         {
             Text = device.BatteryLevel >= 0 ? $"{device.BatteryLevel}%" : "—",
@@ -213,7 +220,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             Margin = new Thickness(5, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular },
-            Visibility = IsCompact ? Visibility.Collapsed : Visibility.Visible
+            Visibility = compact ? Visibility.Collapsed : Visibility.Visible
         };
         percent.SetResourceReference(StyleProperty, "WidgetText");
         percent.SetResourceReference(ForegroundProperty,

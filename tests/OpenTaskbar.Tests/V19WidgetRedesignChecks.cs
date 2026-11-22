@@ -94,6 +94,29 @@ internal static class V19WidgetRedesignChecks
             Check(flyoutTexts.Contains("17°") && flyoutTexts.Contains("58%")
                   && flyoutTexts.Contains("19° / 13°") && flyoutTexts.Contains("17° / 12°") && flyoutTexts.Contains("16° / 11°"),
                 "WeatherWidget click flyout must display feels-like, humidity, and 3-day forecast.");
+
+            // Bug #14: Detail tiles must bind to the valid SurfaceSelected theme token in both Dark and Light themes.
+            var metricsGrid = LogicalDescendants<System.Windows.Controls.Primitives.UniformGrid>(flyout).Single();
+            var detailTiles = metricsGrid.Children.OfType<Border>().ToList();
+            Check(detailTiles.Count == 4, "WeatherWidget click flyout must render 4 detail metric tiles.");
+            try
+            {
+                foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
+                {
+                    ThemeManager.Apply(theme);
+                    var expectedSurface = app.TryFindResource("SurfaceSelected") as Brush;
+                    Check(expectedSurface is not null, $"SurfaceSelected resource must exist in {theme} theme.");
+                    var themedFlyout = weather.BuildFlyoutContent();
+                    var themedTiles = LogicalDescendants<System.Windows.Controls.Primitives.UniformGrid>(themedFlyout)
+                        .Single().Children.OfType<Border>().ToList();
+                    Check(themedTiles.Count == 4 && themedTiles.All(tile => ReferenceEquals(tile.Background, expectedSurface)),
+                        $"WeatherWidget detail tiles must resolve to SurfaceSelected in {theme} theme.");
+                }
+            }
+            finally
+            {
+                ThemeManager.Apply(AppTheme.Dark);
+            }
         }
 
         // 5. ClockWidget: system timezone & calendar flyout with year/month nav and Today jump
