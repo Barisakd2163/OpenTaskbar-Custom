@@ -101,8 +101,22 @@ public sealed class SecondaryDockWindow : Window
         };
         surface.SetResourceReference(Border.BackgroundProperty, "DockMaterial");
         surface.SetResourceReference(Border.BorderBrushProperty, "DockBorderMaterial");
+        surface.ContextMenu = BuildContextMenu();
         Content = surface;
         UiText.Current.PropertyChanged += OnLanguageChanged;
+    }
+
+    private ContextMenu BuildContextMenu()
+    {
+        var menu = new ContextMenu();
+        var settingsItem = new MenuItem { Header = UiText.Get("Settings") };
+        settingsItem.Click += (_, _) => (Application.Current?.MainWindow as MainWindow)?.OpenSettingsFromSecondaryDock();
+        var exitItem = new MenuItem { Header = UiText.Get("Exit") };
+        exitItem.Click += (_, _) => Application.Current?.Shutdown();
+        menu.Items.Add(settingsItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(exitItem);
+        return menu;
     }
 
     private void OnLanguageChanged(object? sender, PropertyChangedEventArgs e)

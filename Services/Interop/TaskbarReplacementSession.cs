@@ -644,7 +644,10 @@ public sealed class TaskbarReplacementSession : IDisposable
             throw new InvalidOperationException("ErrorDisplayDimensions");
         }
 
-        var dpi = GetDpiForWindow(_handle);
+        // In mixed-DPI multi-monitor setups (#95), read the target monitor's DPI directly rather than
+        // GetDpiForWindow(_handle), which still reports the previous monitor's DPI before SetWindowPos moves it.
+        var dpi = monitor != 0 ? DisplayService.GetDpi(monitor) : GetDpiForWindow(_handle);
+        if (dpi == 0) dpi = GetDpiForWindow(_handle);
         if (dpi == 0) throw new InvalidOperationException("ErrorDisplayDimensions");
         if (IsVertical)
         {
@@ -863,7 +866,14 @@ public sealed class TaskbarReplacementSession : IDisposable
         var root = GetAncestor(windowHandle, GaRootOwner);
         var targetHandle = root != 0 ? root : windowHandle;
 
-        if (MonitorFromWindow(targetHandle, MonitorDefaultToNearest) != MonitorFromWindow(_handle, MonitorDefaultToNearest))
+        // Cloaked UWP/WinUI windows and click-through transparent overlays can report IsWindowVisible=true
+        // with full-monitor bounds on Windows 11 26300 (#95); they must never hide the dock.
+        if (IsWindowCloaked(targetHandle)) return false;
+        const long WsExTransparent = 0x00000020L;
+        if ((GetWindowLongPtr(targetHandle, GwlExStyle).ToInt64() & WsExTransparent) != 0) return false;
+
+        var dockMonitor = _targetMonitor != 0 ? _targetMonitor : MonitorFromWindow(_handle, MonitorDefaultToNearest);
+        if (MonitorFromWindow(targetHandle, MonitorDefaultToNearest) != dockMonitor)
             return false;
 
         var className = new StringBuilder(128);
@@ -976,8 +986,15 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         if (_fullScreenSuppressed == suppressed) return;
         _fullScreenSuppressed = suppressed;
+        AppLog.Info($"FullScreenSuppression changed: suppressed={suppressed}.");
         ShowWindow(_handle, suppressed ? SwHide : SwShowNoActivate);
         FullScreenChanged?.Invoke(suppressed);
+    }
+
+    private static bool IsWindowCloaked(nint handle)
+    {
+        const int DwmwaCloaked = 14;
+        return DwmGetWindowAttribute(handle, DwmwaCloaked, out int cloaked, sizeof(int)) == 0 && cloaked != 0;
     }
 
     private static uint GetTaskbarState()
@@ -1434,4 +1451,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(nint windowHandle, int command);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 }

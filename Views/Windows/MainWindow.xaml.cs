@@ -1911,6 +1911,8 @@ public partial class MainWindow : Window
             ReportError("ErrorAppPartialTerminate");
     }
 
+    internal void OpenSettingsFromSecondaryDock() => OpenSettings_Click(this, new RoutedEventArgs());
+
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         _widgetPanel.Close(restoreFocus: false);

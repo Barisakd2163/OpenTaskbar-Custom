@@ -15,6 +15,7 @@ namespace OpenTaskbar;
 public partial class App : Application
 {
     private Mutex? _instanceMutex;
+    private bool _ownsSingletonMutex;
     private int _crashHandled;
     private ApplicationPreferences? _preferences;
     public ApplicationPreferences Preferences => _preferences ??= new(new DockSettingsStore());
@@ -77,6 +78,7 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        _ownsSingletonMutex = true;
 
         // Heal only after winning the singleton race: a second instance must never consume the live instance's
         // recovery journal.
@@ -185,6 +187,24 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // A second instance that lost the singleton race must never touch the live instance's
+        // watchdog, native taskbar state, or recovery journal (#95).
+        if (!_ownsSingletonMutex)
+        {
+            SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
+            Preferences.Changed -= Preferences_Changed;
+            if (_paletteListener is not null)
+            {
+                _paletteListener.Changed -= PaletteListener_Changed;
+                _paletteListener.Dispose();
+                _paletteListener = null;
+            }
+            SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
+            AppLog.Shutdown();
+            base.OnExit(e);
+            return;
+        }
+
         TaskbarRecoveryWatchdog.NotifyCleanExit();
         SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
         Preferences.Changed -= Preferences_Changed;
