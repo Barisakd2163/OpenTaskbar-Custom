@@ -24,7 +24,11 @@ internal static class SettingsBackdrop
     public static bool TryEnable(Window window, AppTheme theme)
     {
         var handle = new WindowInteropHelper(window).Handle;
-        if (handle == 0 || !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621) || SystemParameters.HighContrast)
+        if (handle == 0) return false;
+        // Suppress the native border regardless of whether acrylic is available: on Win11 21H2 or
+        // High Contrast the DWM still rounds the window, so the WPF overlay must own the only rim.
+        SuppressNativeBorder(handle);
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621) || SystemParameters.HighContrast)
             return false;
         var dark = theme == AppTheme.Dark ? 1 : 0;
         var backdrop = DwmsbtTransientWindow; // Desktop Acrylic on supported Windows 11 builds.
@@ -40,7 +44,6 @@ internal static class SettingsBackdrop
         }
         var cornerResult = DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
         if (cornerResult < 0) Trace.TraceWarning("Settings window corners unavailable: 0x{0:X8}", cornerResult);
-        SuppressNativeBorder(handle);
         if (HwndSource.FromHwnd(handle)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
         return true;
     }
@@ -52,14 +55,15 @@ internal static class SettingsBackdrop
     public static bool TryEnableTransparent(Window window, AppTheme theme)
     {
         var handle = new WindowInteropHelper(window).Handle;
-        if (handle == 0 || SystemParameters.HighContrast) return false;
+        if (handle == 0) return false;
+        SuppressNativeBorder(handle);
+        if (SystemParameters.HighContrast) return false;
         var dark = theme == AppTheme.Dark ? 1 : 0;
         var backdrop = DwmsbtNone;
         var corners = DwmwcpRound;
         DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
         DwmSetWindowAttribute(handle, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
         DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
-        SuppressNativeBorder(handle);
         var margins = new Margins(-1);
         var frameResult = DwmExtendFrameIntoClientArea(handle, ref margins);
         if (frameResult < 0) return false;
