@@ -209,6 +209,8 @@
   "NotificationCenter": "Centrum powiadomień",
   "DockAlignment": "Wyrównanie doku",
   "DockAlignmentDescription": "Wyrównanie do lewej, środka lub prawej dopasowuje szerokość doku do zawartości; pełna szerokość rozciąga go od krawędzi do krawędzi.",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "OK",
   "Cancel": "Anuluj",
   "RecycleBin": "Kosz",

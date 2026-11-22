@@ -209,6 +209,8 @@
   "NotificationCenter": "Meldingscentrum",
   "DockAlignment": "Dockuitlijning",
   "DockAlignmentDescription": "Links, midden en rechts houden het dock zo breed als de inhoud; met volledige breedte loopt het van rand tot rand.",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "OK",
   "Cancel": "Annuleren",
   "RecycleBin": "Prullenbak",

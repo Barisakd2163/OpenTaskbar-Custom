@@ -10,6 +10,14 @@ public enum DockPosition
     Right
 }
 
+/// <summary>How dock contents (apps + widgets) are aligned inside a full-width dock bar.</summary>
+public enum DockContentAlignment
+{
+    Left,
+    Center,
+    Right
+}
+
 public enum AppTheme { Dark, Light, System }
 public readonly record struct AppLanguage
 {
@@ -133,6 +141,7 @@ public sealed record DockSettings(
     IReadOnlyList<string>? Widgets = null,
     IReadOnlyList<string>? InstalledWidgets = null,
     DockLayout Layout = DockLayout.Floating,
+    DockContentAlignment ContentAlignment = DockContentAlignment.Center,
     DockSize Size = DockSize.Compact,
     bool MagnificationEnabled = true,
     bool ShowClock = false,

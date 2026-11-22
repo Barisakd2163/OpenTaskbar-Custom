@@ -209,6 +209,8 @@
   "NotificationCenter": "알림 센터",
   "DockAlignment": "정렬",
   "DockAlignmentDescription": "왼쪽, 가운데, 오른쪽 정렬은 독 너비를 콘텐츠에 맞추고, 전체 너비는 화면 가장자리까지 확장합니다.",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "확인",
   "Cancel": "취소",
   "RecycleBin": "휴지통",

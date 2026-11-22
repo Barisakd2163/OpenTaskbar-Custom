@@ -209,6 +209,8 @@
   "NotificationCenter": "通知とカレンダー",
   "DockAlignment": "ドックの配置",
   "DockAlignmentDescription": "左、中央、右はドックをコンテンツ幅に保ち、全幅は端から端まで広げます。",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "OK",
   "Cancel": "キャンセル",
   "RecycleBin": "ごみ箱",

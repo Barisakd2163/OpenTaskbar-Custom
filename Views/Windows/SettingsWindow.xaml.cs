@@ -425,6 +425,8 @@ public partial class SettingsWindow : Window
             // Full width keeps the last floating alignment so switching back restores it.
             Position = Choice(PositionBox) is { } alignment && alignment != "FullWidth" && Enum.TryParse<DockPosition>(alignment, out var position)
                 ? position : _preferences.Current.Position,
+            ContentAlignment = Enum.TryParse<DockContentAlignment>(Choice(ContentAlignmentBox), out var contentAlignment)
+                ? contentAlignment : DockContentAlignment.Center,
             AnimationsEnabled = AnimationsToggle.IsChecked == true,
             PreviewsEnabled = PreviewsToggle.IsChecked == true,
             NotificationBadgesEnabled = _preferences.Current.NotificationBadgesEnabled,
@@ -1370,6 +1372,7 @@ public partial class SettingsWindow : Window
     private void SelectAlignment(DockSettings settings)
     {
         SelectChoice(PositionBox, settings.Layout == DockLayout.FullWidth ? "FullWidth" : settings.Position.ToString());
+        SelectChoice(ContentAlignmentBox, settings.ContentAlignment.ToString());
     }
 
     private static void OpenActions(object sender)

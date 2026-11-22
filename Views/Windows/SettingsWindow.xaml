@@ -149,6 +149,19 @@
                                     </StackPanel>
                                 </DockPanel></Border>
 
+                                <Border x:Name="ContentAlignmentRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <ComboBox x:Name="ContentAlignmentBox" views:IconGlyph.Glyph="{StaticResource IconMonitor}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="280" Width="Auto" VerticalAlignment="Center"
+                                              AutomationProperties.Name="{local:Loc ContentAlignment}" SelectionChanged="SegmentChoice_SelectionChanged">
+                                        <ComboBoxItem Content="{local:Loc Left}" Tag="Left" />
+                                        <ComboBoxItem Content="{local:Loc Center}" Tag="Center" />
+                                        <ComboBoxItem Content="{local:Loc Right}" Tag="Right" />
+                                    </ComboBox>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc ContentAlignment}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc ContentAlignmentDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+
                                 <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <ComboBox x:Name="SizeBox" views:IconGlyph.Glyph="{StaticResource IconSliders}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center"
                                               AutomationProperties.Name="{local:Loc DockSize}" SelectionChanged="SegmentChoice_SelectionChanged">

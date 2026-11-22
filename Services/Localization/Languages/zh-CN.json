@@ -209,6 +209,8 @@
   "NotificationCenter": "通知中心",
   "DockAlignment": "对齐方式",
   "DockAlignmentDescription": "左、中、右对齐时，程序坞宽度与内容相适应；全宽模式会从屏幕一侧延伸到另一侧。",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "确定",
   "Cancel": "取消",
   "RecycleBin": "回收站",

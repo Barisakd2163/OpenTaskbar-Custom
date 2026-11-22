@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Enabled hardware rendering by default for fluid magnification and flyout animations. `--software-render` remains available as an opt-in fallback for GPU-constrained machines.
+- Enabled hardware rendering by default for fluid magnification and flyout animations. Added Settings → Behavior → Hardware acceleration (restart required) to switch back to software rendering, which measured ~100 MB lower private memory (81–86 MB vs 180–190 MB) at the cost of animation fluidity. `--software-render` remains available as a command-line override.
+- Fixed `scripts/measure-baseline.ps1` failing to find the dock HWND because `ShowInTaskbar=false` leaves `Process.MainWindowHandle` at zero; it now enumerates the layered window instead.
 
 - Added Aero Peek when hovering over window previews (respecting Windows' Enable Peek setting) and middle-click on preview cards to close windows.
 - Added a one-click Focus Mode toggle in the dock/tray context menu and Preferences that hides notification badges and widgets, pauses widget polling, and disables animations without overwriting saved settings.

@@ -209,6 +209,8 @@
   "NotificationCenter": "Benachrichtigungscenter",
   "DockAlignment": "Ausrichtung",
   "DockAlignmentDescription": "Links, mittig und rechts passt sich die Dockbreite dem Inhalt an; volle Breite erstreckt sich über den gesamten Bildschirm.",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "OK",
   "Cancel": "Abbrechen",
   "RecycleBin": "Papierkorb",

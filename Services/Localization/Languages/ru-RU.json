@@ -209,6 +209,8 @@
   "NotificationCenter": "Центр уведомлений",
   "DockAlignment": "Выравнивание",
   "DockAlignmentDescription": "Выравнивание слева, по центру или справа сохраняет ширину панели по содержимому; на всю ширину она растягивается от края до края.",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "ОК",
   "Cancel": "Отмена",
   "RecycleBin": "Корзина",

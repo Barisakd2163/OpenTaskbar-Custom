@@ -209,6 +209,8 @@
   "NotificationCenter": "Centro de notificaciones",
   "DockAlignment": "Alineación",
   "DockAlignmentDescription": "La alineación izquierda, central o derecha mantiene el dock al ancho de su contenido; el ancho completo lo extiende de borde a borde.",
+  "ContentAlignment": "Content alignment",
+  "ContentAlignmentDescription": "Positions apps and widgets inside a full-width dock bar.",
   "Ok": "Aceptar",
   "Cancel": "Cancelar",
   "RecycleBin": "Papelera de reciclaje",

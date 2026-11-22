@@ -57,8 +57,6 @@ public partial class MainWindow : Window
     private NativeWindowTracker? _windowTracker;
     private TaskbarReplacementSession? _replacementSession;
     private HwndSource? _source;
-    private DockGlassHost? _glassHost;
-    private bool _glassRenderingHooked;
     private nint _foregroundWindow;
     private readonly DispatcherTimer _foregroundPollTimer;
     private readonly List<FrameworkElement> _magnifiedIcons = [];
@@ -294,7 +292,6 @@ public partial class MainWindow : Window
             ReportError("ErrorAltTabExclude");
         }
         WindowThumbnailPreview.ExcludeFromPeek(source.Handle);
-        InitializeDockGlass(source.Handle);
 
         _windowTracker = new NativeWindowTracker(Dispatcher);
         _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
@@ -347,62 +344,6 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => OpenSettings_Click(this, new RoutedEventArgs()));
         }
 #endif
-    }
-
-    /// <summary>
-    /// Creates the native acrylic plate behind the layered dock. Inspection runs skip it so automated
-    /// tests never introduce an extra shell window.
-    /// </summary>
-    private void InitializeDockGlass(nint handle)
-    {
-        if (_isInspection) return;
-        _glassHost = new DockGlassHost();
-        _glassHost.Attach(handle);
-        _glassHost.Show();
-        ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
-        RefreshDockGlass();
-    }
-
-    private void ThemeManager_ThemeChanged(object? sender, EventArgs e) => RefreshDockGlass();
-
-    private void RefreshDockGlass()
-    {
-        var host = _glassHost;
-        if (host is null) return;
-        host.Refresh(ThemeManager.GetSurface(SurfaceKind.Dock));
-        DockShadowLayer.SetResourceReference(Border.BackgroundProperty,
-            host.IsAcrylicEnabled ? "DockAcrylicMaterial" : "DockMaterial");
-
-        // Fisheye scale and auto-hide slide are render transforms, so they never raise LayoutUpdated.
-        // Follow them per frame, but only while the plate exists; other modes pay no per-frame cost.
-        if (host.IsAcrylicEnabled && !_glassRenderingHooked)
-        {
-            CompositionTarget.Rendering += OnGlassRendering;
-            _glassRenderingHooked = true;
-        }
-        else if (!host.IsAcrylicEnabled && _glassRenderingHooked)
-        {
-            CompositionTarget.Rendering -= OnGlassRendering;
-            _glassRenderingHooked = false;
-        }
-        UpdateDockGlassBounds();
-    }
-
-    private void OnGlassRendering(object? sender, EventArgs e) => UpdateDockGlassBounds();
-
-    private void UpdateDockGlassBounds()
-    {
-        var host = _glassHost;
-        if (host is null || !host.IsAcrylicEnabled || DockShadowLayer.ActualWidth <= 0 || DockShadowLayer.ActualHeight <= 0) return;
-        var transform = DockShadowLayer.TransformToVisual(this);
-        var topLeft = PointToScreen(transform.Transform(new Point(0, 0)));
-        var bottomRight = PointToScreen(transform.Transform(new Point(DockShadowLayer.ActualWidth, DockShadowLayer.ActualHeight)));
-        host.SetBounds(
-            Math.Min(topLeft.X, bottomRight.X),
-            Math.Min(topLeft.Y, bottomRight.Y),
-            Math.Abs(bottomRight.X - topLeft.X),
-            Math.Abs(bottomRight.Y - topLeft.Y),
-            EffectiveCornerRadius);
     }
 
     private bool _startupFinalized;
@@ -2148,7 +2089,6 @@ public partial class MainWindow : Window
             _replacementSession.EnsureReservationSynced();
         }
         _appliedDockGeometry = geometry;
-        RefreshDockGlass();
     }
 
     /// <summary>Subtle settle animation when a new size/scale profile is committed.</summary>
@@ -2698,9 +2638,29 @@ public partial class MainWindow : Window
         }
         else
         {
-            AppsColumn.Width = IsFullWidth ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
-            WidgetColumn.Width = IsFullWidth ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-            WidgetIsland.HorizontalAlignment = IsFullWidth ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            if (IsFullWidth)
+            {
+                // Full-width bar: let all four columns size to their content, then align the whole
+                // group inside the bar. Previously Apps=Auto (stuck left) and Widget=Star (stuck right).
+                AppsColumn.Width = GridLength.Auto;
+                WidgetColumn.Width = GridLength.Auto;
+                WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
+                DockLayoutRoot.Width = double.NaN;
+                DockLayoutRoot.HorizontalAlignment = _preferences.Current.ContentAlignment switch
+                {
+                    DockContentAlignment.Left => HorizontalAlignment.Left,
+                    DockContentAlignment.Right => HorizontalAlignment.Right,
+                    _ => HorizontalAlignment.Center
+                };
+            }
+            else
+            {
+                AppsColumn.Width = new GridLength(1, GridUnitType.Star);
+                WidgetColumn.Width = GridLength.Auto;
+                WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
+                DockLayoutRoot.Width = double.NaN;
+                DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
+            }
         }
         ApplyDockMargin();
         ApplyDockAlignment();
@@ -3264,17 +3224,6 @@ public partial class MainWindow : Window
         _restingIcons.Clear();
         _source?.RemoveHook(WindowProc);
         _source = null;
-        ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
-        if (_glassRenderingHooked)
-        {
-            CompositionTarget.Rendering -= OnGlassRendering;
-            _glassRenderingHooked = false;
-        }
-        if (_glassHost is not null)
-        {
-            _glassHost.Close();
-            _glassHost = null;
-        }
 
         if (_windowTracker is not null)
         {
