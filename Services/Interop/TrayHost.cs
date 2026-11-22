@@ -15,6 +15,12 @@ namespace OpenTaskbar.Services;
 /// </summary>
 internal sealed class TrayHost : IDisposable
 {
+    private const uint SMTOAbortIfHung = 0x0002;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint SendMessageTimeout(nint window, uint message, nint wParam, nint lParam,
+        uint flags, uint timeoutMs, out nint result);
+
     /// <summary>Shell-owned system icons (volume, network, power, ...); the dock has its own widgets for these.</summary>
     private static readonly HashSet<Guid> SystemIconGuids =
     [
@@ -179,11 +185,15 @@ internal sealed class TrayHost : IDisposable
             hCopyData = Marshal.AllocHGlobal(Marshal.SizeOf<NativeMethods.COPYDATASTRUCT>());
             Marshal.StructureToPtr(copyData, hCopyData, fDeleteOld: false);
 
-            var result = NativeMethods.SendMessage(
+            // A hung Explorer must never freeze the dock's UI dispatcher indefinitely.
+            var result = SendMessageTimeout(
                 explorerTray,
-                (int)NativeMethods.WM.COPYDATA,
+                (uint)NativeMethods.WM.COPYDATA,
                 unchecked((nint)(int)amd.abd.hWnd),
-                hCopyData);
+                hCopyData,
+                SMTOAbortIfHung,
+                1000,
+                out _);
 
             var lockedResult = NativeMethods.SHLockShared(sharedNew, explorerPid);
             if (lockedResult != nint.Zero)

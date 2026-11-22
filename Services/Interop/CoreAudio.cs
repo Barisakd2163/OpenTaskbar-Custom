@@ -761,7 +761,11 @@ public sealed class AudioEndpointMonitor : IDisposable
     private struct PropVariant
     {
         [FieldOffset(0)] public ushort Type;
-        [FieldOffset(8)] public nint Pointer;
+        // Native PROPVARIANT pointer lives at offset 4 on x86 (16-byte struct) and offset 8 on x64
+        // (24-byte struct). Both fields coexist without overlapping: uint (4 bytes) at 4, nint at 8.
+        [FieldOffset(4)] public uint PointerX86;
+        [FieldOffset(8)] public nint PointerX64;
+        public nint Pointer => IntPtr.Size == 4 ? (nint)PointerX86 : PointerX64;
     }
 
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
