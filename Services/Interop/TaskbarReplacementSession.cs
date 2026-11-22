@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -62,6 +61,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _nativeTaskbarAtBottom = true;
     private DispatcherTimer? _hideRetryTimer;
     private DispatcherTimer? _fullScreenPollTimer;
+    private readonly char[] _classNameBuffer = new char[128];
     private int _hideRetryAttempts;
     private bool _hideRetryPending;
     private double _shelfHeight = DockMetrics.ShelfHeight;
@@ -873,25 +873,26 @@ public sealed class TaskbarReplacementSession : IDisposable
         if ((GetWindowLongPtr(targetHandle, GwlExStyle).ToInt64() & WsExTransparent) != 0) return false;
 
         var dockMonitor = _targetMonitor != 0 ? _targetMonitor : MonitorFromWindow(_handle, MonitorDefaultToNearest);
-        if (MonitorFromWindow(targetHandle, MonitorDefaultToNearest) != dockMonitor)
+        var targetMonitor = MonitorFromWindow(targetHandle, MonitorDefaultToNearest);
+        if (targetMonitor != dockMonitor)
             return false;
-
-        var className = new StringBuilder(128);
-        GetClassName(targetHandle, className, className.Capacity);
-        if (className.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "LogonUI" or "LockAppWindow")
-            return false;
-        // The lock screen covers the whole monitor but is not a full-screen app. Treating it as one hides the dock
-        // with SW_HIDE and desynchronizes it from the auto-hide state, so it pops back on its own after unlocking.
-        if (IsLockScreenWindow(targetHandle)) return false;
 
         var monitor = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(MonitorFromWindow(targetHandle, MonitorDefaultToNearest), ref monitor)
+        if (!GetMonitorInfo(targetMonitor, ref monitor)
             || !GetWindowRect(targetHandle, out var rect))
             return false;
 
         var style = GetWindowLongPtr(targetHandle, GwlStyle).ToInt64();
         var zoomed = IsZoomed(targetHandle);
-        return IsFullScreenBounds(rect, style, zoomed, monitor.rcMonitor, monitor.rcWork);
+        if (!IsFullScreenBounds(rect, style, zoomed, monitor.rcMonitor, monitor.rcWork))
+            return false;
+
+        if (IsExcludedFullScreenClass(targetHandle, includeCoreWindow: false))
+            return false;
+
+        // The lock screen covers the whole monitor but is not a full-screen app. Treating it as one hides the dock
+        // with SW_HIDE and desynchronizes it from the auto-hide state, so it pops back on its own after unlocking.
+        return !IsLockScreenWindow(targetHandle);
     }
 
     private void FullScreenPollTimer_Tick(object? sender, EventArgs e)
@@ -918,10 +919,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             // application window that owns a taskbar button counts as a fullscreen app. Static shell classes
             // are excluded even when their style would otherwise look eligible (e.g. TextInputHost).
             if (!HasTaskbarButtonWindow(handle)) return true;
-            var className = new StringBuilder(128);
-            GetClassName(handle, className, className.Capacity);
-            if (className.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd"
-                or "LogonUI" or "LockAppWindow" or "Windows.UI.Core.CoreWindow")
+            if (IsExcludedFullScreenClass(handle, includeCoreWindow: true))
             {
                 return true;
             }
@@ -941,6 +939,16 @@ public sealed class TaskbarReplacementSession : IDisposable
             ? (!noActivate || appWindow) && !toolWindow
             : appWindow;
     }
+
+    private bool IsExcludedFullScreenClass(nint handle, bool includeCoreWindow)
+    {
+        var length = GetClassName(handle, _classNameBuffer, _classNameBuffer.Length);
+        return length > 0 && IsExcludedFullScreenClass(_classNameBuffer.AsSpan(0, length), includeCoreWindow);
+    }
+
+    internal static bool IsExcludedFullScreenClass(ReadOnlySpan<char> className, bool includeCoreWindow) =>
+        className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "LogonUI" or "LockAppWindow"
+        || (includeCoreWindow && className is "Windows.UI.Core.CoreWindow");
 
     private static bool IsLockScreenWindow(nint handle)
     {
@@ -1028,12 +1036,11 @@ public sealed class TaskbarReplacementSession : IDisposable
     private static List<nint> FindSecondaryTaskbars()
     {
         var handles = new List<nint>();
-        var className = new StringBuilder(64);
+        var className = new char[64];
         EnumWindows((handle, _) =>
         {
-            className.Clear();
-            if (GetClassName(handle, className, className.Capacity) > 0
-                && className.ToString() == "Shell_SecondaryTrayWnd")
+            var length = GetClassName(handle, className, className.Length);
+            if (length > 0 && className.AsSpan(0, length).SequenceEqual("Shell_SecondaryTrayWnd"))
             {
                 handles.Add(handle);
             }
@@ -1442,7 +1449,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private static extern bool GetWindowRect(nint windowHandle, out Rect rect);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(nint windowHandle, StringBuilder name, int length);
+    private static extern int GetClassName(nint windowHandle, char[] name, int length);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
