@@ -15,7 +15,7 @@
                 <TextBlock x:Name="CpuLabel" Text="CPU" FontSize="10" LineHeight="11"
                            Foreground="{DynamicResource TextSecondary}" />
                 <TextBlock x:Name="CpuValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                           MinWidth="34" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
             </StackPanel>
 
             <!-- RAM metric -->
@@ -25,7 +25,7 @@
                 <TextBlock x:Name="RamLabel" Text="RAM" FontSize="10" LineHeight="11"
                            Foreground="{DynamicResource TextSecondary}" />
                 <TextBlock x:Name="RamValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                           MinWidth="34" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
             </StackPanel>
 
             <!-- GPU metric (shown once validated) -->
@@ -35,7 +35,7 @@
                 <TextBlock x:Name="GpuLabel" Text="GPU" FontSize="10" LineHeight="11"
                            Foreground="{DynamicResource TextSecondary}" />
                 <TextBlock x:Name="GpuValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                           MinWidth="34" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
             </StackPanel>
 
             <!-- Optional temperature (validated sensor slot; kept for Settings.StatsMeters and tests) -->
@@ -44,7 +44,7 @@
             <StackPanel x:Name="GpuTemperatureButton" VerticalAlignment="Center" Orientation="Vertical" Visibility="Collapsed">
                 <TextBlock Text="GPU°" FontSize="10" LineHeight="11" Foreground="{DynamicResource TextSecondary}" />
                 <TextBlock x:Name="GpuTempValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                           MinWidth="26" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
             </StackPanel>
         </StackPanel>
     </Button>

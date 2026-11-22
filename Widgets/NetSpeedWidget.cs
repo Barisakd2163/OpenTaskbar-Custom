@@ -111,7 +111,7 @@ public sealed class NetSpeedWidget : DockWidget
             Text = "0 B/s",
             FontSize = 11.5,
             FontWeight = FontWeights.SemiBold,
-            MinWidth = 56,
+            MinWidth = 64,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
@@ -142,7 +142,7 @@ public sealed class NetSpeedWidget : DockWidget
             Text = "0 B/s",
             FontSize = 11.5,
             FontWeight = FontWeights.SemiBold,
-            MinWidth = 56,
+            MinWidth = 64,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }

@@ -664,6 +664,69 @@ public static class ShellShortcuts
     }
 
     /// <summary>
+    /// Expands an initial measured Start flyout rect to include both same-column vertical siblings (such as the
+    /// bottom user/power footer) and horizontally adjacent companion panels (such as the Windows 11 Phone Link
+    /// sidebar, or the main Start panel when the seed landed on Phone Link).
+    /// </summary>
+    internal static System.Windows.Rect ExpandStartFlyoutBounds(
+        System.Windows.Rect rootRect,
+        System.Windows.Rect seedBounds,
+        IReadOnlyList<System.Windows.Rect> visibleRects,
+        IReadOnlyList<System.Windows.Rect> panelRects)
+    {
+        var bounds = seedBounds;
+        var maxPanelWidth = rootRect.Width - 40;
+        var maxPanelHeight = rootRect.Height - 20;
+
+        bool InsideRoot(System.Windows.Rect r) =>
+            !r.IsEmpty
+            && r.Left >= rootRect.Left - 2 && r.Right <= rootRect.Right + 2
+            && r.Top >= rootRect.Top - 2 && r.Bottom <= rootRect.Bottom + 2;
+
+        // First merge horizontally adjacent panel-sized siblings (e.g. main Start panel + Phone Link companion).
+        // Run up to 3 passes so chained panels settle regardless of which panel was chosen as the seed.
+        for (var pass = 0; pass < 3; pass++)
+        {
+            var expanded = false;
+            for (var i = 0; i < panelRects.Count; i++)
+            {
+                var r = panelRects[i];
+                if (!InsideRoot(r)) continue;
+                if (r.Width < 180 || r.Height < 250) continue;
+                if (r.Width >= maxPanelWidth || r.Height >= maxPanelHeight) continue;
+
+                var overlapY = Math.Min(r.Bottom, bounds.Bottom) - Math.Max(r.Top, bounds.Top);
+                if (overlapY < 0.4 * Math.Min(r.Height, bounds.Height)) continue;
+
+                var gapX = Math.Max(0, Math.Max(r.Left - bounds.Right, bounds.Left - r.Right));
+                if (gapX > 64) continue;
+
+                var before = bounds;
+                bounds.Union(r);
+                if (bounds != before) expanded = true;
+            }
+            if (!expanded) break;
+        }
+
+        // Then expand vertically within the merged horizontal span to capture sibling footers/headers.
+        var colLeft = bounds.Left - 12;
+        var colRight = bounds.Right + 12;
+        for (var i = 0; i < visibleRects.Count; i++)
+        {
+            var r = visibleRects[i];
+            if (!InsideRoot(r)) continue;
+            if (r.Width < 20 || r.Height < 16) continue;
+            if (r.Width >= maxPanelWidth || r.Height >= maxPanelHeight) continue;
+            if (r.Left >= colLeft && r.Right <= colRight)
+            {
+                bounds.Union(r);
+            }
+        }
+
+        return bounds;
+    }
+
+    /// <summary>
     /// Finds the real Start flyout panel inside the full-screen canvas window via UI Automation. The canvas is
     /// monitor-sized while the actual flyout is a much smaller panel inside it; hard-coding its size/offset drifts
     /// across Windows builds and DPI settings, which can push the flyout off screen. Returning the measured rect
@@ -679,7 +742,7 @@ public static class ShellShortcuts
             var rootRect = root.Current.BoundingRectangle;
 
             bool LooksLikeFlyout(System.Windows.Rect r) =>
-                r.Width >= 300 && r.Width < rootRect.Width - 100 && r.Height >= 350
+                r.Width >= 300 && r.Width < rootRect.Width - 40 && r.Height >= 350
                 && r.Left >= rootRect.Left - 2 && r.Right <= rootRect.Right + 2
                 && r.Top >= rootRect.Top - 2 && r.Bottom <= rootRect.Bottom + 2;
 
@@ -706,47 +769,35 @@ public static class ShellShortcuts
                 }
             }
 
-            // Fallback: scan descendants for panels that look like the flyout (covers cases where the search box is
-            // hosted in a separate XAML island and not reachable from the canvas's automation tree).
-            if (best is null)
+            // Collect descendants once for both fallback selection and panel/footer expansion. Including non-offscreen
+            // elements for vertical footer expansion and panel-sized elements regardless of IsOffscreen ensures a
+            // companion panel (e.g. Phone Link) or a temporarily off-screen main Start panel is always merged.
+            var all = root.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
+            var panelRects = new List<System.Windows.Rect>();
+            var visibleRects = new List<System.Windows.Rect>();
+            foreach (AutomationElement element in all)
             {
-                var all = root.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
-                var largestArea = 0.0;
-                foreach (AutomationElement element in all)
+                var r = element.Current.BoundingRectangle;
+                if (r.IsEmpty) continue;
+                if (r.Width >= 180 && r.Height >= 250)
                 {
-                    var r = element.Current.BoundingRectangle;
-                    if (LooksLikeFlyout(r) && r.Width * r.Height > largestArea)
-                    {
-                        best = element;
-                        largestArea = r.Width * r.Height;
-                        bestArea = largestArea;
-                    }
+                    panelRects.Add(r);
+                }
+                if (!element.Current.IsOffscreen)
+                {
+                    visibleRects.Add(r);
+                }
+                if (best is null && LooksLikeFlyout(r) && r.Width * r.Height > bestArea)
+                {
+                    best = element;
+                    bestArea = r.Width * r.Height;
                 }
             }
 
             if (best is null) return false;
             var boundsRect = best.Current.BoundingRectangle;
-            bounds = new System.Windows.Rect(boundsRect.Left, boundsRect.Top, boundsRect.Width, boundsRect.Height);
-
-            // On Windows 11 builds (e.g. 26300) the bottom user/power footer can be a sibling of the search-box
-            // container under the full-screen canvas, so walking only ancestors of the search box misses the footer
-            // height. Expand vertically to include all on-screen elements within the flyout's horizontal column.
-            var visibleCondition = new PropertyCondition(AutomationElement.IsOffscreenProperty, false);
-            var visible = root.FindAll(TreeScope.Descendants, visibleCondition);
-            var colLeft = bounds.Left - 12;
-            var colRight = bounds.Right + 12;
-            foreach (AutomationElement element in visible)
-            {
-                var r = element.Current.BoundingRectangle;
-                if (r.IsEmpty || r.Width < 20 || r.Height < 16) continue;
-                if (r.Width >= rootRect.Width - 100 || r.Height >= rootRect.Height - 20) continue;
-                if (r.Left >= colLeft && r.Right <= colRight
-                    && r.Top >= rootRect.Top - 2 && r.Bottom <= rootRect.Bottom + 2)
-                {
-                    bounds.Union(r);
-                }
-            }
-
+            var seed = new System.Windows.Rect(boundsRect.Left, boundsRect.Top, boundsRect.Width, boundsRect.Height);
+            bounds = ExpandStartFlyoutBounds(rootRect, seed, visibleRects, panelRects);
             return true;
         }
         catch (Exception ex)

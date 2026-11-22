@@ -166,6 +166,46 @@ internal static class ShellFlyoutPositionChecks
             Check(clampedX + 858 <= 1912, $"Right-side Search must clamp within work area (got {clampedX}).");
         }
 
+        // Start menu + Phone Link companion panel: whether UIA seeds on the Phone Link panel or the main Start
+        // panel, ExpandStartFlyoutBounds must merge both side-by-side panels so the main Start menu is never pushed
+        // off the left edge and Phone Link never clips off the right edge.
+        {
+            var root = new System.Windows.Rect(0, 0, 1920, 1080);
+            var mainPanel = new System.Windows.Rect(460, 260, 642, 720);
+            var phoneLinkPanel = new System.Windows.Rect(1118, 260, 320, 720);
+            var footer = new System.Windows.Rect(472, 956, 618, 44);
+            var panels = new[] { mainPanel, phoneLinkPanel };
+            var visible = new[] { phoneLinkPanel, footer }; // Simulate mainPanel temporarily offscreen.
+
+            // Seeded on Phone Link: must expand left to include mainPanel and footer.
+            var mergedFromPhone = ShellShortcuts.ExpandStartFlyoutBounds(root, phoneLinkPanel, visible, panels);
+            Check(mergedFromPhone.Left == 460 && mergedFromPhone.Right == 1438 && mergedFromPhone.Bottom == 1000,
+                $"Start+PhoneLink merged bounds from Phone Link seed must span both panels and footer (got {mergedFromPhone}).");
+
+            // Repositioning using merged bounds must align main Start panel's left edge above Start button.
+            var (tx, _) = ShellShortcuts.ComputeMeasuredStartMenuPosition(
+                windowLeft: 0, windowTop: 0,
+                flyoutLeft: mergedFromPhone.Left, flyoutTop: mergedFromPhone.Top,
+                flyoutWidth: mergedFromPhone.Width, flyoutHeight: mergedFromPhone.Height,
+                workLeft: 0, workTop: 0, workRight: 1920, workBottom: 1080,
+                anchorLeft: 520, anchorTop: 1035, anchorRight: 558, anchorBottom: 1073,
+                edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.0);
+            Check(tx + mainPanel.Left == 512,
+                $"Main Start panel left edge must align above Start button when Phone Link is present (got {tx + mainPanel.Left}).");
+
+            // Seeded on mainPanel near right edge: Phone Link must also stay inside the work area.
+            var mergedFromMain = ShellShortcuts.ExpandStartFlyoutBounds(root, mainPanel, visible, panels);
+            var (clampedTx, _) = ShellShortcuts.ComputeMeasuredStartMenuPosition(
+                windowLeft: 0, windowTop: 0,
+                flyoutLeft: mergedFromMain.Left, flyoutTop: mergedFromMain.Top,
+                flyoutWidth: mergedFromMain.Width, flyoutHeight: mergedFromMain.Height,
+                workLeft: 0, workTop: 0, workRight: 1920, workBottom: 1080,
+                anchorLeft: 1400, anchorTop: 1035, anchorRight: 1438, anchorBottom: 1073,
+                edge: OpenTaskbar.Models.DockEdge.Bottom, dpiScale: 1.0);
+            Check(clampedTx + phoneLinkPanel.Right <= 1912,
+                $"Phone Link companion panel must clamp inside work area near right edge (got {clampedTx + phoneLinkPanel.Right}).");
+        }
+
         return checks;
     }
 }
