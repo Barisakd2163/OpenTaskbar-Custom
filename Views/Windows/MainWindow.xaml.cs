@@ -1180,7 +1180,7 @@ public partial class MainWindow : Window
         // ShellExecuteEx loads shell extensions and can take from 100 ms to over a second. On the UI thread it froze
         // the dock, launch bounce included, until Windows had taken the app. Start it from the thread pool instead;
         // Process.Start runs ShellExecuteEx on its own STA thread when called from an MTA thread.
-        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated)).ContinueWith(task =>
+        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated, app.AppUserModelId)).ContinueWith(task =>
         {
             if (task.IsCompletedSuccessfully)
             {
@@ -1194,12 +1194,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Starts an application through the shell and returns an error key, or null on success or UAC cancel.</summary>
-    internal static string? StartApplication(string executablePath, string arguments, bool elevated)
+    internal static string? StartApplication(string executablePath, string arguments, bool elevated, string? appUserModelId = null)
     {
-        if (!File.Exists(executablePath)) return "ErrorAppFileNotFound";
+        // Packaged Store apps cannot be launched by their WindowsApps executable directly;
+        // the Shell AppUserModelID is the supported activation path.
+        var useAumid = !string.IsNullOrWhiteSpace(appUserModelId);
+        if (!useAumid && !File.Exists(executablePath)) return "ErrorAppFileNotFound";
+        var target = useAumid ? $"shell:AppsFolder\\{appUserModelId}" : executablePath;
         try
         {
-            using var _ = Process.Start(new ProcessStartInfo(executablePath)
+            using var _ = Process.Start(new ProcessStartInfo(target)
             {
                 Arguments = arguments,
                 UseShellExecute = true,
@@ -2701,9 +2705,11 @@ public partial class MainWindow : Window
         {
             if (IsFullWidth)
             {
-                // Full-width bar: let all four columns size to their content, then align the whole
-                // group inside the bar. Previously Apps=Auto (stuck left) and Widget=Star (stuck right).
-                AppsColumn.Width = GridLength.Auto;
+                // Full-width bar: size the apps column to the actual measured content width. An
+                // ItemsControl reports 0 as its desired width, so plain Auto collapsed the column
+                // and the grid's desired width was wrong — Center then could not truly center.
+                var appsWidth = DockScrollViewer.MeasureContentWidth(DockContents);
+                AppsColumn.Width = new GridLength(Math.Max(0, appsWidth));
                 WidgetColumn.Width = GridLength.Auto;
                 WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
                 DockLayoutRoot.Width = double.NaN;

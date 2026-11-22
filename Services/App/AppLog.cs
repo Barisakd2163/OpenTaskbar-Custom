@@ -31,7 +31,7 @@ public static class AppLog
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-                RotateIfNeeded();
+                // Rotation is handled on the first Write below (the stream must be open first).
                 var stream = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                 // BOM on new files lets Notepad and Windows PowerShell read Turkish text correctly.
                 var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: stream.Length == 0);
@@ -48,7 +48,14 @@ public static class AppLog
         try
         {
             if (!File.Exists(LogPath) || new FileInfo(LogPath).Length <= MaxBytes) return;
+            // The current FileStream keeps the file locked; close it before moving, then reopen.
+            _writer?.Flush();
+            _writer?.Dispose();
+            _writer = null;
             File.Move(LogPath, Path.ChangeExtension(LogPath, ".old.txt"), overwrite: true);
+            var stream = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: stream.Length == 0);
+            _writer = new StreamWriter(stream, encoding) { AutoFlush = true };
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
