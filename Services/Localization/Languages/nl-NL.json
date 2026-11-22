@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Lokaal versleuteld (Windows DPAPI)",
   "AiUsageApiKeySaved": "Opgeslagen (••••••••)",
   "AiUsageApiKeySave": "Opslaan",
-  "AiUsageApiKeyClear": "Wissen"
+  "AiUsageApiKeyClear": "Wissen",
+  "OpenFileExplorer": "Verkenner",
+  "OpenRunDialog": "Uitvoeren",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (beheerder)",
+  "OpenDeviceManager": "Apparaatbeheer",
+  "OpenDiskManagement": "Schijfbeheer",
+  "OpenComputerManagement": "Computerbeheer",
+  "OpenEventViewer": "Gebeurtenissenviewer",
+  "OpenNetworkConnections": "Netwerkverbindingen",
+  "LockWorkstation": "Vergrendelen",
+  "SignOut": "Afmelden",
+  "RestartComputer": "Opnieuw opstarten",
+  "ShutDownComputer": "Afsluiten",
+  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen."
 }

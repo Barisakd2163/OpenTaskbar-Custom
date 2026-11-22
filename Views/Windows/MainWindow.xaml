@@ -50,6 +50,22 @@
             <Separator />
             <MenuItem Header="{local:Loc CheckForUpdates}" Icon="{StaticResource IconRefresh}" Tag="UpdateMenu" Click="CheckUpdates_Click" />
             <MenuItem Header="{local:Loc TaskManager}" Icon="{StaticResource IconTaskManager}" Click="OpenTaskManager_Click" />
+            <Separator />
+            <MenuItem Header="{local:Loc OpenFileExplorer}" Icon="{StaticResource IconFolder}" Click="OpenFileExplorer_Click" />
+            <MenuItem Header="{local:Loc OpenRunDialog}" Icon="{StaticResource IconSearch}" Click="OpenRunDialog_Click" />
+            <MenuItem Header="{local:Loc OpenTerminal}" Icon="{StaticResource IconTerminal}" Click="OpenTerminal_Click" />
+            <MenuItem Header="{local:Loc OpenTerminalAdmin}" Icon="{StaticResource IconTerminal}" Click="OpenTerminalAdmin_Click" />
+            <MenuItem Header="{local:Loc OpenDeviceManager}" Icon="{StaticResource IconCpu}" Click="OpenDeviceManager_Click" />
+            <MenuItem Header="{local:Loc OpenDiskManagement}" Icon="{StaticResource IconHardDrive}" Click="OpenDiskManagement_Click" />
+            <MenuItem Header="{local:Loc OpenComputerManagement}" Icon="{StaticResource IconMonitor}" Click="OpenComputerManagement_Click" />
+            <MenuItem Header="{local:Loc OpenEventViewer}" Icon="{StaticResource IconClock}" Click="OpenEventViewer_Click" />
+            <MenuItem Header="{local:Loc OpenNetworkConnections}" Icon="{StaticResource IconWifi}" Click="OpenNetworkConnections_Click" />
+            <Separator />
+            <MenuItem Header="{local:Loc LockWorkstation}" Icon="{StaticResource IconExit}" Click="LockWorkstation_Click" />
+            <MenuItem Header="{local:Loc SignOut}" Icon="{StaticResource IconExit}" Click="SignOut_Click" />
+            <MenuItem Header="{local:Loc RestartComputer}" Icon="{StaticResource IconRefresh}" Click="RestartComputer_Click" />
+            <MenuItem Header="{local:Loc ShutDownComputer}" Icon="{StaticResource IconExit}" Click="ShutDownComputer_Click" />
+            <Separator />
             <MenuItem Header="{local:Loc Settings}" Icon="{StaticResource IconSettings}" Click="OpenSettings_Click" />
             <Separator />
             <MenuItem Header="{local:Loc RemoveWidget}" Icon="{StaticResource IconTrash}" Tag="RemoveWidgetMenu" Visibility="Collapsed" Click="RemoveWidgetMenu_Click" />

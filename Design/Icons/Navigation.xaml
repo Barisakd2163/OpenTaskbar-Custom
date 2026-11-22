@@ -7,6 +7,7 @@
     <StreamGeometry x:Key="IconChevronUp">M18 15l-6-6-6 6</StreamGeometry>
     <StreamGeometry x:Key="IconChevronDown">M6 9l6 6 6-6</StreamGeometry>
     <StreamGeometry x:Key="IconSearch">M11 19a8 8 0 1 0 0-16a8 8 0 0 0 0 16z M21 21l-4.3-4.3</StreamGeometry>
+    <StreamGeometry x:Key="IconTerminal">M4 17l6-5-6-5 M12 19h8</StreamGeometry>
     <!-- Settings sidebar navigation icons (24x24 outline coordinate space, matching HTML prototype) -->
     <StreamGeometry x:Key="IconNavDock">M5 3H19A2 2 0 0 1 21 5V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3Z M3 16H21 M8 19H16</StreamGeometry>
     <StreamGeometry x:Key="IconNavWidgets">M4 3H9A1 1 0 0 1 10 4V9A1 1 0 0 1 9 10H4A1 1 0 0 1 3 9V4A1 1 0 0 1 4 3Z M15 3H20A1 1 0 0 1 21 4V9A1 1 0 0 1 20 10H15A1 1 0 0 1 14 9V4A1 1 0 0 1 15 3Z M4 14H9A1 1 0 0 1 10 15V20A1 1 0 0 1 9 21H4A1 1 0 0 1 3 20V15A1 1 0 0 1 4 14Z M15 14H20A1 1 0 0 1 21 15V20A1 1 0 0 1 20 21H15A1 1 0 0 1 14 20V15A1 1 0 0 1 15 14Z</StreamGeometry>

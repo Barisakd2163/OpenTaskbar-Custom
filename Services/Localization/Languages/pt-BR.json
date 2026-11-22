@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Criptografada localmente (Windows DPAPI)",
   "AiUsageApiKeySaved": "Salva (••••••••)",
   "AiUsageApiKeySave": "Salvar",
-  "AiUsageApiKeyClear": "Limpar"
+  "AiUsageApiKeyClear": "Limpar",
+  "OpenFileExplorer": "Explorador de Arquivos",
+  "OpenRunDialog": "Executar",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (Admin)",
+  "OpenDeviceManager": "Gerenciador de Dispositivos",
+  "OpenDiskManagement": "Gerenciamento de Disco",
+  "OpenComputerManagement": "Gerenciamento do Computador",
+  "OpenEventViewer": "Visualizador de Eventos",
+  "OpenNetworkConnections": "Conex\u00F5es de Rede",
+  "LockWorkstation": "Bloquear",
+  "SignOut": "Sair",
+  "RestartComputer": "Reiniciar",
+  "ShutDownComputer": "Desligar",
+  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema."
 }

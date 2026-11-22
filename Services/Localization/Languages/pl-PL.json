@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Szyfrowany lokalnie (Windows DPAPI)",
   "AiUsageApiKeySaved": "Zapisano (••••••••)",
   "AiUsageApiKeySave": "Zapisz",
-  "AiUsageApiKeyClear": "Wyczyść"
+  "AiUsageApiKeyClear": "Wyczyść",
+  "OpenFileExplorer": "Eksplorator plik\u00F3w",
+  "OpenRunDialog": "Uruchom",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (administrator)",
+  "OpenDeviceManager": "Mened\u017Cer urz\u0105dze\u0144",
+  "OpenDiskManagement": "Zarz\u0105dzanie dyskami",
+  "OpenComputerManagement": "Zarz\u0105dzanie komputerem",
+  "OpenEventViewer": "Podgl\u0105d zdarze\u0144",
+  "OpenNetworkConnections": "Po\u0142\u0105czenia sieciowe",
+  "LockWorkstation": "Zablokuj",
+  "SignOut": "Wyloguj",
+  "RestartComputer": "Uruchom ponownie",
+  "ShutDownComputer": "Zamknij",
+  "ErrorSystemToolOpen": "Nie mo\u017Cna otworzy\u0107 narz\u0119dzia systemowego."
 }

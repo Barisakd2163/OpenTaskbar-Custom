@@ -200,6 +200,22 @@ public partial class MainWindow
 
     private void OpenTaskManager_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenTaskManager());
 
+    // ---- Native Start-menu tools, available from the dock context menu (#124) ----
+
+    private void OpenFileExplorer_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("explorer.exe"));
+    private void OpenRunDialog_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenRunDialog());
+    private void OpenTerminal_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("wt.exe"));
+    private void OpenTerminalAdmin_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemToolElevated("wt.exe"));
+    private void OpenDeviceManager_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("devmgmt.msc"));
+    private void OpenDiskManagement_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("diskmgmt.msc"));
+    private void OpenComputerManagement_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("compmgmt.msc"));
+    private void OpenEventViewer_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("eventvwr.msc"));
+    private void OpenNetworkConnections_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.OpenSystemTool("control.exe netconnections"));
+    private void LockWorkstation_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.LockWorkstation());
+    private void SignOut_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.SignOut());
+    private void RestartComputer_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.RestartComputer());
+    private void ShutDownComputer_Click(object sender, RoutedEventArgs e) => ReportResult(ShellShortcuts.ShutDownComputer());
+
     // ---- Keyboard navigation and accessibility (#16) ----
 
     private void StartKeyboardNavigation()

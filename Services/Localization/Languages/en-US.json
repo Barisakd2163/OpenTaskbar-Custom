@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Encrypted locally (Windows DPAPI)",
   "AiUsageApiKeySaved": "Saved (••••••••)",
   "AiUsageApiKeySave": "Save",
-  "AiUsageApiKeyClear": "Clear"
+  "AiUsageApiKeyClear": "Clear",
+  "OpenFileExplorer": "File Explorer",
+  "OpenRunDialog": "Run",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (Admin)",
+  "OpenDeviceManager": "Device Manager",
+  "OpenDiskManagement": "Disk Management",
+  "OpenComputerManagement": "Computer Management",
+  "OpenEventViewer": "Event Viewer",
+  "OpenNetworkConnections": "Network Connections",
+  "LockWorkstation": "Lock",
+  "SignOut": "Sign out",
+  "RestartComputer": "Restart",
+  "ShutDownComputer": "Shut down",
+  "ErrorSystemToolOpen": "Could not open the system tool."
 }

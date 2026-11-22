@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Cifrado localmente (Windows DPAPI)",
   "AiUsageApiKeySaved": "Guardada (••••••••)",
   "AiUsageApiKeySave": "Guardar",
-  "AiUsageApiKeyClear": "Borrar"
+  "AiUsageApiKeyClear": "Borrar",
+  "OpenFileExplorer": "Explorador de archivos",
+  "OpenRunDialog": "Ejecutar",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (Administrador)",
+  "OpenDeviceManager": "Administrador de dispositivos",
+  "OpenDiskManagement": "Administrar discos",
+  "OpenComputerManagement": "Administrar equipos",
+  "OpenEventViewer": "Visor de eventos",
+  "OpenNetworkConnections": "Conexiones de red",
+  "LockWorkstation": "Bloquear",
+  "SignOut": "Cerrar sesi\u00F3n",
+  "RestartComputer": "Reiniciar",
+  "ShutDownComputer": "Apagar",
+  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema."
 }

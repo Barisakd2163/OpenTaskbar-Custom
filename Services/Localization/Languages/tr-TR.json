@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Yerel olarak şifrelenir (Windows DPAPI)",
   "AiUsageApiKeySaved": "Kaydedildi (••••••••)",
   "AiUsageApiKeySave": "Kaydet",
-  "AiUsageApiKeyClear": "Temizle"
+  "AiUsageApiKeyClear": "Temizle",
+  "OpenFileExplorer": "Dosya Gezgini",
+  "OpenRunDialog": "\u00C7al\u0131\u015Ft\u0131r",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (Y\u00F6netici)",
+  "OpenDeviceManager": "Ayg\u0131t Y\u00F6neticisi",
+  "OpenDiskManagement": "Disk Y\u00F6netimi",
+  "OpenComputerManagement": "Bilgisayar Y\u00F6netimi",
+  "OpenEventViewer": "Olay G\u00F6r\u00FCnt\u00FCleyici",
+  "OpenNetworkConnections": "A\u011F Ba\u011Flant\u0131lar\u0131",
+  "LockWorkstation": "Kilitle",
+  "SignOut": "Oturumu kapat",
+  "RestartComputer": "Yeniden ba\u015Flat",
+  "ShutDownComputer": "Kapat",
+  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131."
 }

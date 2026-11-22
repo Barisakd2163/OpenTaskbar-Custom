@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Lokal verschlüsselt (Windows DPAPI)",
   "AiUsageApiKeySaved": "Gespeichert (••••••••)",
   "AiUsageApiKeySave": "Speichern",
-  "AiUsageApiKeyClear": "Löschen"
+  "AiUsageApiKeyClear": "Löschen",
+  "OpenFileExplorer": "Datei-Explorer",
+  "OpenRunDialog": "Ausf\u00FChren",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (Admin)",
+  "OpenDeviceManager": "Ger\u00E4te-Manager",
+  "OpenDiskManagement": "Datentr\u00E4gerverwaltung",
+  "OpenComputerManagement": "Computerverwaltung",
+  "OpenEventViewer": "Ereignisanzeige",
+  "OpenNetworkConnections": "Netzwerkverbindungen",
+  "LockWorkstation": "Sperren",
+  "SignOut": "Abmelden",
+  "RestartComputer": "Neustart",
+  "ShutDownComputer": "Herunterfahren",
+  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden."
 }

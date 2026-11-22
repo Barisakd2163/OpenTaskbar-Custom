@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "本地加密存储 (Windows DPAPI)",
   "AiUsageApiKeySaved": "已保存 (••••••••)",
   "AiUsageApiKeySave": "保存",
-  "AiUsageApiKeyClear": "清除"
+  "AiUsageApiKeyClear": "清除",
+  "OpenFileExplorer": "\u6587\u4EF6\u8D44\u6E90\u7BA1\u7406\u5668",
+  "OpenRunDialog": "\u8FD0\u884C",
+  "OpenTerminal": "\u7EC8\u7AEF",
+  "OpenTerminalAdmin": "\u7EC8\u7AEF\uFF08\u7BA1\u7406\u5458\uFF09",
+  "OpenDeviceManager": "\u8BBE\u5907\u7BA1\u7406\u5668",
+  "OpenDiskManagement": "\u78C1\u76D8\u7BA1\u7406",
+  "OpenComputerManagement": "\u8BA1\u7B97\u673A\u7BA1\u7406",
+  "OpenEventViewer": "\u4E8B\u4EF6\u67E5\u770B\u5668",
+  "OpenNetworkConnections": "\u7F51\u7EDC\u8FDE\u63A5",
+  "LockWorkstation": "\u9501\u5B9A",
+  "SignOut": "\u6CE8\u9500",
+  "RestartComputer": "\u91CD\u542F",
+  "ShutDownComputer": "\u5173\u673A",
+  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002"
 }

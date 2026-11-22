@@ -886,5 +886,19 @@
   "AiUsageApiKeyPlaceholder": "Chiffrée localement (Windows DPAPI)",
   "AiUsageApiKeySaved": "Enregistrée (••••••••)",
   "AiUsageApiKeySave": "Enregistrer",
-  "AiUsageApiKeyClear": "Effacer"
+  "AiUsageApiKeyClear": "Effacer",
+  "OpenFileExplorer": "Explorateur de fichiers",
+  "OpenRunDialog": "Ex\u00E9cuter",
+  "OpenTerminal": "Terminal",
+  "OpenTerminalAdmin": "Terminal (Admin)",
+  "OpenDeviceManager": "Gestionnaire de p\u00E9riph\u00E9riques",
+  "OpenDiskManagement": "Gestion des disques",
+  "OpenComputerManagement": "Gestion de l'ordinateur",
+  "OpenEventViewer": "Observateur d'\u00E9v\u00E9nements",
+  "OpenNetworkConnections": "Connexions r\u00E9seau",
+  "LockWorkstation": "Verrouiller",
+  "SignOut": "Se d\u00E9connecter",
+  "RestartComputer": "Red\u00E9marrer",
+  "ShutDownComputer": "Arr\u00EAter",
+  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me."
 }

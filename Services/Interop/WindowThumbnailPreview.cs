@@ -45,6 +45,8 @@ public sealed class WindowThumbnailPreview : IDisposable
     private bool _closeWindowClosed;
     private FrameworkElement? _anchor;
     private BitmapSource? _icon;
+    private IReadOnlyDictionary<nint, BitmapSource>? _iconOverrides;
+    private IReadOnlyDictionary<nint, string>? _labelOverrides;
     private int _transition;
     private readonly Dictionary<nint, (Border Surface, Border Overlay)> _cards = [];
     private nint _peekCandidate;
@@ -184,12 +186,15 @@ public sealed class WindowThumbnailPreview : IDisposable
     public FrameworkElement? Anchor => _anchor;
 
     public bool ShowForWindows(IReadOnlyList<TrackedWindow> windows, FrameworkElement anchor, BitmapSource? defaultIcon,
-        bool allowEntrance = true)
+        bool allowEntrance = true, IReadOnlyDictionary<nint, BitmapSource>? iconOverrides = null,
+        IReadOnlyDictionary<nint, string>? labelOverrides = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _transition++;
         _anchor = anchor;
         _icon = defaultIcon;
+        _iconOverrides = iconOverrides;
+        _labelOverrides = labelOverrides;
         _middlePressedHandle = 0;
         EndPeek(recordEndedAt: false);
         _cards.Clear();
@@ -314,18 +319,23 @@ public sealed class WindowThumbnailPreview : IDisposable
                 CloseRequested?.Invoke(this, EventArgs.Empty);
             };
 
+            var cardIcon = defaultIcon;
+            if (_iconOverrides is not null && _iconOverrides.TryGetValue(tracked.Handle, out var overrideIcon))
+                cardIcon = overrideIcon;
             var iconImg = new Image
             {
                 Width = 18,
                 Height = 18,
                 Stretch = Stretch.Uniform,
                 Margin = new Thickness(0, 0, 6, 0),
-                Source = defaultIcon
+                Source = cardIcon
             };
 
+            var cardLabel = _labelOverrides is not null && _labelOverrides.TryGetValue(tracked.Handle, out var overrideLabel)
+                ? overrideLabel : tracked.Title;
             var titleBlock = new TextBlock
             {
-                Text = tracked.Title,
+                Text = cardLabel,
                 Foreground = textBrush,
                 FontFamily = (FontFamily)resources["InterfaceFont"],
                 FontSize = (double)resources["TextSizeCaption"],
@@ -531,7 +541,7 @@ public sealed class WindowThumbnailPreview : IDisposable
         {
             if (token != _transition || _disposed) return;
             if (remaining.Count == 0) Hide();
-            else ShowForWindows(remaining, anchor, _icon, false);
+            else ShowForWindows(remaining, anchor, _icon, false, _iconOverrides, _labelOverrides);
         }
 
         var cards = closed.Where(_cards.ContainsKey).Select(h => _cards[h]).ToList();

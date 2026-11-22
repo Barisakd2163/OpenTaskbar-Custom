@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -1092,6 +1093,67 @@ public static class ShellShortcuts
 
     /// <summary>Win+D: toggles the desktop. Used by the slim trailing Show Desktop strip.</summary>
     public static string? ToggleShowDesktop() => SendWindowsShortcut(VkD);
+
+    /// <summary>Win+R: opens the native Run dialog.</summary>
+    public const ushort VkR = 0x52;
+    public static string? OpenRunDialog() => SendWindowsShortcut(VkR);
+
+    /// <summary>Launches a Windows system tool by command (devmgmt.msc, diskmgmt.msc, ...).</summary>
+    public static string? OpenSystemTool(string command) => Start(command, "ErrorSystemToolOpen");
+
+    /// <summary>Launches a system tool with an elevation prompt (Terminal Admin).</summary>
+    public static string? OpenSystemToolElevated(string command)
+    {
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo(command) { UseShellExecute = true, Verb = "runas" });
+            return null;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled) { return null; }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            AppLog.Warning($"Cannot open elevated {command}: {ex.Message}");
+            return UiText.Get("ErrorSystemToolOpen");
+        }
+    }
+
+    /// <summary>Power/session actions exposed by the dock context menu (mirrors the native Start menu).</summary>
+    public static string? LockWorkstation() => Start("rundll32.exe user32.dll,LockWorkStation", "ErrorSystemToolOpen");
+    public static string? SignOut() => Start("shutdown.exe /l", "ErrorSystemToolOpen");
+    public static string? RestartComputer() => Start("shutdown.exe /r /t 0", "ErrorSystemToolOpen");
+    public static string? ShutDownComputer() => Start("shutdown.exe /s /t 0", "ErrorSystemToolOpen");
+
+    /// <summary>
+    /// Returns the localized display name of the Recycle Bin from the Shell (e.g. "Recycle Bin", "Кошик"),
+    /// used to tell Recycle Bin Explorer windows apart from ordinary folders in thumbnail previews.
+    /// </summary>
+    public static string? GetRecycleBinDisplayName()
+    {
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("Shell.Application");
+            if (shellType is null) return null;
+            var shell = Activator.CreateInstance(shellType);
+            if (shell is null) return null;
+            try
+            {
+                var folder = shellType.InvokeMember("Namespace", BindingFlags.InvokeMethod, null, shell, ["shell:RecycleBinFolder"]);
+                if (folder is null) return null;
+                var self = folder.GetType().InvokeMember("Self", BindingFlags.GetProperty, null, folder, null);
+                return self?.GetType().InvokeMember("Name", BindingFlags.GetProperty, null, self, null) as string;
+            }
+            finally
+            {
+                if (Marshal.IsComObject(shell)) _ = Marshal.FinalReleaseComObject(shell);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Best-effort cosmetic lookup — never let a Shell COM quirk break thumbnail hover.
+            AppLog.Warning($"Cannot read Recycle Bin display name: {ex.Message}");
+            return null;
+        }
+    }
 
     public static string? OpenUri(string uri) => Start(uri, "ErrorSettingsPageOpen");
 
