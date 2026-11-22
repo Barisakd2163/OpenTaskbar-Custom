@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.3 - 2026-11-22
+
+- Added pinning of selected background tray icons directly onto the dock, with stable identities across restarts (#114).
+- Completed compact density mode support across dock widgets and live Settings previews (#115), and removed compact-dock widget blur with adaptive WidgetHeight and crisp text rendering (#116).
+- Added a clean-room multi-protocol wireless and Bluetooth battery engine (SteelSeries, ATK/VXE, Logitech HID++, Razer, XInput) with charging and stale-reading indicators (#117).
+- Added AI compact layouts, AiUsageRing filtering and Antigravity model group selection (#118).
+- Added Settings account sign-in with DPAPI API key storage and GitHub CLI Copilot credential detection (#119).
+- Added the Cursor quota widget with browser PKCE sign-in and compact bar layout (#120).
+- Fixed the dock scrolling back to the start after a deferred resize triggered by scrolling itself (#122).
+- Updated the release pipeline to build x64 and x86 artifacts, generate checksums and a release manifest, and publish signed build-provenance attestations.
+
 ## Unreleased
 
 - Enabled hardware rendering by default for fluid magnification and flyout animations. Added Settings → Behavior → Hardware acceleration (restart required) to switch back to software rendering, which measured ~100 MB lower private memory (81–86 MB vs 180–190 MB) at the cost of animation fluidity. `--software-render` remains available as a command-line override.
