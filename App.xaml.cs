@@ -44,13 +44,6 @@ public partial class App : Application
             return;
         }
 
-        // Opt-in compatibility mode for machines where the GPU driver's WPF shader set is too costly.
-        // Hardware rendering is the default because magnification and flyout animations need it to stay snappy.
-        if (e.Args.Contains("--software-render", StringComparer.OrdinalIgnoreCase))
-        {
-            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-        }
-
         AppLog.Initialize();
         StartupStopwatch.Mark("OnStartup entered");
         DispatcherUnhandledException += App_DispatcherUnhandledException;

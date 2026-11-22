@@ -70,6 +70,9 @@ public partial class SettingsWindow : Window
         _preferenceEditedHandler = PreferenceEdited;
         _dockScaleDragCompletedHandler = (_, _) => CommitDockScale();
         InitializeComponent();
+        HardwareAccelerationToggle.IsChecked = !RenderModePreference.IsSoftware();
+        HardwareAccelerationToggle.Checked += (_, _) => RenderModePreference.SetSoftware(false);
+        HardwareAccelerationToggle.Unchecked += (_, _) => RenderModePreference.SetSoftware(true);
         var currentVersion = UpdateChecker.CurrentVersion;
         var versionString = $"v{currentVersion.Major}.{currentVersion.Minor}.{currentVersion.Build}";
         TitleVersionText.Text = versionString;
@@ -2065,9 +2068,26 @@ public partial class SettingsWindow : Window
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
     }
 
+    private bool IsLivePreviewSource(object? source)
+    {
+        if (source is not DependencyObject element) return false;
+        while (element is not null)
+        {
+            if (element is OpenTaskbar.Widgets.DockWidget widget && _livePreviewWidgets.Contains(widget))
+                return true;
+            element = VisualTreeHelper.GetParent(element) as DependencyObject
+                ?? LogicalTreeHelper.GetParent(element);
+        }
+        return false;
+    }
+
     private void PreferenceEdited(object sender, RoutedEventArgs e)
     {
         if (_initializing || _closed) return;
+        // Live preview widgets are real widget instances; their internal ToggleButtons (Wi‑Fi,
+        // Bluetooth, Night Light, etc.) bubble Checked/Unchecked to this window-wide handler.
+        // Those are display state, not user edits — ignore them so they never trigger a save.
+        if (_livePreviewsAttached && IsLivePreviewSource(e.OriginalSource)) return;
         if (e.OriginalSource is ToggleButton { TemplatedParent: ComboBox }) return;
         // Unnamed switches inside a widget card are the install toggles; their Click handler
         // saves explicitly. Named switches live in the per-widget settings panels and auto-save.

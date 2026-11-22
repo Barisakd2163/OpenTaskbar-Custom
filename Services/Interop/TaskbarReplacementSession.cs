@@ -61,7 +61,6 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _nativeTaskbarAtBottom = true;
     private DispatcherTimer? _hideRetryTimer;
     private DispatcherTimer? _fullScreenPollTimer;
-    private readonly char[] _classNameBuffer = new char[128];
     private int _hideRetryAttempts;
     private bool _hideRetryPending;
     private double _shelfHeight = DockMetrics.ShelfHeight;
@@ -942,8 +941,11 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private bool IsExcludedFullScreenClass(nint handle, bool includeCoreWindow)
     {
-        var length = GetClassName(handle, _classNameBuffer, _classNameBuffer.Length);
-        return length > 0 && IsExcludedFullScreenClass(_classNameBuffer.AsSpan(0, length), includeCoreWindow);
+        // Local buffer: this helper is called from both the poll timer and WindowProc for every
+        // enumerated window; a shared field would be fragile if either ever moves off the dispatcher.
+        var className = new char[128];
+        var length = GetClassName(handle, className, className.Length);
+        return length > 0 && IsExcludedFullScreenClass(className.AsSpan(0, length), includeCoreWindow);
     }
 
     internal static bool IsExcludedFullScreenClass(ReadOnlySpan<char> className, bool includeCoreWindow) =>
