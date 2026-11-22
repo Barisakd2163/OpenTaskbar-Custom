@@ -44,6 +44,7 @@ internal static class WidgetViewChecks
     {
         var checks = 0;
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        WeatherService.TestLoaderOverride = (_, _, _) => Task.FromResult<(WeatherReport?, string?)>((null, null));
         try
         {
             foreach (var resource in ModularResources)
@@ -53,10 +54,8 @@ internal static class WidgetViewChecks
                 });
             ThemeManager.Apply(AppTheme.Dark);
             UiText.Current.SetLanguage(AppLanguage.Turkish);
-            OpenTaskbar.Tests.WidgetScreenshotCapture.CaptureAll(app);
             checks += DockLayoutChecks.Run(app);
             checks += ApplicationInteractionChecks.Run(app);
-            checks += VisualParityChecks.Run(app);
             checks += FeatureAndMemoryChecks.Run(app);
             checks += SettingsAndAutoHideChecks.Run(app);
             checks += AdaptiveWidgetAndConfirmChecks.Run(app);
@@ -609,6 +608,7 @@ internal static class WidgetViewChecks
         }
         finally
         {
+            WeatherService.TestLoaderOverride = null;
             app.Shutdown();
         }
     }

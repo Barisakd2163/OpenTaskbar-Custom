@@ -115,16 +115,18 @@ internal static class AdaptiveWidgetAndConfirmChecks
     private static void CheckAdaptiveDensityAndHysteresis(Dispatcher dispatcher, Action<bool, string> check)
     {
         var strip = new StackPanel { Orientation = Orientation.Horizontal };
-        using var coordinator = new WidgetCoordinator(strip, dispatcher, _ => { }, lazy: false);
-        var widgets = new[] { "Media", "QuickSettings", "SystemStats", "Audio", "Focus", "Clock" };
+        // Use side-effect-free widgets (Weather is stubbed via WeatherService.TestLoaderOverride) so adaptive
+        // density tests never activate live Core Audio, SMTC, PDH/GPU sensors, or Wi-Fi/Bluetooth radios.
+        using var coordinator = new WidgetCoordinator(strip, dispatcher, _ => { }, lazy: true);
+        var widgets = new[] { "Weather", "Battery", "DayProgress", "Clock" };
         var settings = new DockSettings(
             Widgets: widgets,
             InstalledWidgets: widgets,
             GlobalWidgetDensity: WidgetDensityMode.Auto);
         coordinator.Apply(settings);
 
-        var audio = strip.Children.OfType<AudioWidget>().Single();
-        var qs = strip.Children.OfType<QuickSettingsWidget>().Single();
+        var weather = strip.Children.OfType<WeatherWidget>().Single();
+        var battery = strip.Children.OfType<BatteryWidget>().Single();
         var autoCandidates = strip.Children.OfType<OpenTaskbar.Widgets.DockWidget>()
             .Where(widget => widget.Visibility == Visibility.Visible && widget.SupportsCompactMode)
             .OrderBy(widget => widget.ShrinkPriority).ToArray();
@@ -158,12 +160,12 @@ internal static class AdaptiveWidgetAndConfirmChecks
         {
             WidgetDensityOverrides = new Dictionary<string, WidgetDensityMode>
             {
-                ["Audio"] = WidgetDensityMode.Compact,
-                ["QuickSettings"] = WidgetDensityMode.Full
+                ["Weather"] = WidgetDensityMode.Compact,
+                ["Battery"] = WidgetDensityMode.Full
             }
         };
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, overridden);
-        check(audio.IsCompact && !qs.IsCompact,
+        check(weather.IsCompact && !battery.IsCompact,
             "Per-widget Compact/Full choices must override Auto.");
 
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, settings, widgetScale: 1.35);

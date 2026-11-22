@@ -136,9 +136,8 @@ public partial class SettingsWindow : Window
         LoadSurfaceStyles(_applied);
         MagnificationToggle.IsChecked = _applied.MagnificationEnabled;
         SelectChoice(SizeBox, _applied.Size.ToString());
-        DockIconPaddingXSlider.Value = _applied.DockIconPaddingX;
-        DockIconPaddingYSlider.Value = _applied.DockIconPaddingY;
-        UpdateDockIconPaddingLabels();
+        DockIconPaddingSlider.Value = _applied.DockIconPadding;
+        UpdateDockIconPaddingLabel();
         DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
         DockScaleSlider.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
             new System.Windows.Controls.Primitives.DragCompletedEventHandler((_, _) => CommitDockScale()));
@@ -425,8 +424,7 @@ public partial class SettingsWindow : Window
             MagnificationEnabled = MagnificationToggle.IsChecked == true,
             Layout = Choice(PositionBox) == "FullWidth" ? DockLayout.FullWidth : DockLayout.Floating,
             Size = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact,
-            DockIconPaddingX = (int)Math.Round(DockIconPaddingXSlider.Value),
-            DockIconPaddingY = (int)Math.Round(DockIconPaddingYSlider.Value),
+            DockIconPadding = (int)Math.Round(DockIconPaddingSlider.Value),
             DockScale = Math.Round(DockScaleSlider.Value) / 100,
             DockWidthMode = Enum.TryParse<DockWidthMode>(Choice(DockWidthModeBox), out var widthMode) ? widthMode : DockWidthMode.Auto,
             DockWidthPixels = widthMode == DockWidthMode.Pixels ? (int)Math.Round(DockWidthSlider.Value) : _preferences.Current.DockWidthPixels,
@@ -1865,8 +1863,7 @@ public partial class SettingsWindow : Window
         LoadSurfaceStyles(settings);
         MagnificationToggle.IsChecked = settings.MagnificationEnabled;
         SelectChoice(SizeBox, settings.Size.ToString());
-        DockIconPaddingXSlider.Value = settings.DockIconPaddingX;
-        DockIconPaddingYSlider.Value = settings.DockIconPaddingY;
+        DockIconPaddingSlider.Value = settings.DockIconPadding;
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         SelectChoice(DockWidthModeBox, settings.DockWidthMode.ToString());
         UpdateDockWidthControls();
@@ -1895,8 +1892,7 @@ public partial class SettingsWindow : Window
             SelectChoice(EdgeBox, defaults.Edge.ToString());
             SelectAlignment(defaults);
             SelectChoice(SizeBox, defaults.Size.ToString());
-            DockIconPaddingXSlider.Value = defaults.DockIconPaddingX;
-            DockIconPaddingYSlider.Value = defaults.DockIconPaddingY;
+            DockIconPaddingSlider.Value = defaults.DockIconPadding;
             DockScaleSlider.Value = Math.Round(defaults.DockScale * 100);
             SelectChoice(DockWidthModeBox, defaults.DockWidthMode.ToString());
             UpdateDockWidthControls();
@@ -2027,7 +2023,7 @@ public partial class SettingsWindow : Window
         var selectedSize = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact;
         (Application.Current.MainWindow as MainWindow)?.SetSizePreview(
             selectedSize, Math.Round(DockScaleSlider.Value) / 100,
-            (int)Math.Round(DockIconPaddingXSlider.Value), (int)Math.Round(DockIconPaddingYSlider.Value));
+            (int)Math.Round(DockIconPaddingSlider.Value));
         UpdateWidgetOptionState();
         UpdateMultiMonitorControls();
         // Reflect widget-related edits in the catalog immediately, without waiting for the
@@ -2290,25 +2286,15 @@ public partial class SettingsWindow : Window
         PreferenceEdited(sender, e);
     }
 
-    private void DockIconPaddingXSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void DockIconPaddingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_initializing) return;
-        UpdateDockIconPaddingLabels();
+        UpdateDockIconPaddingLabel();
         PreferenceEdited(sender, e);
     }
 
-    private void DockIconPaddingYSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_initializing) return;
-        UpdateDockIconPaddingLabels();
-        PreferenceEdited(sender, e);
-    }
-
-    private void UpdateDockIconPaddingLabels()
-    {
-        DockIconPaddingXValue.Text = $"{(int)Math.Round(DockIconPaddingXSlider.Value)} px";
-        DockIconPaddingYValue.Text = $"{(int)Math.Round(DockIconPaddingYSlider.Value)} px";
-    }
+    private void UpdateDockIconPaddingLabel() =>
+        DockIconPaddingValue.Text = $"{(int)Math.Round(DockIconPaddingSlider.Value)} px";
 
     // Padding affects layout only (no work-area reservation), so the debounced auto-save is enough:
     // PreferenceEdited previews it live and SaveSettings persists + reapplies it through Preferences.Changed.
@@ -2320,7 +2306,7 @@ public partial class SettingsWindow : Window
         var selectedSize = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact;
         (Application.Current.MainWindow as MainWindow)?.SetSizePreview(
             selectedSize, Math.Round(DockScaleSlider.Value) / 100,
-            (int)Math.Round(DockIconPaddingXSlider.Value), (int)Math.Round(DockIconPaddingYSlider.Value));
+            (int)Math.Round(DockIconPaddingSlider.Value));
         // While dragging with the mouse button held, defer saving until PreviewMouseUp (CommitDockScale) so the
         // replacement session is not restarted repeatedly mid-drag; still auto-save wheel/programmatic changes.
         if (Mouse.LeftButton != MouseButtonState.Pressed)

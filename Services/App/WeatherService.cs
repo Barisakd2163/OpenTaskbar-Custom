@@ -26,9 +26,16 @@ public static class WeatherService
 {
     private static readonly HttpClient Client = CreateClient();
 
+    // Test-only seam so UI test runs never invoke Windows Location Services or live Open-Meteo requests.
+    internal static Func<string, AppLanguage, CancellationToken, Task<(WeatherReport? Report, string? Error)>>? TestLoaderOverride { get; set; }
 
     public static async Task<(WeatherReport? Report, string? Error)> LoadAsync(string city, AppLanguage language, CancellationToken cancellation)
     {
+        if (TestLoaderOverride is { } testLoader)
+        {
+            return await testLoader(city, language, cancellation);
+        }
+
         try
         {
             var location = string.IsNullOrWhiteSpace(city)

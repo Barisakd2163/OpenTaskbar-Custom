@@ -52,12 +52,11 @@ internal static class FeatureAndMemoryChecks
                 Check(reordered && lazyCoordinator.CurrentOrder[0] != firstWidget,
                     "Lazy WidgetCoordinator must support drag reordering.");
 
-                // Enable all live widgets + SystemMeters.All
-                lazyCoordinator.Apply(new DockSettings(
-                    Widgets: WidgetCoordinator.DefaultWidgetOrder,
-                    StatsMeters: SystemMeters.All));
-                Check(strip.Children.Count == WidgetCoordinator.DefaultWidgetOrder.Length,
-                    "Enabling all live widgets must materialize all controls.");
+                // Materialize additional side-effect-free widgets without triggering OS location, audio, or radio APIs.
+                var pureWidgets = new[] { "Clock", "Focus", "DayProgress", "Storage", "Battery" };
+                lazyCoordinator.Apply(new DockSettings(Widgets: pureWidgets));
+                Check(strip.Children.Count == pureWidgets.Length,
+                    "Enabling additional widgets must materialize all requested controls.");
             }
 
             var aiLoads = 0;
@@ -124,37 +123,7 @@ internal static class FeatureAndMemoryChecks
                     "Claude and Codex must use the shared hover flyout.");
             }
 
-            // 2. SystemStats + on-demand SystemSensors parity & disposal
-            var stats = new SystemStats();
-            _ = stats.SampleCpu();
-            Check(SystemStats.SampleMemory() is >= 0 and <= 1, "SystemStats.SampleMemory must report valid load.");
-            _ = SystemStats.SampleBattery();
-
-            using (var sensors = new SystemSensors(SystemMeters.None))
-            {
-                sensors.Configure(SystemMeters.Gpu);
-                _ = sensors.SampleGpuUsage();
-                sensors.Configure(SystemMeters.GpuTemperature);
-                _ = sensors.SampleGpuTemperature();
-                sensors.Configure(SystemMeters.All);
-                _ = sensors.SampleGpuUsage();
-                _ = sensors.SampleGpuTemperature();
-                sensors.Configure(SystemMeters.None);
-            }
-            Check(true, "SystemSensors must configure, sample, and dispose cleanly across all SystemMeters combinations.");
-
-            // 3. Shared AudioEndpointMonitor reference counting
-            using (var a1 = AudioEndpointMonitor.AcquireShared())
-            {
-                using (var a2 = AudioEndpointMonitor.AcquireShared())
-                {
-                    Check(a1.HasDevice == a2.HasDevice && Math.Abs(a1.Volume - a2.Volume) < 0.001f && a1.Muted == a2.Muted,
-                        "Shared AudioEndpointMonitor handles must observe identical audio state.");
-                }
-                _ = a1.Volume;
-            }
-            Check(true, "Shared AudioEndpointMonitor handles must survive partial release and clean final disposal.");
-
+            // 2. Audio mixer checks (isolated via stubbed AppSessionSource; no live Core Audio or hardware sensors)
             checks += AudioMixerChecks.Run();
 
             // 4. WindowThumbnailPreview lazy creation & disposal
@@ -194,15 +163,12 @@ internal static class FeatureAndMemoryChecks
             Check(ReferenceEquals(dockItem1.ContextMenu, dockItem2.ContextMenu),
                 "Shared ContextMenu must be reused across dock items without per-item duplication.");
 
-            // Verify MediaWidget lifecycle, density and tick safety (V19 uses dedicated volume hover popover, no generic flyout)
+            // Verify MediaWidget density and flyout contract without connecting to live Windows SMTC.
             using (var mediaWidget = new MediaWidget())
             {
-                mediaWidget.Activate();
                 Check(mediaWidget.BuildHoverFlyoutContent() is null, "MediaWidget must use its dedicated volume popover instead of a generic flyout.");
                 Check(mediaWidget.SupportsCompactMode, "MediaWidget must declare compact mode support.");
                 Check(mediaWidget.FullWidthEstimate > mediaWidget.CompactWidthEstimate, "MediaWidget full width must exceed compact width.");
-                mediaWidget.Tick(DateTime.Now);
-                mediaWidget.Deactivate();
             }
 
 

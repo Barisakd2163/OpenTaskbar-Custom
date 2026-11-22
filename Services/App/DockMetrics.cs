@@ -132,12 +132,12 @@ public static class DockMetrics
     /// Geometry for each dock size and user scale factor (0.75–1.50). Surface = cell + 2 × vertical padding + 2 (border);
     /// it plus the bottom gap fits the shelf. Compact at 100% matches the Windows 11 taskbar height (48 DIP).
     /// </summary>
-    public static DockSizeProfile For(Models.DockSize size, double scale = 1.0, int paddingX = 0, int paddingY = 0)
+    public static DockSizeProfile For(Models.DockSize size, double scale = 1.0, int padding = 0)
     {
         var clamped = double.IsFinite(scale) ? Math.Clamp(scale, 0.75, 1.5) : 1.0;
-        // Padding is an absolute DIP gap: it is added after scaling so it stays independent of DockScale.
-        var padX = Math.Clamp(paddingX, 0, (int)MaxIconPadding);
-        var padY = Math.Clamp(paddingY, 0, (int)MaxIconPadding);
+        // Padding is an absolute DIP gap added after scaling; it widens cells horizontally only.
+        // CellHeight (and therefore shelf height and icon size) is never affected by icon padding.
+        var pad = Math.Clamp(padding, 0, (int)MaxIconPadding);
         var baseProfile = size switch
         {
             Models.DockSize.Compact => new DockSizeProfile(Shelf: 48, BottomGap: 3, Cell: 38, VerticalPadding: 2, Icon: 28, Radius: 16),
@@ -145,20 +145,23 @@ public static class DockMetrics
             _ => new DockSizeProfile(Shelf: ShelfHeight, BottomGap: BottomGap, Cell: 50, VerticalPadding: 4, Icon: 38, Radius: 22)
         };
         if (Math.Abs(clamped - 1.0) < 0.001)
-            return baseProfile with { Cell = baseProfile.Cell + padX, IconPaddingX = padX, IconPaddingY = padY };
-        var cell = Math.Round(baseProfile.Cell * clamped) + padX;
+            return baseProfile with { Cell = baseProfile.Cell + pad, CellHeight = baseProfile.Cell, IconPadding = pad };
+        var cellHeight = Math.Round(baseProfile.Cell * clamped);
+        var cell = cellHeight + pad; // horizontal gap only; height stays at cellHeight
         var icon = Math.Round(baseProfile.Icon * clamped);
         var verticalPadding = Math.Max(2, Math.Round(baseProfile.VerticalPadding * clamped));
         var bottomGap = Math.Max(2, Math.Round(baseProfile.BottomGap * clamped));
-        var surfaceHeight = cell + verticalPadding * 2 + 2;
+        var surfaceHeight = cellHeight + verticalPadding * 2 + 2;
         var shelf = Math.Max(36, surfaceHeight + bottomGap + 1);
         var radius = Math.Clamp(Math.Round(baseProfile.Radius * clamped), 10, 30);
-        return new DockSizeProfile(Shelf: shelf, BottomGap: bottomGap, Cell: cell, VerticalPadding: verticalPadding, Icon: icon, Radius: radius, IconPaddingX: padX, IconPaddingY: padY);
+        return new DockSizeProfile(Shelf: shelf, BottomGap: bottomGap, Cell: cell, CellHeight: cellHeight, VerticalPadding: verticalPadding, Icon: icon, Radius: radius, IconPadding: pad);
     }
 }
 
-public readonly record struct DockSizeProfile(double Shelf, double BottomGap, double Cell, double VerticalPadding, double Icon, double Radius, double IconPaddingX = 0, double IconPaddingY = 0)
+public readonly record struct DockSizeProfile(double Shelf, double BottomGap, double Cell, double VerticalPadding, double Icon, double Radius, double CellHeight = 0, double IconPadding = 0)
 {
-    public double SurfaceHeight => Cell + VerticalPadding * 2 + 2;
-    public double WidgetScale => Math.Clamp((Cell - 2) / DockMetrics.WidgetDesignHeight, 0.45, 1.35);
+    // Height uses CellHeight (padding-free) so icon spacing can never grow the dock vertically.
+    public double EffectiveCellHeight => CellHeight > 0 ? CellHeight : Cell;
+    public double SurfaceHeight => EffectiveCellHeight + VerticalPadding * 2 + 2;
+    public double WidgetScale => Math.Clamp((EffectiveCellHeight - 2) / DockMetrics.WidgetDesignHeight, 0.45, 1.35);
 }

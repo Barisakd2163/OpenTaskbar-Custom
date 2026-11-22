@@ -246,16 +246,15 @@ public sealed class DockSettingsStore
     }
 
     /// <summary>
-    /// The retired single DockIconPadding value applied to both axes. Migrate it to the horizontal
-    /// axis (X) once so an upgrading user keeps their spacing; the new vertical axis defaults to 0.
+    /// DockIconPaddingX/Y existed briefly; collapse them back to the single horizontal-only
+    /// DockIconPadding so settings written in that window keep their spacing.
     /// </summary>
     private static DockSettings MigrateLegacyIconPadding(DockSettings settings, JsonElement root)
     {
-        if (root.TryGetProperty(nameof(DockSettings.DockIconPaddingX), out _)) return settings;
-        if (!root.TryGetProperty("DockIconPadding", out var legacy)
+        if (!root.TryGetProperty("DockIconPaddingX", out var legacy)
             || legacy.ValueKind != JsonValueKind.Number
             || !legacy.TryGetInt32(out var value)) return settings;
-        return settings with { DockIconPaddingX = Math.Clamp(value, 0, (int)DockMetrics.MaxIconPadding) };
+        return settings with { DockIconPadding = Math.Clamp(value, 0, (int)DockMetrics.MaxIconPadding) };
     }
 
     /// <summary>

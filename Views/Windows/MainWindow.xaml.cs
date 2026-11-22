@@ -77,7 +77,7 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
-    private (DockSize Size, double Scale, int PaddingX, int PaddingY, double BottomGap, double TopGap)? _appliedDockGeometry;
+    private (DockSize Size, double Scale, int Padding, double BottomGap, double TopGap)? _appliedDockGeometry;
     private bool _resizingDock;
     private bool _resizePending;
     private bool _resizingFromLeft;
@@ -91,7 +91,7 @@ public partial class MainWindow : Window
     private bool _rebuildingDockOrder;
     private bool _instantDockResize;
     private double _dockTopGap;
-    private (DockSize Size, double Scale, int PaddingX, int PaddingY)? _sizePreviewOverride;
+    private (DockSize Size, double Scale, int Padding)? _sizePreviewOverride;
     private double? _radiusPreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
     private int _wheelRemainder;
@@ -475,7 +475,7 @@ public partial class MainWindow : Window
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
-        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPaddingX, _preferences.Current.DockIconPaddingY, ExternalBottomGap, ExternalTopGap);
+        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding, ExternalBottomGap, ExternalTopGap);
         session.Edge = Edge;
         session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
@@ -2047,14 +2047,12 @@ public partial class MainWindow : Window
         var geometry = (
             Size: _preferences.Current.Size,
             Scale: _preferences.Current.DockScale,
-            PaddingX: _preferences.Current.DockIconPaddingX,
-            PaddingY: _preferences.Current.DockIconPaddingY,
+            Padding: _preferences.Current.DockIconPadding,
             BottomGap: ExternalBottomGap,
             TopGap: ExternalTopGap);
         if (_appliedDockGeometry is { } applied && applied != geometry && _replacementSession is not null)
         {
-            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001
-                || applied.PaddingX != geometry.PaddingX || applied.PaddingY != geometry.PaddingY)
+            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001 || applied.Padding != geometry.Padding)
             {
                 AnimateDockScaleChange();
             }
@@ -2711,14 +2709,13 @@ public partial class MainWindow : Window
             : Profile.Radius);
 
     private DockSizeProfile Profile => _sizePreviewOverride is { } preview
-        ? DockMetrics.For(preview.Size, preview.Scale, preview.PaddingX, preview.PaddingY)
-        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale,
-            _preferences.Current.DockIconPaddingX, _preferences.Current.DockIconPaddingY);
+        ? DockMetrics.For(preview.Size, preview.Scale, preview.Padding)
+        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding);
 
-    internal void SetSizePreview(DockSize? size, double? scale, int? paddingX = null, int? paddingY = null)
+    internal void SetSizePreview(DockSize? size, double? scale, int? padding = null)
     {
         _sizePreviewOverride = size is { } s && scale is { } sc
-            ? (s, sc, paddingX ?? _preferences.Current.DockIconPaddingX, paddingY ?? _preferences.Current.DockIconPaddingY)
+            ? (s, sc, padding ?? _preferences.Current.DockIconPadding)
             : null;
         if (_replacementSession is not null) _replacementSession.DeferReservation = _sizePreviewOverride is not null;
         ApplySizeProfile();
@@ -2751,12 +2748,11 @@ public partial class MainWindow : Window
         // One master radius drives every nested corner in the application.
         RadiusManager.Apply((int)Math.Round(radius));
         Application.Current.Resources["DockCellSize"] = profile.Cell;
-        Application.Current.Resources["DockCellHeight"] = profile.Cell;
-        // Extra icon gap is an absolute DIP value applied as a Thickness resource so XAML styles can bind to it.
-        // X = left+right spacing, Y = top+bottom breathing room (independent axes).
-        Application.Current.Resources["DockIconPaddingResource"] =
-            new Thickness(profile.IconPaddingX, profile.IconPaddingY, profile.IconPaddingX, profile.IconPaddingY);
-        ApplyDividerPadding(profile.IconPaddingX);
+        // Height is padding-free so extra horizontal spacing can never grow icons or dock height.
+        Application.Current.Resources["DockCellHeight"] = profile.EffectiveCellHeight;
+        // Horizontal-only padding: left/right gap between icons, top/bottom stays at zero.
+        Application.Current.Resources["DockIconPaddingResource"] = new Thickness(profile.IconPadding, 0, profile.IconPadding, 0);
+        ApplyDividerPadding(profile.IconPadding);
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         Application.Current.Resources["DockUtilityGlyphSize"] = Math.Round(profile.Icon * 0.6);
         Application.Current.Resources["StartLogoSize"] = Application.Current.Resources["DockApplicationIconSize"] is double currentSize ? currentSize : 36.0;
