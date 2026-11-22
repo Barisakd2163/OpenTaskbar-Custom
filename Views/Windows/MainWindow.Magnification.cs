@@ -171,6 +171,28 @@ public partial class MainWindow
         AddNonMagnifiedSpan(WidgetIsland);
     }
 
+    private bool IsPointerOverMagnifiedTarget(DependencyObject? source)
+    {
+        var current = source;
+        while (current is not null && !ReferenceEquals(current, DockSurface))
+        {
+            if (current is Button button)
+            {
+                for (var i = 0; i < _magnificationTargets.Count; i++)
+                {
+                    if (ReferenceEquals(_magnificationTargets[i].Button, button)) return true;
+                }
+                return false;
+            }
+
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
     private bool IsAxisInNonMagnifiedRestSpan(double axis)
     {
         for (var i = 0; i < _nonMagnifiedRestSpans.Count; i++)
@@ -486,10 +508,12 @@ public partial class MainWindow
         }
 
         var mouseAxis = IsVertical ? mousePos.Y : mousePos.X;
+        var overMagnifiedTarget = _magnificationLayoutActive
+            && IsPointerOverMagnifiedTarget(e.OriginalSource as DependencyObject);
         if (_magnificationTargets.Count == 0
-            || mouseAxis < _magnifiedSpanMin
-            || mouseAxis > _magnifiedSpanMax
-            || IsAxisInNonMagnifiedRestSpan(mouseAxis))
+            || (!overMagnifiedTarget && (mouseAxis < _magnifiedSpanMin
+                || mouseAxis > _magnifiedSpanMax
+                || IsAxisInNonMagnifiedRestSpan(mouseAxis))))
         {
             ResetMagnification();
             return;
@@ -735,7 +759,12 @@ public partial class MainWindow
             }
 
             _magnificationLayoutActive = false;
-            DockScrollViewer.SuppressOverflowIndicators = false;
+            // Release overflow suppression after WPF finishes arranging the restored rest widths so
+            // ScrollableWidth does not reflect the previous expanded frame and flicker '>' for one frame (#82).
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+            {
+                if (!_magnificationLayoutActive) DockScrollViewer.SuppressOverflowIndicators = false;
+            }));
         }
         finally
         {
@@ -759,6 +788,11 @@ public partial class MainWindow
         _magnificationRendering = false;
         _magnificationLastFrame = null;
         _magnificationVelocity.Clear();
+        if (_deferredDockResize && !_magnificationLayoutActive)
+        {
+            _deferredDockResize = false;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(ResizeDockToContent));
+        }
     }
 
     private void DockSurface_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)

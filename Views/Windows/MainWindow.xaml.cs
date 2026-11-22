@@ -2941,8 +2941,19 @@ public partial class MainWindow : Window
         UpdateSecondaryDocks();
     }
 
+    private bool _deferredDockResize;
+
     private void ResizeDockToContent()
     {
+        // Defer background content-driven resizes (e.g. widget ticks or width updates) while fisheye
+        // magnification is actively expanding button slots; clearing magnification overrides mid-hover
+        // snaps icons back to rest for one frame and causes a visible shrink/grow jitter.
+        if (_magnificationLayoutActive || _magnificationRendering)
+        {
+            _deferredDockResize = true;
+            return;
+        }
+
         // Measuring runs pending layout, whose SizeChanged handlers call back here. Those calls are coalesced into
         // one more fit by the outer call, which is capped so layout feedback cannot loop.
         if (_resizingDock)
