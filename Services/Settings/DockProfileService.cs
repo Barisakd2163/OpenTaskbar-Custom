@@ -31,7 +31,9 @@ public static class DockProfileService
             ThemeApplicationIcons: settings.ThemeApplicationIcons,
             LauncherHotkey: settings.LauncherHotkey,
             DockHotkey: settings.DockHotkey,
-            AutoHide: settings.AutoHide);
+            AutoHide: settings.AutoHide,
+            CustomLauncherHotkey: settings.CustomLauncherHotkey,
+            CustomDockHotkey: settings.CustomDockHotkey);
     }
 
     /// <summary>Ensures at least one profile exists by seeding a Default profile when none are configured.</summary>
@@ -185,7 +187,9 @@ public static class DockProfileService
         && profile.ThemeApplicationIcons is null
         && profile.LauncherHotkey is null
         && profile.DockHotkey is null
-        && profile.AutoHide is null;
+        && profile.AutoHide is null
+        && profile.CustomLauncherHotkey is null
+        && profile.CustomDockHotkey is null;
 
     private static DockSettings ApplyProfile(DockSettings settings, DockProfile target)
     {
@@ -215,6 +219,8 @@ public static class DockProfileService
             ThemeApplicationIcons = target.ThemeApplicationIcons ?? settings.ThemeApplicationIcons,
             LauncherHotkey = target.LauncherHotkey ?? settings.LauncherHotkey,
             DockHotkey = target.DockHotkey ?? settings.DockHotkey,
+            CustomLauncherHotkey = target.CustomLauncherHotkey ?? (target.LauncherHotkey is not null ? null : settings.CustomLauncherHotkey),
+            CustomDockHotkey = target.CustomDockHotkey ?? (target.DockHotkey is not null ? null : settings.CustomDockHotkey),
             AutoHide = target.AutoHide ?? settings.AutoHide,
             ActiveProfile = target.Name
         };

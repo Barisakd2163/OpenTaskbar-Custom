@@ -340,6 +340,8 @@ public sealed class DockSettingsStore
         && settings.InstalledWidgets?.Distinct(StringComparer.Ordinal).Count() == settings.InstalledWidgets?.Count
         && settings.Widgets?.Any(widget => settings.InstalledWidgets?.Contains(widget, StringComparer.Ordinal) != true) != true
         && Enum.IsDefined(settings.LauncherHotkey) && Enum.IsDefined(settings.DockHotkey)
+        && HotkeyBinding.IsValidCustomString(settings.CustomLauncherHotkey)
+        && HotkeyBinding.IsValidCustomString(settings.CustomDockHotkey)
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
         && Enum.IsDefined(settings.DateStyle)
         && (settings.StatsMeters & ~SystemMeters.All) == 0
@@ -377,6 +379,8 @@ public sealed class DockSettingsStore
         && (profile.Theme is null || Enum.IsDefined(profile.Theme.Value))
         && (profile.LauncherHotkey is null || Enum.IsDefined(profile.LauncherHotkey.Value))
         && (profile.DockHotkey is null || Enum.IsDefined(profile.DockHotkey.Value))
+        && HotkeyBinding.IsValidCustomString(profile.CustomLauncherHotkey)
+        && HotkeyBinding.IsValidCustomString(profile.CustomDockHotkey)
         && (profile.AutoHide is null || Enum.IsDefined(profile.AutoHide.Value));
 
     public static bool Validate(DockSettings settings) => IsValid(settings);

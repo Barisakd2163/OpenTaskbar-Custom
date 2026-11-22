@@ -44,6 +44,12 @@ public partial class SettingsWindow : Window
     private bool _closed;
     private bool _sourceReady;
     private HwndSource? _source;
+    private enum HotkeyTarget { None, Dock, Launcher }
+    private HotkeyTarget _recordingHotkeyTarget;
+    private HotkeyChoice _dockHotkeyChoice = HotkeyChoice.CtrlAltD;
+    private string? _dockCustomHotkey;
+    private HotkeyChoice _launcherHotkeyChoice = HotkeyChoice.AltSpace;
+    private string? _launcherCustomHotkey;
     private readonly string _radioGroupScope = Guid.NewGuid().ToString("N");
     private readonly RoutedEventHandler _preferenceEditedHandler;
     private readonly Dictionary<SurfaceKind, Slider> _surfaceSliders = [];
@@ -85,6 +91,7 @@ public partial class SettingsWindow : Window
         WeatherCityCombo.LostFocus += WeatherCityCombo_LostFocus;
         _ = InitializeWeatherLocationsAsync(_applied.WeatherCity);
         _preferences.Changed += Preferences_Changed;
+        Deactivated += Settings_Deactivated;
         _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
         _autoSaveTimer.Tick += (_, _) =>
         {
@@ -103,6 +110,7 @@ public partial class SettingsWindow : Window
             StopAndDisposeLivePreviews();
             IsVisibleChanged -= Settings_IsVisibleChanged;
             _preferences.Changed -= Preferences_Changed;
+            Deactivated -= Settings_Deactivated;
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             WidgetOptionsList.ItemsSource = null;
             foreach (var option in _widgetOptions)
@@ -283,6 +291,7 @@ public partial class SettingsWindow : Window
             }
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
+            UpdateHotkeyControls();
         }
         if (!_isSaving && !ReferenceEquals(_preferences.Current, _applied))
         {
@@ -420,8 +429,10 @@ public partial class SettingsWindow : Window
             Edge = Enum.TryParse<DockEdge>(Choice(EdgeBox), out var edge) ? edge : DockEdge.Bottom,
             ShowWeather = IsEnabled("Weather"),
             WeatherCity = WeatherCityBox.Text.Trim(),
-            LauncherHotkey = _preferences.Current.LauncherHotkey,
-            DockHotkey = Choice(HotkeyBox) == "CtrlAltD" ? HotkeyChoice.CtrlAltD : HotkeyChoice.Disabled,
+            LauncherHotkey = _launcherHotkeyChoice,
+            CustomLauncherHotkey = _launcherCustomHotkey,
+            DockHotkey = _dockHotkeyChoice,
+            CustomDockHotkey = _dockCustomHotkey,
             StartAction = StartButtonAction.WindowsStart,
             StartPlacement = Enum.TryParse<StartButtonPlacement>(Choice(StartPlacementBox), out var placement)
                 ? placement : _preferences.Current.StartPlacement,
@@ -1028,7 +1039,11 @@ public partial class SettingsWindow : Window
 
     private void SettingsTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (!_initializing && ReferenceEquals(e.Source, SettingsTabs))
+        if (ReferenceEquals(e.OriginalSource, SettingsTabs))
+        {
+            CancelHotkeyRecording();
+        }
+        if (!_initializing && ReferenceEquals(e.OriginalSource, SettingsTabs))
         {
             UpdateWidgetPreviewRefresh();
             if (_preferences.Current.AnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
@@ -1331,11 +1346,99 @@ public partial class SettingsWindow : Window
         StatsMemoryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Memory);
         StatsGpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Gpu);
         StatsGpuTemperatureToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.GpuTemperature);
-        // WinAltD is retired: existing selections fall back to the equivalent Ctrl+Alt+D.
-        SelectChoice(HotkeyBox, settings.DockHotkey is HotkeyChoice.CtrlAltD or HotkeyChoice.WinAltD ? "CtrlAltD" : "Disabled");
+        _recordingHotkeyTarget = HotkeyTarget.None;
+        ClearHotkeyValidation();
+        _dockHotkeyChoice = settings.DockHotkey;
+        _dockCustomHotkey = settings.CustomDockHotkey;
+        _launcherHotkeyChoice = settings.LauncherHotkey;
+        _launcherCustomHotkey = settings.CustomLauncherHotkey;
+        UpdateHotkeyControls();
         SelectChoice(StartPlacementBox, settings.StartPlacement.ToString());
         WheelVolumeToggle.IsChecked = settings.WheelVolume;
         _ = InitializeWeatherLocationsAsync(settings.WeatherCity);
+    }
+
+    private void Settings_Deactivated(object? sender, EventArgs e) => CancelHotkeyRecording();
+
+    private void UpdateHotkeyControls()
+    {
+        DockHotkeyCaptureButton.Content = _recordingHotkeyTarget == HotkeyTarget.Dock
+            ? UiText.Get("HotkeyRecording")
+            : HotkeyBinding.Resolve(_dockHotkeyChoice, _dockCustomHotkey)?.DisplayText ?? UiText.Get("HotkeyDisabled");
+        DockHotkeyCaptureButton.SetResourceReference(
+            Control.ForegroundProperty, _recordingHotkeyTarget == HotkeyTarget.Dock ? "AccentBrush" : "TextPrimary");
+        LauncherHotkeyCaptureButton.Content = _recordingHotkeyTarget == HotkeyTarget.Launcher
+            ? UiText.Get("HotkeyRecording")
+            : HotkeyBinding.Resolve(_launcherHotkeyChoice, _launcherCustomHotkey)?.DisplayText ?? UiText.Get("HotkeyDisabled");
+        LauncherHotkeyCaptureButton.SetResourceReference(
+            Control.ForegroundProperty, _recordingHotkeyTarget == HotkeyTarget.Launcher ? "AccentBrush" : "TextPrimary");
+        DockHotkeyResetButton.IsEnabled = _dockCustomHotkey is not null || _dockHotkeyChoice != HotkeyChoice.CtrlAltD;
+        LauncherHotkeyResetButton.IsEnabled = _launcherCustomHotkey is not null || _launcherHotkeyChoice != HotkeyChoice.AltSpace;
+    }
+
+    private void ClearHotkeyValidation()
+    {
+        HotkeyValidationText.Text = string.Empty;
+        HotkeyValidationText.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowHotkeyValidation(string message)
+    {
+        HotkeyValidationText.Text = message;
+        HotkeyValidationText.Visibility = Visibility.Visible;
+    }
+
+    private void CancelHotkeyRecording()
+    {
+        if (_recordingHotkeyTarget == HotkeyTarget.None) return;
+        _recordingHotkeyTarget = HotkeyTarget.None;
+        ClearHotkeyValidation();
+        UpdateHotkeyControls();
+    }
+
+    private void HotkeyCaptureButton_Click(object sender, RoutedEventArgs e)
+    {
+        var target = sender == DockHotkeyCaptureButton ? HotkeyTarget.Dock : HotkeyTarget.Launcher;
+        _recordingHotkeyTarget = _recordingHotkeyTarget == target ? HotkeyTarget.None : target;
+        if (_recordingHotkeyTarget == HotkeyTarget.Dock)
+            DockHotkeyCaptureButton.Focus();
+        else if (_recordingHotkeyTarget == HotkeyTarget.Launcher)
+            LauncherHotkeyCaptureButton.Focus();
+        ClearHotkeyValidation();
+        UpdateHotkeyControls();
+    }
+
+    private void HotkeyResetButton_Click(object sender, RoutedEventArgs e)
+    {
+        _recordingHotkeyTarget = HotkeyTarget.None;
+        if (sender == DockHotkeyResetButton)
+        {
+            var binding = HotkeyBinding.FromChoice(HotkeyChoice.CtrlAltD);
+            var otherBinding = HotkeyBinding.Resolve(_launcherHotkeyChoice, _launcherCustomHotkey);
+            if (HotkeyBinding.EqualsBinding(binding, otherBinding))
+            {
+                ShowHotkeyValidation(UiText.Format("HotkeyConflict", UiText.Get("LauncherHotkey")));
+                return;
+            }
+            _dockHotkeyChoice = HotkeyChoice.CtrlAltD;
+            _dockCustomHotkey = null;
+        }
+        else
+        {
+            var binding = HotkeyBinding.FromChoice(HotkeyChoice.AltSpace);
+            var otherBinding = HotkeyBinding.Resolve(_dockHotkeyChoice, _dockCustomHotkey);
+            if (HotkeyBinding.EqualsBinding(binding, otherBinding))
+            {
+                ShowHotkeyValidation(UiText.Format("HotkeyConflict", UiText.Get("DockHotkey")));
+                return;
+            }
+            _launcherHotkeyChoice = HotkeyChoice.AltSpace;
+            _launcherCustomHotkey = null;
+        }
+
+        ClearHotkeyValidation();
+        UpdateHotkeyControls();
+        TriggerAutoSave(immediate: true);
     }
 
     private void AttachWidgetSettingsPanels()
@@ -2111,6 +2214,71 @@ public partial class SettingsWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_recordingHotkeyTarget != HotkeyTarget.None)
+        {
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            var modifiers = Keyboard.Modifiers;
+            if (key == Key.Escape)
+            {
+                e.Handled = true;
+                CancelHotkeyRecording();
+                return;
+            }
+
+            if (modifiers == ModifierKeys.None && key is Key.Back or Key.Delete)
+            {
+                e.Handled = true;
+                if (_recordingHotkeyTarget == HotkeyTarget.Dock)
+                {
+                    _dockCustomHotkey = "Disabled";
+                    _dockHotkeyChoice = HotkeyChoice.Disabled;
+                }
+                else
+                {
+                    _launcherCustomHotkey = "Disabled";
+                    _launcherHotkeyChoice = HotkeyChoice.Disabled;
+                }
+                _recordingHotkeyTarget = HotkeyTarget.None;
+                ClearHotkeyValidation();
+                UpdateHotkeyControls();
+                TriggerAutoSave(immediate: true);
+                return;
+            }
+
+            if (!HotkeyBinding.TryFromKeyEvent(modifiers, key, out var binding, out var errorKey))
+            {
+                if (errorKey is not null)
+                {
+                    e.Handled = true;
+                    ShowHotkeyValidation(UiText.Get(errorKey));
+                }
+                return;
+            }
+
+            e.Handled = true;
+            var otherBinding = _recordingHotkeyTarget == HotkeyTarget.Dock
+                ? HotkeyBinding.Resolve(_launcherHotkeyChoice, _launcherCustomHotkey)
+                : HotkeyBinding.Resolve(_dockHotkeyChoice, _dockCustomHotkey);
+            if (HotkeyBinding.EqualsBinding(binding, otherBinding))
+            {
+                var otherNameKey = _recordingHotkeyTarget == HotkeyTarget.Dock ? "LauncherHotkey" : "DockHotkey";
+                _recordingHotkeyTarget = HotkeyTarget.None;
+                UpdateHotkeyControls();
+                ShowHotkeyValidation(UiText.Format("HotkeyConflict", UiText.Get(otherNameKey)));
+                return;
+            }
+
+            if (_recordingHotkeyTarget == HotkeyTarget.Dock)
+                _dockCustomHotkey = binding.DisplayText;
+            else
+                _launcherCustomHotkey = binding.DisplayText;
+            _recordingHotkeyTarget = HotkeyTarget.None;
+            ClearHotkeyValidation();
+            UpdateHotkeyControls();
+            TriggerAutoSave(immediate: true);
+            return;
+        }
+
         if (e.Key != Key.Escape) return;
         e.Handled = true;
         Close();

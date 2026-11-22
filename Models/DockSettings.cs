@@ -94,7 +94,9 @@ public sealed record DockProfile(
     bool? ThemeApplicationIcons = null,
     HotkeyChoice? LauncherHotkey = null,
     HotkeyChoice? DockHotkey = null,
-    AutoHideMode? AutoHide = null);
+    AutoHideMode? AutoHide = null,
+    string? CustomLauncherHotkey = null,
+    string? CustomDockHotkey = null);
 
 /// <summary>A user-defined group of applications shown as a single dock icon with a flyout.</summary>
 public sealed record DockAppGroup(string Id, string Name, IReadOnlyList<string> ExecutablePaths);
@@ -200,4 +202,6 @@ public sealed record DockSettings(
     int DockTopGapPercent = 0,
     DockGapUnit DockBottomGapUnit = DockGapUnit.Pixels,
     int DockBottomGapPixels = 6,
-    int DockBottomGapPercent = 0);
+    int DockBottomGapPercent = 0,
+    string? CustomLauncherHotkey = null,
+    string? CustomDockHotkey = null);
