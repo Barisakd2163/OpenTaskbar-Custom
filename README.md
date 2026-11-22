@@ -12,11 +12,11 @@
 
 <br />
 
-<img src="docs/screenshots/hero-desktop.jpg" alt="OpenTaskbar Desktop Showcase" width="100%" />
+<img src="docs/screenshots/hero-desktop-2026-11.jpg" alt="OpenTaskbar Desktop Showcase" width="100%" />
 
 <br />
 
-<img src="docs/screenshots/hero-dock-crop.png" alt="OpenTaskbar Floating Dock" width="100%" />
+<img src="docs/screenshots/hero-dock-crop-2026-11.png" alt="OpenTaskbar Floating Dock" width="100%" />
 
 </div>
 
@@ -93,9 +93,9 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 <div align="center">
 
-| Settings Dashboard | Interactive Widget Gallery |
+| Dock Settings | Themes Gallery |
 | :---: | :---: |
-| <img src="docs/screenshots/settings-general.jpg" alt="Settings Dashboard" width="460" /> | <img src="docs/screenshots/widget-gallery.png" alt="Widget Gallery" width="460" /> |
+| <img src="docs/screenshots/settings-general.jpg" alt="OpenTaskbar Dock Settings" width="460" /> | <img src="docs/screenshots/settings-themes.jpg" alt="OpenTaskbar Themes Gallery" width="460" /> |
 
 </div>
 
