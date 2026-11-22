@@ -190,6 +190,11 @@ public partial class MainWindow : Window
         };
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
         TrayButton.Initialize(ReportError, CloseApplication, TerminateApplication);
+        TrayButton.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
+        TrayButton.PinToggled += OnTrayIconPinToggled;
+        PinnedTrayStrip.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
+        PinnedTrayStrip.IsStripEnabled = _preferences.Current.ShowTrayButton;
+        PinnedTrayStrip.LayoutChanged += OnPinnedTrayStripLayoutChanged;
         _widgetCoordinator.ConfigureWidgetMenu = menu =>
         {
             menu.Opened += DockContextMenu_Opened;
@@ -446,7 +451,7 @@ public partial class MainWindow : Window
         }
         else if (_replacementSession.IsActive)
         {
-            TrayHost.Start();
+            EnsureTrayHostStarted();
         }
         StartupStopwatch.Mark("taskbar replacement started");
         InitializeFeatures();
@@ -535,7 +540,7 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
-            if (startTrayHost && session.IsActive) TrayHost.Start();
+            if (startTrayHost && session.IsActive) EnsureTrayHostStarted();
         }
         catch (InvalidOperationException ex)
         {
@@ -544,6 +549,47 @@ public partial class MainWindow : Window
             PositionDock(useWorkArea: true);
             ReportError(ex.Message);
         }
+    }
+
+    private void EnsureTrayHostStarted()
+    {
+        var host = TrayHost.Start();
+        if (host is not null)
+        {
+            PinnedTrayStrip.AttachHost(host);
+        }
+    }
+
+    private void OnTrayIconPinToggled(string pinKey)
+    {
+        var updatedPins = TrayPinIdentity.TogglePin(_preferences.Current.PinnedTrayIcons, pinKey);
+        var error = _preferences.Save(_preferences.Current with { PinnedTrayIcons = updatedPins });
+        if (error is not null)
+        {
+            ReportError(error);
+            return;
+        }
+        RefreshPinnedTrayStrip();
+    }
+
+    private void RefreshPinnedTrayStrip()
+    {
+        PinnedTrayStrip.IsStripEnabled = _preferences.Current.ShowTrayButton;
+        if (TrayHost.Current is { IsRunning: true } host)
+        {
+            PinnedTrayStrip.AttachHost(host);
+        }
+        else
+        {
+            PinnedTrayStrip.Refresh();
+        }
+    }
+
+    private void OnPinnedTrayStripLayoutChanged()
+    {
+        InvalidateMagnificationTargets();
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
     }
 
     private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -2102,6 +2148,7 @@ public partial class MainWindow : Window
         ApplyWidgets(_preferences.Current.Widgets);
         ApplyExtrasSettings();
         ApplyFeatureSettings();
+        RefreshPinnedTrayStrip();
         ApplyHeadroom();
         ApplySizeProfile();
         ApplyLayoutMode();
@@ -2529,6 +2576,7 @@ public partial class MainWindow : Window
             _dockItemElements.Clear();
             DockContents.Children.Remove(StartDivider);
             DockContents.Children.Remove(TrayGroupDivider);
+            DockContents.Children.Remove(PinnedTrayStrip);
 
             var insertAt = DockContents.Children.IndexOf(StatusText);
             if (insertAt < 0) insertAt = DockContents.Children.Count;
@@ -2543,8 +2591,13 @@ public partial class MainWindow : Window
             {
                 if (i == leadCount && showLeadDivider)
                     DockContents.Children.Insert(insertAt++, StartDivider);
-                if (i == trayIndex && showTrayDivider)
-                    DockContents.Children.Insert(insertAt++, TrayGroupDivider);
+                if (i == trayIndex)
+                {
+                    if (showTrayDivider)
+                        DockContents.Children.Insert(insertAt++, TrayGroupDivider);
+                    if (PinnedTrayStrip.Parent is Panel oldStripPanel) oldStripPanel.Children.Remove(PinnedTrayStrip);
+                    DockContents.Children.Insert(insertAt++, PinnedTrayStrip);
+                }
 
                 var (token, element) = pairs[i];
                 // A UIElement cannot be a logical child of two panels; detach from the old grouped host first.
@@ -2929,6 +2982,7 @@ public partial class MainWindow : Window
         ApplyDividerPadding(profile.IconPadding);
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         Application.Current.Resources["DockUtilityGlyphSize"] = Math.Round(profile.Icon * 0.6);
+        PinnedTrayStrip.SetIconScale(profile.Icon);
         Application.Current.Resources["StartLogoSize"] = Application.Current.Resources["DockApplicationIconSize"] is double currentSize ? currentSize : 36.0;
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(radius);
@@ -3305,6 +3359,7 @@ public partial class MainWindow : Window
         try
         {
             // Hand tray icons back to Explorer before its taskbar becomes visible again.
+            PinnedTrayStrip.DetachHost();
             TrayHost.Current?.Dispose();
             var session = _replacementSession;
             if (session is null) return null;
@@ -3396,6 +3451,9 @@ public partial class MainWindow : Window
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();
         _wheelAudio = null;
+        PinnedTrayStrip.DetachHost();
+        PinnedTrayStrip.LayoutChanged -= OnPinnedTrayStripLayoutChanged;
+        TrayButton.PinToggled -= OnTrayIconPinToggled;
         DisposeExtras();
         DisposeFeatures();
     }

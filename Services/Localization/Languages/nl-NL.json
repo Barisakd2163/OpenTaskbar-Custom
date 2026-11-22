@@ -275,6 +275,8 @@
   "DesktopState": "Bureaublad {0} van {1}",
   "TrayApps": "Systeemvak-apps",
   "TrayEmpty": "Er zijn geen actieve apps met een pictogram in het systeemvak.",
+  "PinTrayIcon": "Vastmaken aan dock",
+  "UnpinTrayIcon": "Losmaken van dock",
   "TraySettings": "Taakbalkinstellingen",
   "TrayNote": "Klik op een app om deze te openen. Met de knop rechts beëindig je na bevestiging de processen. Klik met de rechtermuisknop om de app normaal af te sluiten.",
   "Shortcuts": "Sneltoetsen",

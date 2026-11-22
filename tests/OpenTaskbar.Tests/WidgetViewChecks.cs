@@ -63,6 +63,7 @@ internal static class WidgetViewChecks
             checks += BluetoothBatteryChecks.Run(app);
             checks += SystemStatsAvailabilityChecks.Run(app);
             checks += V19WidgetRedesignChecks.Run(app);
+            checks += PinnedTrayChecks.RunUi(app);
 
             var cardStyle = (Style)app.FindResource("WidgetCardButton");
             var cardTemplate = (ControlTemplate)cardStyle.Setters.OfType<Setter>()

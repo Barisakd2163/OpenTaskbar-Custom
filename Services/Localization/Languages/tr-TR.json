@@ -314,6 +314,8 @@
   "DesktopState": "Masaüstü {0} / {1}",
   "TrayApps": "Arka plan uygulamaları",
   "TrayEmpty": "Bildirim alanı simgesi olan çalışan uygulama yok.",
+  "PinTrayIcon": "Dock’a sabitle",
+  "UnpinTrayIcon": "Dock’tan kaldır",
   "TraySettings": "Bildirim alanı ayarları",
   "TrayNote": "Uygulamayı açmak için adına tıklayın. Sağdaki düğme onayınızla süreci sonlandırır. Normal kapatma için sağ tıklayın.",
   "Shortcuts": "Kısayollar",

@@ -275,6 +275,8 @@
   "DesktopState": "Pulpit {0} z {1}",
   "TrayApps": "Aplikacje w zasobniku",
   "TrayEmpty": "Brak uruchomionych aplikacji z ikoną w obszarze powiadomień.",
+  "PinTrayIcon": "Przypnij do doku",
+  "UnpinTrayIcon": "Odepnij z doku",
   "TraySettings": "Ustawienia paska zadań",
   "TrayNote": "Kliknij aplikację, aby ją otworzyć. Prawy przycisk kończy jej procesy po potwierdzeniu. Kliknij prawym przyciskiem myszy, aby normalnie ją zamknąć.",
   "Shortcuts": "Skróty",

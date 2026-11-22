@@ -275,6 +275,8 @@
   "DesktopState": "桌面 {0} / {1}",
   "TrayApps": "后台应用",
   "TrayEmpty": "没有正在运行且带有通知区域图标的应用。",
+  "PinTrayIcon": "固定到程序坞",
+  "UnpinTrayIcon": "从程序坞取消固定",
   "TraySettings": "Windows 通知设置",
   "TrayNote": "点击应用即可打开。右侧按钮会在确认后结束其进程。右键单击可正常关闭应用。",
   "Shortcuts": "键盘快捷键",

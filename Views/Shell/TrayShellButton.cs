@@ -22,6 +22,10 @@ public sealed class TrayShellButton : Button
     /// <summary>Seam for tests: enumerates the tray apps (registry snapshot plus every running process).</summary>
     internal Func<IReadOnlyList<TrayApp>> AppsReader { get; set; } = TrayIcons.RunningApps;
 
+    /// <summary>Supplies the persisted pinned tray icon keys so the flyout reflects pinned state.</summary>
+    public Func<IReadOnlyList<string>?>? PinnedKeysProvider { get; set; }
+
+    public event Action<string>? PinToggled;
     public event Action<string>? CloseApplicationRequested;
     public event Action<string>? TerminateApplicationRequested;
 
@@ -80,9 +84,20 @@ public sealed class TrayShellButton : Button
 
     private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke(() => UiText_PropertyChanged(sender, e));
+            return;
+        }
         Localize();
-        if (_flyout.IsOpen && _lastApps is not null)
-            _flyout.Show(this, BuildContent(_lastApps), animate: false);
+        if (_flyout.IsOpen)
+        {
+            if (TrayHost.Current is { IsRunning: true } host)
+                _flyout.Show(this, BuildLiveContent(host.AppIcons()), animate: false);
+            else if (_lastApps is not null)
+                _flyout.Show(this, BuildContent(_lastApps), animate: false);
+        }
     }
 
     /// <summary>Points the chevron toward the direction the background-apps flyout opens.</summary>
@@ -184,15 +199,13 @@ public sealed class TrayShellButton : Button
     /// </summary>
     internal UIElement BuildLiveContent(IReadOnlyList<ManagedShell.WindowsTray.NotifyIcon> icons)
     {
-        var root = new StackPanel { Width = 280 };
+        var root = new StackPanel { Width = 296 };
         root.Children.Add(DockFlyout.Heading(UiText.Get("TrayApps")));
         if (icons.Count == 0) root.Children.Add(DockFlyout.Caption(UiText.Get("TrayEmpty")));
+        var pinned = PinnedKeysProvider?.Invoke();
         foreach (var icon in icons)
         {
-            var title = icon.Title?.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
-            var name = string.IsNullOrWhiteSpace(title)
-                ? (string.IsNullOrWhiteSpace(icon.Path) ? UiText.Get("TrayApps") : System.IO.Path.GetFileNameWithoutExtension(icon.Path))
-                : title;
+            var name = TrayPinIdentity.CleanTitle(icon.Title, icon.Path, UiText.Get("TrayApps"));
             var image = new Image { Source = icon.Icon, Width = 24, Height = 24, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
             var row = new DockPanel();
@@ -230,11 +243,64 @@ public sealed class TrayShellButton : Button
                 DockPanel.SetDock(quit, Dock.Right);
                 appRow.Children.Add(quit);
             }
+
+            var canonicalKey = TrayPinIdentity.KeyFor(icon.GUID, icon.Path, icon.UID);
+            var matchedKey = TrayPinIdentity.FindMatchingKey(pinned, icon.GUID, icon.Path, icon.UID);
+            var toggleKey = matchedKey ?? canonicalKey;
+            if (!string.IsNullOrEmpty(toggleKey))
+            {
+                var pinButton = CreatePinButton(name, toggleKey, matchedKey is not null, () =>
+                {
+                    var currentIcons = TrayHost.Current is { IsRunning: true } host ? host.AppIcons() : icons;
+                    _flyout.Show(this, BuildLiveContent(currentIcons), animate: false);
+                });
+                DockPanel.SetDock(pinButton, Dock.Right);
+                appRow.Children.Add(pinButton);
+            }
+
             appRow.Children.Add(open);
             root.Children.Add(appRow);
         }
 
         return root;
+    }
+
+    private Button CreatePinButton(string name, string pinKey, bool isPinned, Action refreshFlyout)
+    {
+        var actionText = UiText.Get(isPinned ? "UnpinTrayIcon" : "PinTrayIcon");
+        var label = $"{name}: {actionText}";
+        var pinIcon = new ContentControl
+        {
+            Content = FindResource("IconPin"),
+            Width = 14,
+            Height = 14
+        };
+        pinIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+
+        var pinButton = new Button
+        {
+            Content = pinIcon,
+            Width = 29,
+            Height = 29,
+            ToolTip = label,
+            Tag = pinKey,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+        pinButton.SetResourceReference(StyleProperty, "WidgetIconButton");
+        pinButton.SetResourceReference(ForegroundProperty, isPinned ? "AccentBrush" : "TextSecondary");
+        if (isPinned)
+        {
+            pinButton.SetResourceReference(BackgroundProperty, "WidgetSelectedFill");
+        }
+        AutomationProperties.SetName(pinButton, label);
+        pinButton.Click += (_, _) =>
+        {
+            var wasOpen = _flyout.IsOpen;
+            PinToggled?.Invoke(pinKey);
+            if (wasOpen) refreshFlyout();
+        };
+        return pinButton;
     }
 
     private void ForwardClick(ManagedShell.WindowsTray.NotifyIcon icon, System.Windows.Input.MouseButton button)
@@ -258,9 +324,10 @@ public sealed class TrayShellButton : Button
 
     internal UIElement BuildContent(IReadOnlyList<TrayApp> apps)
     {
-        var root = new StackPanel { Width = 280 };
+        var root = new StackPanel { Width = 296 };
         root.Children.Add(DockFlyout.Heading(UiText.Get("TrayApps")));
         if (apps.Count == 0) root.Children.Add(DockFlyout.Caption(UiText.Get("TrayEmpty")));
+        var pinned = PinnedKeysProvider?.Invoke();
         foreach (var app in apps)
         {
             var image = new Image { Source = app.Icon, Width = 24, Height = 24, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -319,6 +386,20 @@ public sealed class TrayShellButton : Button
             var appRow = new DockPanel { Margin = new Thickness(0, 1, 0, 1) };
             DockPanel.SetDock(quit, Dock.Right);
             appRow.Children.Add(quit);
+
+            var canonicalKey = TrayPinIdentity.KeyForPath(app.ExecutablePath);
+            var matchedKey = TrayPinIdentity.FindMatchingPathKey(pinned, app.ExecutablePath);
+            var toggleKey = matchedKey ?? canonicalKey;
+            if (!string.IsNullOrEmpty(toggleKey))
+            {
+                var pinButton = CreatePinButton(app.Name, toggleKey, matchedKey is not null, () =>
+                {
+                    _flyout.Show(this, BuildContent(_lastApps ?? apps), animate: false);
+                });
+                DockPanel.SetDock(pinButton, Dock.Right);
+                appRow.Children.Add(pinButton);
+            }
+
             appRow.Children.Add(open);
             root.Children.Add(appRow);
         }

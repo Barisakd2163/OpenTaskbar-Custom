@@ -317,6 +317,8 @@
   "DesktopState": "Desktop {0} of {1}",
   "TrayApps": "Background apps",
   "TrayEmpty": "No running apps with a notification area icon.",
+  "PinTrayIcon": "Pin to dock",
+  "UnpinTrayIcon": "Unpin from dock",
   "TraySettings": "Notification area settings",
   "TrayNote": "Click an app to open it. The button on the right ends its processes after confirmation. Right-click for a normal close.",
   "Shortcuts": "Shortcuts",
