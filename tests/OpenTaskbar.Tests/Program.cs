@@ -79,11 +79,11 @@ void ShellTokenChecks()
     var pinned = DockItemOrdering.ApplyPinnedGroups(
         ["app:a", "tray", "app:b", "taskview", "start", "search"],
         new DockSettings(ShowTaskViewButton: true));
-    Check(pinned.SequenceEqual(["start", "search", "taskview", "app:a", "app:b", "tray"], StringComparer.OrdinalIgnoreCase),
-        "Native shell buttons must lead and background apps must trail regardless of the saved order.");
+    Check(pinned.SequenceEqual(["start", "search", "taskview", "app:a", "app:b", "bin", "tray"], StringComparer.OrdinalIgnoreCase),
+        "Native shell buttons must lead; Recycle Bin and background apps must trail regardless of the saved order.");
     var hiddenPinned = DockItemOrdering.ApplyPinnedGroups(
-        ["app:a", "tray", "start", "search", "taskview"],
-        new DockSettings(ShowSearchButton: false, ShowTaskViewButton: false, ShowTrayButton: false));
+        ["app:a", "tray", "start", "search", "taskview", "bin"],
+        new DockSettings(ShowSearchButton: false, ShowTaskViewButton: false, ShowTrayButton: false, ShowRecycleBin: false));
     Check(hiddenPinned.SequenceEqual(["start", "app:a"], StringComparer.OrdinalIgnoreCase),
         "Hidden pinned buttons must be omitted rather than leave gaps between the groups.");
 }
