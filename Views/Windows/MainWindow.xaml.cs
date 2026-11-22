@@ -2893,38 +2893,21 @@ public partial class MainWindow : Window
                 WidgetColumn.Width = GridLength.Auto;
                 WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
 
-                // Center the whole content group inside the full-width bar by giving the Grid its
-                // exact measured width. FitDockToContent keeps MinWidth at 0 in full-width mode so
-                // the width actually applies (it previously forced MinWidth = full bar width, which
-                // silently clamped the Grid back to the bar and defeated every centering attempt).
-                var totalWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls)
-                    + appsWidth
-                    + DockScrollViewer.MeasureContentWidth(DockTrailControls)
-                    + (WidgetIsland.Visibility == Visibility.Visible
-                        ? DockScrollViewer.MeasureContentWidth(WidgetIsland) : 0);
-                var barWidth = DockFrameRoot.ActualWidth > 0 ? DockFrameRoot.ActualWidth : Math.Max(1, _dockArea.Width - DockHorizontalChrome);
+                // Full-width mode must not impose a fixed width around the icons: pin changes do not call
+                // ApplyLayoutMode again, so a measured-width column goes stale and scroll arrows appear even
+                // though the bar has room. Let the Grid and the apps column stretch across the whole bar and
+                // align the ScrollViewer itself instead. FitDockToContent already caps it at the usable width.
                 DockLayoutRoot.MinWidth = 0;
                 DockLayoutRoot.Margin = new Thickness(0);
-                if (totalWidth <= barWidth)
+                DockLayoutRoot.Width = double.NaN;
+                DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
+                AppsColumn.Width = new GridLength(1, GridUnitType.Star);
+                DockScrollViewer.HorizontalAlignment = _preferences.Current.ContentAlignment switch
                 {
-                    // Enough room: give the Grid its exact content width so Center/Left/Right align the
-                    // whole group inside the full-width bar.
-                    DockLayoutRoot.Width = totalWidth;
-                    DockLayoutRoot.HorizontalAlignment = _preferences.Current.ContentAlignment switch
-                    {
-                        DockContentAlignment.Left => HorizontalAlignment.Left,
-                        DockContentAlignment.Right => HorizontalAlignment.Right,
-                        _ => HorizontalAlignment.Center
-                    };
-                }
-                else
-                {
-                    // Content genuinely overflows the bar: stretch and let DockScrollViewer scroll the
-                    // apps; a fixed centered width would push the Start button off-screen.
-                    DockLayoutRoot.Width = double.NaN;
-                    DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    AppsColumn.Width = new GridLength(1, GridUnitType.Star);
-                }
+                    DockContentAlignment.Left => HorizontalAlignment.Left,
+                    DockContentAlignment.Right => HorizontalAlignment.Right,
+                    _ => HorizontalAlignment.Center
+                };
                 // Scroll indicators reflect genuine overflow only. The apps column now includes the
                 // ContentInset, so ScrollableWidth stays 0 when nothing overflows — no blanket
                 // suppression needed here (magnification handles its own short-lived suppression).
@@ -2935,6 +2918,7 @@ public partial class MainWindow : Window
                 AppsColumn.Width = new GridLength(1, GridUnitType.Star);
                 WidgetColumn.Width = GridLength.Auto;
                 WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
+                DockScrollViewer.HorizontalAlignment = HorizontalAlignment.Left;
                 DockLayoutRoot.Width = double.NaN;
                 DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
                 DockScrollViewer.SuppressOverflowIndicators = false;
