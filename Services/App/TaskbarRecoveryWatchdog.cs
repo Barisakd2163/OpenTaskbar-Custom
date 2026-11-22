@@ -68,7 +68,7 @@ internal static class TaskbarRecoveryWatchdog
         }
         catch (ArgumentException)
         {
-            TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            RestoreCoordinator.Restore("watchdog-parent-gone");
             return;
         }
 
@@ -91,7 +91,7 @@ internal static class TaskbarRecoveryWatchdog
 
             if (processWaitHandle is null)
             {
-                TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+                RestoreCoordinator.Restore("watchdog-parent-exited");
                 return;
             }
 
@@ -131,7 +131,7 @@ internal static class TaskbarRecoveryWatchdog
             }
         }
 
-        var error = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+        var error = RestoreCoordinator.Restore("watchdog-crash");
         if (error is not null) AppLog.Error(error);
     }
 

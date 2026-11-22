@@ -39,7 +39,7 @@ public partial class App : Application
 
         if (e.Args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
         {
-            var restoreError = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            var restoreError = RestoreCoordinator.Restore("cli-restore");
             if (restoreError is not null) AppLog.Error(restoreError);
             // A crashed tray host leaves icons registered with its destroyed window; ask apps to re-add them to Explorer.
             OpenTaskbar.Services.TrayHost.BroadcastTaskbarCreated("restore");
@@ -80,7 +80,7 @@ public partial class App : Application
 
         // Heal only after winning the singleton race: a second instance must never consume the live instance's
         // recovery journal.
-        var healError = TaskbarReplacementSession.HealPendingRecovery();
+        var healError = RestoreCoordinator.HealPending("startup-heal");
         StartupStopwatch.Mark("taskbar recovery healed");
         if (healError is not null) AppLog.Error($"Startup taskbar self-heal failed: {healError}");
 
@@ -224,7 +224,7 @@ public partial class App : Application
         // signal that the taskbar may still be hidden, so try the journal-based path before shutting down.
         if (TaskbarReplacementSession.HasPendingRecovery)
         {
-            var recoveryError = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            var recoveryError = RestoreCoordinator.Restore("exit-journal-heal");
             if (recoveryError is not null)
             {
                 AppLog.Error($"Exit taskbar self-heal failed: {recoveryError}");
@@ -288,7 +288,7 @@ public partial class App : Application
         // authoritative signal, so fall back to the journal-based path whenever one is still left behind.
         if (error is not null || TaskbarReplacementSession.HasPendingRecovery)
         {
-            var forced = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
+            var forced = RestoreCoordinator.Restore("emergency-fallback");
             if (forced is null) error = null;
             else error ??= forced;
         }
