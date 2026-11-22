@@ -26,6 +26,7 @@ public sealed class PinnedTrayStrip : StackPanel
         Action<MouseButton> OnClick);
 
     private readonly List<INotifyPropertyChanged> _subscribedIcons = [];
+    private readonly Dictionary<Button, Action<MouseButton>> _clickActions = [];
     private TrayHost? _attachedHost;
     private bool _isStripEnabled = true;
     private bool _refreshQueued;
@@ -193,9 +194,10 @@ public sealed class PinnedTrayStrip : StackPanel
         var wasVisible = Visibility == Visibility.Visible;
         var previousCount = Children.Count;
 
-        Children.Clear();
         if (!_isStripEnabled || items.Count == 0)
         {
+            Children.Clear();
+            _clickActions.Clear();
             Visibility = Visibility.Collapsed;
             if (wasVisible || previousCount > 0)
             {
@@ -205,6 +207,37 @@ public sealed class PinnedTrayStrip : StackPanel
         }
 
         var itemMargin = ItemMargin(Orientation == Orientation.Vertical);
+        if (Children.Count == items.Count && AreSameKeys(items))
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                var button = (Button)Children[i];
+                button.Width = _buttonSize;
+                button.Height = _buttonSize;
+                button.Margin = itemMargin;
+                button.ToolTip = item.Title;
+                button.Tag = item.Key;
+                AutomationProperties.SetName(button, item.Title);
+                if (button.Content is Image image)
+                {
+                    image.Source = item.Icon;
+                    image.Width = _imageSize;
+                    image.Height = _imageSize;
+                }
+                _clickActions[button] = item.OnClick;
+            }
+
+            Visibility = Visibility.Visible;
+            if (!wasVisible)
+            {
+                LayoutChanged?.Invoke();
+            }
+            return;
+        }
+
+        Children.Clear();
+        _clickActions.Clear();
         foreach (var item in items)
         {
             var captured = item;
@@ -234,11 +267,17 @@ public sealed class PinnedTrayStrip : StackPanel
             button.SetResourceReference(StyleProperty, "ShellDockButton");
             ToolTipService.SetInitialShowDelay(button, 650);
             AutomationProperties.SetName(button, captured.Title);
-            button.Click += (_, _) => captured.OnClick(MouseButton.Left);
+            _clickActions[button] = captured.OnClick;
+            button.Click += (_, _) =>
+            {
+                if (_clickActions.TryGetValue(button, out var action))
+                    action(MouseButton.Left);
+            };
             button.MouseRightButtonUp += (_, e) =>
             {
                 e.Handled = true;
-                captured.OnClick(MouseButton.Right);
+                if (_clickActions.TryGetValue(button, out var action))
+                    action(MouseButton.Right);
             };
             button.ContextMenuOpening += (_, e) => e.Handled = true;
             Children.Add(button);
@@ -249,6 +288,19 @@ public sealed class PinnedTrayStrip : StackPanel
         {
             LayoutChanged?.Invoke();
         }
+    }
+
+    private bool AreSameKeys(IReadOnlyList<PinnedTrayItem> items)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (Children[i] is not Button btn
+                || !string.Equals(btn.Tag as string, items[i].Key, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>
@@ -295,6 +347,13 @@ public sealed class PinnedTrayStrip : StackPanel
 
     private void NotifyIcon_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(NotifyIcon.Title) or nameof(NotifyIcon.Icon)
+            && sender is NotifyIcon icon
+            && !TrayPinIdentity.IsPinned(PinnedKeysProvider?.Invoke(), icon.GUID, icon.Path, icon.UID))
+        {
+            return;
+        }
+
         if (e.PropertyName is null or ""
             or nameof(NotifyIcon.Title)
             or nameof(NotifyIcon.Icon)

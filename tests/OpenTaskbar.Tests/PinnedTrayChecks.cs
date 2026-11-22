@@ -388,6 +388,25 @@ internal static class PinnedTrayChecks
             && clicks[1] == ("k1", MouseButton.Right),
             "PinnedTrayStrip must forward left-click and right-click to the clicked tray item.");
 
+        // Updating items with the same keys must refresh tooltips/handlers in place without recreating Button instances.
+        var prevBtn0 = buttons[0];
+        var prevBtn1 = buttons[1];
+        strip.UpdateItems(
+        [
+            new PinnedTrayStrip.PinnedTrayItem("k2", "Second App Updated", null, btn => clicks.Add(("k2-v2", btn))),
+            new PinnedTrayStrip.PinnedTrayItem("k1", "First App Updated", null, btn => clicks.Add(("k1-v2", btn)))
+        ]);
+        check(strip.Children.Count == 2
+            && ReferenceEquals(strip.Children[0], prevBtn0)
+            && ReferenceEquals(strip.Children[1], prevBtn1)
+            && Equals(prevBtn0.ToolTip, "Second App Updated")
+            && AutomationProperties.GetName(prevBtn0) == "Second App Updated"
+            && layoutChanges == 1,
+            "Updating pinned items with matching keys must update Button state in place without raising LayoutChanged.");
+        prevBtn0.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(clicks.Last() == ("k2-v2", MouseButton.Left),
+            "In-place updated pinned tray button must invoke the refreshed click handler.");
+
         // Orientation switching Horizontal <-> Vertical.
         strip.SetOrientation(Orientation.Vertical);
         check(strip.Orientation == Orientation.Vertical
