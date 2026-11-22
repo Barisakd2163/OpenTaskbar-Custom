@@ -138,6 +138,8 @@
   "Layout": "레이아웃",
   "DockSize": "크기",
   "DockSizeDescription": "컴팩트 크기는 Windows 작업 표시줄 높이와 같습니다. 중간 및 큰 크기는 화면 공간을 더 차지합니다.",
+  "DockIconPadding": "아이콘 간격",
+  "DockIconPaddingHelp": "독의 아이콘 사이에 추가 여백(0~12 px)을 적용합니다.",
   "DockScale": "배율",
   "DockScaleHelp": "선택한 크기를 기준으로 아이콘, 작업 표시줄 높이 및 위젯을 75%에서 150%까지 조정합니다.",
   "SizeCompact": "작게",

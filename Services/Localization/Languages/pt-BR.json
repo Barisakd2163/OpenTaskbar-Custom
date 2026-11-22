@@ -138,6 +138,8 @@
   "Layout": "Layout",
   "DockSize": "Tamanho",
   "DockSizeDescription": "O tamanho compacto corresponde à altura da barra de tarefas do Windows. Os tamanhos médio e grande reservam mais espaço na tela.",
+  "DockIconPadding": "Espaçamento de ícones",
+  "DockIconPaddingHelp": "Adiciona espaço extra (0 a 12 px) entre os ícones no dock.",
   "DockScale": "Escala",
   "DockScaleHelp": "Dimensiona ícones, altura da barra de tarefas e widgets entre 75% e 150% em relação ao tamanho selecionado.",
   "SizeCompact": "Compacto",

@@ -138,6 +138,8 @@
   "Layout": "布局",
   "DockSize": "尺寸",
   "DockSizeDescription": "紧凑大小与 Windows 任务栏高度相同。中等和大型会占用更多屏幕空间。",
+  "DockIconPadding": "图标间距",
+  "DockIconPaddingHelp": "在停靠栏图标之间添加额外间距（0 至 12 px）。",
   "DockScale": "缩放比例",
   "DockScaleHelp": "相对于所选大小，将图标、任务栏高度和小组件缩放到 75% 至 150%。",
   "SizeCompact": "紧凑",

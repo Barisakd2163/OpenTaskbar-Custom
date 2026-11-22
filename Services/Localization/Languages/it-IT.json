@@ -138,6 +138,8 @@
   "Layout": "Layout",
   "DockSize": "Dimensioni",
   "DockSizeDescription": "Il formato compatto corrisponde all’altezza della barra delle applicazioni di Windows. I formati medio e grande occupano più spazio sullo schermo.",
+  "DockIconPadding": "Spaziatura icone",
+  "DockIconPaddingHelp": "Aggiunge spazio extra (da 0 a 12 px) tra le icone nel dock.",
   "DockScale": "Scala",
   "DockScaleHelp": "Ridimensiona icone, altezza della barra delle applicazioni e widget dal 75% al 150% rispetto alla dimensione selezionata.",
   "SizeCompact": "Compatto",

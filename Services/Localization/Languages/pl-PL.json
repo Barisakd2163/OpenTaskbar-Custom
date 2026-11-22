@@ -138,6 +138,8 @@
   "Layout": "Układ",
   "DockSize": "Rozmiar doku",
   "DockSizeDescription": "Rozmiar kompaktowy odpowiada wysokości paska zadań Windows. Średni i duży zajmują więcej miejsca na ekranie.",
+  "DockIconPadding": "Odstępy między ikonami",
+  "DockIconPaddingHelp": "Dodaje dodatkowy odstęp (od 0 do 12 px) między ikonami na doku.",
   "DockScale": "Skala doku",
   "DockScaleHelp": "Skaluje ikony, wysokość paska zadań i widżety w zakresie od 75% do 150% względem wybranego rozmiaru.",
   "SizeCompact": "Kompaktowy",

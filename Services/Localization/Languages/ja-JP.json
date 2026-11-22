@@ -138,6 +138,8 @@
   "Layout": "レイアウト",
   "DockSize": "ドック サイズ",
   "DockSizeDescription": "コンパクトは Windows タスクバーと同じ高さです。中と大は追加の画面領域を確保します。",
+  "DockIconPadding": "アイコン間隔",
+  "DockIconPaddingHelp": "ドック上のアイコン間に追加の余白（0〜12 px）を設定します。",
   "DockScale": "タスクバー サイズ (スケール)",
   "DockScaleHelp": "選択したサイズを基準に、アイコン、タスクバーの高さ、ウィジェットを 75%〜150% で拡大縮小します。",
   "SizeCompact": "コンパクト",

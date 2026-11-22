@@ -138,6 +138,8 @@
   "Layout": "Layout",
   "DockSize": "Größe",
   "DockSizeDescription": "Kompakt entspricht der Höhe der Windows-Taskleiste. Mittel und Groß beanspruchen mehr Bildschirmfläche.",
+  "DockIconPadding": "Symbolabstand",
+  "DockIconPaddingHelp": "Fügt zusätzlichen Abstand (0 bis 12 px) zwischen den Symbolen im Dock hinzu.",
   "DockScale": "Skalierung",
   "DockScaleHelp": "Skaliert Symbole, Taskleistenhöhe und Widgets relativ zur ausgewählten Größe zwischen 75 % und 150 %.",
   "SizeCompact": "Kompakt",

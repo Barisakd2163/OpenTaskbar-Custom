@@ -138,6 +138,8 @@
   "Layout": "Disposition",
   "DockSize": "Taille",
   "DockSizeDescription": "Le format compact correspond à la hauteur de la barre des tâches Windows. Les formats moyen et grand réservent davantage d’espace à l’écran.",
+  "DockIconPadding": "Espacement des icônes",
+  "DockIconPaddingHelp": "Ajoute un espace supplémentaire (0 à 12 px) entre les icônes du dock.",
   "DockScale": "Échelle",
   "DockScaleHelp": "Met à l’échelle les icônes, la hauteur de la barre des tâches et les widgets de 75 % à 150 % par rapport à la taille sélectionnée.",
   "SizeCompact": "Compact",

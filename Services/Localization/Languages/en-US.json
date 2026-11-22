@@ -170,6 +170,8 @@
   "Layout": "Layout",
   "DockSize": "Dock size",
   "DockSizeDescription": "Compact matches the Windows taskbar height. Medium and Large reserve extra screen space.",
+  "DockIconPadding": "Icon spacing",
+  "DockIconPaddingHelp": "Adds extra space (0 to 12 px) between icons on the dock.",
   "DockScale": "Taskbar scale",
   "DockScaleHelp": "Scales icons, taskbar height, and widgets between 75% and 150% relative to the selected size.",
   "SizeCompact": "Compact",

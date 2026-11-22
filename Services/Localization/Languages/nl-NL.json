@@ -138,6 +138,8 @@
   "Layout": "Indeling",
   "DockSize": "Dockgrootte",
   "DockSizeDescription": "Compact komt overeen met de hoogte van de Windows-taakbalk. Middel en groot nemen meer schermruimte in.",
+  "DockIconPadding": "Pictogramafstand",
+  "DockIconPaddingHelp": "Voegt extra ruimte (0 tot 12 px) toe tussen pictogrammen in het dock.",
   "DockScale": "Dockschaal",
   "DockScaleHelp": "Schaalt pictogrammen, taakbalkhoogte en widgets van 75% tot 150% ten opzichte van de geselecteerde grootte.",
   "SizeCompact": "Compact",
