@@ -1404,13 +1404,21 @@ public partial class MainWindow : Window
         _startMenu.IsStartMenuWindow(windowHandle) || ShellOverlayWindows.IsTaskSwitcher(windowHandle);
 
     /// <summary>
+    /// Preserves the last external foreground handle while OpenTaskbar's own menus, flyouts, or keyboard
+    /// navigation own OS focus, while still allowing a genuine empty/desktop or external foreground to update it.
+    /// </summary>
+    internal static nint ResolveEffectiveForeground(nint previousForeground, bool isOwnProcessForeground, nint candidateForeground) =>
+        isOwnProcessForeground ? previousForeground : candidateForeground;
+
+    /// <summary>
     /// Lightweight fallback for focus transitions that do not raise EVENT_SYSTEM_FOREGROUND
     /// (minimizing, alt-tab, switching desktops). Keeps indicator dots in sync.
     /// </summary>
     private void ForegroundPollTimer_Tick(object? sender, EventArgs e)
     {
         if (_windowTracker is null) return;
-        var current = NativeWindowTracker.GetForegroundApplicationWindow();
+        var isExternal = NativeWindowTracker.TryGetForegroundApplicationWindow(out var external);
+        var current = ResolveEffectiveForeground(_foregroundWindow, !isExternal, external);
         if (current != _foregroundWindow)
             WindowTracker_ForegroundWindowChanged(current);
     }
@@ -1418,11 +1426,16 @@ public partial class MainWindow : Window
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
     {
         var previousForeground = _foregroundWindow;
+        uint processId = 0;
+        if (windowHandle != 0)
+            GetWindowThreadProcessId(windowHandle, out processId);
+        var isOwnProcess = windowHandle != 0 && processId == (uint)Environment.ProcessId;
+        var effectiveForeground = ResolveEffectiveForeground(previousForeground, isOwnProcess, windowHandle);
         // Publish the new handle before secondary docks and indicators read it; otherwise they keep the
         // previous app active until the next snapshot change or the 10-second fallback timer.
-        if (previousForeground != windowHandle)
+        if (previousForeground != effectiveForeground)
         {
-            _foregroundWindow = windowHandle;
+            _foregroundWindow = effectiveForeground;
             var candidates = RunningWindowStates();
             UpdateWindowIndicators(candidates);
             foreach (var app in _runningApps)
@@ -1436,9 +1449,8 @@ public partial class MainWindow : Window
         UpdateSecondaryDocks();
         _replacementSession?.UpdateForeground(windowHandle);
         _autoHideController?.CheckForegroundWindow(windowHandle);
-        GetWindowThreadProcessId(windowHandle, out var processId);
         // Dock buttons, thumbnail hosts, and menus must not replace the last external foreground window.
-        if (processId == Environment.ProcessId) return;
+        if (isOwnProcess) return;
         var isStartMenu = _startMenu.IsStartMenuWindow(windowHandle);
         _startMenu.OnForegroundChanged(isStartMenu);
         if (!isStartMenu && windowHandle != 0 && !ShellOverlayWindows.IsTaskSwitcher(windowHandle))

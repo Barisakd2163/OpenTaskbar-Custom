@@ -462,13 +462,31 @@ public sealed class NativeWindowTracker : IDisposable
             || (active != 0 && NormalizeRootWindow(active) == NormalizeRootWindow(windowHandle));
     }
 
-    public static nint GetForegroundApplicationWindow()
+    public static nint GetForegroundApplicationWindow() =>
+        TryGetForegroundApplicationWindow(out var window) ? window : 0;
+
+    /// <summary>
+    /// Reads the OS foreground window once and resolves its root owner. Returns <c>false</c> when the
+    /// foreground window belongs to this process (e.g. a dock menu or keyboard focus), distinguishing
+    /// own-process focus from a genuinely empty/desktop foreground (<c>true</c> with <c>0</c>).
+    /// </summary>
+    internal static bool TryGetForegroundApplicationWindow(out nint window)
     {
         var foreground = GetForegroundWindow();
+        if (foreground == 0)
+        {
+            window = 0;
+            return true;
+        }
         GetWindowThreadProcessId(foreground, out var processId);
-        if (foreground == 0 || processId == Environment.ProcessId) return 0;
+        if (processId == (uint)Environment.ProcessId)
+        {
+            window = 0;
+            return false;
+        }
         var root = GetAncestor(foreground, GaRootOwner);
-        return root != 0 ? root : foreground;
+        window = root != 0 ? root : foreground;
+        return true;
     }
 
     public static bool ToggleActivation(nint windowHandle, string executablePath, nint? foregroundAtPress = null)

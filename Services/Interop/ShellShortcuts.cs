@@ -112,11 +112,48 @@ public static class ShellShortcuts
         return error;
     }
 
+    internal static HashSet<uint> CollectProcessIds(params string[] processNames) =>
+        CollectProcessIds(processNames, Process.GetProcessesByName, static process => (uint)process.Id);
+
+    internal static HashSet<uint> CollectProcessIds<TProcess>(
+        IReadOnlyList<string> processNames,
+        Func<string, TProcess[]> getProcesses,
+        Func<TProcess, uint> getId) where TProcess : IDisposable
+    {
+        var pids = new HashSet<uint>();
+        foreach (var name in processNames)
+        {
+            var processes = getProcesses(name);
+            try
+            {
+                foreach (var process in processes)
+                {
+                    try
+                    {
+                        pids.Add(getId(process));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Process exited between enumeration and reading its Id.
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var process in processes)
+                {
+                    process.Dispose();
+                }
+            }
+        }
+        return pids;
+    }
+
     private static void EnsureShellExperienceHost()
     {
         try
         {
-            if (Process.GetProcessesByName("ShellExperienceHost").Length == 0)
+            if (CollectProcessIds("ShellExperienceHost").Count == 0)
             {
                 AppLog.Info("EnsureShellExperienceHost: launching ShellExperienceHost package...");
                 using var _ = Process.Start(new ProcessStartInfo("explorer.exe", "shell:AppsFolder\\Microsoft.Windows.ShellExperienceHost_cw5n1h2txyewy!App") { UseShellExecute = true });
@@ -241,10 +278,7 @@ public static class ShellShortcuts
         var list = new List<nint>();
         try
         {
-            var pids = Process.GetProcessesByName("SearchHost")
-                .Concat(Process.GetProcessesByName("SearchApp"))
-                .Select(p => (uint)p.Id)
-                .ToHashSet();
+            var pids = CollectProcessIds("SearchHost", "SearchApp");
 
             if (pids.Count > 0)
             {
@@ -424,9 +458,7 @@ public static class ShellShortcuts
         var list = new List<nint>();
         try
         {
-            var pids = Process.GetProcessesByName("StartMenuExperienceHost")
-                .Select(p => (uint)p.Id)
-                .ToHashSet();
+            var pids = CollectProcessIds("StartMenuExperienceHost");
 
             if (pids.Count > 0)
             {

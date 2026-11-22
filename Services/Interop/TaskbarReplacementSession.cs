@@ -680,7 +680,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         var desiredPos = (left, top, width, totalHeight, _fullScreenSuppressed);
         if (_lastWindowPos == desiredPos) return;
         _lastWindowPos = desiredPos;
-        if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, top,
+        if (!SetWindowPos(_handle, WindowZOrder(_fullScreenSuppressed), left, top,
                 width, totalHeight,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
@@ -812,7 +812,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         var desiredPos = (left, monitor.Top, total, height, _fullScreenSuppressed);
         if (_lastWindowPos == desiredPos) return;
         _lastWindowPos = desiredPos;
-        if (!SetWindowPos(_handle, _fullScreenSuppressed ? new nint(1) : HwndTopmost, left, monitor.Top, total, height,
+        if (!SetWindowPos(_handle, WindowZOrder(_fullScreenSuppressed), left, monitor.Top, total, height,
                 SwpNoActivate | SwpNoOwnerZOrder))
         {
             _lastWindowPos = null;
@@ -992,13 +992,42 @@ public sealed class TaskbarReplacementSession : IDisposable
         return true;
     }
 
+    internal static nint WindowZOrder(bool fullScreenSuppressed) =>
+        fullScreenSuppressed ? new nint(1) : HwndTopmost;
+
+    internal static bool ApplyFullScreenTransition(
+        ref bool currentSuppressed,
+        ref (int Left, int Top, int Width, int Height, bool FullScreenSuppressed)? lastWindowPos,
+        bool suppressed,
+        Action<int> showWindow,
+        Action reposition,
+        Action<bool>? notifyChanged)
+    {
+        if (currentSuppressed == suppressed) return false;
+        currentSuppressed = suppressed;
+        // Invalidate the cached placement so leaving fullscreen always re-applies HWND_TOPMOST after any
+        // prior HWND_BOTTOM demotion, instead of staying behind other windows.
+        lastWindowPos = null;
+        showWindow(suppressed ? SwHide : SwShowNoActivate);
+        if (!suppressed)
+        {
+            reposition();
+        }
+        notifyChanged?.Invoke(suppressed);
+        return true;
+    }
+
     private void SetFullScreenSuppression(bool suppressed)
     {
         if (_fullScreenSuppressed == suppressed) return;
-        _fullScreenSuppressed = suppressed;
         AppLog.Info($"FullScreenSuppression changed: suppressed={suppressed}.");
-        ShowWindow(_handle, suppressed ? SwHide : SwShowNoActivate);
-        FullScreenChanged?.Invoke(suppressed);
+        ApplyFullScreenTransition(
+            ref _fullScreenSuppressed,
+            ref _lastWindowPos,
+            suppressed,
+            cmd => ShowWindow(_handle, cmd),
+            () => PositionDockWindow(),
+            FullScreenChanged);
     }
 
     private static bool IsWindowCloaked(nint handle)

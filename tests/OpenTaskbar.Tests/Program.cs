@@ -33,6 +33,7 @@ checks += ThemePackChecks.Run();
 if (!headless) checks += SurfaceStyleChecks.Run();
 checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
+checks += SecondaryDockAndInteropChecks.Run();
 checks += ApplicationJumpListChecks.Run();
 Console.WriteLine($"{checks} behavior checks passed.");
 
