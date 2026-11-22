@@ -806,7 +806,7 @@
                             <!-- Settings backup -->
                             <TextBlock Text="{local:Loc Backup}" Style="{StaticResource SettingsSectionHeading}" />
                             <Border Style="{StaticResource SettingsRowsGroup}"><StackPanel>
-                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
                                         <Button Content="{local:Loc ExportSettings}" Style="{StaticResource SettingsButton}" views:IconGlyph.Glyph="{StaticResource IconDownload}" Click="ExportSettings_Click" Margin="0,0,8,0" />
                                         <Button Content="{local:Loc ImportSettings}" Style="{StaticResource SettingsButton}" views:IconGlyph.Glyph="{StaticResource IconUpload}" Click="ImportSettings_Click" />
@@ -814,6 +814,16 @@
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
                                         <TextBlock Text="{local:Loc Backup}" Style="{StaticResource SettingsRowLabel}" />
                                         <TextBlock Text="{local:Loc BackupDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                        <Button Content="{local:Loc FullBackupExport}" Style="{StaticResource SettingsButton}" views:IconGlyph.Glyph="{StaticResource IconDownload}" Click="ExportFullBackup_Click" Margin="0,0,8,0" />
+                                        <Button Content="{local:Loc FullBackupImport}" Style="{StaticResource SettingsButton}" views:IconGlyph.Glyph="{StaticResource IconUpload}" Click="ImportFullBackup_Click" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc FullBackup}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc FullBackupDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
                             </StackPanel></Border>

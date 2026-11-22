@@ -33,6 +33,8 @@ public static class ThemeManager
         _ => "MenuStroke"
     };
     public static AppTheme Current { get; private set; } = AppTheme.Dark;
+    /// <summary>Raised after any palette, override, or surface style change rebuilds generated materials.</summary>
+    public static event EventHandler? ThemeChanged;
 
     // Legacy single-opacity state (pr-62 theme editor). The four-surface Styles below remain authoritative.
     private static double _opacity = 0.9;
@@ -95,6 +97,7 @@ public static class ThemeManager
         foreach (var kind in Enum.GetValues<SurfaceKind>()) Rebuild(kind);
         _opacity = Styles.TryGetValue(SurfaceKind.Dock, out var dock) ? dock.Opacity : 0.9;
         _settingsOpacity = Styles.TryGetValue(SurfaceKind.Settings, out var settingsStyle) ? settingsStyle.Opacity : 0.95;
+        NotifyThemeChanged();
     }
 
     /// <summary>True for the dictionaries this class owns, which theme packs must not treat as token definitions.</summary>
@@ -123,6 +126,7 @@ public static class ThemeManager
         if (_palette is not null)
             foreach (var kind in Enum.GetValues<SurfaceKind>()) Rebuild(kind);
         RadiusManager.Rebuild();
+        if (_palette is not null) NotifyThemeChanged();
     }
 
     /// <summary>Replaces the theme pack's brush and color overrides; an empty map restores the palette.</summary>
@@ -149,6 +153,7 @@ public static class ThemeManager
         {
             foreach (var kind in Enum.GetValues<SurfaceKind>()) Rebuild(kind);
             RadiusManager.Rebuild();
+            NotifyThemeChanged();
         }
     }
 
@@ -166,6 +171,7 @@ public static class ThemeManager
         Styles[kind] = new SurfaceStyle(background, opacity, current.BorderThickness, current.BorderColor);
         if (kind == SurfaceKind.Dock) _opacity = opacity;
         Rebuild(kind);
+        NotifyThemeChanged();
     }
 
     /// <summary>Live preview of a surface's border thickness/color from the Settings window.</summary>
@@ -177,6 +183,7 @@ public static class ThemeManager
         var current = GetSurface(kind);
         Styles[kind] = new SurfaceStyle(current.Background, current.Opacity, thickness, color);
         Rebuild(kind);
+        NotifyThemeChanged();
     }
 
     /// <summary>
@@ -194,6 +201,7 @@ public static class ThemeManager
             Styles[kind] = new SurfaceStyle(style.Background, opacity, style.BorderThickness, style.BorderColor);
             Rebuild(kind);
         }
+        NotifyThemeChanged();
     }
 
     private static void Rebuild(SurfaceKind kind)
@@ -217,6 +225,8 @@ public static class ThemeManager
                 Materials["WidgetMaterial"] = Fill(MaterialSource("MenuMaterial"), style);
                 Materials["WidgetStrokeMaterial"] = Stroke(ResolveBrush("MenuStroke"), style);
                 Materials["WidgetSheenMaterial"] = Sheen(ResolveBrush("DockHighlight"), style);
+                Materials["WidgetHoverMaterial"] = WidgetStateBrush(ResolveWidgetHoverSource(), style);
+                Materials["WidgetPressedMaterial"] = WidgetStateBrush(ResolveWidgetPressedSource(), style);
                 break;
             case SurfaceKind.Settings:
                 Materials["SettingsGlassMaterial"] = Fill(ResolveBrush("SettingsBackground"), style);
@@ -293,24 +303,58 @@ public static class ThemeManager
             ? Math.Clamp(fallback, 0.6, 1) : 0.95;
     }
 
+    private static void NotifyThemeChanged() => ThemeChanged?.Invoke(null, EventArgs.Empty);
+
     private static Brush WithScaledAlpha(Brush source, double opacity)
     {
         var brush = source.Clone();
         if (brush is SolidColorBrush solid)
         {
             var c = solid.Color;
-            solid.Color = Color.FromArgb((byte)Math.Round(c.A * opacity), c.R, c.G, c.B);
+            solid.Color = Color.FromArgb((byte)Math.Clamp((int)Math.Round(c.A * opacity), 0, 255), c.R, c.G, c.B);
         }
         else if (brush is GradientBrush gradient)
         {
             foreach (var stop in gradient.GradientStops)
             {
                 var c = stop.Color;
-                stop.Color = Color.FromArgb((byte)Math.Round(c.A * opacity), c.R, c.G, c.B);
+                stop.Color = Color.FromArgb((byte)Math.Clamp((int)Math.Round(c.A * opacity), 0, 255), c.R, c.G, c.B);
             }
         }
         brush.Freeze();
         return brush;
+    }
+
+    private static Brush ResolveWidgetHoverSource()
+    {
+        if (Overrides.Contains("WidgetCardHover") && Overrides["WidgetCardHover"] is Brush overrideCardHover)
+            return overrideCardHover;
+        if (Overrides.Contains("SurfaceHover") && Overrides["SurfaceHover"] is Brush overrideSurfaceHover)
+            return overrideSurfaceHover;
+        if (SystemOverrides.Contains("WidgetCardHover") && SystemOverrides["WidgetCardHover"] is Brush systemCardHover)
+            return systemCardHover;
+        return ResolveBrush("WidgetCardHover");
+    }
+
+    private static Brush ResolveWidgetPressedSource()
+    {
+        if (Overrides.Contains("WidgetCardPressed") && Overrides["WidgetCardPressed"] is Brush overrideCardPressed)
+            return overrideCardPressed;
+        if (Overrides.Contains("SurfacePressed") && Overrides["SurfacePressed"] is Brush overrideSurfacePressed)
+            return overrideSurfacePressed;
+        if (Overrides.Contains("WidgetCardHover") && Overrides["WidgetCardHover"] is Brush overrideCardHover)
+            return WithScaledAlpha(overrideCardHover, 1.5);
+        if (SystemOverrides.Contains("WidgetCardPressed") && SystemOverrides["WidgetCardPressed"] is Brush systemCardPressed)
+            return systemCardPressed;
+        return ResolveBrush("WidgetCardPressed");
+    }
+
+    private static Brush WidgetStateBrush(Brush source, SurfaceStyle style)
+    {
+        // Glass mode scales the theme token's configured alpha by WidgetOpacity; Solid and None
+        // preserve the theme token's configured color and alpha at 100% so dock widgets keep clear feedback.
+        var scale = style.Background == SurfaceBackground.Glass ? style.Opacity : 1.0;
+        return WithScaledAlpha(source, scale);
     }
 
     public static void SetSettingsOpacity(double opacity)

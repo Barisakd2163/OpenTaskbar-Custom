@@ -50,9 +50,75 @@ internal static class SurfaceStyleChecks
             Check(ThemeManager.TryParseColor("#AARRGGBB", out _) == false, "Invalid border colors must be rejected.");
             Check(ThemeManager.TryParseColor("#11223344", out var parsed) && parsed.A == 0x11,
                 "Valid #AARRGGBB border colors must parse.");
+
+            // Widget hover & pressed materials must respect both theme token color/alpha and WidgetOpacity scaling.
+            Check(Alpha(app, "WidgetHoverMaterial") == (byte)Math.Round(0x22 * 0.4),
+                "WidgetHoverMaterial in Glass mode must scale Dark WidgetCardHover alpha by WidgetOpacity.");
+            Check(Alpha(app, "WidgetPressedMaterial") == (byte)Math.Round(0x38 * 0.4),
+                "WidgetPressedMaterial in Glass mode must scale Dark WidgetCardPressed alpha by WidgetOpacity.");
+
+            ThemeManager.SetSurface(SurfaceKind.Widget, SurfaceBackground.Solid, 0.4);
+            Check(Alpha(app, "WidgetHoverMaterial") == 0x22 && Alpha(app, "WidgetPressedMaterial") == 0x38,
+                "Widget hover/pressed in Solid mode must preserve 100% of the theme token alpha.");
+
+            ThemeManager.SetSurface(SurfaceKind.Widget, SurfaceBackground.None, 0.4);
+            Check(Alpha(app, "WidgetHoverMaterial") == 0x22 && Alpha(app, "WidgetPressedMaterial") == 0x38,
+                "Widget hover/pressed in None mode must keep theme token alpha so dock widgets stay interactive.");
+
+            // Theme pack overrides (both solid and gradient) must drive WidgetHoverMaterial/WidgetPressedMaterial live.
+            var customHover = new SolidColorBrush(Color.FromArgb(0x40, 0xCB, 0xA6, 0xF7));
+            customHover.Freeze();
+            var customPressed = new SolidColorBrush(Color.FromArgb(0x60, 0xCB, 0xA6, 0xF7));
+            customPressed.Freeze();
+            ThemeManager.SetSurface(SurfaceKind.Widget, SurfaceBackground.Glass, 0.5);
+            ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["WidgetCardHover"] = customHover,
+                ["WidgetCardPressed"] = customPressed
+            });
+            var resolvedHover = (SolidColorBrush)app.FindResource("WidgetHoverMaterial");
+            var resolvedPressed = (SolidColorBrush)app.FindResource("WidgetPressedMaterial");
+            Check(resolvedHover.Color == Color.FromArgb(0x20, 0xCB, 0xA6, 0xF7),
+                "WidgetHoverMaterial must apply custom theme color and scale its alpha by WidgetOpacity.");
+            Check(resolvedPressed.Color == Color.FromArgb(0x30, 0xCB, 0xA6, 0xF7),
+                "WidgetPressedMaterial must apply custom theme color and scale its alpha by WidgetOpacity.");
+
+            // Custom hover without explicit pressed token must derive a stronger same-hue pressed brush.
+            ThemeManager.SetSurface(SurfaceKind.Widget, SurfaceBackground.Solid, 1.0);
+            ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["WidgetCardHover"] = customHover
+            });
+            var derivedPressed = (SolidColorBrush)app.FindResource("WidgetPressedMaterial");
+            Check(derivedPressed.Color == Color.FromArgb(0x60, 0xCB, 0xA6, 0xF7),
+                "Custom WidgetCardHover without WidgetCardPressed must derive a stronger same-color pressed brush.");
+
+            // Gradient theme overrides must preserve gradient stops and scale each stop's alpha.
+            var gradientHover = new LinearGradientBrush(
+                Color.FromArgb(0x50, 0xAA, 0x55, 0xFF),
+                Color.FromArgb(0x30, 0x38, 0xBD, 0xF8),
+                new Point(0, 0), new Point(1, 0));
+            gradientHover.Freeze();
+            ThemeManager.SetSurface(SurfaceKind.Widget, SurfaceBackground.Glass, 0.5);
+            ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["WidgetCardHover"] = gradientHover
+            });
+            var resolvedGrad = app.FindResource("WidgetHoverMaterial") as LinearGradientBrush;
+            Check(resolvedGrad is not null && resolvedGrad.GradientStops.Count == 2
+                && resolvedGrad.GradientStops[0].Color == Color.FromArgb(0x28, 0xAA, 0x55, 0xFF)
+                && resolvedGrad.GradientStops[1].Color == Color.FromArgb(0x18, 0x38, 0xBD, 0xF8),
+                "Gradient WidgetCardHover must scale every stop's alpha by WidgetOpacity.");
+
+            // WindowsPalette must expose visible WidgetCardHover/WidgetCardPressed and matching SurfaceHoverColor.
+            ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal));
+            ThemeManager.Apply(AppTheme.Light, new DockSettings(WidgetBackground: SurfaceBackground.Solid, WidgetOpacity: 1.0));
+            Check(Alpha(app, "WidgetHoverMaterial") == 0x18 && Alpha(app, "WidgetPressedMaterial") == 0x2A,
+                "Light palette must provide distinct WidgetHoverMaterial and WidgetPressedMaterial.");
         }
         finally
         {
+            ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal));
             ThemeManager.Apply(AppTheme.Dark);
         }
 

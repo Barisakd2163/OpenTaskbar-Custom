@@ -2,6 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime"
                     xmlns:svc="clr-namespace:OpenTaskbar.Services"
+                    xmlns:views="clr-namespace:OpenTaskbar.Views"
                     xmlns:models="clr-namespace:OpenTaskbar.Models">
     <Style x:Key="WidgetIcon" TargetType="ContentControl">
         <Setter Property="Width" Value="16" />
@@ -39,12 +40,13 @@
     </Style>
 
     <Style x:Key="WidgetCardBorder" TargetType="Border">
-        <!-- A fresh brush per card so hovering one widget never animates its neighbours. -->
+        <!-- WidgetCardFeedback equips each card with its own mutable hover/pressed brush bound to the active theme. -->
         <Setter Property="Background">
             <Setter.Value>
-                <SolidColorBrush Color="{DynamicResource SurfaceHoverColor}" Opacity="0" />
+                <SolidColorBrush Color="#00000000" Opacity="0" />
             </Setter.Value>
         </Setter>
+        <Setter Property="views:WidgetCardFeedback.Enabled" Value="True" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="{DynamicResource WidgetRadius}" />
@@ -110,7 +112,11 @@
                             BorderThickness="0"
                             CornerRadius="8" SnapsToDevicePixels="True">
                         <Grid>
-                            <Border x:Name="HoverLayer" Background="{DynamicResource SurfaceHover}"
+                            <Grid x:Name="HoverHost" IsHitTestVisible="False">
+                                <Border x:Name="HoverLayer" Background="{DynamicResource WidgetHoverMaterial}"
+                                        CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
+                            </Grid>
+                            <Border x:Name="PressedLayer" Background="{DynamicResource WidgetPressedMaterial}"
                                     CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Grid>
@@ -135,7 +141,30 @@
                             </BeginStoryboard>
                         </EventTrigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
@@ -149,7 +178,7 @@
         </Setter>
     </Style>
 
-    <!-- Whole-card button with clean resting state and soft organic hover. -->
+    <!-- Whole-card button with clean resting state and themed hover/pressed backgrounds (no double-stacking). -->
     <Style x:Key="WidgetCardButton" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
@@ -169,12 +198,14 @@
                             BorderThickness="0" CornerRadius="{DynamicResource WidgetRadius}"
                             SnapsToDevicePixels="True">
                         <Grid>
-                            <Border x:Name="HoverLayer" CornerRadius="{DynamicResource WidgetRadius}"
-                                    Opacity="0" IsHitTestVisible="False">
-                                <Border.Background>
-                                    <SolidColorBrush Color="{DynamicResource SurfaceHoverColor}" />
-                                </Border.Background>
-                            </Border>
+                            <Grid x:Name="HoverHost" IsHitTestVisible="False">
+                                <Border x:Name="HoverLayer" Background="{DynamicResource WidgetHoverMaterial}"
+                                        CornerRadius="{DynamicResource WidgetRadius}"
+                                        Opacity="0" IsHitTestVisible="False" />
+                            </Grid>
+                            <Border x:Name="PressedLayer" Background="{DynamicResource WidgetPressedMaterial}"
+                                    CornerRadius="{DynamicResource WidgetRadius}"
+                                    Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -198,7 +229,30 @@
                             </BeginStoryboard>
                         </EventTrigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -225,7 +279,11 @@
                             BorderThickness="0" CornerRadius="10"
                             SnapsToDevicePixels="True">
                         <Grid>
-                            <Border x:Name="HoverLayer" Background="{DynamicResource SurfaceHover}"
+                            <Grid x:Name="HoverHost" IsHitTestVisible="False">
+                                <Border x:Name="HoverLayer" Background="{DynamicResource WidgetHoverMaterial}"
+                                        CornerRadius="10" Opacity="0" IsHitTestVisible="False" />
+                            </Grid>
+                            <Border x:Name="PressedLayer" Background="{DynamicResource WidgetPressedMaterial}"
                                     CornerRadius="10" Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Grid>
@@ -250,7 +308,30 @@
                             </BeginStoryboard>
                         </EventTrigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
@@ -368,7 +449,11 @@
                             BorderThickness="0"
                             CornerRadius="8" SnapsToDevicePixels="True">
                         <Grid>
-                            <Border x:Name="HoverLayer" Background="{DynamicResource SurfaceHover}"
+                            <Grid x:Name="HoverHost" IsHitTestVisible="False">
+                                <Border x:Name="HoverLayer" Background="{DynamicResource SurfaceHover}"
+                                        CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
+                            </Grid>
+                            <Border x:Name="PressedLayer" Background="{DynamicResource SurfacePressed}"
                                     CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
                         </Grid>
@@ -393,7 +478,30 @@
                             </BeginStoryboard>
                         </EventTrigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceKeyboardFocus}" />
@@ -575,7 +683,11 @@
                             BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8" SnapsToDevicePixels="True">
                         <Grid>
-                            <Border x:Name="HoverLayer" Background="{DynamicResource SurfaceHover}"
+                            <Grid x:Name="HoverHost" IsHitTestVisible="False">
+                                <Border x:Name="HoverLayer" Background="{DynamicResource WidgetHoverMaterial}"
+                                        CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
+                            </Grid>
+                            <Border x:Name="PressedLayer" Background="{DynamicResource WidgetPressedMaterial}"
                                     CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Grid>
@@ -600,7 +712,30 @@
                             </BeginStoryboard>
                         </EventTrigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressInDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverHost" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                        <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource WidgetPressOutDuration}"
+                                                         EasingFunction="{StaticResource WidgetHoverEase}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Surface" Property="Opacity" Value="0.45" />

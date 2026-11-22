@@ -1,8 +1,10 @@
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -264,6 +266,9 @@ internal static class FeatureAndMemoryChecks
             CheckFocusModeProfiles(Check);
             CheckFocusModePersistenceAndSettingsWindow(app.Dispatcher, Check);
             CheckLocalization("Focus Mode localization", ["FocusMode", "FocusModeDescription"], Check);
+
+            // 13. Combined theme + settings full backup archive checks
+            CheckFullBackupArchive(Check);
         }
         finally
         {
@@ -795,6 +800,174 @@ internal static class FeatureAndMemoryChecks
         {
             Check(!DockSettingsStore.Validate(valid with { Profiles = [invalid] }),
                 $"Profile validation must reject {description}.");
+        }
+    }
+
+    private static void CheckFullBackupArchive(Action<bool, string> Check)
+    {
+        const string themeName = "Midnight Custom";
+        const string sourceThemeId = "midnight-source";
+        PinBackup[] pins = [new PinBackup("App", @"C:\App\app.exe", null)];
+        var settings = new DockSettings(Theme: AppTheme.Dark, DockOpacity: 0.75, Widgets: ["Clock"], InstalledWidgets: ["Clock"],
+            ThemePack: sourceThemeId, Profiles: [new DockProfile("Backup", [])], ActiveProfile: "Backup");
+        var tempPath = Path.GetTempPath();
+        var stagingBefore = Directory.EnumerateDirectories(tempPath, "OpenTaskbar-backup-*")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fixtureRoot = Directory.CreateTempSubdirectory("ot-full-backup-").FullName;
+        try
+        {
+            var sourceThemesRoot = Path.Combine(fixtureRoot, "source-themes");
+            var targetThemesRoot = Directory.CreateDirectory(Path.Combine(fixtureRoot, "target-themes")).FullName;
+            var noThemeTargetRoot = Directory.CreateDirectory(Path.Combine(fixtureRoot, "no-theme-target")).FullName;
+            var sourceThemeDir = Path.Combine(sourceThemesRoot, sourceThemeId);
+            var iconPath = Path.Combine(ThemePack.IconFolder, "app.png");
+            var themeJson = JsonSerializer.Serialize(new ThemePackManifest(Name: themeName));
+            var iconBytes = EncodeSolidPng(16);
+            Directory.CreateDirectory(Path.Combine(sourceThemeDir, ThemePack.IconFolder));
+            File.WriteAllText(Path.Combine(sourceThemeDir, ThemePack.ManifestFileName), themeJson);
+            File.WriteAllBytes(Path.Combine(sourceThemeDir, iconPath), iconBytes);
+
+            var archivePath = Path.Combine(fixtureRoot, "custom" + FullBackupArchive.ExportExtension);
+            var exportError = FullBackupArchive.Export(archivePath, settings, sourceThemesRoot, pinsOverride: pins);
+            Check(exportError is null, $"Full backup export must succeed with an active custom theme. Error: {exportError}");
+            var (preview, inspectError) = FullBackupArchive.Inspect(archivePath);
+            CheckStagingCleanup("Inspecting the custom-theme backup");
+            Check(inspectError is null && preview is { HasTheme: true, ThemeName: themeName },
+                "Inspecting the custom-theme backup must report Midnight Custom.");
+            CheckPayload(preview!.Settings, preview.Pins, settings, "Inspecting the custom-theme backup");
+
+            CheckInvalidFullBackupArchives(archivePath, fixtureRoot, targetThemesRoot,
+                SettingsBackup.Serialize(settings with { DockOpacity = 9.0 }, pins), CheckStagingCleanup, Check);
+
+            var (imported, importedPins, importedThemeId, importError) =
+                FullBackupArchive.Import(archivePath, restoreTheme: true, themesRoot: targetThemesRoot);
+            CheckStagingCleanup("Importing the custom-theme backup");
+            Check(importError is null && !string.IsNullOrWhiteSpace(importedThemeId) && imported?.ThemePack == importedThemeId,
+                "Importing the custom-theme backup must activate the installed theme ID.");
+            CheckPayload(imported, importedPins, settings with { ThemePack = importedThemeId }, "Importing the custom-theme backup");
+            var installedThemeDir = Path.Combine(targetThemesRoot, importedThemeId!);
+            CheckThemeFiles(installedThemeDir, iconBytes);
+
+            var editedIcon = EncodeSolidPng(8);
+            File.WriteAllBytes(Path.Combine(installedThemeDir, iconPath), editedIcon);
+            var (reimported, reimportedPins, duplicateId, duplicateError) =
+                FullBackupArchive.Import(archivePath, restoreTheme: true, themesRoot: targetThemesRoot);
+            CheckStagingCleanup("Reimporting the custom-theme backup");
+            Check(duplicateError is null && duplicateId == importedThemeId + "-2" && reimported?.ThemePack == duplicateId,
+                "Reimporting the custom-theme backup must activate a unique theme ID ending in -2.");
+            CheckPayload(reimported, reimportedPins, settings with { ThemePack = duplicateId }, "Reimporting the custom-theme backup");
+            CheckThemeFiles(Path.Combine(targetThemesRoot, duplicateId!), iconBytes);
+            CheckThemeFiles(installedThemeDir, editedIcon);
+
+            var (withoutTheme, withoutThemePins, skippedId, skippedError) =
+                FullBackupArchive.Import(archivePath, restoreTheme: false, themesRoot: noThemeTargetRoot);
+            CheckStagingCleanup("Importing with theme restoration disabled");
+            Check(skippedError is null && skippedId is null && !Directory.EnumerateFileSystemEntries(noThemeTargetRoot).Any(),
+                "Importing with theme restoration disabled must leave the target directory empty.");
+            CheckPayload(withoutTheme, withoutThemePins, settings, "Importing with theme restoration disabled");
+
+            var builtIn = settings with { ThemePack = null };
+            var builtInPath = Path.Combine(fixtureRoot, "built-in" + FullBackupArchive.ExportExtension);
+            var builtInExportError = FullBackupArchive.Export(builtInPath, builtIn, sourceThemesRoot, pinsOverride: pins);
+            Check(builtInExportError is null, $"Full backup export must succeed with the built-in look. Error: {builtInExportError}");
+            var (builtInPreview, builtInInspectError) = FullBackupArchive.Inspect(builtInPath);
+            CheckStagingCleanup("Inspecting the built-in backup");
+            Check(builtInInspectError is null && builtInPreview is { HasTheme: false, ThemeName: null },
+                "Inspecting the built-in backup must report no bundled theme.");
+            CheckPayload(builtInPreview!.Settings, builtInPreview.Pins, builtIn, "Inspecting the built-in backup");
+            var (builtInImport, builtInPins, builtInId, builtInError) =
+                FullBackupArchive.Import(builtInPath, restoreTheme: true, themesRoot: noThemeTargetRoot);
+            CheckStagingCleanup("Importing the built-in backup");
+            Check(builtInError is null && builtInId is null && !Directory.EnumerateFileSystemEntries(noThemeTargetRoot).Any(),
+                "Importing the built-in backup must leave the target directory empty even with theme restoration enabled.");
+            CheckPayload(builtInImport, builtInPins, builtIn, "Importing the built-in backup");
+
+            void CheckThemeFiles(string directory, byte[] expectedIcon)
+            {
+                var manifest = Path.Combine(directory, ThemePack.ManifestFileName);
+                var icon = Path.Combine(directory, iconPath);
+                Check(File.Exists(manifest) && File.ReadAllText(manifest) == themeJson,
+                    $"Theme {Path.GetFileName(directory)} must retain its manifest.");
+                Check(File.Exists(icon) && File.ReadAllBytes(icon).SequenceEqual(expectedIcon),
+                    $"Theme {Path.GetFileName(directory)} must retain its own icon contents.");
+            }
+        }
+        finally
+        {
+            Directory.Delete(fixtureRoot, recursive: true);
+        }
+
+        CheckLocalization([
+            "FullBackup", "FullBackupDescription", "FullBackupExport", "FullBackupImport", "FullBackupFileFilter",
+            "FullBackupExportDone", "FullBackupImportDone", "FullBackupRestoreThemePrompt", "ErrorFullBackupInvalid", "ErrorFullBackupWrite"
+        ], Check);
+
+        void CheckPayload(DockSettings? actual, IReadOnlyList<PinBackup> actualPins, DockSettings expected, string context)
+        {
+            Check(actual is not null && SerializeSettings(actual) == SerializeSettings(expected), $"{context} must preserve the dock settings.");
+            Check(actualPins.SequenceEqual(pins), $"{context} must preserve the pinned apps.");
+        }
+
+        void CheckStagingCleanup(string context) =>
+            Check(stagingBefore.SetEquals(Directory.EnumerateDirectories(tempPath, "OpenTaskbar-backup-*")),
+                $"{context} must clean up temporary backup staging directories.");
+    }
+
+    private static void CheckInvalidFullBackupArchives(string validArchivePath, string fixtureRoot, string targetThemesRoot,
+        string invalidSettingsJson, Action<string> checkStagingCleanup, Action<bool, string> Check)
+    {
+        const string invalidError = "ErrorFullBackupInvalid";
+        const string themeManifest = "theme/theme.json";
+        var corruptPath = ArchivePath("non-zip");
+        File.WriteAllText(corruptPath, "This is not a zip archive.");
+        CheckRejected(corruptPath);
+
+        CheckInvalidZip("missing-manifest", zip => zip.GetEntry("manifest.json")!.Delete());
+        CheckInvalidZip("unsupported-version", zip =>
+        {
+            var entry = zip.GetEntry("manifest.json")!;
+            JsonNode manifest;
+            using (var stream = entry.Open())
+                manifest = JsonNode.Parse(stream)!;
+            manifest["Version"] = 99;
+            WriteEntry(zip, "manifest.json", manifest.ToJsonString());
+        });
+        CheckInvalidZip("invalid-settings", zip => WriteEntry(zip, "settings.json", invalidSettingsJson));
+        CheckInvalidZip("path-traversal", zip => WriteEntry(zip, "../evil.json", "{}"));
+        CheckInvalidZip("disallowed-extension", zip => WriteEntry(zip, "theme/payload.exe", "fixture"));
+        CheckInvalidZip("missing-theme-manifest", zip => zip.GetEntry(themeManifest)!.Delete());
+        CheckInvalidZip("invalid-theme-manifest", zip => WriteEntry(zip, themeManifest, "{ invalid JSON"));
+
+        string ArchivePath(string name) => Path.Combine(fixtureRoot, name + FullBackupArchive.ExportExtension);
+
+        void CheckInvalidZip(string name, Action<ZipArchive> mutate)
+        {
+            var path = ArchivePath(name);
+            File.Copy(validArchivePath, path);
+            using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+                mutate(zip);
+            CheckRejected(path);
+        }
+
+        void CheckRejected(string path)
+        {
+            var name = Path.GetFileName(path);
+            var (preview, inspectError) = FullBackupArchive.Inspect(path);
+            checkStagingCleanup($"Inspecting {name}");
+            Check(preview is null && inspectError == invalidError, $"Inspecting {name} must return {invalidError}.");
+            var (settings, pins, importedId, importError) =
+                FullBackupArchive.Import(path, restoreTheme: true, themesRoot: targetThemesRoot);
+            checkStagingCleanup($"Importing {name}");
+            Check(settings is null && pins.Count == 0 && importedId is null && importError == invalidError,
+                $"Importing {name} must return {invalidError} without settings, pins, or a theme ID.");
+            Check(!Directory.EnumerateFileSystemEntries(targetThemesRoot).Any(), $"Importing {name} must leave the target directory empty.");
+        }
+
+        static void WriteEntry(ZipArchive zip, string name, string content)
+        {
+            zip.GetEntry(name)?.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+            writer.Write(content);
         }
     }
 

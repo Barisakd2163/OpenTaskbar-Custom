@@ -92,6 +92,84 @@ internal static class WidgetViewChecks
             Check(!ReferenceEquals(borderA.Background, borderB.Background),
                 "Each widget card must own its background brush so hover animations stay isolated.");
 
+            // Every button style with hover+press layers must cross-fade HoverHost -> 0 when PressedLayer -> 1
+            // so hover and press alphas never double-stack.
+            foreach (var key in new[] { "WidgetCardButton", "WidgetIconButton", "WidgetPill", "FlyoutButton", "WidgetFlyoutActionButton", "WidgetButton" })
+            {
+                var template = (ControlTemplate)((Style)app.FindResource(key)).Setters.OfType<Setter>()
+                    .Single(s => s.Property == Control.TemplateProperty).Value;
+                var pressedTrigger = template.Triggers.OfType<Trigger>()
+                    .SingleOrDefault(t => t.Property == System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty && Equals(t.Value, true));
+                var enterTargets = pressedTrigger?.EnterActions.OfType<BeginStoryboard>()
+                    .SelectMany(bs => bs.Storyboard?.Children.OfType<DoubleAnimation>() ?? [])
+                    .Select(a => Storyboard.GetTargetName(a))
+                    .ToHashSet(StringComparer.Ordinal) ?? [];
+                Check(enterTargets.Contains("HoverHost") && enterTargets.Contains("PressedLayer"),
+                    $"{key} must cross-fade HoverHost out and PressedLayer in on press to avoid double-stacking.");
+            }
+
+            // WidgetCardBorder cards must update their hover/pressed brush on live theme changes and press events.
+            var interactiveCard = new Border { Style = borderStyle };
+            var innerButton = new Button { Content = "Inner" };
+            var propagatingButton = new Button { Content = "Details" };
+            OpenTaskbar.Views.WidgetCardFeedback.SetPropagatesCardPress(propagatingButton, true);
+            var cardPanel = new StackPanel();
+            cardPanel.Children.Add(innerButton);
+            cardPanel.Children.Add(propagatingButton);
+            interactiveCard.Child = cardPanel;
+            Layout(interactiveCard);
+
+            var expectedHover = ((SolidColorBrush)app.FindResource("WidgetHoverMaterial")).Color;
+            Check(interactiveCard.Background is SolidColorBrush cardSolid && cardSolid.Color == expectedHover,
+                "WidgetCardBorder must initialize its background color from WidgetHoverMaterial.");
+
+            var downInner = new System.Windows.Input.MouseButtonEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                Source = innerButton
+            };
+            innerButton.RaiseEvent(downInner);
+            Check(!OpenTaskbar.Views.WidgetCardFeedback.IsCardPressed(interactiveCard),
+                "Pressing a nested interactive button must not mark the outer widget card as pressed.");
+
+            var downDetails = new System.Windows.Input.MouseButtonEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                Source = propagatingButton
+            };
+            propagatingButton.RaiseEvent(downDetails);
+            Check(OpenTaskbar.Views.WidgetCardFeedback.IsCardPressed(interactiveCard),
+                "Pressing a PropagatesCardPress child (such as TimedWidgetTile.DetailsButton) must press the outer card.");
+
+            var upDetails = new System.Windows.Input.MouseButtonEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+                Source = propagatingButton
+            };
+            propagatingButton.RaiseEvent(upDetails);
+            Check(!OpenTaskbar.Views.WidgetCardFeedback.IsCardPressed(interactiveCard),
+                "Releasing press must clear the outer card pressed state.");
+
+            // BatteryWidget must opt its outer Border out of WidgetCardFeedback and render both hover and press overlays.
+            var batteryWidget = new OpenTaskbar.Widgets.BatteryWidget
+            {
+                BatteryReader = () => new BatteryStatus(true, 72, false)
+            };
+            Layout(batteryWidget);
+            var batteryCard = (Border)batteryWidget.Content;
+            Check(!OpenTaskbar.Views.WidgetCardFeedback.GetEnabled(batteryCard),
+                "BatteryWidget must disable outer WidgetCardFeedback so overlays do not double-stack.");
+            var batteryBorders = Descendants<Border>(batteryCard)
+                .Where(b => ReferenceEquals(b.Background, app.FindResource("WidgetHoverMaterial"))
+                         || ReferenceEquals(b.Background, app.FindResource("WidgetPressedMaterial")))
+                .ToList();
+            Check(batteryBorders.Any(b => ReferenceEquals(b.Background, app.FindResource("WidgetHoverMaterial")))
+                  && batteryBorders.Any(b => ReferenceEquals(b.Background, app.FindResource("WidgetPressedMaterial"))),
+                "BatteryWidget must render both WidgetHoverMaterial and WidgetPressedMaterial overlays.");
+
             var interfaceFont = (FontFamily)app.FindResource("InterfaceFont");
             Check(interfaceFont.Source.Contains("#Inter", StringComparison.OrdinalIgnoreCase),
                 "The UI must use the embedded Inter font instead of a machine-dependent system font.");

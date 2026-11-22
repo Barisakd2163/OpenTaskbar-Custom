@@ -1631,6 +1631,85 @@ public partial class SettingsWindow : Window
         MessageBox.Show(this, UiText.Format("ImportDone", added), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    private void ExportFullBackup_Click(object sender, RoutedEventArgs e)
+    {
+        FlushPendingAutoSaves();
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = "OpenTaskbar-backup" + FullBackupArchive.ExportExtension,
+            Filter = UiText.Get("FullBackupFileFilter"),
+            DefaultExt = FullBackupArchive.ExportExtension
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var error = FullBackupArchive.Export(dialog.FileName, _preferences.Current);
+        if (error is not null)
+            AppLog.ReportError(error);
+        else
+            MessageBox.Show(this, UiText.Get("FullBackupExportDone"), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void ImportFullBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = UiText.Get("FullBackupFileFilter"),
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var (preview, inspectError) = FullBackupArchive.Inspect(dialog.FileName);
+        if (preview is null || inspectError is not null)
+        {
+            AppLog.ReportError(inspectError ?? "ErrorFullBackupInvalid");
+            return;
+        }
+
+        var restoreTheme = false;
+        if (preview.HasTheme)
+        {
+            var result = MessageBox.Show(this, UiText.Format("FullBackupRestoreThemePrompt", preview.ThemeName ?? string.Empty),
+                "OpenTaskbar", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Cancel) return;
+            restoreTheme = result == MessageBoxResult.Yes;
+        }
+
+        var (settings, pins, importedThemeId, importError) = FullBackupArchive.Import(dialog.FileName, restoreTheme);
+        if (settings is null || importError is not null)
+        {
+            AppLog.ReportError(importError ?? "ErrorFullBackupInvalid");
+            return;
+        }
+
+        var targetThemePack = restoreTheme ? (importedThemeId ?? settings.ThemePack) : (preview.HasTheme ? _preferences.Current.ThemePack : settings.ThemePack);
+        settings = settings with { ThemePack = targetThemePack, PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder };
+        _isSaving = true;
+        try
+        {
+            if (_preferences.Save(settings) is { } saveError)
+            {
+                AppLog.ReportError(saveError);
+                return;
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+
+        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
+        _applied = _preferences.Current;
+        _initializing = true;
+        try
+        {
+            LoadAllSelections(_applied);
+        }
+        finally
+        {
+            _initializing = false;
+        }
+        UpdateWidgetOptionState();
+        MessageBox.Show(this, UiText.Format("FullBackupImportDone", added), "OpenTaskbar", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     private void OpenLogFile_Click(object sender, RoutedEventArgs e) => AppLog.TryOpenLogFile();
 
     private void LoadAllSelections(DockSettings settings)

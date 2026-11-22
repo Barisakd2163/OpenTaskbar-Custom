@@ -8,6 +8,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Views;
 
 namespace OpenTaskbar.Widgets;
 
@@ -34,6 +35,9 @@ public sealed class BatteryWidget : DockWidget
     private readonly Grid _sheenClipHost;
     private readonly Border _chargeSheen;
     private readonly TranslateTransform _sheenTransform;
+    private readonly Grid _hoverHost;
+    private readonly Border _hoverOverlay;
+    private readonly Border _pressOverlay;
     private readonly ContentControl _boltShadow;
     private readonly ContentControl _boltIcon;
     private readonly TextBlock _percentShadow;
@@ -42,6 +46,7 @@ public sealed class BatteryWidget : DockWidget
     private BatteryStatus _status;
     private bool _hasSample;
     private bool _isAnimatingCharging;
+    private bool _isPressed;
     private long _lastPollMs;
     private int _renderedPercent = -1;
     private bool _renderedCharging;
@@ -58,11 +63,11 @@ public sealed class BatteryWidget : DockWidget
     {
         _trackLayer = new Border
         {
-            CornerRadius = new CornerRadius(10),
             Opacity = 0.28,
             IsHitTestVisible = false,
             Visibility = Visibility.Collapsed
         };
+        _trackLayer.SetResourceReference(Border.CornerRadiusProperty, "WidgetRadius");
         _trackLayer.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
 
         _waveTransform = new TranslateTransform(0, 0);
@@ -182,13 +187,27 @@ public sealed class BatteryWidget : DockWidget
         labelRow.Children.Add(_boltIcon);
         labelRow.Children.Add(_percentText);
 
-        var hoverOverlay = new Border
+        _hoverOverlay = new Border
         {
-            CornerRadius = new CornerRadius(10),
             Opacity = 0,
             IsHitTestVisible = false
         };
-        hoverOverlay.SetResourceReference(Border.BackgroundProperty, "SurfaceHover");
+        _hoverOverlay.SetResourceReference(Border.CornerRadiusProperty, "WidgetRadius");
+        _hoverOverlay.SetResourceReference(Border.BackgroundProperty, "WidgetHoverMaterial");
+
+        _hoverHost = new Grid
+        {
+            IsHitTestVisible = false
+        };
+        _hoverHost.Children.Add(_hoverOverlay);
+
+        _pressOverlay = new Border
+        {
+            Opacity = 0,
+            IsHitTestVisible = false
+        };
+        _pressOverlay.SetResourceReference(Border.CornerRadiusProperty, "WidgetRadius");
+        _pressOverlay.SetResourceReference(Border.BackgroundProperty, "WidgetPressedMaterial");
 
         _surface = new Grid
         {
@@ -199,7 +218,8 @@ public sealed class BatteryWidget : DockWidget
         _surface.Children.Add(_trackLayer);
         _surface.Children.Add(_liquidFill);
         _surface.Children.Add(_sheenClipHost);
-        _surface.Children.Add(hoverOverlay);
+        _surface.Children.Add(_hoverHost);
+        _surface.Children.Add(_pressOverlay);
         _surface.Children.Add(shadowRow);
         _surface.Children.Add(labelRow);
         _surface.SizeChanged += (_, _) => UpdateLiquidGeometry(forceAnimationRestart: false);
@@ -212,19 +232,48 @@ public sealed class BatteryWidget : DockWidget
             Cursor = Cursors.Hand,
             Child = _surface
         };
+        // Hover and press are rendered by _hoverOverlay/_pressOverlay above _liquidFill so the opaque fill
+        // never hides them and the unfilled portion never double-stacks with WidgetCardBorder's Background.
+        WidgetCardFeedback.SetEnabled(_card, false);
         _card.SetResourceReference(StyleProperty, "WidgetCardBorder");
         _card.Padding = new Thickness(0);
-        // Hover is rendered by hoverOverlay above _liquidPath so the opaque fill never hides it
-        // and the unfilled portion never double-stacks with WidgetCardBorder's Background.
         _card.Background = new SolidColorBrush(Colors.Transparent);
-        _card.MouseEnter += (_, _) => hoverOverlay.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(1, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-        _card.MouseLeave += (_, _) => hoverOverlay.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-        _card.MouseLeftButtonUp += (_, _) => OpenPowerSettingsAction();
+        _card.MouseEnter += (_, _) => AnimateOverlay(_hoverOverlay, 1, 160);
+        _card.MouseLeave += (_, _) =>
+        {
+            AnimateOverlay(_hoverOverlay, 0, 160);
+            SetPressedState(false);
+        };
+        _card.MouseLeftButtonDown += (_, _) => SetPressedState(true);
+        _card.MouseLeftButtonUp += (_, _) =>
+        {
+            SetPressedState(false);
+            OpenPowerSettingsAction();
+        };
+        _card.LostMouseCapture += (_, _) =>
+        {
+            if (!_card.IsMouseOver) SetPressedState(false);
+        };
 
         Content = _card;
         HasData = true;
+    }
+
+    private void SetPressedState(bool pressed)
+    {
+        if (_isPressed == pressed) return;
+        _isPressed = pressed;
+        var durationMs = pressed ? 80 : 120;
+        AnimateOverlay(_hoverHost, pressed ? 0 : 1, durationMs);
+        AnimateOverlay(_pressOverlay, pressed ? 1 : 0, durationMs);
+    }
+
+    private static void AnimateOverlay(UIElement target, double to, double durationMs)
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        target.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(to, TimeSpan.FromMilliseconds(durationMs)) { EasingFunction = ease });
     }
 
     protected override void OnActivated()
@@ -359,7 +408,8 @@ public sealed class BatteryWidget : DockWidget
 
         var width = _surface.ActualWidth > 1 ? _surface.ActualWidth : MinCardWidth;
         var height = _surface.ActualHeight > 1 ? _surface.ActualHeight : WaveHeight;
-        _surface.Clip = new RectangleGeometry(new Rect(0, 0, width, height), 10, 10);
+        var radius = _card.CornerRadius.TopLeft > 0 ? _card.CornerRadius.TopLeft : 10;
+        _surface.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
 
         var fillRatio = Math.Clamp(_renderedPercent, 2, 100) / 100.0;
         var edgeX = width * fillRatio;
