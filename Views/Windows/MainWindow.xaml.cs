@@ -320,6 +320,11 @@ public partial class MainWindow : Window
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
 
+        // Reserve the AppBar work area and hide the native taskbar as soon as the HWND exists (before first paint).
+        // EffectiveShelfHeight and EffectiveHeadroom are already known from DockSettings, so maximized windows
+        // adjust immediately instead of waiting for widgets, pinned icons, and ManagedShell TrayHost init.
+        StartReplacementMode(startTrayHost: false);
+
         // The expensive startup work runs once the window has actually been rendered, so the dock
         // shows up immediately instead of appearing only after all shell/COM/process calls finish.
         ContentRendered += Window_ContentRenderedOnce;
@@ -403,9 +408,16 @@ public partial class MainWindow : Window
 
         StartupStopwatch.Mark("window tracking started");
 
-        // Dev mode uses the real taskbar replacement so the dock sits exactly where the taskbar is,
-        // just like release. Only the data hot-reload service differs.
-        StartReplacementMode();
+        // Taskbar replacement already reserved the shelf in SourceInitialized; start TrayHost (ManagedShell)
+        // here after first paint so its COM/broadcast init never delays rendering.
+        if (_replacementSession is null)
+        {
+            StartReplacementMode(startTrayHost: true);
+        }
+        else if (_replacementSession.IsActive)
+        {
+            TrayHost.Start();
+        }
         StartupStopwatch.Mark("taskbar replacement started");
         InitializeFeatures();
         StartupStopwatch.Mark("features initialized");
@@ -468,7 +480,7 @@ public partial class MainWindow : Window
         Top = Math.Max(area.Top, area.Bottom - Height);
     }
 
-    private void StartReplacementMode()
+    private void StartReplacementMode(bool startTrayHost = true)
     {
         var source = _source;
         if (source is null)
@@ -493,7 +505,7 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
-            if (session.IsActive) TrayHost.Start();
+            if (startTrayHost && session.IsActive) TrayHost.Start();
         }
         catch (InvalidOperationException ex)
         {
