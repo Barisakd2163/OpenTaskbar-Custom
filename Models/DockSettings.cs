@@ -204,9 +204,11 @@ public sealed record DockSettings(
     DockGapUnit DockBottomGapUnit = DockGapUnit.Pixels,
     int DockBottomGapPixels = 6,
     int DockBottomGapPercent = 0,
-    // Extra gap (DIP) between dock icons, independent of the size profile and DockScale.
-    // Zero keeps the original layout; older settings files fall back to this default.
-    int DockIconPadding = 0,
+    // Extra gap (DIP) around dock icons, independent of size profile and DockScale.
+    // X = left+right (horizontal spacing), Y = top+bottom (vertical breathing room).
+    // Zero keeps the original layout; older settings files fall back to these defaults.
+    int DockIconPaddingX = 0,
+    int DockIconPaddingY = 0,
     bool FocusModeEnabled = false,
     string? CustomLauncherHotkey = null,
     string? CustomDockHotkey = null)

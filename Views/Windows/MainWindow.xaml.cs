@@ -77,7 +77,7 @@ public partial class MainWindow : Window
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
     private double? _dockWidthOverride;
-    private (DockSize Size, double Scale, int Padding, double BottomGap, double TopGap)? _appliedDockGeometry;
+    private (DockSize Size, double Scale, int PaddingX, int PaddingY, double BottomGap, double TopGap)? _appliedDockGeometry;
     private bool _resizingDock;
     private bool _resizePending;
     private bool _resizingFromLeft;
@@ -91,7 +91,7 @@ public partial class MainWindow : Window
     private bool _rebuildingDockOrder;
     private bool _instantDockResize;
     private double _dockTopGap;
-    private (DockSize Size, double Scale, int Padding)? _sizePreviewOverride;
+    private (DockSize Size, double Scale, int PaddingX, int PaddingY)? _sizePreviewOverride;
     private double? _radiusPreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
     private int _wheelRemainder;
@@ -475,7 +475,7 @@ public partial class MainWindow : Window
         session.FullScreenChanged += OnFullScreenChanged;
         session.ShelfHeight = EffectiveShelfHeight;
         session.HeadroomHeight = EffectiveHeadroom;
-        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding, ExternalBottomGap, ExternalTopGap);
+        _appliedDockGeometry = (_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPaddingX, _preferences.Current.DockIconPaddingY, ExternalBottomGap, ExternalTopGap);
         session.Edge = Edge;
         session.TargetMonitor = targetDisplay.Handle;
         _replacementSession = session;
@@ -2047,12 +2047,14 @@ public partial class MainWindow : Window
         var geometry = (
             Size: _preferences.Current.Size,
             Scale: _preferences.Current.DockScale,
-            Padding: _preferences.Current.DockIconPadding,
+            PaddingX: _preferences.Current.DockIconPaddingX,
+            PaddingY: _preferences.Current.DockIconPaddingY,
             BottomGap: ExternalBottomGap,
             TopGap: ExternalTopGap);
         if (_appliedDockGeometry is { } applied && applied != geometry && _replacementSession is not null)
         {
-            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001 || applied.Padding != geometry.Padding)
+            if (applied.Size != geometry.Size || Math.Abs(applied.Scale - geometry.Scale) > 0.001
+                || applied.PaddingX != geometry.PaddingX || applied.PaddingY != geometry.PaddingY)
             {
                 AnimateDockScaleChange();
             }
@@ -2709,13 +2711,14 @@ public partial class MainWindow : Window
             : Profile.Radius);
 
     private DockSizeProfile Profile => _sizePreviewOverride is { } preview
-        ? DockMetrics.For(preview.Size, preview.Scale, preview.Padding)
-        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale, _preferences.Current.DockIconPadding);
+        ? DockMetrics.For(preview.Size, preview.Scale, preview.PaddingX, preview.PaddingY)
+        : DockMetrics.For(_preferences.Current.Size, _preferences.Current.DockScale,
+            _preferences.Current.DockIconPaddingX, _preferences.Current.DockIconPaddingY);
 
-    internal void SetSizePreview(DockSize? size, double? scale, int? padding = null)
+    internal void SetSizePreview(DockSize? size, double? scale, int? paddingX = null, int? paddingY = null)
     {
         _sizePreviewOverride = size is { } s && scale is { } sc
-            ? (s, sc, padding ?? _preferences.Current.DockIconPadding)
+            ? (s, sc, paddingX ?? _preferences.Current.DockIconPaddingX, paddingY ?? _preferences.Current.DockIconPaddingY)
             : null;
         if (_replacementSession is not null) _replacementSession.DeferReservation = _sizePreviewOverride is not null;
         ApplySizeProfile();
@@ -2750,9 +2753,10 @@ public partial class MainWindow : Window
         Application.Current.Resources["DockCellSize"] = profile.Cell;
         Application.Current.Resources["DockCellHeight"] = profile.Cell;
         // Extra icon gap is an absolute DIP value applied as a Thickness resource so XAML styles can bind to it.
-        var iconPadding = profile.IconPadding;
-        Application.Current.Resources["DockIconPaddingResource"] = new Thickness(iconPadding, 0, iconPadding, 0);
-        ApplyDividerPadding(iconPadding);
+        // X = left+right spacing, Y = top+bottom breathing room (independent axes).
+        Application.Current.Resources["DockIconPaddingResource"] =
+            new Thickness(profile.IconPaddingX, profile.IconPaddingY, profile.IconPaddingX, profile.IconPaddingY);
+        ApplyDividerPadding(profile.IconPaddingX);
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         Application.Current.Resources["DockUtilityGlyphSize"] = Math.Round(profile.Icon * 0.6);
         Application.Current.Resources["StartLogoSize"] = Application.Current.Resources["DockApplicationIconSize"] is double currentSize ? currentSize : 36.0;
@@ -2944,6 +2948,7 @@ public partial class MainWindow : Window
     }
 
     private bool _deferredDockResize;
+    private double _dockWidthAnimationTarget = double.NaN;
 
     private void ResizeDockToContent()
     {
@@ -3047,6 +3052,16 @@ public partial class MainWindow : Window
         var targetWidth = Math.Clamp(_dockWidthOverride ?? desiredWidth,
             Math.Min(MinimumDockSurfaceWidth, maximumSurfaceWidth), maximumSurfaceWidth);
 
+        if (!double.IsNaN(_dockWidthAnimationTarget) && Math.Abs(_dockWidthAnimationTarget - targetWidth) < 0.5)
+        {
+            // Keep the in-flight animation to the same target width running instead of cancelling it
+            // (which would briefly snap DockSurface.Width back to its pre-animation base value).
+            if (_dockArea.Width <= 0)
+                Width = targetWidth + margin.Left + margin.Right;
+            return;
+        }
+
+        _dockWidthAnimationTarget = double.NaN;
         DockSurface.BeginAnimation(WidthProperty, null);
 
         if (!double.IsNaN(DockSurface.Width)
@@ -3065,8 +3080,11 @@ public partial class MainWindow : Window
                 Duration = TimeSpan.FromMilliseconds(120),
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             };
+            _dockWidthAnimationTarget = targetWidth;
             anim.Completed += (_, _) =>
             {
+                if (Math.Abs(_dockWidthAnimationTarget - targetWidth) >= 0.5) return;
+                _dockWidthAnimationTarget = double.NaN;
                 DockSurface.BeginAnimation(WidthProperty, null);
                 DockSurface.Width = targetWidth;
             };
