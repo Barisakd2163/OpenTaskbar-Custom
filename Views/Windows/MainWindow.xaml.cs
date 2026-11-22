@@ -2477,10 +2477,12 @@ public partial class MainWindow : Window
             var tokens = BuildEffectiveDockOrder();
             var pairs = new List<(string Token, FrameworkElement Element)>();
             // Horizontal widgets are hidden on narrow vertical side docks so they never widen or clip the strip.
-            foreach (var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase)
-                .Where(token => !((IsVertical || _preferences.Current.FocusModeEnabled) && token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase))))
+            foreach (var (token, element) in tokens.Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(token => !((IsVertical || _preferences.Current.FocusModeEnabled) && token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)))
+                .Select(token => (Token: token, Element: CreateDockItemElement(token)))
+                .Where(pair => pair.Element is not null))
             {
-                if (CreateDockItemElement(token) is { } element) pairs.Add((token, element));
+                pairs.Add((token, element!));
             }
 
             foreach (var element in _dockItemElements.Values) DockContents.Children.Remove(element);

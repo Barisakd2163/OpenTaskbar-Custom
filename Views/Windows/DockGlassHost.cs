@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shell;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -48,6 +49,15 @@ internal sealed class DockGlassHost : Window
         Background = Brushes.Transparent;
         // A layered window cannot host a DWM system backdrop; the dock owns the per-pixel alpha instead.
         AllowsTransparency = false;
+        // Settings uses the same WindowChrome/GlassFrameThickness combination. Without it DWM accepts
+        // the backdrop attribute but paints a flat fallback color instead of a real blurred backdrop.
+        WindowChrome.SetWindowChrome(this, new WindowChrome
+        {
+            CaptionHeight = 1,
+            ResizeBorderThickness = new Thickness(0),
+            GlassFrameThickness = new Thickness(-1),
+            UseAeroCaptionButtons = false
+        });
         Focusable = false;
         Width = 1;
         Height = 1;
