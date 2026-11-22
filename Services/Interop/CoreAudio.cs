@@ -275,19 +275,22 @@ public sealed class AudioEndpointMonitor : IDisposable
 
     public static bool SetDefaultDevice(string deviceId)
     {
+        var policy = (IPolicyConfig)new PolicyConfigClient();
         try
         {
-            var policy = (IPolicyConfig)new PolicyConfigClient();
             policy.SetDefaultEndpoint(deviceId, RoleConsole);
             policy.SetDefaultEndpoint(deviceId, RoleMultimedia);
             policy.SetDefaultEndpoint(deviceId, RoleCommunications);
-            Marshal.ReleaseComObject(policy);
             return true;
         }
         catch (Exception ex)
         {
             AppLog.Warning($"SetDefaultEndpoint failed: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(policy);
         }
     }
 

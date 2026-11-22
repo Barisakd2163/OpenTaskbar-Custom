@@ -421,7 +421,10 @@ public static class AiUsageService
             }
             File.Move(tmpPath, path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            AppLog.Warning($"Could not persist refreshed credential: {ex.Message}");
+        }
     }
 
     private static Credential? ParseAntigravityCredential( string json)
@@ -493,8 +496,17 @@ public static class AiUsageService
             if (!process.Start()) return null;
             process.StandardInput.Close();
             AppLog.Info($"AI usage CLI started: OpenCode pid={process.Id}");
-            var stdout = process.StandardOutput.ReadToEnd();
-            if (!process.WaitForExit(5000) || process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
+            // Drain stderr asynchronously: RedirectStandardError is enabled but nothing read it,
+            // so a CLI writing more than the pipe buffer would deadlock before stdout finished.
+            process.BeginErrorReadLine();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                return null;
+            }
+            var stdout = stdoutTask.GetAwaiter().GetResult();
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
             using var document = JsonDocument.Parse(stdout);
             return ParseOpenCodeCredential(document.RootElement);
         }

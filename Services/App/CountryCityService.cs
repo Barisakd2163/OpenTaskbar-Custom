@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -10,7 +11,7 @@ public sealed record CountryItem(string Name, string Iso2);
 public static class CountryCityService
 {
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(8) };
-    private static readonly Dictionary<string, IReadOnlyList<string>> CityCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, IReadOnlyList<string>> CityCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly IReadOnlyList<CountryItem> FallbackCountries =
     [
@@ -37,7 +38,9 @@ public static class CountryCityService
         new("Brazil", "BR")
     ];
 
-    private static IReadOnlyList<CountryItem> _cachedCountries = FallbackCountries;
+    // Starts null so GetCountriesAsync actually attempts the live fetch once; GetInitialCountries
+    // serves the fallback synchronously without triggering the network path.
+    private static IReadOnlyList<CountryItem>? _cachedCountries;
 
     private static readonly IReadOnlyList<string> TurkeyProvinces =
     [
@@ -59,7 +62,7 @@ public static class CountryCityService
         CityCache["Türkiye"] = TurkeyProvinces;
     }
 
-    public static IReadOnlyList<CountryItem> GetInitialCountries() => _cachedCountries;
+    public static IReadOnlyList<CountryItem> GetInitialCountries() => _cachedCountries ?? FallbackCountries;
 
     /// <summary>
     /// Looks up a cached country whose city list contains <paramref name="city"/> (case-insensitive).

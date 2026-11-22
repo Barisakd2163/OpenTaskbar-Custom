@@ -45,8 +45,9 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const int SwShowNoActivate = 4;
     private const int SwShow = 5;
     private static readonly nint HwndTopmost = new(-1);
-    private const int RestoreAttempts = 4;
-    private const int RestoreAttemptDelayMs = 120;
+    // Total verification stays under ~250 ms: this runs on the UI dispatcher during shutdown.
+    private const int RestoreAttempts = 3;
+    private const int RestoreAttemptDelayMs = 40;
 
     private readonly Window _window;
     private readonly nint _handle;

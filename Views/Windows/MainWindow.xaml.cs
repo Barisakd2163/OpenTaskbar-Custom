@@ -777,13 +777,16 @@ public partial class MainWindow : Window
             CancelRunningAppExit(executablePath);
         }
 
-        var currentApps = _runningApps.ToDictionary(app => app.ExecutablePath, StringComparer.OrdinalIgnoreCase);
+        // Two Store apps can share one host executable (ApplicationFrameHost.exe); AUMID is the
+        // stable identity, so key by it when present to avoid duplicate-key crashes and swapped icons.
+        var currentApps = _runningApps.ToDictionary(
+            app => app.AppUserModelId ?? app.ExecutablePath, StringComparer.OrdinalIgnoreCase);
         var desiredApps = candidates
             .Select(candidate =>
             {
                 var executablePath = candidate.ExecutablePath;
                 var icon = _runningAppIcons.Get(executablePath, candidate.IconWindow);
-                if (currentApps.TryGetValue(executablePath, out var existingApp))
+                if (currentApps.TryGetValue(candidate.Identity, out var existingApp))
                 {
                     // While this app's icon loads in the background, keep showing the current one. Other apps must
                     // still be free to update theirs.
@@ -796,6 +799,7 @@ public partial class MainWindow : Window
 
                 return new DockApp(GetApplicationName(executablePath), executablePath)
                 {
+                    AppUserModelId = candidate.AppUserModelId,
                     Icon = icon,
                     HasNotification = candidate.HasNotification,
                     IsForeground = candidate.IsForeground,
@@ -807,7 +811,8 @@ public partial class MainWindow : Window
                 var existingIndex = -1;
                 for (var i = 0; i < _runningApps.Count; i++)
                 {
-                    if (string.Equals(_runningApps[i].ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(_runningApps[i].AppUserModelId ?? _runningApps[i].ExecutablePath,
+                            app.AppUserModelId ?? app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
                     {
                         existingIndex = i;
                         break;

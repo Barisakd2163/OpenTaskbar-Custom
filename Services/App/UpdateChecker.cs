@@ -213,7 +213,15 @@ public static class UpdateChecker
             File.Move(partFile, tempExe);
 
             AppLog.Info($"Downloaded update to {tempExe}. Applying to {targetPath}...");
-            LaunchUpdaterAndRestart(tempExe, targetPath);
+            try
+            {
+                LaunchUpdaterAndRestart(tempExe, targetPath);
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException)
+            {
+                AppLog.Error($"Update launch failed: {ex.Message}");
+                return (false, "ErrorUpdateFailed", null);
+            }
             return (true, null, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException)

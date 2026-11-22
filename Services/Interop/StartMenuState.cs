@@ -104,7 +104,21 @@ internal sealed class StartMenuState : IDisposable
         _closedAt = Stopwatch.GetTimestamp();
     }
 
+    // Invoked from a native WinEvent hook: an escaping exception crosses the unmanaged boundary
+    // and can terminate the process. Keep the body isolated behind a logged guard.
     private void OnCloakEvent(nint hook, uint eventType, nint windowHandle, int objectId, int childId, uint thread, uint time)
+    {
+        try
+        {
+            HandleCloakEvent(eventType, windowHandle, objectId);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Start-menu cloak event {eventType:X} failed: {ex.Message}");
+        }
+    }
+
+    private void HandleCloakEvent(uint eventType, nint windowHandle, int objectId)
     {
         if (objectId != ObjectWindow || windowHandle == 0 || !IsStartMenuWindow(windowHandle)) return;
         if (eventType == EventObjectUncloaked)

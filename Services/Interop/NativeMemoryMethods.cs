@@ -22,6 +22,7 @@ internal static class NativeMemoryMethods
     public static void ScheduleIdleTrim(TimeSpan? delay = null)
     {
         _idleTrimCts?.Cancel();
+        _idleTrimCts?.Dispose();
         var cts = new CancellationTokenSource();
         _idleTrimCts = cts;
         var token = cts.Token;
@@ -37,6 +38,7 @@ internal static class NativeMemoryMethods
     public static void CancelIdleTrim()
     {
         _idleTrimCts?.Cancel();
+        _idleTrimCts?.Dispose();
         _idleTrimCts = null;
     }
 
@@ -48,13 +50,14 @@ internal static class NativeMemoryMethods
 
         try
         {
-            // These trims run on the UI dispatcher. Two blocking, compacting Gen2 collections plus a
-            // finalizer wait froze the dock for a noticeable moment right after it first appeared.
-            // A gentle non-blocking collection is enough to release the short-lived startup garbage;
+            // Scheduled trims run on a background thread; forced trims may be called from the dispatcher.
+            // Two blocking, compacting Gen2 collections plus a finalizer wait froze the dock on startup.
+            // A gentle non-blocking collection is enough to release short-lived garbage;
             // EmptyWorkingSet below is what actually returns pages to the OS.
             GC.Collect(2, GCCollectionMode.Optimized, blocking: false, compacting: false);
 
-            var handle = Process.GetCurrentProcess().Handle;
+            using var process = Process.GetCurrentProcess();
+            var handle = process.Handle;
             if (handle != 0)
             {
                 _ = EmptyWorkingSet(handle);

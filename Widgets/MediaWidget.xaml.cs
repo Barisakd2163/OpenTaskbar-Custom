@@ -120,7 +120,9 @@ public partial class MediaWidget : DockWidget
         return root;
     }
 
-    protected override async void OnActivated()
+    protected override void OnActivated() => _ = ActivateAsync();
+
+    private async Task ActivateAsync()
     {
         var activationVersion = ++_activationVersion;
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
@@ -156,6 +158,11 @@ public partial class MediaWidget : DockWidget
                 AppLog.Warning($"Media session manager unavailable: {ex.Message}");
                 HasData = false;
             }
+        }
+        catch (Exception ex)
+        {
+            // async void cannot be caught by callers; log and degrade instead of crashing the app.
+            AppLog.Warning($"Media widget activation failed: {ex.Message}");
         }
     }
 
@@ -282,7 +289,7 @@ public partial class MediaWidget : DockWidget
             if (!string.IsNullOrWhiteSpace(_session.SourceAppUserModelId))
                 hints.Add(_session.SourceAppUserModelId);
         }
-        catch { }
+        catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
 
         if (hints.Count == 0) return;
 
@@ -645,7 +652,7 @@ public partial class MediaWidget : DockWidget
                 if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
                     return true;
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
         }
 
         return false;
@@ -656,7 +663,7 @@ public partial class MediaWidget : DockWidget
         if (_manager is null) return null;
 
         MediaSession? current = null;
-        try { current = _manager.GetCurrentSession(); } catch { }
+        try { current = _manager.GetCurrentSession(); } catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
 
         if (current is not null)
         {
@@ -666,7 +673,7 @@ public partial class MediaWidget : DockWidget
                 if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
                     return current;
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
         }
 
         try
@@ -682,7 +689,7 @@ public partial class MediaWidget : DockWidget
                         if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
                             return s;
                     }
-                    catch { }
+                    catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
                 }
 
                 if (current is not null) return current;
@@ -698,13 +705,13 @@ public partial class MediaWidget : DockWidget
                             return s;
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
                 }
 
                 return sessions[0];
             }
         }
-        catch { }
+        catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
 
         return current;
     }
@@ -821,7 +828,9 @@ public partial class MediaWidget : DockWidget
     private static string FormatTime(TimeSpan span) =>
         span.TotalHours >= 1 ? span.ToString(@"h\:mm\:ss") : span.ToString(@"m\:ss");
 
-    private async void Refresh(bool includeProperties)
+    private void Refresh(bool includeProperties) => _ = RefreshAsync(includeProperties);
+
+    private async Task RefreshAsync(bool includeProperties)
     {
         var version = includeProperties ? ++_refreshVersion : _refreshVersion;
         var activationVersion = _activationVersion;
@@ -874,6 +883,10 @@ public partial class MediaWidget : DockWidget
                 HasData = false;
                 ClearAlbumArt();
             }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Media widget refresh failed: {ex.Message}");
         }
     }
 

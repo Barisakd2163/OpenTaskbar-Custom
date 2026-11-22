@@ -7,12 +7,19 @@ public sealed record RunningAppCandidate(
     string ExecutablePath,
     IReadOnlyList<TrackedWindow> Windows,
     bool HasNotification,
-    bool IsForeground)
+    bool IsForeground,
+    string? AppUserModelId = null)
 {
     /// <summary>The topmost window decides the identity icon; ApplicationFrameHost hosts several Store apps.</summary>
     public nint IconWindow => Windows[0].Handle;
 
     public int WindowCount => Windows.Count;
+
+    /// <summary>
+    /// Stable identity for UI collections. Two different Store apps can share one host executable
+    /// (ApplicationFrameHost.exe), so ExecutablePath alone is not unique once AUMID grouping is used.
+    /// </summary>
+    public string Identity => AppUserModelId ?? ExecutablePath;
 }
 
 /// <summary>
@@ -54,12 +61,15 @@ internal static class RunningAppProjection
         {
             var group = groups[key];
             // The representative path is the first window's executable (icon + launch target).
+            // The group key is the AUMID when present, otherwise the path — keep it as the stable identity.
             var path = group[0].ExecutablePath!;
+            var appId = string.IsNullOrWhiteSpace(group[0].AppUserModelId) ? null : group[0].AppUserModelId;
             candidates.Add(new RunningAppCandidate(
                 path,
                 group,
                 notificationBadgesEnabled && group.Any(window => window.HasNotification),
-                group.Any(window => window.Handle == foreground)));
+                group.Any(window => window.Handle == foreground),
+                appId));
         }
         return candidates;
     }
