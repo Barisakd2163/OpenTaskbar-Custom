@@ -112,7 +112,10 @@ public static class WindowsTaskbarPinImporter
                         {
                             LaunchArguments = string.IsNullOrWhiteSpace(arguments) ? null : arguments,
                             ShortcutPath = Path.GetFullPath(shortcutPath),
-                            IconLocation = string.IsNullOrWhiteSpace(iconLocation) ? null : iconLocation
+                            IconLocation = string.IsNullOrWhiteSpace(iconLocation) ? null : iconLocation,
+                            // Store apps pinned via .lnk point at WindowsApps\*.exe, which cannot be launched
+                            // directly. Capture the packaged AUMID so shell:AppsFolder activation works.
+                            AppUserModelId = ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath)
                         });
                     }
                     finally

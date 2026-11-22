@@ -1206,10 +1206,15 @@ public partial class MainWindow : Window
     {
         var executablePath = app.ExecutablePath;
         var arguments = app.LaunchArguments ?? string.Empty;
+        // Pins imported from .lnk shortcuts do not carry an AUMID, so a packaged Store app would be launched by
+        // its WindowsApps executable directly and fail. Resolve it from AppxManifest.xml as a fallback — the same
+        // path the icon provider already uses.
+        var appUserModelId = app.AppUserModelId
+            ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath);
         // ShellExecuteEx loads shell extensions and can take from 100 ms to over a second. On the UI thread it froze
         // the dock, launch bounce included, until Windows had taken the app. Start it from the thread pool instead;
         // Process.Start runs ShellExecuteEx on its own STA thread when called from an MTA thread.
-        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated, app.AppUserModelId)).ContinueWith(task =>
+        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated, appUserModelId)).ContinueWith(task =>
         {
             if (task.IsCompletedSuccessfully)
             {
