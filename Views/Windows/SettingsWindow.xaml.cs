@@ -188,6 +188,8 @@ public partial class SettingsWindow : Window
         UpdateDockScaleLabel();
         SelectChoice(DockWidthModeBox, _applied.DockWidthMode.ToString());
         UpdateDockWidthControls();
+        SelectChoice(DockHeightModeBox, _applied.DockHeightMode.ToString());
+        UpdateDockHeightControls();
         LoadDockGapControls(_applied);
         var initialProfile = DockMetrics.For(_applied.Size, _applied.DockScale);
         CornerRadiusSlider.Value = _applied.DockCornerRadius ?? (int)Math.Round(initialProfile.Radius);
@@ -506,6 +508,9 @@ public partial class SettingsWindow : Window
             DockWidthMode = Enum.TryParse<DockWidthMode>(Choice(DockWidthModeBox), out var widthMode) ? widthMode : DockWidthMode.Auto,
             DockWidthPixels = widthMode == DockWidthMode.Pixels ? (int)Math.Round(DockWidthSlider.Value) : _preferences.Current.DockWidthPixels,
             DockWidthPercent = widthMode == DockWidthMode.Percent ? (int)Math.Round(DockWidthSlider.Value) : _preferences.Current.DockWidthPercent,
+            DockHeightMode = Enum.TryParse<DockHeightMode>(Choice(DockHeightModeBox), out var heightMode) ? heightMode : DockHeightMode.Auto,
+            DockHeightPixels = heightMode == DockHeightMode.Pixels ? (int)Math.Round(DockHeightSlider.Value) : _preferences.Current.DockHeightPixels,
+            DockHeightPercent = heightMode == DockHeightMode.Percent ? (int)Math.Round(DockHeightSlider.Value) : _preferences.Current.DockHeightPercent,
             DockTopGapUnit = GapUnit(DockTopGapUnitBox) is var topGapUnit ? topGapUnit : DockGapUnit.Pixels,
             DockTopGapPixels = topGapUnit == DockGapUnit.Pixels
                 ? Math.Clamp((int)Math.Round(DockTopGapSlider.Value), 0, 200)
@@ -1232,7 +1237,9 @@ public partial class SettingsWindow : Window
             var mode = ResolveDensityMode(currentSettings, option.Id);
             option.Preview.IsCompact = mode == WidgetDensityMode.Compact;
         }
-        foreach (var option in _widgetOptions.Where(o => WidgetCoordinator.HandlesWidget(o.Id)))
+        // Capability comes from the registry: legacy timed tiles have no live DockWidget instance to attach.
+        foreach (var option in _widgetOptions.Where(o =>
+                     DockWidgetService.TryGetDescriptor(o.Id, out var descriptor) && descriptor.SupportsLivePreview))
         {
             try
             {
@@ -2713,6 +2720,8 @@ public partial class SettingsWindow : Window
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         SelectChoice(DockWidthModeBox, settings.DockWidthMode.ToString());
         UpdateDockWidthControls();
+        SelectChoice(DockHeightModeBox, settings.DockHeightMode.ToString());
+        UpdateDockHeightControls();
         LoadDockGapControls(settings);
         UpdateDockScaleLabel();
         var reloadProfile = DockMetrics.For(settings.Size, settings.DockScale);
@@ -2744,6 +2753,8 @@ public partial class SettingsWindow : Window
             DockScaleSlider.Value = Math.Round(defaults.DockScale * 100);
             SelectChoice(DockWidthModeBox, defaults.DockWidthMode.ToString());
             UpdateDockWidthControls();
+            SelectChoice(DockHeightModeBox, defaults.DockHeightMode.ToString());
+            UpdateDockHeightControls();
             LoadDockGapControls(defaults);
             UpdateDockScaleLabel();
             SelectChoice(AutoHideBox, defaults.AutoHide.ToString());
@@ -2965,7 +2976,11 @@ public partial class SettingsWindow : Window
     private void SegmentChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
-        if (ReferenceEquals(sender, EdgeBox)) UpdateDockWidthControls();
+        if (ReferenceEquals(sender, EdgeBox))
+        {
+            UpdateDockWidthControls();
+            UpdateDockHeightControls();
+        }
         PreferenceEdited(sender, e);
     }
 
@@ -3171,6 +3186,49 @@ public partial class SettingsWindow : Window
         if (DockWidthValue is null || DockWidthSlider is null) return;
         var suffix = (Choice(DockWidthModeBox) ?? nameof(DockWidthMode.Auto)) == nameof(DockWidthMode.Percent) ? "%" : "px";
         DockWidthValue.Text = Math.Round(DockWidthSlider.Value) + suffix;
+    }
+
+    private void DockHeightModeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateDockHeightControls();
+        if (!_initializing) PreferenceEdited(sender, e);
+    }
+
+    private void DockHeightSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateDockHeightLabel();
+        if (!_initializing) PreferenceEdited(sender, e);
+    }
+
+    private void UpdateDockHeightControls()
+    {
+        if (DockHeightModeBox is null || DockHeightModeRow is null) return;
+        // Side docks take their thickness from the width setting; the height setting is horizontal-only.
+        var vertical = Choice(EdgeBox) is nameof(DockEdge.Left) or nameof(DockEdge.Right);
+        DockHeightModeRow.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
+
+        var mode = Choice(DockHeightModeBox) ?? nameof(DockHeightMode.Auto);
+        var fixedMode = mode is nameof(DockHeightMode.Pixels) or nameof(DockHeightMode.Percent);
+        DockHeightValueRow.Visibility = fixedMode && !vertical ? Visibility.Visible : Visibility.Collapsed;
+        if (fixedMode)
+        {
+            var settings = _preferences.Current;
+            var isPercent = mode == nameof(DockHeightMode.Percent);
+            DockHeightSlider.Minimum = isPercent ? 2 : 24;
+            DockHeightSlider.Maximum = isPercent ? 25 : 400;
+            DockHeightSlider.TickFrequency = isPercent ? 1 : 4;
+            DockHeightSlider.IsSnapToTickEnabled = true;
+            DockHeightSlider.Value = Math.Clamp(isPercent ? settings.DockHeightPercent : settings.DockHeightPixels,
+                DockHeightSlider.Minimum, DockHeightSlider.Maximum);
+            UpdateDockHeightLabel();
+        }
+    }
+
+    private void UpdateDockHeightLabel()
+    {
+        if (DockHeightValue is null || DockHeightSlider is null) return;
+        var suffix = (Choice(DockHeightModeBox) ?? nameof(DockHeightMode.Auto)) == nameof(DockHeightMode.Percent) ? "%" : "px";
+        DockHeightValue.Text = Math.Round(DockHeightSlider.Value) + suffix;
     }
 
     private void UpdateDockScaleLabel() => DockScaleValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(DockScaleSlider.Value));

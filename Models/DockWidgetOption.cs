@@ -132,13 +132,7 @@ public sealed class DockWidgetOption(
         _ => string.Empty
     };
 
-    public bool HasSettings => string.Equals(Id, "Clock", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "Weather", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "Focus", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "SystemStats", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "Media", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "Audio", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Id, "QuickSettings", StringComparison.OrdinalIgnoreCase);
+    public bool HasSettings => DockWidgetService.TryGetDescriptor(Id, out var descriptor) && descriptor.HasSettings;
 
     public string InstallActionLabel => UiText.Get(IsInstalled ? "WidgetRemove" : "WidgetInstall");
     public string InstallStatus => UiText.Get(IsInstalled ? "WidgetInstalled" : "WidgetAvailable");
@@ -159,32 +153,9 @@ public sealed class DockWidgetOption(
 
     public string SettingsGlyph => _isSettingsExpanded ? "\uE70E" : "\uE70D";
 
-    public string IconKey => Id switch
-    {
-        "Clock" or "Date" => "IconClock",
-        "Weather" => "IconCloudSun",
-        "DayProgress" => "IconCalendar",
-        "Stopwatch" => "IconTimer",
-        "Countdown" => "IconHourglass",
-        "SystemStats" => "IconCpu",
-        "NetSpeed" => "IconWifi",
-        "Battery" => "IconBattery",
-        "BluetoothBattery" => "IconBluetooth",
-        "Storage" => "IconHardDrive",
-        "AiUsageClaude" => "LogoClaude",
-        "AiUsageCodex" => "LogoCodex",
-        "AiUsageAntigravity" => "LogoAntigravity",
-        "AiUsageOpenCode" => "LogoOpenCode",
-        "AiUsageCopilot" => "LogoCopilot",
-        "AiUsageDeepSeek" => "LogoDeepSeek",
-        "AiUsageOpenRouter" => "LogoOpenRouter",
-        "AiUsageCursor" => "LogoCursor",
-        "Media" => "IconMusic",
-        "Audio" => "IconVolume",
-        "QuickSettings" => "IconSliders",
-        "Focus" => "IconTarget",
-        _ => "IconLayers"
-    };
+    public string IconKey => DockWidgetService.TryGetDescriptor(Id, out var descriptor)
+        ? descriptor.IconKey
+        : "IconLayers";
 
     public bool IsFilledIcon => Id.StartsWith("AiUsage", StringComparison.OrdinalIgnoreCase);
 

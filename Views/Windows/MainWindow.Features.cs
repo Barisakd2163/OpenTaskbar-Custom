@@ -536,7 +536,7 @@ public partial class MainWindow
         foreach (var monitor in wanted.Where(monitor => _secondaryDocks.All(dock => dock.Monitor != monitor)))
         {
             var dock = new SecondaryDockWindow(monitor, _runningAppIcons, _preferences.Current.SecondaryApps, showSecondaryWidgets);
-            dock.ApplyShelfHeight(effectiveShelf);
+            dock.ApplyShelfHeight(effectiveShelf, DockSurfaceHeight);
             dock.Show();
             _secondaryDocks.Add(dock);
         }
@@ -544,7 +544,7 @@ public partial class MainWindow
         foreach (var dock in _secondaryDocks)
         {
             dock.Configure(_preferences.Current.SecondaryApps, showSecondaryWidgets);
-            dock.ApplyShelfHeight(effectiveShelf);
+            dock.ApplyShelfHeight(effectiveShelf, DockSurfaceHeight);
             dock.PositionOnMonitor();
         }
         if (_secondaryDocks.Count > 0)
@@ -560,14 +560,18 @@ public partial class MainWindow
         UpdateSecondaryDocks();
     }
 
-    /// <summary>Propagates a size/scale change to the secondary docks' reserved shelves.</summary>
+    /// <summary>Propagates a size/scale/height change to the secondary docks' reserved shelves and surfaces.</summary>
     private void ApplySecondaryShelf()
     {
         if (_secondaryDocks.Count == 0) return;
         var shelf = EffectiveShelfHeight;
-        foreach (var dock in _secondaryDocks.Where(dock => Math.Abs(dock.ShelfHeight - shelf) >= 0.01))
+        var surface = DockSurfaceHeight;
+        static bool SurfaceChanged(double current, double next) =>
+            double.IsNaN(current) != double.IsNaN(next) || (!double.IsNaN(current) && Math.Abs(current - next) >= 0.01);
+        foreach (var dock in _secondaryDocks.Where(dock => Math.Abs(dock.ShelfHeight - shelf) >= 0.01
+            || SurfaceChanged(dock.SurfaceHeight, surface)))
         {
-            dock.ApplyShelfHeight(shelf);
+            dock.ApplyShelfHeight(shelf, surface);
             dock.PositionOnMonitor();
         }
     }

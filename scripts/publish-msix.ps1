@@ -1,12 +1,15 @@
 # OpenTaskbar Microsoft Store MSIX Publisher
-# Builds a self-contained x64 MSIX package ready for Microsoft Partner Center upload.
+# Builds self-contained x64/x86 MSIX packages ready for Microsoft Partner Center upload.
 param (
+    [ValidateSet('win-x64', 'win-x86')]
+    [string]$Runtime = 'win-x64',
     [string]$OutputDir = "$PSScriptRoot\..\release\msix",
     [switch]$SignForLocalTest
 )
 
 $ErrorActionPreference = "Stop"
 
+$arch = ($Runtime -split '-')[-1]
 $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $projectPath = Join-Path $repoRoot "OpenTaskbar.csproj"
 $manifestTemplate = Join-Path $repoRoot "packaging\msix\AppxManifest.xml"
@@ -27,31 +30,36 @@ $makeAppx = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse 
     Select-Object -Last 1 -ExpandProperty FullName
 if (-not $makeAppx) { throw "makeappx.exe not found. Install the Windows 10/11 SDK." }
 
-# Build native watchdog binary first
+# Build the native watchdog for the target architecture before the managed publish embeds it.
 $watchdogScript = Join-Path $repoRoot "tools\watchdog\build.ps1"
+$watchdogDir = Join-Path $OutputDir "watchdog-$arch"
 if (Test-Path $watchdogScript) {
-    & powershell -ExecutionPolicy Bypass -File $watchdogScript
+    & powershell -ExecutionPolicy Bypass -File $watchdogScript -Architecture $arch -OutputDir $watchdogDir
+    if ($LASTEXITCODE -ne 0) { throw "Watchdog build failed for $arch." }
+}
+$watchdogBinary = Join-Path $watchdogDir "OpenTaskbarWatchdog.exe"
+if (-not (Test-Path -LiteralPath $watchdogBinary -PathType Leaf)) {
+    throw "Watchdog binary is missing: $watchdogBinary"
 }
 
 $stagingDir = Join-Path $OutputDir "staging"
 if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force }
 New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
-Write-Host "Publishing OpenTaskbar v$msixVersion for MSIX (self-contained x64)..." -ForegroundColor Cyan
+Write-Host "Publishing OpenTaskbar v$msixVersion for MSIX (self-contained $arch)..." -ForegroundColor Cyan
 dotnet publish $projectPath `
     -c Release `
-    -r win-x64 `
+    -r $Runtime `
     --self-contained true `
+    -p:PlatformTarget=$arch `
     -p:PublishSingleFile=false `
     -p:PublishReadyToRun=false `
+    "-p:WatchdogBinary=$watchdogBinary" `
     -o $stagingDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
 
-# Include signed-package-local watchdog binary next to OpenTaskbar.exe
-$watchdogExe = Join-Path $repoRoot "tools\watchdog\OpenTaskbarWatchdog.exe"
-if (Test-Path $watchdogExe) {
-    Copy-Item $watchdogExe -Destination (Join-Path $stagingDir "OpenTaskbarWatchdog.exe") -Force
-}
+# Include the architecture-matched watchdog binary next to OpenTaskbar.exe
+Copy-Item $watchdogBinary -Destination (Join-Path $stagingDir "OpenTaskbarWatchdog.exe") -Force
 
 # Remove debug symbols (.pdb) from Store package
 Get-ChildItem $stagingDir -Filter "*.pdb" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -63,10 +71,11 @@ Copy-Item $assetsDir -Destination $stagingAssets -Recurse -Force
 # Copy AppxManifest.xml with synced 4-part version
 [xml]$manifest = Get-Content $manifestTemplate -Raw
 $manifest.Package.Identity.Version = $msixVersion
+$manifest.Package.Identity.ProcessorArchitecture = $arch
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText((Join-Path $stagingDir "AppxManifest.xml"), $manifest.OuterXml, $utf8NoBom)
 
-$msixPath = Join-Path $OutputDir "OpenTaskbar_${msixVersion}_x64.msix"
+$msixPath = Join-Path $OutputDir "OpenTaskbar_${msixVersion}_${arch}.msix"
 Write-Host "Packing MSIX with $makeAppx..." -ForegroundColor Cyan
 & $makeAppx pack /d $stagingDir /p $msixPath /o
 if ($LASTEXITCODE -ne 0) { throw "makeappx pack failed with exit code $LASTEXITCODE" }

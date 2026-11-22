@@ -195,6 +195,22 @@ internal static class RunningAppChecks
             }
         }
 
+        // Two AUMID groups can share one executable (e.g. LibreWolf). Indicator aggregation must not throw
+        // a duplicate-key exception during startup and must combine counts and foreground state.
+        {
+            const string shared = @"C:\Program Files\LibreWolf\librewolf.exe";
+            var candidates = new[]
+            {
+                new RunningAppCandidate(shared, [new TrackedWindow(10, "A", shared)], false, false, "LibreWolf.A!App"),
+                new RunningAppCandidate(shared, [new TrackedWindow(11, "B", shared), new TrackedWindow(12, "C", shared)], false, true, "LibreWolf.B!App")
+            };
+            var states = RunningAppProjection.AggregateByExecutablePath(candidates);
+            Check(states.Count == 1 && states[shared].WindowCount == 3 && states[shared].IsForeground,
+                "Duplicate executable paths from distinct AUMID groups must aggregate instead of throwing.");
+            Check(RunningAppProjection.AggregateByExecutablePath([]).Count == 0,
+                "An empty window snapshot must produce no indicator states.");
+        }
+
         return checks;
     }
 

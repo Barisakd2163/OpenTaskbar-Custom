@@ -329,6 +329,9 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.DockWidthMode)
         && settings.DockWidthPixels is >= 100 and <= 5000
         && settings.DockWidthPercent is >= 10 and <= 100
+        && Enum.IsDefined(settings.DockHeightMode)
+        && settings.DockHeightPixels is >= 24 and <= 400
+        && settings.DockHeightPercent is >= 2 and <= 25
         && Enum.IsDefined(settings.DockTopGapUnit) && Enum.IsDefined(settings.DockBottomGapUnit)
         && settings.DockTopGapPixels is >= 0 and <= 200 && settings.DockTopGapPercent is >= 0 and <= 100
         && settings.DockBottomGapPixels is >= 0 and <= 200 && settings.DockBottomGapPercent is >= 0 and <= 100

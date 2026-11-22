@@ -512,6 +512,9 @@ internal static class SettingsAndAutoHideChecks
                 DockBottomGapUnit: DockGapUnit.Pixels,
                 DockBottomGapPixels: 165,
                 DockBottomGapPercent: 35,
+                DockHeightMode: DockHeightMode.Pixels,
+                DockHeightPixels: 80,
+                DockHeightPercent: 6,
                 ShowWeather: true,
                 WeatherCity: "Tokyo",
                 Widgets: ["Clock", "Weather"],
@@ -564,6 +567,24 @@ internal static class SettingsAndAutoHideChecks
                     && preferences.Current.DockBottomGapUnit == DockGapUnit.Percent
                     && preferences.Current.DockBottomGapPixels == 165 && preferences.Current.DockBottomGapPercent == 35,
                     "Switching gap unit to Percent must save valid settings and preserve saved pixel values.");
+
+                // The new height setting loads its saved values, switches units without losing the other one,
+                // and hides the value row in Fill mode.
+                var heightModeBox = (ComboBox)sw.FindName("DockHeightModeBox");
+                var heightSlider = (Slider)sw.FindName("DockHeightSlider");
+                var heightValueRow = (Border)sw.FindName("DockHeightValueRow");
+                check((string)((ComboBoxItem)heightModeBox.SelectedItem!).Tag == nameof(DockHeightMode.Pixels)
+                    && (int)Math.Round(heightSlider.Value) == 80 && heightValueRow.Visibility == Visibility.Visible,
+                    "Saved Pixels height mode must load its slider value and show the value row.");
+                heightModeBox.SelectedItem = heightModeBox.Items.OfType<ComboBoxItem>().First(i => (string)i.Tag == nameof(DockHeightMode.Percent));
+                PumpDispatcher(application.Dispatcher, 60);
+                check((int)Math.Round(heightSlider.Value) == 6 && preferences.Current.DockHeightMode == DockHeightMode.Percent
+                    && preferences.Current.DockHeightPixels == 80,
+                    "Switching height mode to Percent must load the saved percent value and preserve pixels.");
+                heightModeBox.SelectedItem = heightModeBox.Items.OfType<ComboBoxItem>().First(i => (string)i.Tag == nameof(DockHeightMode.Fill));
+                PumpDispatcher(application.Dispatcher, 60);
+                check(heightValueRow.Visibility == Visibility.Collapsed && preferences.Current.DockHeightMode == DockHeightMode.Fill,
+                    "Fill height mode must hide the value slider and persist the mode.");
 
                 // Bug #6: External preference update must refresh gap controls via LoadAllSelections -> LoadDockGapControls.
                 var externalUpdate = preferences.Current with

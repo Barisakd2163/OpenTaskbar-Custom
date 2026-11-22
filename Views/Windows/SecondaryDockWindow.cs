@@ -39,6 +39,7 @@ public sealed class SecondaryDockWindow : Window
     private readonly Button _clockButton;
     private readonly Button _quickSettingsButton;
     private readonly StackPanel _widgetsArea;
+    private readonly Border _surface;
     private readonly RunningAppIconCache _icons;
     private readonly List<AppSlot> _slots = [];
     private SecondaryAppScope _scope;
@@ -102,6 +103,7 @@ public sealed class SecondaryDockWindow : Window
         surface.SetResourceReference(Border.BackgroundProperty, "DockMaterial");
         surface.SetResourceReference(Border.BorderBrushProperty, "DockBorderMaterial");
         surface.ContextMenu = BuildContextMenu();
+        _surface = surface;
         Content = surface;
         UiText.Current.PropertyChanged += OnLanguageChanged;
     }
@@ -287,8 +289,29 @@ public sealed class SecondaryDockWindow : Window
     /// <summary>Current shelf in DIPs, derived from the active size + scale profile.</summary>
     public double ShelfHeight => _shelfHeight;
 
-    /// <summary>Applies the active size + scale profile so the reserved shelf follows the taskbar scale.</summary>
-    public void ApplyShelfHeight(double shelfHeight) => _shelfHeight = shelfHeight;
+    /// <summary>Explicit visible bar height in DIPs; NaN keeps the surface content-sized.</summary>
+    public double SurfaceHeight => _surface.Height;
+
+    /// <summary>
+    /// Applies the reserved shelf plus the visible bar height. Auto keeps the surface content-sized; fixed/Fill
+    /// heights stretch it to match the primary dock (bottom-aligned, the top gap stays transparent above it).
+    /// </summary>
+    public void ApplyShelfHeight(double shelfHeight, double surfaceHeight = double.NaN)
+    {
+        _shelfHeight = shelfHeight;
+        if (double.IsNaN(surfaceHeight))
+        {
+            _surface.Height = double.NaN;
+            _surface.VerticalAlignment = VerticalAlignment.Stretch;
+            _surface.Margin = new Thickness(6, 3, 6, 3);
+        }
+        else
+        {
+            _surface.Height = Math.Max(24, surfaceHeight);
+            _surface.VerticalAlignment = VerticalAlignment.Bottom;
+            _surface.Margin = new Thickness(6, 0, 6, 0);
+        }
+    }
 
     /// <summary>
     /// Consumes the same projected running apps as the primary dock, so a background window can never become an

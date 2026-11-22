@@ -138,6 +138,19 @@ public static class DockMetrics
     }
 
     /// <summary>
+    /// Resolves a fixed dock height (the visible bar thickness) to DIPs. Pixels are used as-is; percent is a share of
+    /// the monitor extent along the dock axis. The result never falls below <paramref name="minimum"/> so the bar's
+    /// cell content can never be layout-clipped. Auto/Fill are handled by the caller and return the minimum here.
+    /// </summary>
+    public static double ResolveHeight(DockHeightMode mode, int pixels, int percent, double screenExtent, double minimum)
+    {
+        var requested = mode == DockHeightMode.Percent
+            ? Math.Max(0, screenExtent) * Math.Clamp(percent, 0, 100) / 100.0
+            : pixels;
+        return Math.Max(minimum, requested);
+    }
+
+    /// <summary>
     /// Geometry for each dock size and user scale factor (0.75–1.50). Surface = cell + 2 × vertical padding + 2 (border);
     /// it plus the bottom gap fits the shelf. Compact at 100% matches the Windows 11 taskbar height (48 DIP).
     /// </summary>

@@ -51,6 +51,9 @@ public enum WidgetDensityMode { Auto, Compact, Full }
 /// <summary>How the dock's horizontal width is determined. Auto fits content; Fixed/Pin modes pin it; Fill spans edge-to-edge.</summary>
 public enum DockWidthMode { Auto, Pixels, Percent, Fill }
 
+/// <summary>How the horizontal dock's thickness is determined. Auto follows the size profile; Fill makes the visible bar cover the whole reserved strip.</summary>
+public enum DockHeightMode { Auto, Pixels, Percent, Fill }
+
 /// <summary>Unit used for the dock's external top/bottom spacing.</summary>
 public enum DockGapUnit { Pixels, Percent }
 
@@ -227,7 +230,13 @@ public sealed record DockSettings(
     string? CustomLauncherHotkey = null,
     string? CustomDockHotkey = null,
     // Stable tray icon identifiers (from TrayPinIdentity) shown directly beside the tray chevron while running.
-    IReadOnlyList<string>? PinnedTrayIcons = null)
+    IReadOnlyList<string>? PinnedTrayIcons = null,
+    // Thickness of the horizontal dock bar. Auto keeps the size profile's natural height; Pixels/Percent pin the
+    // visible bar height; Fill stretches it across the whole reserved strip (bottom spacing no longer applies).
+    // Appended at the end so older settings files and positional constructor calls keep working.
+    DockHeightMode DockHeightMode = DockHeightMode.Auto,
+    int DockHeightPixels = 48,
+    int DockHeightPercent = 7)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

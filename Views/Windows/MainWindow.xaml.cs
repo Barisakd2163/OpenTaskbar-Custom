@@ -130,7 +130,7 @@ public partial class MainWindow : Window
         // LayoutUpdated fires on every Arrange (including fisheye's per-frame slot writes). Rebuilding
         // rest geometry from it created a feedback loop; subscribe to the concrete geometry changes instead.
         DockContents.SizeChanged += (_, _) => InvalidateMagnificationTargets();
-        DockScrollViewer.ScrollChanged += (_, _) => InvalidateMagnificationTargets();
+        DockScrollViewer.ScrollChanged += (_, _) => InvalidateMagnificationTargetsAfterScroll();
         _widgetPanel = new WidgetPanelHost(this);
         _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed += ReportError;
@@ -246,7 +246,11 @@ public partial class MainWindow : Window
             || _preferences.Current.ShowMedia;
         // App.OnStartup has already selected the theme pack; later changes come through ApplicationPreferences.Save.
         ThemePacks.Changed += ThemePacks_Changed;
-        Closed += (_, _) => ThemePacks.Changed -= ThemePacks_Changed;
+        Closed += (_, _) =>
+        {
+            ThemePacks.Changed -= ThemePacks_Changed;
+            _magnificationScrollResetTimer?.Stop();
+        };
         UpdatePreferredIconPixels();
         // Pinned apps, the start logo and shell thumbnails are populated after the first paint by
         // PopulateDockContent; none of their COM/file work belongs on the first-paint critical path.
@@ -1462,10 +1466,10 @@ public partial class MainWindow : Window
 
     private void UpdateWindowIndicators(IReadOnlyList<RunningAppCandidate> candidates)
     {
-        var states = candidates.ToDictionary(
-            candidate => candidate.ExecutablePath,
-            candidate => (candidate.WindowCount, candidate.IsForeground),
-            StringComparer.OrdinalIgnoreCase);
+        // Candidates are grouped by AUMID when present, so two groups can share one executable (e.g. LibreWolf
+        // with several AppUserModelIDs). Aggregate by path instead of ToDictionary: duplicate keys used to throw
+        // "An item with the same key has already been added" during startup and tear down the whole dock.
+        var states = RunningAppProjection.AggregateByExecutablePath(candidates);
 
         for (var index = 0; index < _pinnedApps.Count; index++)
         {
@@ -2862,32 +2866,75 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Computes the reserved shelf height (DIP) covering the dock surface (including border thickness so Compact
-    /// buttons never receive a WPF LayoutClip, #81), the external bottom gap, and the external top gap (#92).
+    /// Geometry of the horizontal dock: the reserved shelf height (DIP), the explicit surface height (NaN means
+    /// content-sized) and whether the visible bar spans the whole shelf instead of being inset by the gaps.
     /// </summary>
-    internal static double ComputeEffectiveShelfHeight(
-        DockSizeProfile profile, bool isVertical, double borderThickness, double externalBottomGap, double externalTopGap)
+    internal readonly record struct DockShelfGeometry(double Shelf, double SurfaceHeight, bool Fill);
+
+    /// <summary>
+    /// Computes the reserved shelf, the visible surface height and the fill flag for the current height mode.
+    /// The bottom gap is absorbed into the shelf so the bar keeps a full cell height and never gets a WPF
+    /// LayoutClip (#81); the top gap is added directly so maximized windows respect it (#92).
+    /// </summary>
+    internal static DockShelfGeometry ComputeShelfGeometry(
+        DockSizeProfile profile, bool isVertical, double borderThickness,
+        double externalBottomGap, double externalTopGap,
+        DockHeightMode heightMode = DockHeightMode.Auto,
+        int heightPixels = 0, int heightPercent = 0, double screenExtent = 0)
     {
         var border = Math.Max(0.0, borderThickness) * 2.0;
         // Use the padding-free cell height: horizontal icon spacing must never grow the reserved taskbar strip.
         var requiredSurface = profile.EffectiveCellHeight + profile.VerticalPadding * 2 + border;
         var topGap = Math.Max(0.0, externalTopGap);
         var bottomGap = Math.Max(0.0, externalBottomGap);
-        if (isVertical)
-            return Math.Max(profile.Shelf + 16, requiredSurface + bottomGap + 16) + topGap;
-        return Math.Max(profile.Shelf, requiredSurface + bottomGap + 2) + topGap;
+        var slack = isVertical ? 16.0 : 2.0;
+        var naturalShelf = Math.Max(profile.Shelf, requiredSurface + bottomGap + slack);
+
+        // Vertical docks take their thickness from the width setting; the height setting is horizontal-only.
+        if (isVertical || heightMode == DockHeightMode.Auto)
+            return new(naturalShelf + topGap, double.NaN, false);
+
+        if (heightMode == DockHeightMode.Fill)
+        {
+            // The bar covers the entire reserved strip: no gap below it, while the top gap stays transparent above.
+            var fillShelf = Math.Max(profile.Shelf, requiredSurface + slack);
+            return new(fillShelf + topGap, fillShelf, true);
+        }
+
+        var barHeight = DockMetrics.ResolveHeight(heightMode, heightPixels, heightPercent, screenExtent, requiredSurface);
+        var shelf = Math.Max(naturalShelf, barHeight + bottomGap + slack) + topGap;
+        return new(shelf, barHeight, false);
     }
 
-    private double EffectiveShelfHeight
+    /// <summary>
+    /// Computes the reserved shelf height (DIP) for the default Auto height mode.
+    /// </summary>
+    internal static double ComputeEffectiveShelfHeight(
+        DockSizeProfile profile, bool isVertical, double borderThickness, double externalBottomGap, double externalTopGap)
+        => ComputeShelfGeometry(profile, isVertical, borderThickness, externalBottomGap, externalTopGap).Shelf;
+
+    private DockShelfGeometry ShelfGeometry
     {
         get
         {
-            var borderThickness = _preferences.Current.DockBackground == SurfaceBackground.None
+            var settings = _preferences.Current;
+            var borderThickness = settings.DockBackground == SurfaceBackground.None
                 ? 0.0
-                : _preferences.Current.DockBorderThickness;
-            return ComputeEffectiveShelfHeight(Profile, IsVertical, borderThickness, ExternalBottomGap, ExternalTopGap);
+                : settings.DockBorderThickness;
+            var target = DisplayService.GetTargetDisplay(settings.TargetDisplay);
+            var extent = IsVertical ? target.Height : target.Width;
+            if (extent <= 0) extent = IsVertical ? SystemParameters.WorkArea.Height : SystemParameters.WorkArea.Width;
+            return ComputeShelfGeometry(Profile, IsVertical, borderThickness, ExternalBottomGap, ExternalTopGap,
+                settings.DockHeightMode, settings.DockHeightPixels, settings.DockHeightPercent, extent);
         }
     }
+
+    private double EffectiveShelfHeight => ShelfGeometry.Shelf;
+
+    /// <summary>Explicit height of the visible bar; NaN keeps the size profile's content-sized bar.</summary>
+    private double DockSurfaceHeight => ShelfGeometry.SurfaceHeight;
+
+    private bool IsFillHeight => ShelfGeometry.Fill;
 
     /// <summary>
     /// Transparent, click-through headroom above the reserved shelf so launch-bounce and hover magnification
@@ -2927,7 +2974,8 @@ public partial class MainWindow : Window
         // Edge-to-edge fill removes the side gaps entirely (Windows-style full-width taskbar); regular full-width
         // keeps its small inset so the rounded surface does not clip against the screen edge.
         var side = IsEdgeToEdge ? 0 : IsFullWidth ? DockMetrics.FullWidthSideInset : DockMetrics.SideInset;
-        var bottomGap = ExternalBottomGap;
+        // Fill mode deliberately drops the bottom gap so the bar reaches the screen edge.
+        var bottomGap = IsFillHeight ? 0 : ExternalBottomGap;
         // The headroom row/column already supplies the external top gap; the surface only needs its bottom spacing.
         DockSurface.Margin = Edge switch
         {
@@ -3266,7 +3314,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        DockSurface.Height = double.NaN;
+        // Auto mode keeps the bar content-sized; Pixels/Percent/Fill pin it to the configured thickness.
+        DockSurface.Height = DockSurfaceHeight;
         var hasWidgets = _widgetCoordinator.ActiveWidgets.Values.Any(widget => widget.Visibility == Visibility.Visible);
         WidgetIsland.Visibility = hasWidgets ? Visibility.Visible : Visibility.Collapsed;
         var leadWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls);

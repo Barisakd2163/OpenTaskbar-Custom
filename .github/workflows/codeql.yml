@@ -22,10 +22,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up .NET 10 SDK
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: '10.0.x'
 
@@ -33,7 +33,7 @@ jobs:
         run: dotnet restore OpenTaskbar.csproj
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@aaf92c3279600a7c7217a1cd605774c6c791c6c3 # v3
         with:
           languages: csharp
           # security-extended keeps all security queries. security-and-quality additionally runs
@@ -45,6 +45,6 @@ jobs:
         run: dotnet build OpenTaskbar.csproj --configuration Release --no-restore
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@aaf92c3279600a7c7217a1cd605774c6c791c6c3 # v3
         with:
           category: '/language:csharp'

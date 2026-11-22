@@ -1,12 +1,13 @@
 # Verify that the exact executable uploaded in a release can start without any sidecar DLLs.
 param (
-    [string]$OutputDir = "$PSScriptRoot\..\release"
+    [string]$OutputDir = "$PSScriptRoot\..\release",
+    [string]$ExecutableName = 'OpenTaskbar-x64.exe'
 )
 
 $ErrorActionPreference = "Stop"
 
 $directory = (Resolve-Path -LiteralPath $OutputDir).Path
-$executable = Join-Path $directory "OpenTaskbar.exe"
+$executable = Join-Path $directory $ExecutableName
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Portable executable is missing: $executable"
 }

@@ -33,6 +33,31 @@ internal static class DockLayoutChecks
         Check(DockMetrics.ResolveGap(DockGapUnit.Percent, 0, 0, 1920) == 0, "Percent gap must allow zero.");
         Check(DockMetrics.ResolveGap(DockGapUnit.Pixels, -5, 0, 1920) == 0, "Negative gap must clamp to zero.");
 
+        // Height modes: Auto keeps the profile shelf, Pixels/Percent pin the visible bar and reserve the shelf
+        // around it, Fill lets the bar span the whole reserved strip (bottom gap ignored, top gap preserved).
+        Check(Enum.IsDefined(DockHeightMode.Pixels) && Enum.IsDefined(DockHeightMode.Percent) && Enum.IsDefined(DockHeightMode.Fill),
+            "All dock height modes must be defined.");
+        var compactProfile = DockMetrics.For(DockSize.Compact);
+        var autoHeight = MainWindow.ComputeShelfGeometry(compactProfile, false, 1, 6, 0);
+        Check(double.IsNaN(autoHeight.SurfaceHeight) && !autoHeight.Fill && Math.Abs(autoHeight.Shelf - 52) < 0.01,
+            "Auto height must keep the existing content-sized bar and shelf formula.");
+        var pixelHeight = MainWindow.ComputeShelfGeometry(compactProfile, false, 1, 6, 0, DockHeightMode.Pixels, 80, 0, 1080);
+        Check(Math.Abs(pixelHeight.SurfaceHeight - 80) < 0.01 && pixelHeight.Shelf >= 88 - 0.01,
+            "Pixels height must size the visible bar and reserve the shelf plus the gap around it.");
+        var percentHeight = MainWindow.ComputeShelfGeometry(compactProfile, false, 1, 0, 0, DockHeightMode.Percent, 0, 5, 1000);
+        Check(Math.Abs(percentHeight.SurfaceHeight - 50) < 0.01,
+            "Percent height must resolve to a share of the monitor extent.");
+        var fillHeight = MainWindow.ComputeShelfGeometry(compactProfile, false, 1, 6, 0, DockHeightMode.Fill);
+        Check(fillHeight.Fill && Math.Abs(fillHeight.SurfaceHeight - fillHeight.Shelf) < 0.01,
+            "Fill height must stretch the visible bar across the whole reserved shelf.");
+        var fillTopGap = MainWindow.ComputeShelfGeometry(compactProfile, false, 1, 6, 10, DockHeightMode.Fill);
+        Check(Math.Abs((fillTopGap.Shelf - fillHeight.Shelf) - 10) < 0.01
+            && Math.Abs(fillTopGap.SurfaceHeight - fillHeight.SurfaceHeight) < 0.01,
+            "The top gap must still grow the reserved shelf in Fill mode without growing the bar.");
+        Check(DockMetrics.ResolveHeight(DockHeightMode.Percent, 0, 5, 1000, 40) == 50
+            && DockMetrics.ResolveHeight(DockHeightMode.Pixels, 20, 0, 1000, 40) == 40,
+            "Height resolution must honor percentages and clamp pixels below the content minimum.");
+
         // Drop coordinates count visible elements, not hidden entries in the saved order.
         var dragItems = new[] { "app:A", "app:B", "widget:Clock", "widget:Audio" };
         Check(DockItemOrdering.MoveVisibleItem(dragItems, dragItems, "widget:Clock", 2).SequenceEqual(dragItems),
@@ -349,6 +374,49 @@ internal static class DockLayoutChecks
                 Layout();
             }
             else Check(!viewer.ScrollByWheel(-120, ModifierKeys.Control), "A dock that already fits must not consume modifier wheel scrolling.");
+        }
+
+        // The middle button is reserved for panning the dock. It must capture even when nothing overflows:
+        // otherwise a middle-click over an app icon reaches DockApp_MouseUp and launches a new instance.
+        {
+            var viewer = new DockScrollViewer
+            {
+                Width = 400,
+                Height = 80,
+                Content = new Border { Width = 120, Height = 40 }
+            };
+            var window = new Window
+            {
+                Left = -20000,
+                Top = -20000,
+                Width = 400,
+                Height = 80,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                Content = viewer
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                Check(viewer.ScrollableWidth <= 0.5, "The pan test dock must not overflow.");
+                viewer.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Middle)
+                {
+                    RoutedEvent = UIElement.PreviewMouseDownEvent,
+                    Source = viewer
+                });
+                Check(viewer.IsPanning, "Middle button must start panning even when the dock has no overflow.");
+                viewer.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Middle)
+                {
+                    RoutedEvent = UIElement.PreviewMouseUpEvent,
+                    Source = viewer
+                });
+                Check(!viewer.IsPanning, "Releasing the middle button must end panning.");
+            }
+            finally
+            {
+                window.Close();
+            }
         }
 
         {
@@ -1186,6 +1254,21 @@ internal static class DockLayoutChecks
                 Check(previewClearanceConstrained >= 0 && previewClearanceConstrained <= previewClearanceFull,
                     "Preview clearance must scale down proportionally when peak magnification is constrained.");
             }
+
+            // A deferred post-scroll reset must re-arm only when nothing already restarted the effect and the
+            // last pointer position is known. Otherwise the fisheye stays stalled until the user clicks.
+            Check(DockFisheyeLayout.ShouldResumeAfterScroll(
+                    hasMagnificationPointer: false, rendering: false, hasLastPointerPoint: true),
+                "After scrolling settles, magnification must re-arm from the last pointer position.");
+            Check(!DockFisheyeLayout.ShouldResumeAfterScroll(
+                    hasMagnificationPointer: true, rendering: false, hasLastPointerPoint: true),
+                "A real mouse move that already restarted magnification must not be interrupted by the scroll timer.");
+            Check(!DockFisheyeLayout.ShouldResumeAfterScroll(
+                    hasMagnificationPointer: false, rendering: true, hasLastPointerPoint: true),
+                "An active fisheye render loop must not be reset by a late scroll timer tick.");
+            Check(!DockFisheyeLayout.ShouldResumeAfterScroll(
+                    hasMagnificationPointer: false, rendering: false, hasLastPointerPoint: false),
+                "Without a known pointer position there is nothing to re-arm after scrolling.");
 
             // Issue #82: DockScrollViewer must suppress scroll indicators while magnification expands an unscrolled dock,
             // and ignore sub-pixel (<= 1.0 DIP) rounding overflow.

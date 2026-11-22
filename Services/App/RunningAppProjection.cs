@@ -73,4 +73,23 @@ internal static class RunningAppProjection
         }
         return candidates;
     }
+
+    /// <summary>
+    /// Collapses AUMID-grouped candidates onto their executable path for indicator dots: several groups can share
+    /// one executable, so a plain ToDictionary(path) throws on startup. Window counts add up and any foreground
+    /// window makes the app foreground.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, (int WindowCount, bool IsForeground)> AggregateByExecutablePath(
+        IReadOnlyList<RunningAppCandidate> candidates)
+    {
+        var states = new Dictionary<string, (int WindowCount, bool IsForeground)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            states.TryGetValue(candidate.ExecutablePath, out var state);
+            states[candidate.ExecutablePath] = (
+                state.WindowCount + candidate.WindowCount,
+                state.IsForeground || candidate.IsForeground);
+        }
+        return states;
+    }
 }

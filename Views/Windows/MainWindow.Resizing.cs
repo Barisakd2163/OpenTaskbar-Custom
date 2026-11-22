@@ -119,6 +119,8 @@ public partial class MainWindow
     {
         if (e.HorizontalChange == 0) return;
         _widgetPanel.Close(restoreFocus: false);
-        ResetMagnification(immediate: true);
+        // Smooth scrolling fires this once per frame; resetting here would stall the fisheye after the last
+        // frame. Defer to the end of the gesture and re-arm from the last pointer position.
+        ResetMagnificationAfterScroll();
     }
 }

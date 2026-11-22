@@ -11,6 +11,7 @@ CountdownChecks();
 StopwatchChecks();
 CatalogChecks();
 WidgetCategoryChecks();
+WidgetRegistryChecks();
 LocalizationChecks();
 TaskManagerTextChecks();
 SettingsChecks();
@@ -394,6 +395,67 @@ void WidgetCategoryChecks()
     UiText.Current.SetLanguage(AppLanguage.Turkish);
 }
 
+void WidgetRegistryChecks()
+{
+    var all = DockWidgetService.AllDescriptors;
+    var catalog = DockWidgetService.CatalogDescriptors;
+    var live = DockWidgetService.LiveDescriptors;
+
+    // Validation, catalog and dock lists must all be projections of the one registry.
+    Check(DockWidgetService.SupportedIds.Count == all.Count,
+        "SupportedIds must be derived from the widget registry, not maintained separately.");
+    Check(DockWidgetService.SupportedIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() == all.Count,
+        "Widget IDs must be unique case-insensitively.");
+    Check(all.All(descriptor => DockWidgetService.SupportedIds.Contains(descriptor.Id)),
+        "Every registered widget must be accepted by settings validation.");
+    Check(catalog.All(descriptor => DockWidgetService.TryGetDescriptor(descriptor.Id, out _)),
+        "Every catalog card must resolve through the registry.");
+    Check(all.Count(descriptor => string.Equals(descriptor.Id, DockWidgetService.DateId, StringComparison.Ordinal)) == 1,
+        "The legacy Date alias must stay registered so old settings files remain valid.");
+
+    // Explicit dock order protects saved WidgetOrder / DockItemOrder arrays from refactors.
+    var expectedOrder = new[]
+    {
+        "Media", "SystemStats", "Focus", "Weather", "NetSpeed", "BluetoothBattery", "Battery", "Storage",
+        "DayProgress", "AiUsageClaude", "AiUsageCodex", "AiUsageAntigravity", "AiUsageOpenCode",
+        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock"
+    };
+    Check(live.Select(descriptor => descriptor.Id).SequenceEqual(expectedOrder),
+        "Live widget dock order must stay identical so saved widget orders keep their meaning.");
+
+    // Capability flags decide live previews instead of a second hard-coded ID list.
+    Check(catalog.Where(descriptor => descriptor.SupportsLivePreview)
+            .All(descriptor => live.Any(item => string.Equals(item.Id, descriptor.Id, StringComparison.OrdinalIgnoreCase))),
+        "A card that advertises a live preview must have a registered dock factory.");
+    Check(catalog.Where(descriptor => descriptor.Id is DockWidgetService.StopwatchId or DockWidgetService.CountdownId)
+            .All(descriptor => !descriptor.SupportsLivePreview),
+        "Timed tiles use their own panel and must not advertise a live dock preview.");
+    Check(catalog.Where(descriptor => descriptor.HasSettings)
+            .All(descriptor => DockWidgetService.TryGetDescriptor(descriptor.Id, out var found) && found.HasSettings),
+        "Widget settings flags must come from the registry.");
+
+    // Every catalog label and description must be translated in every embedded language.
+    var assembly = typeof(LanguageCatalog).Assembly;
+    var resources = assembly.GetManifestResourceNames()
+        .Where(name => name.StartsWith("OpenTaskbar.Localization.Languages.", StringComparison.Ordinal)).ToArray();
+    Check(resources.Length == 14, "Widget registry must be localized in 14 languages.");
+    foreach (var resource in resources)
+    {
+        using var stream = assembly.GetManifestResourceStream(resource)!;
+        using var document = System.Text.Json.JsonDocument.Parse(stream);
+        foreach (var descriptor in catalog)
+        {
+            foreach (var key in new[] { descriptor.LabelKey, descriptor.LabelKey + "Description" })
+            {
+                Check(document.RootElement.TryGetProperty(key, out var value)
+                    && value.ValueKind == System.Text.Json.JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(value.GetString()),
+                    $"{resource} needs a non-empty translation for '{key}' (widget {descriptor.Id}).");
+            }
+        }
+    }
+}
+
 void LocalizationChecks()
 {
     var option = new DockWidgetOption("Clock", "Saat", "Yerel saat", true, false, new DockWidget("Clock", "Saat"));
@@ -499,6 +561,18 @@ void SettingsChecks()
             "A valid dock scale must persist and reload.");
         Check(store.Save(new DockSettings(DockScale: 0.5)) is not null && store.Save(new DockSettings(DockScale: 2.0)) is not null,
             "Out-of-range dock scale values must be rejected.");
+        File.WriteAllText(path, "{\"Widgets\":[]}");
+        var defaultHeight = store.Load();
+        Check(defaultHeight.Error is null && defaultHeight.Settings.DockHeightMode == DockHeightMode.Auto
+            && defaultHeight.Settings.DockHeightPixels == 48 && defaultHeight.Settings.DockHeightPercent == 7,
+            "Older settings files must fall back to Auto dock height defaults.");
+        Check(store.Save(new DockSettings(DockHeightMode: DockHeightMode.Fill, DockHeightPixels: 80, DockHeightPercent: 6)) is null
+            && store.Load().Settings.DockHeightMode == DockHeightMode.Fill,
+            "A valid dock height configuration must persist and reload.");
+        Check(store.Save(new DockSettings(DockHeightPixels: 10)) is not null
+            && store.Save(new DockSettings(DockHeightPercent: 60)) is not null
+            && store.Save(new DockSettings(DockHeightMode: (DockHeightMode)99)) is not null,
+            "Out-of-range dock height values must be rejected.");
     }
     finally
     {

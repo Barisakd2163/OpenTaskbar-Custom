@@ -15,6 +15,17 @@
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
     <PublishReadyToRun>false</PublishReadyToRun>
+
+    <!-- Reproducible builds: same commit + same SDK -> same assembly bytes. -->
+    <Deterministic>true</Deterministic>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
+    <!-- SourceLink needs CI path normalization; keep local `dotnet run` unchanged. -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Overridden by publish-portable.ps1 / publish-msix.ps1 to embed a matching-arch watchdog. -->
+    <WatchdogBinary Condition="'$(WatchdogBinary)' == ''">$(MSBuildThisFileDirectory)tools\watchdog\OpenTaskbarWatchdog.exe</WatchdogBinary>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,7 +42,7 @@
     <EmbeddedResource Include="themes\**\*.*" LogicalName="OpenTaskbar.BuiltInThemes/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="Services\Localization\Languages\*.json" LogicalName="OpenTaskbar.Localization.Languages.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Services\Localization\Flags\*.png" LogicalName="OpenTaskbar.Localization.Flags.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="tools\watchdog\OpenTaskbarWatchdog.exe" LogicalName="OpenTaskbar.Resources.OpenTaskbarWatchdog.exe" />
+    <EmbeddedResource Include="$(WatchdogBinary)" LogicalName="OpenTaskbar.Resources.OpenTaskbarWatchdog.exe" />
   </ItemGroup>
 
   <ItemGroup>

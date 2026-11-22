@@ -18,39 +18,16 @@ public sealed class WidgetCoordinator : IDisposable
 {
     public sealed record WidgetItem(string Id, string LabelKey, DockWidget Widget, Func<DockSettings, bool> IsEnabled);
 
+    /// <summary>Dock slots come from the single widget registry in its explicit DockOrder.</summary>
     public static readonly string[] DefaultWidgetOrder =
-    [
-        "Media",
-        "SystemStats",
-        "Focus",
-        "Weather",
-        "NetSpeed",
-        "BluetoothBattery",
-        "Battery",
-        "Storage",
-        "DayProgress",
-        .. DockWidgetService.AiUsageWidgets.Select(widget => widget.Id),
-        "Audio",
-        "QuickSettings",
-        "Clock"
-    ];
+        DockWidgetService.LiveDescriptors.Select(descriptor => descriptor.Id).ToArray();
 
-    public static string? GetLabelKey(string id) => id switch
+    public static string? GetLabelKey(string id)
     {
-        "Media" => "WidgetMedia",
-        "SystemStats" => "WidgetSystemStats",
-        "Focus" => "WidgetFocus",
-        "Weather" => "WidgetWeather",
-        "NetSpeed" => "WidgetNetSpeed",
-        "BluetoothBattery" => "WidgetBluetoothBattery",
-        "Battery" => "WidgetBattery",
-        "Storage" => "WidgetStorage",
-        "DayProgress" => "WidgetDayProgress",
-        "Audio" => "WidgetAudio",
-        "QuickSettings" => "WidgetQuickSettings",
-        "Clock" => "WidgetClock",
-        _ => DockWidgetService.AiUsageWidgets.FirstOrDefault(widget => widget.Id == id)?.LabelKey
-    };
+        var descriptor = DockWidgetService.LiveDescriptors
+            .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        return descriptor?.LabelKey;
+    }
 
     public static bool HandlesWidget(string id) =>
         DefaultWidgetOrder.Contains(id, StringComparer.OrdinalIgnoreCase);
@@ -61,24 +38,10 @@ public sealed class WidgetCoordinator : IDisposable
     /// </summary>
     public static DockWidget CreateWidget(string id)
     {
-        var aiDefinition = DockWidgetService.AiUsageWidgets.FirstOrDefault(definition => definition.Id == id);
-        if (aiDefinition is not null) return new AiUsageWidget(aiDefinition.Provider);
-        return id switch
-        {
-            "Media" => new MediaWidget(),
-            "SystemStats" => new SystemStatsWidget(),
-            "Focus" => new FocusWidget(),
-            "Weather" => new WeatherWidget(),
-            "NetSpeed" => new NetSpeedWidget(),
-            "BluetoothBattery" => new BluetoothBatteryWidget(),
-            "Battery" => new BatteryWidget(),
-            "Storage" => new StorageWidget(),
-            "DayProgress" => new DayProgressWidget(),
-            "Audio" => new AudioWidget(),
-            "QuickSettings" => new QuickSettingsWidget(),
-            "Clock" => new ClockWidget(),
-            _ => throw new ArgumentException($"Unknown widget id '{id}'.", nameof(id))
-        };
+        var descriptor = DockWidgetService.LiveDescriptors
+            .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (descriptor?.Factory is { } factory) return factory();
+        throw new ArgumentException($"Unknown widget id '{id}'.", nameof(id));
     }
 
     private sealed class WidgetSlot(string id, string labelKey, Func<DockWidget> factory, Func<DockSettings, bool> isEnabled)
@@ -153,23 +116,14 @@ public sealed class WidgetCoordinator : IDisposable
             dispatcher,
             canExpandInline ?? (_ => false),
             onHoverLayoutChanged ?? (_ => { }));
-        _widgets =
-        [
-            new("Media", "WidgetMedia", () => CreateWidget("Media"), s => IsCatalogEnabled(s, "Media")),
-            new("SystemStats", "WidgetSystemStats", () => CreateWidget("SystemStats"), s => IsCatalogEnabled(s, "SystemStats")),
-            new("Focus", "WidgetFocus", () => CreateWidget("Focus"), s => IsCatalogEnabled(s, "Focus")),
-            new("Weather", "WidgetWeather", () => CreateWidget("Weather"), s => IsCatalogEnabled(s, "Weather")),
-            new("NetSpeed", "WidgetNetSpeed", () => CreateWidget("NetSpeed"), s => IsCatalogEnabled(s, "NetSpeed")),
-            new("BluetoothBattery", "WidgetBluetoothBattery", () => CreateWidget("BluetoothBattery"), s => IsCatalogEnabled(s, "BluetoothBattery")),
-            new("Battery", "WidgetBattery", () => CreateWidget("Battery"), s => IsCatalogEnabled(s, "Battery")),
-            new("Storage", "WidgetStorage", () => CreateWidget("Storage"), s => IsCatalogEnabled(s, "Storage")),
-            new("DayProgress", "WidgetDayProgress", () => CreateWidget("DayProgress"), s => IsCatalogEnabled(s, "DayProgress")),
-            .. DockWidgetService.AiUsageWidgets.Select(definition => new WidgetSlot(definition.Id, definition.LabelKey,
-                () => CreateWidget(definition.Id), s => IsCatalogEnabled(s, definition.Id))),
-            new("Audio", "WidgetAudio", () => CreateWidget("Audio"), s => IsCatalogEnabled(s, "Audio")),
-            new("QuickSettings", "WidgetQuickSettings", () => CreateWidget("QuickSettings"), s => IsCatalogEnabled(s, "QuickSettings")),
-            new("Clock", "WidgetClock", () => CreateWidget("Clock"), s => IsCatalogEnabled(s, "Clock") || IsCatalogEnabled(s, "Date"))
-        ];
+        _widgets = DockWidgetService.LiveDescriptors
+            .Select(descriptor => new WidgetSlot(
+                descriptor.Id,
+                descriptor.LabelKey,
+                () => CreateWidget(descriptor.Id),
+                s => IsCatalogEnabled(s, descriptor.Id)
+                    || descriptor.AliasIds?.Any(alias => IsCatalogEnabled(s, alias)) == true))
+            .ToList();
 
         if (!lazy)
         {

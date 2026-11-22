@@ -9,32 +9,53 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for the release (e.g. v0.2.8)'
+        description: 'Tag name for the release (e.g. v0.2.8 or v0.2.8-rc.1)'
         required: true
         type: string
+      prerelease:
+        description: 'Mark the release as a prerelease'
+        required: false
+        type: boolean
+        default: false
 
-permissions:
-  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  publish-release:
-    name: Build & Publish Release Assets
+  build:
+    name: Build, verify and package
     runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      tag_name: ${{ steps.release_info.outputs.tag_name }}
+      version: ${{ steps.release_info.outputs.version }}
+      is_prerelease: ${{ steps.release_info.outputs.is_prerelease }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up .NET 10 SDK
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build portable single-file executable
+      - name: Restore dependencies
+        run: dotnet restore OpenTaskbar.csproj
+
+      - name: Run behavior and contract test suite
+        shell: pwsh
+        run: dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj --configuration Release
+
+      - name: Build portable executables (x64 + x86)
         shell: pwsh
         run: |
-          & "scripts/publish-portable.ps1" -OutputDir release
-          & "scripts/check-portable.ps1" -OutputDir release
+          & "scripts/publish-portable.ps1" -Runtime win-x64 -OutputDir release
+          & "scripts/check-portable.ps1" -OutputDir release -ExecutableName OpenTaskbar-x64.exe
+          & "scripts/publish-portable.ps1" -Runtime win-x86 -OutputDir release
+          & "scripts/check-portable.ps1" -OutputDir release -ExecutableName OpenTaskbar-x86.exe
 
       - name: Determine release tag
         id: release_info
@@ -42,46 +63,119 @@ jobs:
         run: |
           $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $env:GITHUB_REF_NAME
-          } elseif ($env:GITHUB_REF_TYPE -eq 'branch' -and $env:GITHUB_REF_NAME -match '^release/(v[0-9]+\.[0-9]+\.[0-9]+)$') {
+          } elseif ($env:GITHUB_REF_TYPE -eq 'branch' -and $env:GITHUB_REF_NAME -match '^release/(v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$') {
             $Matches[1]
           } else {
             "${{ inputs.tag_name }}"
           }
-          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
-            throw "Release tag must be a version, for example v0.2.9."
+          if ($tag -notmatch '^v(?<base>\d+\.\d+\.\d+)(?<pre>-[0-9A-Za-z.-]+)?$') {
+            throw "Release tag must look like v0.3.2 or v0.3.2-rc.1."
+          }
+          $version = $Matches['base']
+          $isPre = -not [string]::IsNullOrEmpty($Matches['pre'])
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and "${{ inputs.prerelease }}" -eq 'true') {
+            $isPre = $true
           }
           [xml]$project = Get-Content "OpenTaskbar.csproj" -Raw
           $projectTag = "v$($project.Project.PropertyGroup.Version)"
-          if ($tag -ne $projectTag) {
+          if ("v$version" -ne $projectTag) {
             throw "Release tag $tag does not match project version $projectTag."
           }
-          "TAG_NAME=$tag" >> $env:GITHUB_ENV
+          "tag_name=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$($isPre.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-      - name: Package release archive
+      - name: Package release artifacts
         shell: pwsh
         run: |
-          $zipName = "OpenTaskbar-${{ env.TAG_NAME }}-win-x64.zip"
-          Compress-Archive -Path "release/OpenTaskbar.exe", "LICENSE", "README.md" -DestinationPath $zipName
-          
-          # Generate SHA256 checksums
-          $exeHash = (Get-FileHash -Path "release/OpenTaskbar.exe" -Algorithm SHA256).Hash.ToLower()
-          $zipHash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash.ToLower()
-          
-          $checksumContent = @"
-          $exeHash *OpenTaskbar.exe
-          $zipHash *$zipName
-          "@
-          Set-Content -Path "checksums.txt" -Value $checksumContent
+          $pre = '${{ steps.release_info.outputs.is_prerelease }}' -eq 'true'
+          & "scripts/package-release.ps1" `
+              -Tag '${{ steps.release_info.outputs.tag_name }}' `
+              -Commit '${{ github.sha }}' `
+              -Prerelease:$pre
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-assets
+          path: |
+            release/OpenTaskbar-*.exe
+            release/OpenTaskbar-*.zip
+            release/checksums.txt
+            release/release-manifest.json
+            release/release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attest and publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-assets
+          path: downloaded
+
+      - name: Restore release/ layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Get-ChildItem -LiteralPath downloaded -Recurse -File | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path release $_.Name) -Force
+          }
+          $required = @('checksums.txt', 'release-manifest.json', 'release-notes.md')
+          foreach ($name in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path release $name) -PathType Leaf)) {
+              throw "Missing release asset: $name"
+            }
+          }
+          if (-not (Get-ChildItem -LiteralPath release -Filter 'OpenTaskbar-*.zip' -File)) {
+            throw 'No release ZIPs were downloaded.'
+          }
+
+      # Sigstore-backed SLSA provenance. The checksums file already uses the
+      # `<sha256> *<name>` format expected by actions/attest's subject-checksums input.
+      - name: Attest release artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-checksums: release/checksums.txt
+
+      - name: Optional VirusTotal scan (report only)
+        if: ${{ secrets.VIRUSTOTAL_API_KEY != '' }}
+        shell: pwsh
+        env:
+          VT_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          foreach ($file in Get-ChildItem -LiteralPath release -Filter 'OpenTaskbar-*.zip' -File) {
+            try {
+              $response = & curl -sS -F "file=@$($file.FullName)" -H "x-apikey: $env:VT_KEY" `
+                'https://www.virustotal.com/api/v3/files' | ConvertFrom-Json
+              Write-Host "Submitted $($file.Name) to VirusTotal: $($response.data.id)"
+            } catch {
+              Write-Warning "VirusTotal submission failed for $($file.Name): $_"
+            }
+          }
 
       - name: Create GitHub Release and Upload Assets
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@40c2ca6ddd77ba2a30bbea8f67409c0f76868d67 # v3
         with:
-          tag_name: ${{ env.TAG_NAME }}
+          tag_name: ${{ needs.build.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           draft: false
-          prerelease: false
-          generate_release_notes: true
+          prerelease: ${{ needs.build.outputs.is_prerelease == 'true' }}
+          body_path: release/release-notes.md
+          generate_release_notes: false
           files: |
-            release/OpenTaskbar.exe
-            OpenTaskbar-*-win-x64.zip
-            checksums.txt
+            release/OpenTaskbar-*.exe
+            release/OpenTaskbar-*.zip
+            release/checksums.txt
+            release/release-manifest.json

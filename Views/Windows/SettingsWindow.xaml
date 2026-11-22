@@ -208,6 +208,33 @@
                                         <TextBlock x:Name="DockWidthValueDescription" Text="{local:Loc DockWidthValueDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
+                                <!-- Thickness of the horizontal dock bar. Hidden for side docks, where the width setting controls thickness. -->
+                                <Border x:Name="DockHeightModeRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <ComboBox x:Name="DockHeightModeBox" DockPanel.Dock="Right" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center"
+                                              AutomationProperties.Name="{local:Loc DockHeightMode}" SelectionChanged="DockHeightModeBox_SelectionChanged">
+                                        <ComboBoxItem Content="{local:Loc DockHeightAuto}" Tag="Auto" />
+                                        <ComboBoxItem Content="{local:Loc DockHeightPixels}" Tag="Pixels" />
+                                        <ComboBoxItem Content="{local:Loc DockHeightPercent}" Tag="Percent" />
+                                        <ComboBoxItem Content="{local:Loc DockHeightFill}" Tag="Fill" />
+                                    </ComboBox>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock x:Name="DockHeightModeLabel" Text="{local:Loc DockHeightMode}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock x:Name="DockHeightModeDescription" Text="{local:Loc DockHeightModeDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border x:Name="DockHeightValueRow" Style="{StaticResource SettingsRow}" Visibility="Collapsed"><DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center">
+                                        <Slider x:Name="DockHeightSlider" Width="174" Minimum="24" Maximum="400" Value="48" TickFrequency="4"
+                                                IsSnapToTickEnabled="True" Style="{StaticResource SettingsOpacitySlider}"
+                                                AutomationProperties.Name="{local:Loc DockHeightValue}"
+                                                ValueChanged="DockHeightSlider_ValueChanged" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="DockHeightValue" Width="48" TextAlignment="Right" Foreground="{DynamicResource TextSecondary}" FontSize="11.5" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock x:Name="DockHeightValueLabel" Text="{local:Loc DockHeightValue}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock x:Name="DockHeightValueDescription" Text="{local:Loc DockHeightValueDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
                                 <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center">
                                         <Slider x:Name="DockScaleSlider" Width="174" Minimum="75" Maximum="150" Value="100" TickFrequency="5"

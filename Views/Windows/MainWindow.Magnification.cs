@@ -4,6 +4,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
@@ -35,6 +36,7 @@ public partial class MainWindow
     private bool _hasMagnificationPointer;
     private Point _lastDockMousePoint;
     private bool _hasLastDockMousePoint;
+    private DispatcherTimer? _magnificationScrollResetTimer;
     private double _magnifiedSpanMin;
     private double _magnifiedSpanMax;
     private readonly List<(double Min, double Max)> _nonMagnifiedRestSpans = [];
@@ -54,11 +56,19 @@ public partial class MainWindow
     // tree each time by remembering the Image element found for it.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, Image> s_hoverImageCache = new();
 
-    internal void InvalidateMagnificationTargets()
+    internal void InvalidateMagnificationTargets() => InvalidateMagnificationTargets(allowWhileRendering: false);
+
+    /// <summary>
+    /// Scroll is a discrete layout change, so its late layout signal must still be able to correct the expansion
+    /// budget even while the fisheye render loop is running. SizeChanged stays suppressed: slot writes fire it
+    /// every frame and rebuilding from mid-spring geometry is wasted work and a visible hitch.
+    /// </summary>
+    internal void InvalidateMagnificationTargetsAfterScroll() => InvalidateMagnificationTargets(allowWhileRendering: true);
+
+    private void InvalidateMagnificationTargets(bool allowWhileRendering)
     {
-        // Slot-size writes fire LayoutUpdated every frame; rebuilding targets from rest geometry while the spring
-        // is animating is wasted work and a visible hitch.
-        if (_updatingMagnificationLayout || _magnificationLayoutActive || _magnificationRendering) return;
+        if (_updatingMagnificationLayout || _magnificationLayoutActive) return;
+        if (!allowWhileRendering && _magnificationRendering) return;
         _magnificationTargetsDirty = true;
     }
 
@@ -496,7 +506,15 @@ public partial class MainWindow
         }
         _lastDockMousePoint = mousePos;
         _hasLastDockMousePoint = true;
+        UpdateMagnificationForPoint(mousePos, e.OriginalSource as DependencyObject);
+    }
 
+    /// <summary>
+    /// Re-arms magnification at a known pointer position. Shared by real MouseMove and by the post-scroll restart,
+    /// which must bypass the same-coordinate guard that the scroll reset deliberately re-arms.
+    /// </summary>
+    private void UpdateMagnificationForPoint(Point mousePos, DependencyObject? source = null)
+    {
         if (LeftResizeThumb.IsMouseOver || RightResizeThumb.IsMouseOver
             || ScrollPrevOverlay.IsMouseOver || ScrollNextOverlay.IsMouseOver)
         {
@@ -510,8 +528,7 @@ public partial class MainWindow
         }
 
         var mouseAxis = IsVertical ? mousePos.Y : mousePos.X;
-        var overMagnifiedTarget = _magnificationLayoutActive
-            && IsPointerOverMagnifiedTarget(e.OriginalSource as DependencyObject);
+        var overMagnifiedTarget = _magnificationLayoutActive && IsPointerOverMagnifiedTarget(source);
         if (_magnificationTargets.Count == 0
             || (!overMagnifiedTarget && (mouseAxis < _magnifiedSpanMin
                 || mouseAxis > _magnifiedSpanMax
@@ -526,6 +543,49 @@ public partial class MainWindow
         UpdateMagnificationTargetsForPointer(mouseAxis);
 
         StartMagnificationRendering();
+    }
+
+    /// <summary>
+    /// Smooth scrolling raises ScrollChanged once per rendering frame. Resetting on every frame re-arms the
+    /// same-coordinate MouseMove guard and leaves the fisheye stalled after the final frame until the user clicks.
+    /// Wait for the gesture to settle, then re-arm from the last known pointer position.
+    /// </summary>
+    internal void ResetMagnificationAfterScroll()
+    {
+        _magnificationScrollResetTimer ??= CreateScrollResetTimer();
+        _magnificationScrollResetTimer.Stop();
+        _magnificationScrollResetTimer.Start();
+    }
+
+    private DispatcherTimer CreateScrollResetTimer()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Loaded) { Interval = TimeSpan.FromMilliseconds(90) };
+        timer.Tick += ScrollResetTimer_Tick;
+        return timer;
+    }
+
+    private void ScrollResetTimer_Tick(object? sender, EventArgs e)
+    {
+        _magnificationScrollResetTimer?.Stop();
+        var point = _lastDockMousePoint;
+        var hadPoint = _hasLastDockMousePoint;
+        // A real mouse move since the last scroll frame already restarted the effect; don't interrupt it.
+        if (!DockFisheyeLayout.ShouldResumeAfterScroll(_hasMagnificationPointer, _magnificationRendering, hadPoint)) return;
+
+        ResetMagnification(immediate: true);
+        _lastDockMousePoint = point;
+        _hasLastDockMousePoint = hadPoint;
+
+        // Restoring the slot widths is only a DP write; let WPF arrange that rest geometry before re-sampling
+        // the expansion budget. Sampling in the same frame can latch a still-overflowed (zero) budget and a
+        // tiny _sessionMaxScale for the whole hover.
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (!DockFisheyeLayout.ShouldResumeAfterScroll(_hasMagnificationPointer, _magnificationRendering, true)) return;
+            if (!_preferences.Current.MagnificationEnabled || !_preferences.Current.EffectiveAnimationsEnabled
+                || !SystemParameters.ClientAreaAnimation) return;
+            UpdateMagnificationForPoint(point);
+        }));
     }
 
     private void StartMagnificationRendering()

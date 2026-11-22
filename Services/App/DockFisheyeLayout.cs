@@ -210,4 +210,12 @@ public static class DockFisheyeLayout
         var desiredGapFromButtonTop = peakGrowth + 10.0;
         return Math.Max(0.0, Math.Ceiling(desiredGapFromButtonTop - DockMetrics.PreviewGap));
     }
+
+    /// <summary>
+    /// Whether a deferred post-scroll reset should re-arm magnification from the last known pointer point.
+    /// A real pointer move or an already running render loop means the effect restarted on its own; interrupting
+    /// it would re-create the stalled-fisheye race that made a click necessary to bring the effect back.
+    /// </summary>
+    public static bool ShouldResumeAfterScroll(bool hasMagnificationPointer, bool rendering, bool hasLastPointerPoint)
+        => hasLastPointerPoint && !hasMagnificationPointer && !rendering;
 }

@@ -1,13 +1,23 @@
 # OpenTaskbar Portable Single-File Publisher
-# Builds a self-contained single-file executable for Windows x64.
+# Builds self-contained single-file executables for Windows x64 and x86.
 param (
+    [ValidateSet('win-x64', 'win-x86')]
+    [string]$Runtime = 'win-x64',
+    # Both architectures share one release folder; each build is renamed to OpenTaskbar-<arch>.exe.
     [string]$OutputDir = "$PSScriptRoot\..\release"
 )
 
 $ErrorActionPreference = "Stop"
 
+$arch = ($Runtime -split '-')[-1]
+$OutputDir = (Resolve-Path -LiteralPath $OutputDir -ErrorAction SilentlyContinue).Path
+if (-not $OutputDir) {
+    New-Item -ItemType Directory -Path (Join-Path $PSScriptRoot '..\release') -Force | Out-Null
+    $OutputDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\release')).Path
+}
+
 # Gracefully request running instance to close, allowing it to restore Windows taskbar cleanly
-$running = Get-Process -Name OpenTaskbar -ErrorAction SilentlyContinue
+$running = Get-Process -Name OpenTaskbar, OpenTaskbar-x64, OpenTaskbar-x86 -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "Closing running OpenTaskbar instance gracefully..." -ForegroundColor Yellow
     foreach ($proc in $running) {
@@ -45,24 +55,40 @@ public class PortableRestorer {
 Write-Host "Publishing OpenTaskbar as self-contained portable executable..." -ForegroundColor Cyan
 
 $watchdogScript = "$PSScriptRoot\..\tools\watchdog\build.ps1"
+# Build the native helper outside the release folder: it is embedded into the EXE and must never ship as a sidecar.
+$watchdogDir = Join-Path $env:TEMP "opentaskbar-watchdog-$arch"
 if (Test-Path $watchdogScript) {
-    & powershell -ExecutionPolicy Bypass -File $watchdogScript
+    & powershell -ExecutionPolicy Bypass -File $watchdogScript -Architecture $arch -OutputDir $watchdogDir
+    if ($LASTEXITCODE -ne 0) { throw "Watchdog build failed for $arch." }
+}
+$watchdogBinary = Join-Path $watchdogDir "OpenTaskbarWatchdog.exe"
+if (-not (Test-Path -LiteralPath $watchdogBinary -PathType Leaf)) {
+    throw "Watchdog binary is missing: $watchdogBinary"
 }
 
 $projectPath = "$PSScriptRoot\..\OpenTaskbar.csproj"
 
 dotnet publish $projectPath `
     -c Release `
-    -r win-x64 `
+    -r $Runtime `
     --self-contained true `
+    -p:PlatformTarget=$arch `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:PublishReadyToRun=false `
     -p:EnableCompressionInSingleFile=false `
+    -p:DebugType=None `
+    "-p:WatchdogBinary=$watchdogBinary" `
     -o $OutputDir
 
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Publish succeeded! Portable executable is ready at: $OutputDir\OpenTaskbar.exe" -ForegroundColor Green
-} else {
+if ($LASTEXITCODE -ne 0) {
     Write-Error "Publish failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
 }
+
+# Keep both architectures side by side in the same folder with distinct names.
+$published = Join-Path $OutputDir 'OpenTaskbar.exe'
+$finalExe = Join-Path $OutputDir "OpenTaskbar-$arch.exe"
+if (Test-Path -LiteralPath $finalExe) { Remove-Item -LiteralPath $finalExe -Force }
+Move-Item -LiteralPath $published -Destination $finalExe -Force
+Write-Host "Publish succeeded ($Runtime)! Portable executable is ready at: $finalExe" -ForegroundColor Green

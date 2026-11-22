@@ -257,7 +257,9 @@ public sealed class DockScrollViewer : ScrollViewer
 
     protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Middle && ScrollableWidth > 0 && CaptureMouse())
+        // Middle button is reserved for panning the dock. It must capture even when nothing overflows,
+        // otherwise the gesture falls through to a dock icon's MouseUp and launches a new app instance.
+        if (e.ChangedButton == MouseButton.Middle && CaptureMouse())
         {
             StopSmoothScroll();
             BeginAnimation(CurrentHorizontalOffsetProperty, null);

@@ -147,8 +147,18 @@ dotnet run --project OpenTaskbar.csproj
 # Run with the Settings window open on startup
 dotnet run --project OpenTaskbar.csproj -- --settings
 
-# Build self-contained portable executable (outputs to release\OpenTaskbar.exe)
+# Build self-contained portable executable (release\OpenTaskbar-x64.exe)
 powershell -ExecutionPolicy Bypass -File ".\scripts\publish-portable.ps1"
+
+# Build the 32-bit variant (release\OpenTaskbar-x86.exe) into the same folder
+powershell -ExecutionPolicy Bypass -File ".\scripts\publish-portable.ps1" -Runtime win-x86
+
+# Build MSIX packages: appends _x64 or _x86 to the package name (release\msix\)
+powershell -ExecutionPolicy Bypass -File ".\scripts\publish-msix.ps1" -Runtime win-x86
+
+# Package both builds into release\: versioned EXEs/ZIPs, checksums.txt,
+# release-manifest.json and release-notes.md (same step CI uses)
+powershell -ExecutionPolicy Bypass -File ".\scripts\package-release.ps1" -Tag "v0.3.2"
 
 # Run automated behavior and visual verification tests (full suite, used by CI)
 dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj
