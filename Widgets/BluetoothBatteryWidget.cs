@@ -100,7 +100,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
     };
     private readonly Button _cardButton;
     private IReadOnlyList<BluetoothDeviceBatteryInfo> _devices = [];
-    private bool _isRefreshing;
+    private int _refreshing;
     private long _lastRefreshTickMs;
     private double _fullWidth = 78;
     private double _compactWidth = 46;
@@ -156,8 +156,10 @@ public sealed class BluetoothBatteryWidget : DockWidget
         try
         {
             var list = await BatteryReader().ConfigureAwait(false);
+            if (!IsActive) return;
             if (Dispatcher.CheckAccess())
             {
+                if (!IsActive) return;
                 _devices = list;
                 UpdateDisplay();
             }
@@ -165,6 +167,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             {
                 await Dispatcher.InvokeAsync(() =>
                 {
+                    if (!IsActive) return;
                     _devices = list;
                     UpdateDisplay();
                 });
@@ -177,13 +180,12 @@ public sealed class BluetoothBatteryWidget : DockWidget
 
     internal void RefreshBatteries()
     {
-        if (_isRefreshing) return;
-        _isRefreshing = true;
+        if (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
         _lastRefreshTickMs = Environment.TickCount64;
         _ = Task.Run(async () =>
         {
             try { await RefreshBatteriesAsync().ConfigureAwait(false); }
-            finally { _isRefreshing = false; }
+            finally { Interlocked.Exchange(ref _refreshing, 0); }
         });
     }
 

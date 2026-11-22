@@ -362,6 +362,30 @@ internal static class WirelessBatteryChecks
         var poll3 = aggregator.PollAsync().GetAwaiter().GetResult();
         check(poll3.Count == 0,
             "Stale cached wireless readings must expire after 30 minutes of inactivity.");
+
+        // Partial reading retention on soft sub-timeout: a provider that collects slot 1 and then waits until
+        // the sub-timeout token cancels on slot 2 must still return its accumulated slot 1 reading.
+        var partialProvider = new DelegateBatteryProvider(
+            WirelessBatterySource.LogitechHidPlusPlus,
+            async ct =>
+            {
+                var collected = new List<WirelessDeviceReading>
+                {
+                    new("logitech:C547:01", "Logitech PRO X Superlight", BluetoothDeviceKind.Mouse, 91, true, false, false, WirelessBatterySource.LogitechHidPlusPlus, fakeNow)
+                };
+                try { await Task.Delay(500, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+                return collected;
+            });
+
+        var partialAggregator = new WirelessBatteryAggregator(
+            bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+            providers: [partialProvider],
+            clock: () => fakeNow,
+            providerTimeout: TimeSpan.FromMilliseconds(200));
+        var partialPoll = partialAggregator.PollAsync().GetAwaiter().GetResult();
+        check(partialPoll.Count == 1 && partialPoll[0].BatteryLevel == 91,
+            "Aggregator soft sub-timeout must preserve partial readings collected before cancellation.");
     }
 
     private static void CheckAllLocaleCatalogs(Action<bool, string> check)

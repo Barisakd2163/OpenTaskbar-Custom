@@ -24,7 +24,7 @@ internal sealed class RazerBatteryProvider : IWirelessBatteryProvider
     public WirelessBatterySource Source => WirelessBatterySource.RazerHid;
 
     public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken) =>
-        Task.Run(() => ProbeHidDevices(cancellationToken), cancellationToken);
+        Task.Run(() => ProbeHidDevices(cancellationToken), CancellationToken.None);
 
     internal static IReadOnlyList<WirelessDeviceReading> ProbeHidDevices(CancellationToken cancellationToken = default)
     {

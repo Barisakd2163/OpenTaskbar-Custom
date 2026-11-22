@@ -21,7 +21,7 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
     public WirelessBatterySource Source => WirelessBatterySource.CompxAtkVxe;
 
     public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken) =>
-        Task.Run(() => ProbeHidDevices(cancellationToken), cancellationToken);
+        Task.Run(() => ProbeHidDevices(cancellationToken), CancellationToken.None);
 
     internal static IReadOnlyList<WirelessDeviceReading> ProbeHidDevices(CancellationToken cancellationToken = default)
     {

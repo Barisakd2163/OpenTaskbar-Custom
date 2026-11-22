@@ -57,7 +57,7 @@ internal sealed class WirelessBatteryAggregator
 
     internal static bool IsIgnoredWiredDevice(ushort vendorId, ushort productId, string? deviceName = null)
     {
-        if (vendorId == WraithVendorId || (vendorId == WraithVendorId && productId == WraithW75ProductId))
+        if (vendorId == WraithVendorId && (productId == WraithW75ProductId || productId == 0))
             return true;
         if (!string.IsNullOrWhiteSpace(deviceName)
             && deviceName.Contains("Wraith W75", StringComparison.OrdinalIgnoreCase))
@@ -69,7 +69,7 @@ internal sealed class WirelessBatteryAggregator
     {
         if (string.IsNullOrWhiteSpace(reading.Name) && string.IsNullOrWhiteSpace(reading.Id))
             return true;
-        if (reading.Name.Contains("Wraith W75", StringComparison.OrdinalIgnoreCase))
+        if (IsIgnoredWiredDevice(0, 0, reading.Name))
             return true;
         if (reading.Id.Contains("2E3C", StringComparison.OrdinalIgnoreCase)
             && reading.Id.Contains("C368", StringComparison.OrdinalIgnoreCase))
@@ -110,12 +110,16 @@ internal sealed class WirelessBatteryAggregator
         Func<CancellationToken, Task<IReadOnlyList<WirelessDeviceReading>>> probe,
         CancellationToken outerToken)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
-        cts.CancelAfter(_providerTimeout);
+        var softTimeoutMs = Math.Max(80.0, _providerTimeout.TotalMilliseconds * 0.8);
+        using var softCts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
+        softCts.CancelAfter(TimeSpan.FromMilliseconds(softTimeoutMs));
+
+        using var hardCts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
+        hardCts.CancelAfter(_providerTimeout);
         try
         {
-            var probeTask = Task.Run(() => probe(cts.Token), cts.Token);
-            var completed = await Task.WhenAny(probeTask, Task.Delay(_providerTimeout, cts.Token)).ConfigureAwait(false);
+            var probeTask = Task.Run(() => probe(softCts.Token), CancellationToken.None);
+            var completed = await Task.WhenAny(probeTask, Task.Delay(_providerTimeout, hardCts.Token)).ConfigureAwait(false);
             if (completed != probeTask)
                 return [];
 

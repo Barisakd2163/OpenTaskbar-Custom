@@ -34,19 +34,27 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
 
     public async Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken)
     {
-        var interfaces = await Task.Run(
-            () => Win32HidTransport.EnumerateInterfaces((vid, _) => vid == LogitechVendorId),
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var interfaces = await Task.Run(
+                () => Win32HidTransport.EnumerateInterfaces((vid, _) => vid == LogitechVendorId),
+                CancellationToken.None).ConfigureAwait(false);
 
-        if (interfaces.Count == 0) return [];
+            if (interfaces.Count == 0 || cancellationToken.IsCancellationRequested) return [];
 
-        var hidReadings = await Task.Run(
-            () => ProbeHidPlusPlusInterfaces(interfaces, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+            var hidReadings = await Task.Run(
+                () => ProbeHidPlusPlusInterfaces(interfaces, cancellationToken),
+                CancellationToken.None).ConfigureAwait(false);
 
-        if (hidReadings.Count > 0) return hidReadings;
+            if (hidReadings.Count > 0 || cancellationToken.IsCancellationRequested)
+                return hidReadings;
 
-        return await ProbeGHubLoopbackAsync(cancellationToken).ConfigureAwait(false);
+            return await ProbeGHubLoopbackAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return [];
+        }
     }
 
     internal static bool IsMatchingInterface(HidInterfaceDescriptor descriptor) =>
@@ -233,11 +241,13 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
             .ToList();
 
         var now = DateTimeOffset.UtcNow;
+        var startTick = Stopwatch.GetTimestamp();
         var seenDeviceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var descriptor in matching)
         {
-            if (cancellationToken.IsCancellationRequested) break;
+            if (cancellationToken.IsCancellationRequested || Stopwatch.GetElapsedTime(startTick).TotalMilliseconds >= 850)
+                break;
             var reportLen = descriptor.OutputReportLength is ShortReportLength or LongReportLength
                 ? (int)descriptor.OutputReportLength
                 : descriptor.InputReportLength is ShortReportLength or LongReportLength
@@ -254,7 +264,8 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
             {
                 foreach (var deviceIndex in CandidateDeviceIndices)
                 {
-                    if (cancellationToken.IsCancellationRequested) break;
+                    if (cancellationToken.IsCancellationRequested || Stopwatch.GetElapsedTime(startTick).TotalMilliseconds >= 850)
+                        break;
                     var slotKey = $"{descriptor.ProductId:X4}:{deviceIndex:X2}";
                     if (seenDeviceKeys.Contains(slotKey)) continue;
 
@@ -461,11 +472,28 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
         && string.Equals(uri.Host, "127.0.0.1", StringComparison.Ordinal)
         && uri.Port == 9010;
 
+    private static bool IsGHubAgentRunning()
+    {
+        var processes = Process.GetProcessesByName("lghub_agent");
+        try
+        {
+            return processes.Length > 0;
+        }
+        finally
+        {
+            foreach (var process in processes)
+            {
+                try { process.Dispose(); }
+                catch { }
+            }
+        }
+    }
+
     private static async Task<IReadOnlyList<WirelessDeviceReading>> ProbeGHubLoopbackAsync(CancellationToken cancellationToken)
     {
         try
         {
-            if (Process.GetProcessesByName("lghub_agent").Length == 0)
+            if (!IsGHubAgentRunning())
                 return [];
 
             var uri = new Uri("ws://127.0.0.1:9010");

@@ -25,8 +25,8 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
 
     public async Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken)
     {
-        var hidReadings = await Task.Run(() => ProbeHidDevices(cancellationToken), cancellationToken).ConfigureAwait(false);
-        if (hidReadings.Any(r => r.IsConnected && r.BatteryLevel >= 0))
+        var hidReadings = await Task.Run(() => ProbeHidDevices(cancellationToken), CancellationToken.None).ConfigureAwait(false);
+        if (hidReadings.Any(r => r.IsConnected && r.BatteryLevel >= 0) || cancellationToken.IsCancellationRequested)
             return hidReadings;
 
         var ggReadings = await ProbeGgLoopbackAsync(cancellationToken).ConfigureAwait(false);
