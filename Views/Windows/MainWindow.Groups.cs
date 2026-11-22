@@ -211,7 +211,7 @@ public partial class MainWindow
         var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
             ? g with { ExecutablePaths = g.ExecutablePaths.Where(p => !SamePath(p, executablePath)).ToList() }
             : g).Where(g => !SamePath(g.Id, group.Id) || g.ExecutablePaths.Count > 0).ToList();
-        // Empty groups are removed automatically.
+        // Only the group that just became empty is pruned; other empty groups are preserved.
         SaveGroups(groups);
     }
 

@@ -50,6 +50,11 @@ public sealed class NetSpeedWidget : DockWidget
     private TextBlock? _flyoutUploadText;
     private TextBlock? _flyoutTotalReceivedText;
     private TextBlock? _flyoutTotalSentText;
+    // Hover flyout is hosted by WidgetHoverCoordinator, not _flyout, so it needs its own references.
+    private TextBlock? _hoverDownloadText;
+    private TextBlock? _hoverUploadText;
+    private TextBlock? _hoverTotalReceivedText;
+    private TextBlock? _hoverTotalSentText;
 
     internal DockFlyout ClickFlyout => _flyout;
 
@@ -225,6 +230,10 @@ public sealed class NetSpeedWidget : DockWidget
         _flyoutUploadText = null;
         _flyoutTotalReceivedText = null;
         _flyoutTotalSentText = null;
+        _hoverDownloadText = null;
+        _hoverUploadText = null;
+        _hoverTotalReceivedText = null;
+        _hoverTotalSentText = null;
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => Localize();
@@ -236,7 +245,7 @@ public sealed class NetSpeedWidget : DockWidget
         _cardButton.ToolTip = description;
         AutomationProperties.SetName(_cardButton, heading);
         AutomationProperties.SetName(this, heading);
-        if (_flyout.IsOpen) UpdateLabels();
+        if (_flyout.IsOpen || IsHoverFlyoutOpen) UpdateLabels();
     }
 
     protected override void OnTick(DateTime now)
@@ -301,7 +310,7 @@ public sealed class NetSpeedWidget : DockWidget
         _downloadText.Text = downloadSpeed;
         _uploadText.Text = uploadSpeed;
 
-        if (_flyout.IsOpen)
+        if (_flyout.IsOpen || IsHoverFlyoutOpen)
         {
             if (_flyoutDownloadText is not null) _flyoutDownloadText.Text = downloadSpeed;
             if (_flyoutUploadText is not null) _flyoutUploadText.Text = uploadSpeed;
@@ -309,6 +318,12 @@ public sealed class NetSpeedWidget : DockWidget
                 _flyoutTotalReceivedText.Text = $"{UiText.Get("NetworkTotalReceived")}: {FormatBytes(_sessionDownloadedBytes)}";
             if (_flyoutTotalSentText is not null)
                 _flyoutTotalSentText.Text = $"{UiText.Get("NetworkTotalSent")}: {FormatBytes(_sessionUploadedBytes)}";
+            if (_hoverDownloadText is not null) _hoverDownloadText.Text = downloadSpeed;
+            if (_hoverUploadText is not null) _hoverUploadText.Text = uploadSpeed;
+            if (_hoverTotalReceivedText is not null)
+                _hoverTotalReceivedText.Text = $"{UiText.Get("NetworkTotalReceived")}:\n{FormatBytes(_sessionDownloadedBytes)}";
+            if (_hoverTotalSentText is not null)
+                _hoverTotalSentText.Text = $"{UiText.Get("NetworkTotalSent")}:\n{FormatBytes(_sessionUploadedBytes)}";
         }
 
         var speedStatus = $"↓ {downloadSpeed} · ↑ {uploadSpeed}";
@@ -342,20 +357,22 @@ public sealed class NetSpeedWidget : DockWidget
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("WidgetAccent")
         });
-        downCol.Children.Add(new TextBlock
+        _hoverDownloadText = new TextBlock
         {
             Text = FormatSpeed(_downloadBytesPerSec),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        });
-        downCol.Children.Add(new TextBlock
+        };
+        downCol.Children.Add(_hoverDownloadText);
+        _hoverTotalReceivedText = new TextBlock
         {
             Text = $"{UiText.Get("NetworkTotalReceived")}:\n{FormatBytes(_sessionDownloadedBytes)}",
             FontSize = 10,
             Foreground = (Brush)FindResource("TextSecondary"),
             Margin = new Thickness(0, 4, 0, 0)
-        });
+        };
+        downCol.Children.Add(_hoverTotalReceivedText);
 
         var upCol = new StackPanel { Margin = new Thickness(4, 0, 0, 0) };
         upCol.Children.Add(new TextBlock
@@ -365,20 +382,22 @@ public sealed class NetSpeedWidget : DockWidget
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextSecondary")
         });
-        upCol.Children.Add(new TextBlock
+        _hoverUploadText = new TextBlock
         {
             Text = FormatSpeed(_uploadBytesPerSec),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        });
-        upCol.Children.Add(new TextBlock
+        };
+        upCol.Children.Add(_hoverUploadText);
+        _hoverTotalSentText = new TextBlock
         {
             Text = $"{UiText.Get("NetworkTotalSent")}:\n{FormatBytes(_sessionUploadedBytes)}",
             FontSize = 10,
             Foreground = (Brush)FindResource("TextSecondary"),
             Margin = new Thickness(0, 4, 0, 0)
-        });
+        };
+        upCol.Children.Add(_hoverTotalSentText);
 
         Grid.SetColumn(downCol, 0);
         Grid.SetColumn(upCol, 1);

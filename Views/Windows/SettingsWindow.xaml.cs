@@ -34,6 +34,9 @@ public partial class SettingsWindow : Window
     private DispatcherTimer? _livePreviewTimer;
     private bool _livePreviewsAttached;
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    // During "reset to defaults", inactive gap-unit values come from the defaults snapshot rather
+    // than the last saved settings, so a reset clears both units instead of leaving stale hidden values.
+    private DockSettings? _gapBase;
     private bool _startupEnabled;
     private bool _startupAvailable;
     private DockSettings _applied;
@@ -464,17 +467,17 @@ public partial class SettingsWindow : Window
             DockTopGapUnit = GapUnit(DockTopGapUnitBox) is var topGapUnit ? topGapUnit : DockGapUnit.Pixels,
             DockTopGapPixels = topGapUnit == DockGapUnit.Pixels
                 ? Math.Clamp((int)Math.Round(DockTopGapSlider.Value), 0, 200)
-                : Math.Clamp(_preferences.Current.DockTopGapPixels, 0, 200),
+                : Math.Clamp((_gapBase ?? _preferences.Current).DockTopGapPixels, 0, 200),
             DockTopGapPercent = topGapUnit == DockGapUnit.Percent
                 ? Math.Clamp((int)Math.Round(DockTopGapSlider.Value), 0, 100)
-                : Math.Clamp(_preferences.Current.DockTopGapPercent, 0, 100),
+                : Math.Clamp((_gapBase ?? _preferences.Current).DockTopGapPercent, 0, 100),
             DockBottomGapUnit = GapUnit(DockBottomGapUnitBox) is var bottomGapUnit ? bottomGapUnit : DockGapUnit.Pixels,
             DockBottomGapPixels = bottomGapUnit == DockGapUnit.Pixels
                 ? Math.Clamp((int)Math.Round(DockBottomGapSlider.Value), 0, 200)
-                : Math.Clamp(_preferences.Current.DockBottomGapPixels, 0, 200),
+                : Math.Clamp((_gapBase ?? _preferences.Current).DockBottomGapPixels, 0, 200),
             DockBottomGapPercent = bottomGapUnit == DockGapUnit.Percent
                 ? Math.Clamp((int)Math.Round(DockBottomGapSlider.Value), 0, 100)
-                : Math.Clamp(_preferences.Current.DockBottomGapPercent, 0, 100),
+                : Math.Clamp((_gapBase ?? _preferences.Current).DockBottomGapPercent, 0, 100),
             DockCornerRadius = (int)Math.Round(CornerRadiusSlider.Value),
             ShowClock = IsEnabled("Clock"),
             ShowMedia = IsEnabled("Media"),
@@ -2015,6 +2018,7 @@ public partial class SettingsWindow : Window
     private void ResetDockDefaults_Click(object sender, RoutedEventArgs e)
     {
         var defaults = new DockSettings();
+        _gapBase = defaults;
         _initializing = true;
         try
         {
@@ -2048,6 +2052,7 @@ public partial class SettingsWindow : Window
             _initializing = false;
         }
         PreferenceEdited(sender, e);
+        _gapBase = null;
     }
 
     private void UpdateWidgetOptionState()
