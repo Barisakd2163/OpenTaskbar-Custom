@@ -15,8 +15,8 @@ public partial class SystemStatsWidget : DockWidget
 {
     private const double TemperatureScaleCelsius = 100;
     private const double ValueEpsilon = 0.005;
-    private const long FastSamplePeriodMs = 1800;
-    private const long SensorSamplePeriodMs = 3800;
+    private const long FastSamplePeriodMs = 900;
+    private const long SensorSamplePeriodMs = 1900;
     private const int SensorHideMisses = 5;
     private const int SensorShowSamples = 2;
 
@@ -194,8 +194,8 @@ public partial class SystemStatsWidget : DockWidget
         ApplyMeterSelection();
         SampleFastCounters(sampleCpu: false);
         var nowMs = Environment.TickCount64;
-        _lastFastSampleTickMs = nowMs - 900;
-        _lastSensorSampleTickMs = nowMs - 2900;
+        _lastFastSampleTickMs = nowMs;
+        _lastSensorSampleTickMs = nowMs - 1000;
         PrimeSensorBaselineIfNeeded();
     }
 
