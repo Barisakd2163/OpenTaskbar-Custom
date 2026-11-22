@@ -39,11 +39,11 @@ internal static class SettingsBackdrop
         var frameResult = DwmExtendFrameIntoClientArea(handle, ref margins);
         if (darkResult < 0 || backdropResult < 0 || frameResult < 0)
         {
-            Trace.TraceWarning("Settings backdrop unavailable: theme=0x{0:X8}, backdrop=0x{1:X8}, frame=0x{2:X8}", darkResult, backdropResult, frameResult);
+            AppLog.Warning($"Settings backdrop unavailable: theme=0x{darkResult:X8}, backdrop=0x{backdropResult:X8}, frame=0x{frameResult:X8}");
             return false;
         }
         var cornerResult = DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
-        if (cornerResult < 0) Trace.TraceWarning("Settings window corners unavailable: 0x{0:X8}", cornerResult);
+        if (cornerResult < 0) AppLog.Warning($"Settings window corners unavailable: 0x{cornerResult:X8}");
         if (HwndSource.FromHwnd(handle)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
         return true;
     }
@@ -96,7 +96,7 @@ internal static class SettingsBackdrop
         // Clear the native Windows 11 1px perimeter border so the WPF SettingsBorderOverlay owns the outer rim.
         var noBorder = DwmwaColorNone;
         var result = DwmSetWindowAttribute(handle, DwmwaBorderColor, ref noBorder, sizeof(int));
-        if (result < 0) Trace.TraceWarning("Settings window border suppression unavailable: 0x{0:X8}", result);
+        if (result < 0) AppLog.Warning($"Settings window border suppression unavailable: 0x{result:X8}");
     }
 
     [StructLayout(LayoutKind.Sequential)]

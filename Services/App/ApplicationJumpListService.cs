@@ -39,7 +39,7 @@ public sealed class ApplicationJumpListService : IDisposable
             {
                 _session.Dispose();
                 _session = null;
-                Trace.TraceWarning("Jump List read failed: 0x{0:X8}", ex.HResult);
+                AppLog.Warning($"Jump List read failed: 0x{ex.HResult:X8}");
                 var unsupported = ex.HResult is unchecked((int)0x80004002) or unchecked((int)0x80040154);
                 return new ApplicationJumpList(id, unsupported ? JumpListStatus.Unsupported : JumpListStatus.Unavailable, []);
             }
@@ -61,9 +61,9 @@ public sealed class ApplicationJumpListService : IDisposable
             {
                 if (_disposed || _session is null || _sessionId != sessionId) return false;
                 try { _session.Invoke(commandId, owner); return true; }
-                catch (COMException ex) { Trace.TraceWarning("Jump List invocation failed: 0x{0:X8}", ex.HResult); return false; }
+                catch (COMException ex) { AppLog.Warning($"Jump List invocation failed: 0x{ex.HResult:X8}"); return false; }
                 catch (InvalidOperationException) { return false; }
-                catch (Win32Exception ex) { Trace.TraceWarning("Jump List invocation failed: {0}", ex.NativeErrorCode); return false; }
+                catch (Win32Exception ex) { AppLog.Warning($"Jump List invocation failed: {ex.NativeErrorCode}"); return false; }
             }).Task;
         }
         catch (OperationCanceledException) when (_disposed) { return false; }

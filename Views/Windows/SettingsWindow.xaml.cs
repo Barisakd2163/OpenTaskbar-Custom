@@ -182,7 +182,7 @@ public partial class SettingsWindow : Window
         StartupToggle.IsChecked = _startupEnabled;
         var errors = new[] { preferences.LoadError, startup.Error }.OfType<string>();
         var message = string.Join(" ", errors.Select(UiText.Get));
-        if (message.Length > 0) Trace.TraceWarning("Settings initialization warning: {0}", message);
+        if (message.Length > 0) AppLog.Warning($"Settings initialization warning: {message}");
         var workArea = SystemParameters.WorkArea;
         MinHeight = Math.Min(MinHeight, workArea.Height);
         MinWidth = Math.Min(MinWidth, workArea.Width);
@@ -301,7 +301,7 @@ public partial class SettingsWindow : Window
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == 0 || !GetMonitorInfo(monitor, ref info))
         {
-            Trace.TraceWarning("Settings monitor work area unavailable: {0}", Marshal.GetLastWin32Error());
+            AppLog.Warning($"Settings monitor work area unavailable: {Marshal.GetLastWin32Error()}");
             return 0;
         }
         var sizing = Marshal.PtrToStructure<MinMaxInfo>(lParam);
@@ -2086,7 +2086,7 @@ public partial class SettingsWindow : Window
         var startupChanged = _startupAvailable && StartupToggle.IsChecked != _startupEnabled;
         if (startupChanged && _startup.SetEnabled(StartupToggle.IsChecked == true) is { } startupError)
         {
-            Trace.TraceWarning("Startup error: {0}", startupError);
+            AppLog.Warning($"Startup error: {startupError}");
             return;
         }
         var settings = ReadSelection();
@@ -2095,7 +2095,7 @@ public partial class SettingsWindow : Window
         {
             if (_preferences.Save(settings) is { } error)
             {
-                Trace.TraceWarning("Save settings error: {0}", error);
+                AppLog.Warning($"Save settings error: {error}");
                 return;
             }
         }

@@ -1369,7 +1369,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!_stoppedForRestart)
         {
             var error = Stop();
-            if (error is not null) Trace.TraceError(error);
+            if (error is not null) AppLog.Error(error);
             if (IsActive) return;
         }
         _disposed = true;
@@ -1392,13 +1392,13 @@ public sealed class TaskbarReplacementSession : IDisposable
     private void Process_Exit(object? sender, EventArgs e)
     {
         var error = Stop();
-        if (error is not null) Trace.TraceError(error);
+        if (error is not null) AppLog.Error(error);
         // ProcessExit can race with a Stop() on another thread. A leftover journal means the taskbar may still be
         // hidden, so use the journal-based path which does not depend on instance state or _stopInProgress.
         if (File.Exists(JournalPath))
         {
             error = ForceRestoreNativeTaskbar();
-            if (error is not null) Trace.TraceError(error);
+            if (error is not null) AppLog.Error(error);
         }
     }
 

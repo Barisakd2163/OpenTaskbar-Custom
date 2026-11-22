@@ -132,7 +132,7 @@ internal static class TaskbarRecoveryWatchdog
         }
 
         var error = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
-        if (error is not null) Trace.TraceError(error);
+        if (error is not null) AppLog.Error(error);
     }
 
     /// <summary>Starts the watchdog once the taskbar replacement is actually active.</summary>
@@ -178,7 +178,7 @@ internal static class TaskbarRecoveryWatchdog
         }
         catch (Exception ex)
         {
-            Trace.TraceWarning($"Taskbar watchdog could not start: {ex}");
+            AppLog.Warning($"Taskbar watchdog could not start: {ex}");
             Cleanup();
         }
     }
@@ -242,7 +242,7 @@ internal static class TaskbarRecoveryWatchdog
         }
         catch (Exception ex)
         {
-            Trace.TraceWarning($"Could not prepare native watchdog binary: {ex}");
+            AppLog.Warning($"Could not prepare native watchdog binary: {ex}");
             return mainExecutablePath;
         }
     }
@@ -270,7 +270,7 @@ internal static class TaskbarRecoveryWatchdog
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or ArgumentException or IOException)
         {
-            Trace.TraceWarning($"Taskbar watchdog event could not be created: {ex}");
+            AppLog.Warning($"Taskbar watchdog event could not be created: {ex}");
             return null;
         }
     }

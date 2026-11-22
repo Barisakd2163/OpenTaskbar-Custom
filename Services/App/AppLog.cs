@@ -1,53 +1,85 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace OpenTaskbar.Services;
 
 /// <summary>
-/// Routes Trace output to %LOCALAPPDATA%\OpenTaskbar\log.txt, rotating to log.old.txt when it grows past 1 MB.
-/// Failures are recorded as structured entries containing the localization key, the resolved message and
-/// the exception details, so the UI never has to display them.
+/// Lightweight, thread-safe file logger for %LOCALAPPDATA%\OpenTaskbar\log.txt.
+/// Writes level-tagged, timestamped lines with the managed thread id, rotates to log.old.txt
+/// at 1 MB (including at runtime, not only on startup), and keeps failures as structured
+/// multi-line records so the UI never has to display them.
+/// Set the OT_VERBOSE_LOG environment variable to 1 to include Debug/Trace output.
 /// </summary>
 public static class AppLog
 {
     private const long MaxBytes = 1024 * 1024;
-    private static TextWriterTraceListener? _listener;
+    private static readonly object Gate = new();
+    private static StreamWriter? _writer;
+    private static string? _logPath;
+    private static bool _verbose;
 
-    public static string LogPath { get; } = Path.Combine(
+    public static string LogPath => _logPath ??= Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar", "log.txt");
 
     public static void Initialize()
     {
-        if (_listener is not null) return;
-        try
+        lock (Gate)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-            if (File.Exists(LogPath) && new FileInfo(LogPath).Length > MaxBytes)
+            if (_writer is not null) return;
+            _verbose = string.Equals(Environment.GetEnvironmentVariable("OT_VERBOSE_LOG"), "1", StringComparison.Ordinal);
+            try
             {
-                File.Move(LogPath, Path.ChangeExtension(LogPath, ".old.txt"), overwrite: true);
+                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                RotateIfNeeded();
+                var stream = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                // BOM on new files lets Notepad and Windows PowerShell read Turkish text correctly.
+                var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: stream.Length == 0);
+                _writer = new StreamWriter(stream, encoding) { AutoFlush = true };
+                Info($"OpenTaskbar {typeof(AppLog).Assembly.GetName().Version} started.");
             }
-
-            var stream = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-            // A BOM on new files lets Notepad and Windows PowerShell read Turkish text correctly.
-            var encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: stream.Length == 0);
-            _listener = new TextWriterTraceListener(new StreamWriter(stream, encoding) { AutoFlush = true }, "OpenTaskbarLog");
-            Trace.Listeners.Add(_listener);
-            Trace.AutoFlush = true;
-            Info($"OpenTaskbar {typeof(AppLog).Assembly.GetName().Version} started.");
-        }
-        catch (IOException)
-        {
-            _listener = null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            _listener = null;
+            catch (IOException) { _writer = null; }
+            catch (UnauthorizedAccessException) { _writer = null; }
         }
     }
 
-    public static void Info(string message) => Trace.TraceInformation($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
-    public static void Warning(string message) => Trace.TraceWarning($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
-    public static void Error(string message) => Trace.TraceError($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+    private static void RotateIfNeeded()
+    {
+        try
+        {
+            if (!File.Exists(LogPath) || new FileInfo(LogPath).Length <= MaxBytes) return;
+            File.Move(LogPath, Path.ChangeExtension(LogPath, ".old.txt"), overwrite: true);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    public static void Info(string message) => Write("INFO", message);
+    public static void Warning(string message) => Write("WARN", message);
+    public static void Error(string message) => Write("ERROR", message);
+    public static void Debug(string message)
+    {
+        if (_verbose) Write("DEBUG", message);
+    }
+
+    private static void Write(string level, string message)
+    {
+        lock (Gate)
+        {
+            if (_writer is null) return;
+            try
+            {
+                RotateIfNeeded(); // runtime rotation, not just on startup
+                var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{level,-5}][T{Environment.CurrentManagedThreadId,2}] {message}";
+                _writer.WriteLine(line);
+            }
+            catch (IOException)
+            {
+                // Logging must never take down the app.
+            }
+            catch (ObjectDisposedException) { }
+        }
+    }
 
     /// <summary>
     /// Resolves a localization key the same way the log records it. Already-resolved text and raw exception
@@ -78,20 +110,25 @@ public static class AppLog
 
     private static void WriteError(string messageKey, object[] arguments, Exception? exception)
     {
-        var parts = new List<string>
-        {
-            $"key={messageKey}",
-            $"message={ResolveMessage(messageKey, arguments)}"
-        };
+        var sb = new StringBuilder();
+        sb.Append("Failure key=").Append(messageKey)
+          .Append(" | message=").Append(ResolveMessage(messageKey, arguments));
         if (exception is not null)
         {
-            parts.Add($"exception={exception.GetType().Name}: {exception.Message}");
+            sb.AppendLine();
+            sb.Append("  exception=").Append(exception.GetType().Name).Append(": ").Append(exception.Message);
             if (exception.InnerException is not null)
-                parts.Add($"inner={exception.InnerException.GetType().Name}: {exception.InnerException.Message}");
+            {
+                sb.AppendLine();
+                sb.Append("  inner=").Append(exception.InnerException.GetType().Name).Append(": ").Append(exception.InnerException.Message);
+            }
             if (!string.IsNullOrWhiteSpace(exception.StackTrace))
-                parts.Add($"stack={exception.StackTrace.Replace(Environment.NewLine, " | ", StringComparison.Ordinal)}");
+            {
+                sb.AppendLine();
+                sb.Append("  stack=").Append(exception.StackTrace);
+            }
         }
-        Error(string.Join(" | ", parts));
+        Error(sb.ToString());
     }
 
     /// <summary>Opens log.txt in the default text editor for users who need to inspect recorded failures.</summary>
@@ -117,10 +154,11 @@ public static class AppLog
 
     public static void Shutdown()
     {
-        if (_listener is null) return;
-        Trace.Listeners.Remove(_listener);
-        _listener.Flush();
-        _listener.Dispose();
-        _listener = null;
+        lock (Gate)
+        {
+            _writer?.Flush();
+            _writer?.Dispose();
+            _writer = null;
+        }
     }
 }

@@ -37,7 +37,7 @@ public partial class App : Application
         if (e.Args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
         {
             var restoreError = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
-            if (restoreError is not null) Trace.TraceError(restoreError);
+            if (restoreError is not null) AppLog.Error(restoreError);
             // A crashed tray host leaves icons registered with its destroyed window; ask apps to re-add them to Explorer.
             OpenTaskbar.Services.TrayHost.BroadcastTaskbarCreated();
             Shutdown(restoreError is null ? 0 : 1);
@@ -276,7 +276,7 @@ public partial class App : Application
         var hasSession = TaskbarReplacementSession.HasActiveSession;
         if (!hasSession && !TaskbarReplacementSession.HasPendingRecovery)
         {
-            Trace.Flush();
+            AppLog.Shutdown();
             return;
         }
 
@@ -292,6 +292,6 @@ public partial class App : Application
 
         if (error is not null) AppLog.Error($"Emergency taskbar restore failed: {error}");
         else AppLog.Info("Windows taskbar restored after an unhandled exception.");
-        Trace.Flush();
+        AppLog.Shutdown();
     }
 }

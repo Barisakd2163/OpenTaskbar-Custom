@@ -1633,7 +1633,7 @@ public partial class MainWindow : Window
         }
         catch (COMException ex)
         {
-            Trace.TraceWarning("Shell worker failed: 0x{0:X8}", ex.HResult);
+            AppLog.Warning($"Shell worker failed: 0x{ex.HResult:X8}");
             if (menu.IsOpen && ReferenceEquals(_jumpListLoad, load))
             {
                 ReplaceJumpListItems(menu, boundary, [new MenuItem { Header = UiText.Get("TasksServiceError"), IsEnabled = false }]);
