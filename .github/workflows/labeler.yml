@@ -1,7 +1,10 @@
 name: Pull Request Labeler
 
+# pull_request_target will be blocked by default in public repos from 2026-12-02.
+# The labeler never executes PR code (it only reads the changed-file list via the API),
+# so the plain pull_request event is safe here and keeps working after that date.
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
 
 permissions:
