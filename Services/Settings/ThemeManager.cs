@@ -231,12 +231,18 @@ public static class ThemeManager
             case SurfaceKind.Settings:
                 Materials["SettingsGlassMaterial"] = Fill(ResolveBrush("SettingsBackground"), style);
                 Materials["SettingsStrokeMaterial"] = Stroke(ResolveBrush("MenuStroke"), style);
-                // Content surface keeps a high alpha so text stays legible while the acrylic
-                // frame still shows through. Floor at 0.82 for a visible glassmorphism effect.
-                var contentAlpha = Math.Clamp(Math.Max(style.Opacity, 0.82), 0.82, 1.0);
-                Materials["SettingsContentGlass"] = style.Background == SurfaceBackground.None
-                    ? (Brush)Application.Current.TryFindResource("SettingsBackground")
-                    : WithAlpha(ResolveBrush("SettingsBackground"), (byte)Math.Round(contentAlpha * 255));
+                Materials["SettingsSidebarGlass"] = style.Background switch
+                {
+                    SurfaceBackground.None => Brushes.Transparent,
+                    SurfaceBackground.Solid => WithAlpha(ResolveBrush("SettingsSidebarOverlay"), 255),
+                    // Scale sidebar tint with SettingsOpacity so Glass 0% is truly transparent acrylic.
+                    _ => WithAlpha(ResolveBrush("SettingsSidebarOverlay"), (byte)Math.Round(style.Opacity * 255))
+                };
+                // SettingsFrame already paints SettingsGlassMaterial behind the entire window, so keep the
+                // content pane transparent in Glass/None to avoid double-stacking or blocking 0% Glass / None.
+                Materials["SettingsContentGlass"] = style.Background == SurfaceBackground.Solid
+                    ? WithAlpha(ResolveBrush("SettingsBackground"), 255)
+                    : Brushes.Transparent;
                 break;
         }
 

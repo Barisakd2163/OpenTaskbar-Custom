@@ -36,6 +36,17 @@ internal static class SurfaceStyleChecks
             ThemeManager.SetSurface(SurfaceKind.Menu, SurfaceBackground.Solid, 0.3);
             Check(Alpha(app, "WidgetMaterial") == 102, "Widget glass must use only its own 40% opacity.");
             Check(Alpha(app, "SettingsGlassMaterial") == 128, "Settings glass must use only its own 50% opacity.");
+            Check(Alpha(app, "SettingsSidebarGlass") == 128 && Alpha(app, "SettingsContentGlass") == 0,
+                "Settings sidebar must scale with SettingsOpacity and content must stay transparent in Glass mode.");
+            ThemeManager.SetSurface(SurfaceKind.Settings, SurfaceBackground.Glass, 0.0);
+            Check(Alpha(app, "SettingsGlassMaterial") == 0 && Alpha(app, "SettingsSidebarGlass") == 0 && Alpha(app, "SettingsContentGlass") == 0,
+                "Settings Glass at 0% opacity must remove all tint layers.");
+            ThemeManager.SetSurface(SurfaceKind.Settings, SurfaceBackground.None, 0.5);
+            Check(Alpha(app, "SettingsGlassMaterial") == 0 && Alpha(app, "SettingsSidebarGlass") == 0 && Alpha(app, "SettingsContentGlass") == 0,
+                "Settings None must remove all background fills.");
+            ThemeManager.SetSurface(SurfaceKind.Settings, SurfaceBackground.Solid, 0.5);
+            Check(Alpha(app, "SettingsGlassMaterial") == 255 && Alpha(app, "SettingsSidebarGlass") == 255 && Alpha(app, "SettingsContentGlass") == 255,
+                "Settings Solid must make all window background layers opaque.");
             Check(app.FindResource("DockMaterial") != app.FindResource("MenuMaterial"),
                 "Surfaces must not share a single generated brush.");
 

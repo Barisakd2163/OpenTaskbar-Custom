@@ -32,12 +32,33 @@ internal static class SettingsBackdrop
         return true;
     }
 
-    /// <summary>Removes the native acrylic so a "no background" surface really shows the desktop.</summary>
+    /// <summary>
+    /// Disables the acrylic blur (DWMSBT_NONE = 1) while keeping the DWM frame extended into the
+    /// client area so a transparent WPF surface reveals the desktop behind the Settings window.
+    /// </summary>
+    public static bool TryEnableTransparent(Window window, AppTheme theme)
+    {
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle == 0 || SystemParameters.HighContrast) return false;
+        var dark = theme == AppTheme.Dark ? 1 : 0;
+        var backdrop = 1; // DWMSBT_NONE (0 is DWMSBT_AUTO)
+        var corners = 2;
+        DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
+        DwmSetWindowAttribute(handle, 38, ref backdrop, sizeof(int));
+        DwmSetWindowAttribute(handle, 33, ref corners, sizeof(int));
+        var margins = new Margins(-1);
+        var frameResult = DwmExtendFrameIntoClientArea(handle, ref margins);
+        if (frameResult < 0) return false;
+        if (HwndSource.FromHwnd(handle)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
+        return true;
+    }
+
+    /// <summary>Removes the native acrylic and extended frame for an opaque fallback surface.</summary>
     public static void Disable(Window window)
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0) return;
-        var backdrop = 0; // DWMSBT_NONE
+        var backdrop = 1; // DWMSBT_NONE
         DwmSetWindowAttribute(handle, 38, ref backdrop, sizeof(int));
         var margins = new Margins(0);
         DwmExtendFrameIntoClientArea(handle, ref margins);

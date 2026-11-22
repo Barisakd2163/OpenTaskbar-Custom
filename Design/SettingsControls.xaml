@@ -656,7 +656,7 @@
                 <ControlTemplate TargetType="TabControl">
                     <Grid KeyboardNavigation.TabNavigation="Local">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="185" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Border Background="{DynamicResource SettingsSidebarOverlay}" BorderBrush="{DynamicResource StrokeSubtle}"
+                        <Border Background="{DynamicResource SettingsSidebarGlass}" BorderBrush="{DynamicResource StrokeSubtle}"
                                 BorderThickness="0,0,1,0" Padding="10,18,10,14" SnapsToDevicePixels="True">
                             <views:SidebarNavPanel IsItemsHost="True" BottomCount="2"
                                                    KeyboardNavigation.TabIndex="1" KeyboardNavigation.TabNavigation="Once"

@@ -927,7 +927,7 @@
                 </TabItem>
             </TabControl>
             <Border x:Name="SettingsSearchOverlay" Grid.Row="1" Margin="185,0,0,0"
-                    Background="{DynamicResource SettingsContentGlass}" Visibility="Collapsed">
+                    Background="{DynamicResource SurfacePopup}" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               CanContentScroll="False" HorizontalContentAlignment="Stretch"
                               Padding="{StaticResource SettingsPageInset}">

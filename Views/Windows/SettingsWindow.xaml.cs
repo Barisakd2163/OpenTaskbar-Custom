@@ -351,13 +351,21 @@ public partial class SettingsWindow : Window
     {
         if (!_sourceReady) return;
         var chrome = WindowChrome.GetWindowChrome(this);
-        // A native WindowChrome window cannot paint a transparent client area without AllowsTransparency,
-        // which cannot be switched on after the HWND exists. "None" therefore drops the glass and the DWM
-        // acrylic and falls back to the same opaque surface used on unsupported systems.
-        if (ThemeManager.GetSurface(SurfaceKind.Settings).Background == SurfaceBackground.None)
+        var surfaceMode = ThemeManager.GetSurface(SurfaceKind.Settings).Background;
+        if (surfaceMode == SurfaceBackground.None)
+        {
+            var transparent = SettingsBackdrop.TryEnableTransparent(this, ThemeManager.EffectiveTheme);
+            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty,
+                transparent ? "SettingsGlassMaterial" : "SettingsBackground");
+            chrome.GlassFrameThickness = transparent ? new Thickness(-1) : new Thickness(0);
+            if (transparent) SettingsFrame.ClearValue(System.Windows.Controls.Border.CornerRadiusProperty);
+            else SettingsFrame.CornerRadius = new CornerRadius(0);
+            return;
+        }
+        if (surfaceMode == SurfaceBackground.Solid)
         {
             SettingsBackdrop.Disable(this);
-            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsBackground");
+            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsGlassMaterial");
             chrome.GlassFrameThickness = new Thickness(0);
             SettingsFrame.CornerRadius = new CornerRadius(0);
             return;
@@ -366,12 +374,12 @@ public partial class SettingsWindow : Window
         SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, glass ? "SettingsGlassMaterial" : "SettingsBackground");
         if (glass)
         {
-            WindowChrome.GetWindowChrome(this).GlassFrameThickness = new Thickness(-1);
+            chrome.GlassFrameThickness = new Thickness(-1);
             SettingsFrame.ClearValue(System.Windows.Controls.Border.CornerRadiusProperty);
         }
         else
         {
-            WindowChrome.GetWindowChrome(this).GlassFrameThickness = new Thickness(0);
+            chrome.GlassFrameThickness = new Thickness(0);
             SettingsFrame.CornerRadius = new CornerRadius(0);
         }
     }
