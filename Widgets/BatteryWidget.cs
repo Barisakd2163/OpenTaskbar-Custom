@@ -22,6 +22,7 @@ public sealed class BatteryWidget : DockWidget
     public static string Id => "Battery";
 
     private const double MinCardWidth = 96;
+    private const double CompactCardWidth = 56;
     private const double WaveHeight = 46;
     private const double WaveAmplitude = 3.2;
     private const double SheenWidth = 54;
@@ -56,8 +57,10 @@ public sealed class BatteryWidget : DockWidget
     internal Action OpenPowerSettingsAction { get; set; } = () => ShellShortcuts.OpenUri("ms-settings:batterysaver");
 
     public override bool SupportsStaticPreview => true;
+    public override bool SupportsCompactMode => true;
+    public override int ShrinkPriority => 36;
     public override double FullWidthEstimate => MinCardWidth + 4;
-    public override double CompactWidthEstimate => MinCardWidth + 4;
+    public override double CompactWidthEstimate => CompactCardWidth + 4;
 
     public BatteryWidget()
     {
@@ -302,6 +305,19 @@ public sealed class BatteryWidget : DockWidget
         if (IsActive) Render(force: true);
     }
 
+    protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
+    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void ApplyDensityLayout()
+    {
+        var compact = IsCompact && !IsHoverExpanded;
+        _card.MinWidth = _surface.MinWidth = compact ? CompactCardWidth : MinCardWidth;
+        _percentText.FontSize = _percentShadow.FontSize = compact ? 11.5 : 13;
+        _boltIcon.Width = _boltIcon.Height = _boltShadow.Width = _boltShadow.Height = compact ? 9.5 : 11;
+        UpdateLiquidGeometry(forceAnimationRestart: false);
+        RaiseContentWidthChanged();
+    }
+
     protected override void OnRenderPreview()
     {
         SampleAndRender();
@@ -406,7 +422,8 @@ public sealed class BatteryWidget : DockWidget
     {
         if (!_renderedPresent) return;
 
-        var width = _surface.ActualWidth > 1 ? _surface.ActualWidth : MinCardWidth;
+        var fallbackWidth = IsCompact && !IsHoverExpanded ? CompactCardWidth : MinCardWidth;
+        var width = _surface.ActualWidth > 1 ? _surface.ActualWidth : fallbackWidth;
         var height = _surface.ActualHeight > 1 ? _surface.ActualHeight : WaveHeight;
         var radius = _card.CornerRadius.TopLeft > 0 ? _card.CornerRadius.TopLeft : 10;
         _surface.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);

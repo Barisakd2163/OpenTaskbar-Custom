@@ -4,7 +4,17 @@
              xmlns:local="clr-namespace:OpenTaskbar.Services"
              xmlns:views="clr-namespace:OpenTaskbar.Views"
              Focusable="False" Foreground="{DynamicResource TextPrimary}" FontFamily="{StaticResource InterfaceFont}">
-    <Border Style="{StaticResource WidgetCardBorder}" Padding="10,0,6,0">
+    <Border>
+        <Border.Style>
+            <Style TargetType="Border" BasedOn="{StaticResource WidgetCardBorder}">
+                <Setter Property="Padding" Value="10,0,6,0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsCompact}" Value="True">
+                        <Setter Property="Padding" Value="8,0,8,0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
         <Grid VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -15,14 +25,17 @@
             <ContentControl x:Name="TileIcon" Grid.Column="0"
                             Content="{StaticResource IconTimer}"
                             Width="16" Height="16"
-                            VerticalAlignment="Center"
-                            Margin="0,0,7,0">
+                            VerticalAlignment="Center">
                 <ContentControl.Style>
                     <Style TargetType="ContentControl" BasedOn="{StaticResource WidgetIcon}">
                         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+                        <Setter Property="Margin" Value="0,0,7,0" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsRunning}" Value="True">
                                 <Setter Property="Foreground" Value="{DynamicResource WidgetSelectedForeground}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsCompact}" Value="True">
+                                <Setter Property="Margin" Value="0,0,5,0" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -75,6 +88,9 @@
                             <DataTrigger Binding="{Binding CanToggle}" Value="False">
                                 <Setter Property="ToolTip" Value="{local:Loc WidgetSetDuration}" />
                                 <Setter Property="AutomationProperties.Name" Value="{local:Loc WidgetSetDuration}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsCompact}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>

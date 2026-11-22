@@ -260,9 +260,12 @@ public partial class SystemStatsWidget : DockWidget
         var showGpu = !compact && meters.HasFlag(SystemMeters.Gpu) && _hasGpu;
         var showGpuTemp = !compact && meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp;
 
-        CpuLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        RamLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        GpuLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        StatsCardButton.Padding = compact ? new Thickness(7, 0, 7, 0) : new Thickness(10, 0, 10, 0);
+        RamDivider.Margin = compact ? new Thickness(6, 0, 6, 0) : new Thickness(9, 0, 9, 0);
+
+        Set(CpuLabel, !compact);
+        Set(RamLabel, !compact);
+        Set(GpuLabel, !compact);
 
         Set(CpuButton, showCpu);
         Set(RamDivider, showCpu && showRam);

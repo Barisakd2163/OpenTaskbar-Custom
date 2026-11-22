@@ -85,9 +85,14 @@ public sealed class DayProgressWidget : DockWidget
     protected override void OnLanguageChanged() => Render(DateTime.Now, force: true);
     protected override void OnTick(DateTime now) => Render(now, force: false);
 
-    protected override void OnCompactChanged(bool compact)
+    protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
+    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void ApplyDensityLayout()
     {
+        var compact = IsCompact && !IsHoverExpanded;
         _unitText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        _card.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(10, 0, 10, 0);
         RaiseContentWidthChanged();
     }
 

@@ -50,7 +50,7 @@ public partial class FocusWidget : DockWidget
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 50;
     public override double FullWidthEstimate => 118;
-    public override double CompactWidthEstimate => 96;
+    public override double CompactWidthEstimate => 78;
 
     public FocusWidget() : this(TimeProvider.System) { }
 
@@ -76,8 +76,10 @@ public partial class FocusWidget : DockWidget
     private void ApplyDensityLayout()
     {
         var compact = IsCompact && !IsHoverExpanded;
-        Card.Padding = compact ? new Thickness(7, 0, 6, 0) : new Thickness(10, 0, 8, 0);
+        Card.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(10, 0, 8, 0);
         FocusIcon.Margin = compact ? new Thickness(0, 0, 5, 0) : new Thickness(0, 0, 7, 0);
+        PlayButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        RaiseContentWidthChanged();
     }
 
     public override UIElement? BuildHoverFlyoutContent() => null;
