@@ -33,6 +33,7 @@ internal static class SettingsAndAutoHideChecks
         CheckTrayTransientTooltips(Check);
         CheckForegroundLocationForceRepublish(application, Check);
         CheckSettingsWindowCornerAndBorder(application, Check);
+        CheckSettingsWindowPreviewDensityAndAntigravityGroups(application, Check);
         return checks;
     }
 
@@ -678,6 +679,117 @@ internal static class SettingsAndAutoHideChecks
                     .Any(s => ReferenceEquals(s.Property, Border.CornerRadiusProperty)
                         && ((s.Value is CornerRadius cr && cr == new CornerRadius(0)) || s.Value?.ToString() == "0")) == true;
                 check(hasZeroCornerSetter, "SettingsBorderOverlay must switch to CornerRadius(0) when maximized.");
+            }
+            finally
+            {
+                sw.Close();
+                PumpDispatcher(application.Dispatcher, 120);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    private static void CheckSettingsWindowPreviewDensityAndAntigravityGroups(Application application, Action<bool, string> check)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"opentaskbar-ai-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(path, CultureInfo.GetCultureInfo("en-US"));
+            var initial = new DockSettings(
+                Language: AppLanguage.English,
+                Theme: AppTheme.Dark,
+                AnimationsEnabled: false,
+                Widgets: ["Clock", "Weather", "AiUsageClaude", "AiUsageAntigravity"],
+                InstalledWidgets: ["Clock", "Weather", "AiUsageClaude", "AiUsageAntigravity"]);
+            check(store.Save(initial) is null, "Initial settings for preview density check must save.");
+
+            var preferences = new ApplicationPreferences(store);
+            var sw = new SettingsWindow(preferences)
+            {
+                Left = -20000,
+                Top = -20000,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+            try
+            {
+                sw.Show();
+                PumpDispatcher(application.Dispatcher, 120);
+
+                // Select WidgetsTab so live previews attach
+                var tabs = (TabControl)sw.FindName("SettingsTabs");
+                var widgetsTab = (TabItem)sw.FindName("WidgetsTab");
+                tabs.SelectedItem = widgetsTab;
+                PumpDispatcher(application.Dispatcher, 120);
+
+                var densityBoxesField = typeof(SettingsWindow).GetField("_widgetDensityBoxes",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var densityBoxes = (Dictionary<string, ComboBox>)densityBoxesField.GetValue(sw)!;
+                check(densityBoxes.ContainsKey("Clock") && densityBoxes.ContainsKey("Weather"),
+                    "Clock and Weather settings panels must include per-widget density dropdown rows.");
+
+                var optionsField = typeof(SettingsWindow).GetField("_widgetOptions",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var options = (System.Collections.IEnumerable)optionsField.GetValue(sw)!;
+                DockWidgetOption? claudeOption = null;
+                DockWidgetOption? agyOption = null;
+                foreach (DockWidgetOption opt in options)
+                {
+                    if (opt.Id == "AiUsageClaude") claudeOption = opt;
+                    else if (opt.Id == "AiUsageAntigravity") agyOption = opt;
+                }
+                check(claudeOption?.LivePreview is OpenTaskbar.Widgets.DockWidget && agyOption?.LivePreview is OpenTaskbar.Widgets.DockWidget,
+                    "Live preview widgets must be attached for Claude and Antigravity.");
+
+                var claudePreview = (OpenTaskbar.Widgets.DockWidget)claudeOption!.LivePreview!;
+                check(!claudePreview.IsCompact, "Claude live preview must start in Full density when global density is Auto.");
+
+                // Switch Claude per-widget density override to Compact -> live preview must update IsCompact immediately
+                var claudeDensityBox = densityBoxes["AiUsageClaude"];
+                claudeDensityBox.SelectedItem = claudeDensityBox.Items.OfType<ComboBoxItem>()
+                    .First(i => (string)i.Tag == nameof(WidgetDensityMode.Compact));
+                PumpDispatcher(application.Dispatcher, 60);
+                check(claudePreview.IsCompact,
+                    "Setting per-widget density override to Compact must set IsCompact=true on the live preview widget.");
+
+                // Sync _aiRingBoxes across all AI cards when one ring box changes
+                var ringBoxesField = typeof(SettingsWindow).GetField("_aiRingBoxes",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var ringBoxes = (List<ComboBox>)ringBoxesField.GetValue(sw)!;
+                check(ringBoxes.Count >= 2, "Every AI usage card must have an AiUsageRing ComboBox.");
+                ringBoxes[0].SelectedItem = ringBoxes[0].Items.OfType<ComboBoxItem>()
+                    .First(i => (string)i.Tag == nameof(AiUsageRing.Session));
+                PumpDispatcher(application.Dispatcher, 60);
+                check(preferences.Current.AiUsageRing == AiUsageRing.Session
+                    && ringBoxes.All(cb => (cb.SelectedItem as ComboBoxItem)?.Tag as string == nameof(AiUsageRing.Session)),
+                    "Changing AiUsageRing on one AI card must sync all sibling AI ring ComboBoxes.");
+
+                // Antigravity group checkboxes: uncheck Argon and Claude, then verify last checked box (Gemini) cannot be unchecked
+                var agyBoxesField = typeof(SettingsWindow).GetField("_antigravityGroupBoxes",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var agyBoxes = (Dictionary<AntigravityGroups, CheckBox>)agyBoxesField.GetValue(sw)!;
+                check(agyBoxes.Count == 3 && agyBoxes.Values.All(b => b.IsChecked == true),
+                    "AiUsageAntigravity settings must attach 3 checked group checkboxes (Gemini, Claude, Argon).");
+
+                agyBoxes[AntigravityGroups.Argon].IsChecked = false;
+                PumpDispatcher(application.Dispatcher, 40);
+                check(preferences.Current.AntigravityGroups == (AntigravityGroups.Gemini | AntigravityGroups.Claude),
+                    "Unchecking Argon must persist Gemini | Claude.");
+
+                agyBoxes[AntigravityGroups.Claude].IsChecked = false;
+                PumpDispatcher(application.Dispatcher, 40);
+                check(preferences.Current.AntigravityGroups == AntigravityGroups.Gemini,
+                    "Unchecking Claude must persist Gemini.");
+
+                // Attempt to uncheck the last active group (Gemini) -> must remain checked
+                agyBoxes[AntigravityGroups.Gemini].IsChecked = false;
+                PumpDispatcher(application.Dispatcher, 40);
+                check(agyBoxes[AntigravityGroups.Gemini].IsChecked == true
+                    && preferences.Current.AntigravityGroups == AntigravityGroups.Gemini,
+                    "Attempting to uncheck the last active Antigravity group checkbox must keep it checked.");
             }
             finally
             {

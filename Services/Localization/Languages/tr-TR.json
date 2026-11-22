@@ -852,5 +852,6 @@
   "ThemeFieldWidgetRadius": "Widget köşe yarıçapı",
   "ThemeFieldWidgetSelectedFill": "Widget seçili dolgusu",
   "ThemeFieldWidgetSelectedForeground": "Widget seçili metni",
-  "ThemeFieldWidgetSelectedStroke": "Widget seçili kenarlığı"
+  "ThemeFieldWidgetSelectedStroke": "Widget seçili kenarlığı",
+  "AiUsageAntigravityGroupsLabel": "Gösterilen model grupları"
 }

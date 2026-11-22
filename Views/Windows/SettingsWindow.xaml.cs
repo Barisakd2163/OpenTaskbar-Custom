@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
     private readonly ObservableCollection<WidgetCategoryGroup> _widgetGroups = [];
     private readonly Dictionary<string, ComboBox> _widgetDensityBoxes = [];
     private readonly List<ComboBox> _aiRingBoxes = [];
+    private readonly Dictionary<AntigravityGroups, CheckBox> _antigravityGroupBoxes = [];
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly List<OpenTaskbar.Widgets.DockWidget> _livePreviewWidgets = [];
@@ -48,6 +49,7 @@ public partial class SettingsWindow : Window
     private bool _isInternalSave;
     private bool _hasUnappliedThemePreview;
     private AiUsageRing _aiUsageRing;
+    private AntigravityGroups _antigravityGroups = AntigravityGroups.All;
     private bool _closed;
     private bool _sourceReady;
     private HwndSource? _source;
@@ -134,6 +136,7 @@ public partial class SettingsWindow : Window
             _widgetGroups.Clear();
             _widgetDensityBoxes.Clear();
             _aiRingBoxes.Clear();
+            _antigravityGroupBoxes.Clear();
             WeatherCountryBox.ItemsSource = null;
             if (_hasUnappliedThemePreview || !ThemeManager.IsApplied(_preferences.Current))
             {
@@ -378,12 +381,17 @@ public partial class SettingsWindow : Window
             LoadSurfaceStyles(_preferences.Current);
         }
         ApplySettingsToLivePreviews(_preferences.Current);
-        foreach (var native in _widgetOptions
+        foreach (var option in _widgetOptions
             .Where(o => o.NativePreview is OpenTaskbar.Widgets.DockWidget d
-                        && !_livePreviewWidgets.Contains(d))
-            .Select(o => (OpenTaskbar.Widgets.DockWidget)o.NativePreview!))
+                        && !_livePreviewWidgets.Contains(d)))
         {
+            var native = (OpenTaskbar.Widgets.DockWidget)option.NativePreview!;
             native.ApplySettings(_preferences.Current);
+            var mode = _preferences.Current.WidgetDensityOverrides is not null
+                && _preferences.Current.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                    ? overrideMode
+                    : _preferences.Current.GlobalWidgetDensity;
+            native.SetCompactState(native.SupportsCompactMode && mode == WidgetDensityMode.Compact);
             native.Visibility = Visibility.Visible;
         }
         if ((themeGalleryDirty || themeApplied) && !reloadedSelections)
@@ -523,6 +531,7 @@ public partial class SettingsWindow : Window
             DateStyle = Enum.TryParse<ClockDateStyle>(Choice(DateStyleBox), out var dateStyle) ? dateStyle : ClockDateStyle.DayAndShortDate,
             StatsMeters = ReadStatsMeters(),
             AiUsageRing = _aiUsageRing,
+            AntigravityGroups = _antigravityGroups,
             ThemePack = _selectedThemePackId,
             ThemeApplicationIcons = false
         };
@@ -1198,6 +1207,11 @@ public partial class SettingsWindow : Window
                 var widget = WidgetCoordinator.CreateWidget(option.Id);
                 widget.ReportError = message => AppLog.Warning($"Widget preview '{option.Id}': {message}");
                 widget.ApplySettings(currentSettings);
+                var mode = currentSettings.WidgetDensityOverrides is not null
+                    && currentSettings.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                        ? overrideMode
+                        : currentSettings.GlobalWidgetDensity;
+                widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
                 widget.Activate();
                 widget.Tick(DateTime.Now);
                 // Reflect hardware availability (e.g. a desktop without a battery) in the catalog.
@@ -1240,18 +1254,35 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void ApplySettingsToLivePreviews(DockSettings settings)
     {
-        if (!_livePreviewsAttached || _livePreviewWidgets.Count == 0) return;
-        foreach (var option in _widgetOptions.Where(o => o.LivePreview is OpenTaskbar.Widgets.DockWidget))
+        foreach (var option in _widgetOptions)
         {
-            var widget = (OpenTaskbar.Widgets.DockWidget)option.LivePreview!;
-            widget.ApplySettings(settings);
-            // Some widgets hide themselves when their data source is inactive (e.g. media with no
-            // session). A preview must stay visible so the card never collapses to an empty tile.
-            if (widget.IsHardwareAvailable && widget.Visibility != Visibility.Visible)
-                widget.Visibility = Visibility.Visible;
-            option.IsHardwareAvailable = widget.IsHardwareAvailable;
-            // Rebuild the inline flyout preview so it reflects the just-applied settings.
-            if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
+            if (_livePreviewsAttached && option.LivePreview is OpenTaskbar.Widgets.DockWidget widget)
+            {
+                widget.ApplySettings(settings);
+                var mode = settings.WidgetDensityOverrides is not null
+                    && settings.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                        ? overrideMode
+                        : settings.GlobalWidgetDensity;
+                widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
+                // Some widgets hide themselves when their data source is inactive (e.g. media with no
+                // session). A preview must stay visible so the card never collapses to an empty tile.
+                if (widget.IsHardwareAvailable && widget.Visibility != Visibility.Visible)
+                    widget.Visibility = Visibility.Visible;
+                option.IsHardwareAvailable = widget.IsHardwareAvailable;
+                // Rebuild the inline flyout preview so it reflects the just-applied settings.
+                if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
+            }
+
+            if (option.NativePreview is OpenTaskbar.Widgets.DockWidget native && !ReferenceEquals(native, option.LivePreview))
+            {
+                native.ApplySettings(settings);
+                var mode = settings.WidgetDensityOverrides is not null
+                    && settings.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                        ? overrideMode
+                        : settings.GlobalWidgetDensity;
+                native.SetCompactState(native.SupportsCompactMode && mode == WidgetDensityMode.Compact);
+                if (native.SupportsStaticPreview) native.RenderPreview();
+            }
         }
     }
 
@@ -1344,7 +1375,13 @@ public partial class SettingsWindow : Window
             var native = live ?? WidgetCoordinator.CreatePreviewWidget(option.Id);
             if (native is not null)
             {
-                native.ApplySettings(ReadSelection());
+                var currentSettings = ReadSelection();
+                native.ApplySettings(currentSettings);
+                var mode = currentSettings.WidgetDensityOverrides is not null
+                    && currentSettings.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                        ? overrideMode
+                        : currentSettings.GlobalWidgetDensity;
+                native.SetCompactState(native.SupportsCompactMode && mode == WidgetDensityMode.Compact);
                 native.Visibility = Visibility.Visible;
                 // Only widgets with local-only rendering paint an extra frame when they are not
                 // already activated; the rest keep their constructor's honest placeholder state.
@@ -1448,6 +1485,10 @@ public partial class SettingsWindow : Window
                 }
             }
         }
+        _antigravityGroups = (settings.AntigravityGroups & AntigravityGroups.All) == AntigravityGroups.None
+            ? AntigravityGroups.All
+            : (settings.AntigravityGroups & AntigravityGroups.All);
+        UpdateAntigravityGroupCheckboxes();
         StatsCpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Cpu);
         StatsMemoryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Memory);
         StatsGpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Gpu);
@@ -1556,8 +1597,17 @@ public partial class SettingsWindow : Window
         WidgetPanelsPool.Children.Clear();
         _widgetDensityBoxes.Clear();
         _aiRingBoxes.Clear();
-        if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock) clock.SettingsView = ClockOptions;
-        if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather) weather.SettingsView = WeatherOptions;
+        _antigravityGroupBoxes.Clear();
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock)
+        {
+            AttachDensityRow("Clock", ClockOptions);
+            clock.SettingsView = ClockOptions;
+        }
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather)
+        {
+            AttachDensityRow("Weather", WeatherOptions);
+            weather.SettingsView = WeatherOptions;
+        }
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } focus)
         {
             AttachDensityRow("Focus", FocusOptions);
@@ -1576,6 +1626,10 @@ public partial class SettingsWindow : Window
             if (aiUsageIds.Contains(option.Id))
             {
                 AttachAiRingRow(panel);
+            }
+            if (option.Id == "AiUsageAntigravity")
+            {
+                AttachAntigravityGroupsRow(panel);
             }
             option.SettingsView = panel;
         }
@@ -1611,6 +1665,20 @@ public partial class SettingsWindow : Window
             if (!_initializing && combo.SelectedItem is ComboBoxItem { Tag: string tag } && Enum.TryParse<AiUsageRing>(tag, out var ring))
             {
                 _aiUsageRing = ring;
+                var wasInitializing = _initializing;
+                _initializing = true;
+                try
+                {
+                    foreach (var other in _aiRingBoxes)
+                    {
+                        if (!ReferenceEquals(other, combo))
+                            SelectChoice(other, tag);
+                    }
+                }
+                finally
+                {
+                    _initializing = wasInitializing;
+                }
                 ApplySettingsToLivePreviews(ReadSelection());
                 TriggerAutoSave(immediate: true);
             }
@@ -1619,6 +1687,102 @@ public partial class SettingsWindow : Window
         row.Children.Add(combo);
         _aiRingBoxes.Add(combo);
         panel.Children.Add(row);
+    }
+
+    private void AttachAntigravityGroupsRow(Panel panel)
+    {
+        var row = new Grid { Margin = new Thickness(0, panel.Children.Count > 0 ? 4 : 0, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var label = new TextBlock
+        {
+            Text = UiText.Get("AiUsageAntigravityGroupsLabel"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        Grid.SetColumn(label, 0);
+        row.Children.Add(label);
+
+        var checksPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        foreach (var (group, name) in new[]
+        {
+            (AntigravityGroups.Gemini, "Gemini"),
+            (AntigravityGroups.Claude, "Claude"),
+            (AntigravityGroups.Argon, "Argon")
+        })
+        {
+            var box = new CheckBox
+            {
+                Content = name,
+                Tag = $"AntigravityGroup:{name}",
+                IsChecked = _antigravityGroups.HasFlag(group),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            box.SetResourceReference(StyleProperty, "SettingsCheckbox");
+            System.Windows.Automation.AutomationProperties.SetName(box, name);
+
+            void HandleToggle(object sender, RoutedEventArgs e)
+            {
+                e.Handled = true;
+                if (_initializing) return;
+                var next = ReadAntigravityGroupsFromBoxes();
+                if (next == AntigravityGroups.None)
+                {
+                    var wasInitializing = _initializing;
+                    _initializing = true;
+                    try
+                    {
+                        box.IsChecked = true;
+                    }
+                    finally
+                    {
+                        _initializing = wasInitializing;
+                    }
+                    next = ReadAntigravityGroupsFromBoxes();
+                    if (next == AntigravityGroups.None) next = group;
+                    _antigravityGroups = next;
+                    return;
+                }
+                _antigravityGroups = next;
+                ApplySettingsToLivePreviews(ReadSelection());
+                TriggerAutoSave(immediate: true);
+            }
+
+            box.Checked += HandleToggle;
+            box.Unchecked += HandleToggle;
+            _antigravityGroupBoxes[group] = box;
+            checksPanel.Children.Add(box);
+        }
+
+        Grid.SetColumn(checksPanel, 1);
+        row.Children.Add(checksPanel);
+        panel.Children.Add(row);
+    }
+
+    private AntigravityGroups ReadAntigravityGroupsFromBoxes()
+    {
+        var flags = AntigravityGroups.None;
+        foreach (var (group, box) in _antigravityGroupBoxes)
+        {
+            if (box.IsChecked == true) flags |= group;
+        }
+        return flags;
+    }
+
+    private void UpdateAntigravityGroupCheckboxes()
+    {
+        foreach (var (group, box) in _antigravityGroupBoxes)
+        {
+            box.IsChecked = _antigravityGroups.HasFlag(group);
+        }
     }
 
     private void AttachDensityRow(string widgetId, FrameworkElement container)
@@ -2053,6 +2217,8 @@ public partial class SettingsWindow : Window
             LoadSecondaryAppChoices(defaults.SecondaryApps);
             SecondaryWidgetsToggle.IsChecked = defaults.SecondaryWidgets;
             UpdateMultiMonitorControls();
+            _antigravityGroups = defaults.AntigravityGroups;
+            UpdateAntigravityGroupCheckboxes();
         }
         finally
         {
@@ -2194,10 +2360,7 @@ public partial class SettingsWindow : Window
         UpdateMultiMonitorControls();
         // Reflect widget-related edits in the catalog immediately, without waiting for the
         // debounced save. Every live preview is a real widget, so ApplySettings re-renders it.
-        if (_livePreviewsAttached)
-        {
-            ApplySettingsToLivePreviews(ReadSelection());
-        }
+        ApplySettingsToLivePreviews(ReadSelection());
         TriggerAutoSave(immediate: sender is not (Slider or TextBox));
     }
 

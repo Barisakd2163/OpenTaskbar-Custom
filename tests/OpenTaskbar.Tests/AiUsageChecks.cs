@@ -351,12 +351,17 @@ internal static class AiUsageChecks
             Check(store.Save(settings) is null && store.Load().Settings.AiUsageProviders == AiProviders.None,
                 "Legacy provider flags must be consumed by the per-provider widget migration.");
             File.WriteAllText(path, "{}");
-            Check(store.Load().Settings is { AiUsageProviders: AiProviders.None, AiUsageRing: AiUsageRing.Highest },
-                "Legacy settings must leave providers disabled and the ring on the highest window.");
+            Check(store.Load().Settings is { AiUsageProviders: AiProviders.None, AiUsageRing: AiUsageRing.Highest, AntigravityGroups: AntigravityGroups.All },
+                "Legacy settings must leave providers disabled, the ring on the highest window, and Antigravity groups on All.");
             Check(!DockSettingsStore.Validate(settings with { AiUsageRing = (AiUsageRing)7 }), "Unknown ring windows must be rejected.");
-            Check(store.Save(settings with { AiUsageRing = AiUsageRing.Weekly }) is null && store.Load().Settings.AiUsageRing == AiUsageRing.Weekly
+            Check(!DockSettingsStore.Validate(settings with { AntigravityGroups = AntigravityGroups.None })
+                && !DockSettingsStore.Validate(settings with { AntigravityGroups = (AntigravityGroups)99 })
+                && DockSettingsStore.Validate(settings with { AntigravityGroups = AntigravityGroups.Gemini | AntigravityGroups.Argon }),
+                "AntigravityGroups must require at least one valid group flag and reject unknown bits.");
+            Check(store.Save(settings with { AiUsageRing = AiUsageRing.Weekly, AntigravityGroups = AntigravityGroups.Gemini | AntigravityGroups.Argon }) is null
+                && store.Load().Settings is { AiUsageRing: AiUsageRing.Weekly, AntigravityGroups: AntigravityGroups.Gemini | AntigravityGroups.Argon }
                 && File.ReadAllText(path).Contains("\"AiUsageRing\": \"Weekly\"", StringComparison.Ordinal),
-                "The ring window must round-trip through settings by name.");
+                "The ring window and Antigravity groups must round-trip through settings.");
             Check(SettingsBackup.Export(path, settings) is null, "AI preferences must support settings export.");
             using var backup = JsonDocument.Parse(File.ReadAllText(path));
             var exported = backup.RootElement.GetProperty("Settings");
@@ -386,7 +391,7 @@ internal static class AiUsageChecks
         Check(AiUsageWidget.RetryDelay(null, 0, null).TotalSeconds is >= 300 and <= 330, "Successful loads must refresh after five minutes plus jitter.");
 
         string[] keys = ["WidgetAiUsage", "WidgetAiUsageDescription", "AiUsageSettingsHeading", "AiUsageProviderHint",
-            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageSessionShort", "AiUsageWeeklyShort", "AiUsageMonthly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageResetsIn", "AiUsageResetsAt",
+            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageSessionShort", "AiUsageWeeklyShort", "AiUsageMonthly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageAntigravityGroupsLabel", "AiUsageResetsIn", "AiUsageResetsAt",
             "AiUsageUpdated", "AiUsageRefresh", "AiUsageOpenDashboard", "AiUsageNoProviders", "AiUsageRingLabel",
             "AiUsageRingHighest", "AiUsageRingSession", "AiUsageLimitReached", "AiUsageStatusOk", "AiUsageStatusSignIn",
             "AiUsageStatusStale", "AiUsageStatusNearLimit", "AiUsageStatusHigh", "AiUsageStatusUnavailable", "AiUsageStatusLoading", "AiUsagePaceIn", "AiUsagePaceAt", "AiUsagePaceMarker", "HoursMinutesFormat",
@@ -594,6 +599,186 @@ internal static class AiUsageChecks
 
         checks += 8;
 
+        // Width estimate checks: CompactWidthEstimate must be strictly smaller than FullWidthEstimate for every AI provider
+        foreach (var provider in new[]
+        {
+            AiProviders.Claude, AiProviders.Codex, AiProviders.Antigravity,
+            AiProviders.OpenCode, AiProviders.Copilot, AiProviders.DeepSeek, AiProviders.OpenRouter
+        })
+        {
+            using var w = new AiUsageWidget(provider, loaders[1]);
+            if (w.CompactWidthEstimate >= w.FullWidthEstimate)
+                throw new InvalidOperationException($"{provider} CompactWidthEstimate ({w.CompactWidthEstimate}) must be smaller than FullWidthEstimate ({w.FullWidthEstimate}).");
+            checks++;
+        }
+
+        // DualQuotaBars (Claude/Codex) AiUsageRing + Compact + HoverExpand checks
+        {
+            using var claudeWidget = new AiUsageWidget(AiProviders.Claude, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Max",
+                [
+                    new("AiUsageSession", 0.30, DateTimeOffset.UtcNow.AddHours(2), 18000L),
+                    new("AiUsageWeekly", 0.65, DateTimeOffset.UtcNow.AddDays(4), 604800L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            claudeWidget.Activate();
+            UiText.Current.SetLanguage(AppLanguage.English);
+
+            var cardObj = agyCardField.GetValue(claudeWidget)!;
+            var bars = cardObj.GetType().GetProperty("Codex")!.GetValue(cardObj)!;
+            var sessionRow = (StackPanel)bars.GetType().GetProperty("SessionRow")!.GetValue(bars)!;
+            var weeklyRow = (StackPanel)bars.GetType().GetProperty("WeeklyRow")!.GetValue(bars)!;
+            var sessionTrack = (Border)bars.GetType().GetProperty("SessionTrack")!.GetValue(bars)!;
+            var weeklyTrack = (Border)bars.GetType().GetProperty("WeeklyTrack")!.GetValue(bars)!;
+            var sessionReset = (TextBlock)bars.GetType().GetProperty("SessionReset")!.GetValue(bars)!;
+            var weeklyReset = (TextBlock)bars.GetType().GetProperty("WeeklyReset")!.GetValue(bars)!;
+
+            // Full + Session => only SessionRow visible
+            claudeWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AiUsageRing: AiUsageRing.Session));
+            if (sessionRow.Visibility != System.Windows.Visibility.Visible || weeklyRow.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("Claude Full+Session must show only SessionRow.");
+
+            // Full + Weekly => only WeeklyRow visible
+            claudeWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AiUsageRing: AiUsageRing.Weekly));
+            if (sessionRow.Visibility != System.Windows.Visibility.Collapsed || weeklyRow.Visibility != System.Windows.Visibility.Visible)
+                throw new InvalidOperationException("Claude Full+Weekly must show only WeeklyRow.");
+
+            // Compact + Highest => single row with higher Used (weekly 65% > session 30%), 26px bar track, concise percentage text preserved across Tick
+            claudeWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AiUsageRing: AiUsageRing.Highest));
+            claudeWidget.SetCompactState(true);
+            if (sessionRow.Visibility != System.Windows.Visibility.Collapsed || weeklyRow.Visibility != System.Windows.Visibility.Visible)
+                throw new InvalidOperationException("Claude Compact+Highest must show only the fuller row (WeeklyRow 65%).");
+            if (Math.Abs(weeklyTrack.Width - 26) > 0.01)
+                throw new InvalidOperationException($"Claude Compact bar track width must be 26px, got {weeklyTrack.Width}.");
+            if (weeklyReset.Text != "65%")
+                throw new InvalidOperationException($"Claude Compact reset text must be '65%', got '{weeklyReset.Text}'.");
+            claudeWidget.Tick(DateTime.Now.AddMinutes(3));
+            if (weeklyReset.Text != "65%")
+                throw new InvalidOperationException($"Claude Compact percentage text must survive OnTick countdown update, got '{weeklyReset.Text}'.");
+
+            // Hover expand while compact temporarily restores Full two-row 38px layout
+            claudeWidget.SetHoverExpanded(true);
+            if (sessionRow.Visibility != System.Windows.Visibility.Visible || weeklyRow.Visibility != System.Windows.Visibility.Visible || Math.Abs(sessionTrack.Width - 38) > 0.01)
+                throw new InvalidOperationException("Hover-expanding a compact Claude widget must render Full two-row 38px bars.");
+            claudeWidget.SetHoverExpanded(false);
+            checks += 5;
+        }
+
+        // Antigravity groups filtering, placeholder fallback, AiUsageRing, and Compact mode checks
+        {
+            using var agyFilterWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Google AI Pro",
+                [
+                    new("AiUsageSession", 0.25, DateTimeOffset.UtcNow.AddHours(3), 18000L, Group: "AiUsageGroupGemini"),
+                    new("AiUsageWeekly", 0.55, DateTimeOffset.UtcNow.AddDays(5), 604800L, Group: "AiUsageGroupGemini"),
+                    new("AiUsageSession", 0.80, DateTimeOffset.UtcNow.AddHours(1), 18000L, Group: "AiUsageGroupClaudeGpt"),
+                    new("AiUsageWeekly", 0.40, DateTimeOffset.UtcNow.AddDays(4), 604800L, Group: "AiUsageGroupClaudeGpt")
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            agyFilterWidget.Activate();
+            UiText.Current.SetLanguage(AppLanguage.English);
+
+            var cardObj = agyCardField.GetValue(agyFilterWidget)!;
+            var card = agyProp.GetValue(cardObj)!;
+            var cols = (System.Collections.IList)columnsProp.GetValue(card)!;
+
+            // Filter to Gemini only => 1 column
+            agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.Gemini));
+            if (cols.Count != 1)
+                throw new InvalidOperationException($"Antigravity filtered to Gemini must have 1 column, got {cols.Count}.");
+
+            // Filter to Argon only (when report has no Argon windows) => must build Argon placeholder column instead of empty card
+            agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.Argon));
+            if (cols.Count != 1)
+                throw new InvalidOperationException($"Antigravity filtered to missing Argon group must show 1 Argon placeholder column, got {cols.Count}.");
+            var argonColPanel = (StackPanel)col1ElemProp.GetValue(cols[0]!)!;
+            if (((TextBlock)argonColPanel.Children[0]).Text != "Argon")
+                throw new InvalidOperationException("Antigravity missing Argon fallback must show 'Argon' header.");
+
+            // Compact + All => 2 matched columns, each with 1 slot, 22px bar width, and concise percentage text preserved across Tick
+            agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.All, AiUsageRing: AiUsageRing.Highest));
+            agyFilterWidget.SetCompactState(true);
+            if (cols.Count != 2)
+                throw new InvalidOperationException($"Antigravity Compact+All with Gemini & Claude data must have 2 columns, got {cols.Count}.");
+            var compactSlots0 = (System.Collections.IList)col1SlotsProp.GetValue(cols[0]!)!;
+            var compactSlots1 = (System.Collections.IList)col1SlotsProp.GetValue(cols[1]!)!;
+            if (compactSlots0.Count != 1 || compactSlots1.Count != 1)
+                throw new InvalidOperationException("Antigravity Compact mode must render exactly 1 row per enabled group.");
+            var slot0Reset = (TextBlock)compactSlots0[0]!.GetType().GetProperty("Reset")!.GetValue(compactSlots0[0]!)!;
+            if (slot0Reset.Text != "55%")
+                throw new InvalidOperationException($"Antigravity Compact+Highest Gemini slot must show '55%', got '{slot0Reset.Text}'.");
+            agyFilterWidget.Tick(DateTime.Now.AddMinutes(4));
+            if (slot0Reset.Text != "55%")
+                throw new InvalidOperationException($"Antigravity Compact percentage text must survive OnTick, got '{slot0Reset.Text}'.");
+            checks += 5;
+        }
+
+        // OpenCode and Copilot/DeepSeek compact mode checks
+        {
+            using var ocWidget = new AiUsageWidget(AiProviders.OpenCode, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Go",
+                [
+                    new("AiUsageSession", 0.20, DateTimeOffset.UtcNow.AddHours(2), 18000L),
+                    new("AiUsageWeekly", 0.70, DateTimeOffset.UtcNow.AddDays(3), 604800L),
+                    new("AiUsageMonthly", 0.40, DateTimeOffset.UtcNow.AddDays(15), 2592000L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            ocWidget.Activate();
+            var ocCardObj = agyCardField.GetValue(ocWidget)!;
+            var ocBars = ocCardObj.GetType().GetProperty("OpenCode")!.GetValue(ocCardObj)!;
+            var hourCol = (StackPanel)ocBars.GetType().GetProperty("HourCol")!.GetValue(ocBars)!;
+            var weekCol = (StackPanel)ocBars.GetType().GetProperty("WeekCol")!.GetValue(ocBars)!;
+            var monthCol = (StackPanel)ocBars.GetType().GetProperty("MonthCol")!.GetValue(ocBars)!;
+            var weekReset = (TextBlock)ocBars.GetType().GetProperty("WeekReset")!.GetValue(ocBars)!;
+
+            ocWidget.ApplySettings(new DockSettings(AiUsageRing: AiUsageRing.Session));
+            if (hourCol.Visibility != System.Windows.Visibility.Visible || weekCol.Visibility != System.Windows.Visibility.Collapsed || monthCol.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("OpenCode Full+Session must show only HourCol.");
+
+            ocWidget.ApplySettings(new DockSettings(AiUsageRing: AiUsageRing.Highest));
+            ocWidget.SetCompactState(true);
+            if (hourCol.Visibility != System.Windows.Visibility.Collapsed || weekCol.Visibility != System.Windows.Visibility.Visible || monthCol.Visibility != System.Windows.Visibility.Collapsed || weekReset.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("OpenCode Compact+Highest must show only the highest column (WeekCol 70%) and collapse reset text.");
+
+            using var copilotWidget = new AiUsageWidget(AiProviders.Copilot, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Individual",
+                [
+                    new("AiUsageMonthly", 0.28, DateTimeOffset.UtcNow.AddDays(10), 2592000L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            copilotWidget.Activate();
+            var cpCardObj = agyCardField.GetValue(copilotWidget)!;
+            var cpName = (TextBlock)cpCardObj.GetType().GetProperty("Name")!.GetValue(cpCardObj)!;
+            var cpSimple = cpCardObj.GetType().GetProperty("Simple")!.GetValue(cpCardObj)!;
+            var cpSep = (Border)cpSimple.GetType().GetProperty("Separator")!.GetValue(cpSimple)!;
+            var cpMeta = (TextBlock)cpSimple.GetType().GetProperty("MetaText")!.GetValue(cpSimple)!;
+            var cpMiniTrack = (Border)cpSimple.GetType().GetProperty("MiniBarTrack")!.GetValue(cpSimple)!;
+
+            copilotWidget.SetCompactState(true);
+            if (cpName.Visibility != System.Windows.Visibility.Collapsed
+                || cpSep.Visibility != System.Windows.Visibility.Collapsed
+                || cpMeta.Visibility != System.Windows.Visibility.Collapsed
+                || cpMiniTrack.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("Copilot Compact mode must collapse Name, Separator, MetaText, and MiniBarTrack.");
+
+            copilotWidget.SetCompactState(false);
+            if (cpName.Visibility != System.Windows.Visibility.Visible
+                || cpSep.Visibility != System.Windows.Visibility.Visible
+                || cpMeta.Visibility != System.Windows.Visibility.Visible
+                || cpMiniTrack.Visibility != System.Windows.Visibility.Visible)
+                throw new InvalidOperationException("Copilot Full mode must restore Name, Separator, MetaText, and MiniBarTrack.");
+            checks += 4;
+        }
+
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
         pending.SetCanceled();
         return checks;
     }
