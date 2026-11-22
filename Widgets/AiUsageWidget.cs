@@ -1142,7 +1142,7 @@ public sealed class AiUsageWidget : DockWidget
             slots.Add(wSlot);
         }
 
-        var header = Text(label, 9, foreground, new Thickness(0, 0, 0, 1), lineHeight: 10);
+        var header = Text(label, 9, foreground, new Thickness(0, 0, 0, 0.5), lineHeight: 11);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
         Typography.SetNumeralAlignment(header, FontNumeralAlignment.Tabular);
@@ -1226,7 +1226,7 @@ public sealed class AiUsageWidget : DockWidget
             Orientation = Orientation.Horizontal,
             Height = 10,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, hasBottomMargin ? 1 : 0)
+            Margin = new Thickness(0, 0, 0, hasBottomMargin ? 0.5 : 0)
         };
         row.Children.Add(lbl);
         row.Children.Add(bar);
@@ -1276,6 +1276,8 @@ public sealed class AiUsageWidget : DockWidget
                     selectedWindows = orderedWindows;
                     break;
             }
+            if (selectedWindows.Count > 2)
+                selectedWindows = selectedWindows.Take(2).ToList();
         }
 
         for (var i = 0; i < selectedWindows.Count; i++)
@@ -1289,7 +1291,7 @@ public sealed class AiUsageWidget : DockWidget
             slots.Add(slot);
         }
 
-        var header = Text(AntigravityGroupHeader(group), 9, foreground, new Thickness(0, 0, 0, 1), lineHeight: 10);
+        var header = Text(AntigravityGroupHeader(group), 9, foreground, new Thickness(0, 0, 0, 0.5), lineHeight: 11);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
         Typography.SetNumeralAlignment(header, FontNumeralAlignment.Tabular);
@@ -1316,7 +1318,7 @@ public sealed class AiUsageWidget : DockWidget
         };
 
         var label = AntigravityPoolHeader(window.LabelKey);
-        var header = Text(label, 9, foreground, new Thickness(0, 0, 0, 1), lineHeight: 10);
+        var header = Text(label, 9, foreground, new Thickness(0, 0, 0, 0.5), lineHeight: 11);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
         Typography.SetNumeralAlignment(header, FontNumeralAlignment.Tabular);

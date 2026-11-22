@@ -612,6 +612,33 @@ internal static class AiUsageChecks
                 throw new InvalidOperationException($"Antigravity Full Gemini placeholder column must measure <= 33 DIP, got {phGeminiCol.DesiredSize.Height:F2}.");
         }
 
+        // Full Antigravity group with 3 windows must cap card rows at 2 (keeping full list in flyout) and measure <= 33 DIP
+        using (var agyThreeWinWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
+        {
+            var threeWinReport = new AiUsageReport(provider, "Google AI Pro",
+            [
+                new("AiUsageSession", 0.40, DateTimeOffset.UtcNow.AddHours(2), 18000L, Group: "AiUsageGroupGemini"),
+                new("AiUsageWeekly", 0.65, DateTimeOffset.UtcNow.AddDays(5), 604800L, Group: "AiUsageGroupGemini"),
+                new("AiUsageMonthly", 0.20, DateTimeOffset.UtcNow.AddDays(20), 2592000L, Group: "AiUsageGroupGemini")
+            ], DateTimeOffset.UtcNow);
+            return Task.FromResult<(AiUsageReport?, string?)>((threeWinReport, null));
+        }))
+        {
+            agyThreeWinWidget.Activate();
+            var twCardObj = agyCardField.GetValue(agyThreeWinWidget)!;
+            var twCard = agyProp.GetValue(twCardObj)!;
+            var twCols = (System.Collections.IList)columnsProp.GetValue(twCard)!;
+            var twSlots = (System.Collections.IList)col1SlotsProp.GetValue(twCols[0]!)!;
+            if (twSlots.Count != 2)
+                throw new InvalidOperationException($"Antigravity Full group column must cap displayed card rows at 2 when 3+ windows are present, got {twSlots.Count}.");
+            var twColPanel = (StackPanel)col1ElemProp.GetValue(twCols[0]!)!;
+            twColPanel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (twColPanel.DesiredSize.Height <= 0 || twColPanel.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Full 3-window group column must measure <= 33 DIP, got {twColPanel.DesiredSize.Height:F2}.");
+            if (agyThreeWinWidget.BuildHoverFlyoutContent() is null)
+                throw new InvalidOperationException("Antigravity 3-window hover flyout must still build with all windows.");
+        }
+
         // Now test 3 pools format
         using var agyPoolWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
         {
@@ -636,7 +663,7 @@ internal static class AiUsageChecks
         if (poolCol0.DesiredSize.Height <= 0 || poolCol0.DesiredSize.Height > 33)
             throw new InvalidOperationException($"Antigravity Pool column must measure <= 33 DIP to avoid vertical clipping, got {poolCol0.DesiredSize.Height:F2}.");
 
-        checks += 13;
+        checks += 16;
 
         // Width estimate checks: CompactWidthEstimate must be strictly smaller than FullWidthEstimate for every AI provider
         foreach (var provider in new[]
