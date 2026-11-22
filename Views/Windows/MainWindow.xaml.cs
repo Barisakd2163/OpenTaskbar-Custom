@@ -2708,11 +2708,20 @@ public partial class MainWindow : Window
                 // Full-width bar: size the apps column to the actual measured content width. An
                 // ItemsControl reports 0 as its desired width, so plain Auto collapsed the column
                 // and the grid's desired width was wrong — Center then could not truly center.
-                var appsWidth = DockScrollViewer.MeasureContentWidth(DockContents);
-                AppsColumn.Width = new GridLength(Math.Max(0, appsWidth));
+                var appsWidth = Math.Max(0, DockScrollViewer.MeasureContentWidth(DockContents));
+                AppsColumn.Width = new GridLength(appsWidth);
                 WidgetColumn.Width = GridLength.Auto;
                 WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
-                DockLayoutRoot.Width = double.NaN;
+                // Explicit total width: a Grid with all-Auto columns can still report a stretched
+                // desired width through its scroll viewer, which shifts Center off by a few pixels.
+                DockLayoutRoot.Width = DockScrollViewer.MeasureContentWidth(DockLeadControls)
+                    + appsWidth
+                    + DockScrollViewer.MeasureContentWidth(DockTrailControls)
+                    + (WidgetIsland.Visibility == Visibility.Visible
+                        ? DockScrollViewer.MeasureContentWidth(WidgetIsland) : 0);
+                // The full-width bar already has all the screen width; leftover sub-pixel scroll range
+                // must not surface prev/next arrows when nothing actually overflows.
+                DockScrollViewer.SuppressOverflowIndicators = true;
                 DockLayoutRoot.HorizontalAlignment = _preferences.Current.ContentAlignment switch
                 {
                     DockContentAlignment.Left => HorizontalAlignment.Left,
@@ -2727,6 +2736,7 @@ public partial class MainWindow : Window
                 WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
                 DockLayoutRoot.Width = double.NaN;
                 DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
+                DockScrollViewer.SuppressOverflowIndicators = false;
             }
         }
         ApplyDockMargin();
