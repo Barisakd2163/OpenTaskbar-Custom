@@ -100,6 +100,15 @@ public static class ThemeManager
         NotifyThemeChanged();
     }
 
+    /// <summary>True when the active theme and all four surface styles already match the saved settings.</summary>
+    public static bool IsApplied(DockSettings settings) =>
+        _palette is not null
+        && Current == settings.Theme
+        && GetSurface(SurfaceKind.Dock) == new SurfaceStyle(settings.DockBackground, settings.DockOpacity, settings.DockBorderThickness, settings.DockBorderColor)
+        && GetSurface(SurfaceKind.Menu) == new SurfaceStyle(settings.MenuBackground, settings.MenuOpacity, settings.MenuBorderThickness, settings.MenuBorderColor)
+        && GetSurface(SurfaceKind.Widget) == new SurfaceStyle(settings.WidgetBackground, settings.WidgetOpacity, settings.WidgetBorderThickness, settings.WidgetBorderColor)
+        && GetSurface(SurfaceKind.Settings) == new SurfaceStyle(settings.SettingsBackground, settings.SettingsOpacity, settings.SettingsBorderThickness, settings.SettingsBorderColor);
+
     /// <summary>True for the dictionaries this class owns, which theme packs must not treat as token definitions.</summary>
     internal static bool IsManagedDictionary(ResourceDictionary dictionary) =>
         ReferenceEquals(dictionary, _palette) || ReferenceEquals(dictionary, Materials)

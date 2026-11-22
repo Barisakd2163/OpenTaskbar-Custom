@@ -32,6 +32,7 @@ public partial class SettingsWindow : Window
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly List<OpenTaskbar.Widgets.DockWidget> _livePreviewWidgets = [];
     private DispatcherTimer? _livePreviewTimer;
+    private bool _livePreviewsAttached;
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private bool _startupEnabled;
     private bool _startupAvailable;
@@ -40,6 +41,8 @@ public partial class SettingsWindow : Window
     private bool _closingApplication;
     private bool _initializing = true;
     private bool _isSaving;
+    private bool _isInternalSave;
+    private bool _hasUnappliedThemePreview;
     private AiUsageRing _aiUsageRing;
     private bool _closed;
     private bool _sourceReady;
@@ -52,17 +55,20 @@ public partial class SettingsWindow : Window
     private string? _launcherCustomHotkey;
     private readonly string _radioGroupScope = Guid.NewGuid().ToString("N");
     private readonly RoutedEventHandler _preferenceEditedHandler;
+    private readonly DragCompletedEventHandler _dockScaleDragCompletedHandler;
     private readonly Dictionary<SurfaceKind, Slider> _surfaceSliders = [];
     private readonly Dictionary<SurfaceKind, TextBlock> _surfaceValues = [];
     private readonly Dictionary<SurfaceKind, ComboBox> _surfaceBoxes = [];
 
     internal bool IsClosingOrClosed => _isClosing || _closed;
+    internal int LivePreviewWidgetCount => _livePreviewWidgets.Count;
 
     public SettingsWindow(ApplicationPreferences preferences)
     {
         _preferences = preferences;
         _applied = preferences.Current;
         _preferenceEditedHandler = PreferenceEdited;
+        _dockScaleDragCompletedHandler = (_, _) => CommitDockScale();
         InitializeComponent();
         var currentVersion = UpdateChecker.CurrentVersion;
         var versionString = $"v{currentVersion.Major}.{currentVersion.Minor}.{currentVersion.Build}";
@@ -78,11 +84,9 @@ public partial class SettingsWindow : Window
             _widgetOptions.Add(option);
         }
         AttachWidgetSettingsPanels();
-        // Catalog previews are the very same widget classes the dock runs (activated + ticked),
-        // so the cards reflect the real taskbar widgets instead of hand-authored mock tiles.
-        AttachLiveWidgetPreviews();
-        CustomThemeEditor.ThemeSaved += (_, _) => BuildThemeGallery(_selectedThemePackId);
-        CustomThemeEditor.ThemeCreated += (_, id) => ReloadThemePacks(id);
+        // Live widget previews are attached lazily when WidgetsTab is first selected in UpdateWidgetPreviewRefresh.
+        CustomThemeEditor.ThemeSaved += CustomThemeEditor_ThemeSaved;
+        CustomThemeEditor.ThemeCreated += CustomThemeEditor_ThemeCreated;
         var widgetView = new ListCollectionView(_widgetOptions);
         widgetView.SortDescriptions.Add(new SortDescription(nameof(DockWidgetOption.CategoryOrder), ListSortDirection.Ascending));
         // Group by the localized label so the catalog headers follow the active UI language.
@@ -90,15 +94,10 @@ public partial class SettingsWindow : Window
         WidgetOptionsList.ItemsSource = widgetView;
         WeatherCountryBox.ItemsSource = CountryCityService.GetInitialCountries().Select(c => c.Name).ToList();
         WeatherCityCombo.LostFocus += WeatherCityCombo_LostFocus;
-        _ = InitializeWeatherLocationsAsync(_applied.WeatherCity);
         _preferences.Changed += Preferences_Changed;
         Deactivated += Settings_Deactivated;
         _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
-        _autoSaveTimer.Tick += (_, _) =>
-        {
-            _autoSaveTimer.Stop();
-            SaveSettings();
-        };
+        _autoSaveTimer.Tick += AutoSaveTimer_Tick;
         IsVisibleChanged += Settings_IsVisibleChanged;
         Closed += (_, _) =>
         {
@@ -106,7 +105,12 @@ public partial class SettingsWindow : Window
             ClearSearchHighlight();
             RemoveHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
             RemoveHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
+            DockScaleSlider.RemoveHandler(Thumb.DragCompletedEvent, _dockScaleDragCompletedHandler);
+            CustomThemeEditor.ThemeSaved -= CustomThemeEditor_ThemeSaved;
+            CustomThemeEditor.ThemeCreated -= CustomThemeEditor_ThemeCreated;
+            WeatherCityCombo.LostFocus -= WeatherCityCombo_LostFocus;
             _autoSaveTimer.Stop();
+            _autoSaveTimer.Tick -= AutoSaveTimer_Tick;
             _widgetPreviewTimer.Stop();
             _widgetPreviewTimer.Tick -= WidgetPreviewTimer_Tick;
             StopAndDisposeLivePreviews();
@@ -122,7 +126,11 @@ public partial class SettingsWindow : Window
             _widgetDensityBoxes.Clear();
             _aiRingBoxes.Clear();
             WeatherCountryBox.ItemsSource = null;
-            ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
+            if (_hasUnappliedThemePreview || !ThemeManager.IsApplied(_preferences.Current))
+            {
+                ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
+            }
+            _hasUnappliedThemePreview = false;
             (Application.Current.MainWindow as MainWindow)?.SetSizePreview(null, null);
             (Application.Current.MainWindow as MainWindow)?.SetGeometryPreview(null);
         };
@@ -139,8 +147,7 @@ public partial class SettingsWindow : Window
         DockIconPaddingSlider.Value = _applied.DockIconPadding;
         UpdateDockIconPaddingLabel();
         DockScaleSlider.Value = Math.Round(_applied.DockScale * 100);
-        DockScaleSlider.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
-            new System.Windows.Controls.Primitives.DragCompletedEventHandler((_, _) => CommitDockScale()));
+        DockScaleSlider.AddHandler(Thumb.DragCompletedEvent, _dockScaleDragCompletedHandler);
         UpdateDockScaleLabel();
         SelectChoice(DockWidthModeBox, _applied.DockWidthMode.ToString());
         UpdateDockWidthControls();
@@ -314,7 +321,11 @@ public partial class SettingsWindow : Window
             UpdateHotkeyControls();
             RefreshSettingsSearchIfActive();
         }
-        if (!_isSaving && !ReferenceEquals(_preferences.Current, _applied))
+        var themeGalleryDirty = _applied.Theme != _preferences.Current.Theme
+            || !string.Equals(_applied.ThemePack, _preferences.Current.ThemePack, StringComparison.OrdinalIgnoreCase)
+            || _applied.Language != _preferences.Current.Language;
+        var reloadedSelections = false;
+        if (!_isInternalSave && !_isSaving && !ReferenceEquals(_preferences.Current, _applied))
         {
             _autoSaveTimer.Stop();
             var wasInitializing = _initializing;
@@ -322,14 +333,24 @@ public partial class SettingsWindow : Window
             try
             {
                 LoadAllSelections(_preferences.Current);
+                reloadedSelections = true;
             }
             finally
             {
                 _initializing = wasInitializing;
             }
         }
-        ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
-        LoadSurfaceStyles(_preferences.Current);
+        var themeApplied = false;
+        if (_hasUnappliedThemePreview || !ThemeManager.IsApplied(_preferences.Current))
+        {
+            ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
+            themeApplied = true;
+        }
+        _hasUnappliedThemePreview = false;
+        if (!_isInternalSave && !reloadedSelections)
+        {
+            LoadSurfaceStyles(_preferences.Current);
+        }
         ApplySettingsToLivePreviews(_preferences.Current);
         foreach (var option in _widgetOptions)
         {
@@ -340,11 +361,15 @@ public partial class SettingsWindow : Window
                 native.Visibility = Visibility.Visible;
             }
         }
-        CustomThemeEditor.LoadTheme(_selectedThemePackId, ThemeManager.EffectiveTheme);
-        BuildThemeGallery(_selectedThemePackId);
+        if ((themeGalleryDirty || themeApplied) && !reloadedSelections)
+        {
+            CustomThemeEditor.LoadTheme(_selectedThemePackId, ThemeManager.EffectiveTheme);
+            BuildThemeGallery(_selectedThemePackId);
+        }
         UpdateDockScaleLabel();
         UpdateWidgetOptionState();
         UpdateBackdrop();
+        _applied = _preferences.Current;
     }
 
     private void UpdateBackdrop()
@@ -1065,6 +1090,16 @@ public partial class SettingsWindow : Window
 
     private void WidgetPreviewTimer_Tick(object? sender, EventArgs e) => RefreshWidgetPreviews();
 
+    private void AutoSaveTimer_Tick(object? sender, EventArgs e)
+    {
+        _autoSaveTimer.Stop();
+        SaveSettings();
+    }
+
+    private void CustomThemeEditor_ThemeSaved(object? sender, EventArgs e) => BuildThemeGallery(_selectedThemePackId);
+
+    private void CustomThemeEditor_ThemeCreated(object? sender, string id) => ReloadThemePacks(id);
+
     private void Settings_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateWidgetPreviewRefresh();
 
     private void SettingsTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -1107,6 +1142,10 @@ public partial class SettingsWindow : Window
     {
         if (IsVisible && WidgetsTab.IsSelected)
         {
+            if (!_livePreviewsAttached && !_closed)
+            {
+                AttachLiveWidgetPreviews();
+            }
             RefreshWidgetPreviews();
             _widgetPreviewTimer.Start();
             _livePreviewTimer?.Start();
@@ -1125,6 +1164,8 @@ public partial class SettingsWindow : Window
     private void AttachLiveWidgetPreviews()
     {
         StopAndDisposeLivePreviews();
+        _livePreviewsAttached = true;
+        var currentSettings = _autoSaveTimer.IsEnabled ? ReadSelection() : _preferences.Current;
         foreach (var option in _widgetOptions)
         {
             if (!WidgetCoordinator.HandlesWidget(option.Id)) continue;
@@ -1132,7 +1173,7 @@ public partial class SettingsWindow : Window
             {
                 var widget = WidgetCoordinator.CreateWidget(option.Id);
                 widget.ReportError = message => AppLog.Warning($"Widget preview '{option.Id}': {message}");
-                widget.ApplySettings(_applied);
+                widget.ApplySettings(currentSettings);
                 widget.Activate();
                 widget.Tick(DateTime.Now);
                 // Reflect hardware availability (e.g. a desktop without a battery) in the catalog.
@@ -1163,7 +1204,10 @@ public partial class SettingsWindow : Window
                     widget.Visibility = Visibility.Visible;
             }
         };
-        _livePreviewTimer.Start();
+        if (IsVisible && WidgetsTab.IsSelected)
+        {
+            _livePreviewTimer.Start();
+        }
     }
 
     /// <summary>
@@ -1172,6 +1216,7 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void ApplySettingsToLivePreviews(DockSettings settings)
     {
+        if (!_livePreviewsAttached || _livePreviewWidgets.Count == 0) return;
         foreach (var option in _widgetOptions)
         {
             if (option.LivePreview is not OpenTaskbar.Widgets.DockWidget widget) continue;
@@ -1188,6 +1233,7 @@ public partial class SettingsWindow : Window
 
     private void StopAndDisposeLivePreviews()
     {
+        _livePreviewsAttached = false;
         _livePreviewTimer?.Stop();
         _livePreviewTimer = null;
         var liveWidgets = new HashSet<OpenTaskbar.Widgets.DockWidget>(_livePreviewWidgets);
@@ -1949,10 +1995,18 @@ public partial class SettingsWindow : Window
             return;
         }
         var settings = ReadSelection();
-        if (_preferences.Save(settings) is { } error)
+        _isInternalSave = true;
+        try
         {
-            Trace.TraceWarning("Save settings error: {0}", error);
-            return;
+            if (_preferences.Save(settings) is { } error)
+            {
+                Trace.TraceWarning("Save settings error: {0}", error);
+                return;
+            }
+        }
+        finally
+        {
+            _isInternalSave = false;
         }
         _applied = settings;
         _startupEnabled = StartupToggle.IsChecked == true;
@@ -1987,7 +2041,6 @@ public partial class SettingsWindow : Window
     {
         if (_isClosing) return;
         _isClosing = true;
-        FlushPendingAutoSaves();
 
         var fade = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(160))
         {
@@ -2028,7 +2081,10 @@ public partial class SettingsWindow : Window
         UpdateMultiMonitorControls();
         // Reflect widget-related edits in the catalog immediately, without waiting for the
         // debounced save. Every live preview is a real widget, so ApplySettings re-renders it.
-        ApplySettingsToLivePreviews(ReadSelection());
+        if (_livePreviewsAttached)
+        {
+            ApplySettingsToLivePreviews(ReadSelection());
+        }
         TriggerAutoSave(immediate: sender is not (Slider or TextBox));
     }
 
@@ -2099,6 +2155,7 @@ public partial class SettingsWindow : Window
         var kind = SurfaceOf(sender);
         var background = SurfaceBackgroundOf(kind);
         _surfaceSliders[kind].IsEnabled = background != SurfaceBackground.None;
+        _hasUnappliedThemePreview = true;
         ThemeManager.SetSurface(kind, background, Math.Round(_surfaceSliders[kind].Value) / 100);
         if (kind == SurfaceKind.Settings) UpdateBackdrop();
         PreferenceEdited(sender, e);
@@ -2109,6 +2166,7 @@ public partial class SettingsWindow : Window
         if (_initializing) return;
         var kind = SurfaceOf(sender);
         _surfaceValues[kind].Text = UiText.Format("OpacityPercent", (int)Math.Round(e.NewValue));
+        _hasUnappliedThemePreview = true;
         ThemeManager.SetSurface(kind, SurfaceBackgroundOf(kind), Math.Round(e.NewValue) / 100);
         PreferenceEdited(sender, e);
     }
@@ -2137,6 +2195,7 @@ public partial class SettingsWindow : Window
 
     private void ApplyBorderToAll(double thickness, string? color)
     {
+        _hasUnappliedThemePreview = true;
         foreach (var kind in Enum.GetValues<SurfaceKind>()) ThemeManager.SetBorder(kind, thickness, color);
     }
 

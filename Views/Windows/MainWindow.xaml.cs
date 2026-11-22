@@ -1939,6 +1939,7 @@ public partial class MainWindow : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
+        NativeMemoryMethods.CancelIdleTrim();
         _widgetPanel.Close(restoreFocus: false);
         AppLog.Info($"Settings open requested: source={sender?.GetType().Name ?? "null"}, startupArg={((App)Application.Current).OpenSettingsOnStartup}, existing={(_settingsWindow is null ? "none" : _settingsWindow.IsClosingOrClosed ? "closing" : "open")}");
         if (_settingsWindow is { IsClosingOrClosed: true }) _settingsWindow = null;
@@ -1956,7 +1957,7 @@ public partial class MainWindow : Window
                     _autoHideController.CheckForegroundWindow(NativeWindowTracker.GetForegroundApplicationWindow());
                     _autoHideController.EvaluateState();
                 }
-                NativeMemoryMethods.TrimWorkingSet(force: true);
+                NativeMemoryMethods.ScheduleIdleTrim(TimeSpan.FromSeconds(5));
             };
             _settingsWindow.Show();
         }
