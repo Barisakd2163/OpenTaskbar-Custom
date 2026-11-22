@@ -98,10 +98,14 @@ public partial class ClockWidget : DockWidget
         if (IsActive) OnTick(DateTime.Now);
     }
 
-    protected override void OnCompactChanged(bool compact)
+    protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
+    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void ApplyDensityLayout()
     {
         _lastRenderKey = string.Empty;
-        if (IsActive) OnTick(DateTime.Now);
+        OnTick(DateTime.Now);
+        RaiseContentWidthChanged();
     }
 
     protected override void OnDeactivated() => _calendar.Close();
@@ -115,12 +119,13 @@ public partial class ClockWidget : DockWidget
         var timeString = now.ToString(timeFormat, culture);
         if (_flyoutLiveTime is not null) _flyoutLiveTime.Text = timeString;
 
-        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.Language}|{IsCompact}";
+        var compact = IsCompact && !IsHoverExpanded;
+        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.Language}|{compact}";
         if (renderKey == _lastRenderKey) return;
 
         _lastRenderKey = renderKey;
         TimeText.Text = timeString;
-        if (IsCompact || Settings.DateStyle == ClockDateStyle.Hidden)
+        if (compact || Settings.DateStyle == ClockDateStyle.Hidden)
         {
             DateColumn.Visibility = Visibility.Collapsed;
         }

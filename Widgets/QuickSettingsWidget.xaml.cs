@@ -54,6 +54,8 @@ public partial class QuickSettingsWidget : DockWidget
     {
         var compact = IsCompact && !IsHoverExpanded;
         NightLightPill.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        BluetoothPill.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 4, 0);
+        RaiseContentWidthChanged();
     }
 
     // V19: Direct controls do not open a generic hover flyout.

@@ -140,6 +140,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             if (child is Border { Child: StackPanel stack } && stack.Children.Count > 1)
                 stack.Children[1].Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         }
+        RaiseContentWidthChanged();
     }
 
     internal async Task RefreshBatteriesAsync()

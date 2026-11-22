@@ -1191,6 +1191,11 @@ public partial class SettingsWindow : Window
         StopAndDisposeLivePreviews();
         _livePreviewsAttached = true;
         var currentSettings = _autoSaveTimer.IsEnabled ? ReadSelection() : _preferences.Current;
+        foreach (var option in _widgetOptions)
+        {
+            var mode = ResolveDensityMode(currentSettings, option.Id);
+            option.Preview.IsCompact = mode == WidgetDensityMode.Compact;
+        }
         foreach (var option in _widgetOptions.Where(o => WidgetCoordinator.HandlesWidget(o.Id)))
         {
             try
@@ -1199,6 +1204,8 @@ public partial class SettingsWindow : Window
                 widget.ReportError = message => AppLog.Warning($"Widget preview '{option.Id}': {message}");
                 widget.ApplySettings(currentSettings);
                 widget.Activate();
+                var mode = ResolveDensityMode(currentSettings, option.Id);
+                widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
                 widget.Tick(DateTime.Now);
                 // Reflect hardware availability (e.g. a desktop without a battery) in the catalog.
                 option.IsHardwareAvailable = widget.IsHardwareAvailable;
@@ -1240,11 +1247,18 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void ApplySettingsToLivePreviews(DockSettings settings)
     {
+        foreach (var option in _widgetOptions)
+        {
+            var mode = ResolveDensityMode(settings, option.Id);
+            option.Preview.IsCompact = mode == WidgetDensityMode.Compact;
+        }
         if (!_livePreviewsAttached || _livePreviewWidgets.Count == 0) return;
         foreach (var option in _widgetOptions.Where(o => o.LivePreview is OpenTaskbar.Widgets.DockWidget))
         {
             var widget = (OpenTaskbar.Widgets.DockWidget)option.LivePreview!;
             widget.ApplySettings(settings);
+            var mode = ResolveDensityMode(settings, option.Id);
+            widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
             // Some widgets hide themselves when their data source is inactive (e.g. media with no
             // session). A preview must stay visible so the card never collapses to an empty tile.
             if (widget.IsHardwareAvailable && widget.Visibility != Visibility.Visible)
@@ -1254,6 +1268,12 @@ public partial class SettingsWindow : Window
             if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
         }
     }
+
+    private static WidgetDensityMode ResolveDensityMode(DockSettings settings, string widgetId) =>
+        settings.WidgetDensityOverrides is not null
+        && settings.WidgetDensityOverrides.TryGetValue(widgetId, out var overrideMode)
+            ? overrideMode
+            : settings.GlobalWidgetDensity;
 
     private void StopAndDisposeLivePreviews()
     {

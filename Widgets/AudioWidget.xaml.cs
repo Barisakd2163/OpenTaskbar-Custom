@@ -68,6 +68,7 @@ public partial class AudioWidget : DockWidget
         VolumeText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         OutputIcon.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 7, 0);
         UpdateDeviceTooltip();
+        RaiseContentWidthChanged();
     }
 
     private void ApplyCardForeground(bool mutedOrUnavailable)

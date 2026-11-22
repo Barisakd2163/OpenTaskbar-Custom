@@ -2222,7 +2222,15 @@ public partial class MainWindow : Window
             && (!clockStripActive || id != DockWidgetService.DateId)
             && (!statsStripActive || id != DockWidgetService.BatteryId))
             .ToArray();
-        foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
+        foreach (var widget in _widgetService.CreateWidgets(filtered))
+        {
+            var mode = _preferences.Current.WidgetDensityOverrides is not null
+                && _preferences.Current.WidgetDensityOverrides.TryGetValue(widget.Id, out var overrideMode)
+                    ? overrideMode
+                    : _preferences.Current.GlobalWidgetDensity;
+            widget.IsCompact = mode == WidgetDensityMode.Compact;
+            _widgets.Add(widget);
+        }
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
 
         var activeIds = new HashSet<string>(_widgets.Select(w => w.Id), StringComparer.OrdinalIgnoreCase);
