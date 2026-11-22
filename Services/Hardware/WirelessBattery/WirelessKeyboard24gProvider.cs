@@ -186,10 +186,17 @@ internal sealed class WirelessKeyboard24gProvider : IWirelessBatteryProvider
         if (protocolReportLength == ShortVendorReportLength)
             return CompxAtkVxeBatteryProvider.IsValidBatteryReplyHeader(reply);
 
-        var payload = reply.Length >= 11 && reply[0] == 0x00 ? reply[1..] : reply;
-        return payload.Length >= 10
-               && payload[0] is 0x08 or 0x04 or 0x83
-               && (payload[0] == 0x83 || payload[1] == 0x04);
+        var payload = NormalizeLongFraming(reply);
+        return (payload.Length >= 10 && payload[0] == 0x08 && payload[1] == 0x04)
+               || (payload.Length >= 9 && payload[0] == 0x04)
+               || (payload.Length >= 3 && payload[0] == 0x83 && payload[1] <= 1);
+    }
+
+    private static ReadOnlySpan<byte> NormalizeLongFraming(ReadOnlySpan<byte> raw)
+    {
+        if (raw.Length >= 4 && raw[0] == 0x00 && raw[1] is 0x08 or 0x04 or 0x83)
+            return raw[1..];
+        return raw;
     }
 
     internal static bool TryParseBatteryReply(
@@ -217,13 +224,13 @@ internal sealed class WirelessKeyboard24gProvider : IWirelessBatteryProvider
             return true;
         }
 
-        var reply = rawReply.Length >= 11 && rawReply[0] == 0x00 ? rawReply[1..] : rawReply;
-        if (reply.Length < 10) return false;
+        var reply = NormalizeLongFraming(rawReply);
+        if (reply.Length < 3) return false;
 
         int batteryPercent;
         bool isCharging;
 
-        if (reply[0] == 0x08 && reply[1] == 0x04)
+        if (reply.Length >= 10 && reply[0] == 0x08 && reply[1] == 0x04)
         {
             if (reply.Length >= ShortVendorReportLength
                 && CompxAtkVxeBatteryProvider.ComputeChecksum(reply[..ShortVendorReportLength]) != reply[ShortVendorReportLength - 1])
@@ -234,6 +241,14 @@ internal sealed class WirelessKeyboard24gProvider : IWirelessBatteryProvider
             if (batteryPercent is < 0 or > 100 || reply[7] > 1) return false;
             isCharging = reply[7] == 1;
             var voltageMv = (reply[8] << 8) | reply[9];
+            if (batteryPercent == 0 && !isCharging && voltageMv == 0) return false;
+        }
+        else if (reply.Length >= 9 && reply[0] == 0x04)
+        {
+            batteryPercent = reply[5];
+            if (batteryPercent is < 0 or > 100 || reply[6] > 1) return false;
+            isCharging = reply[6] == 1;
+            var voltageMv = (reply[7] << 8) | reply[8];
             if (batteryPercent == 0 && !isCharging && voltageMv == 0) return false;
         }
         else if (reply[0] == 0x83)

@@ -133,9 +133,11 @@ public sealed class BluetoothBatteryWidget : DockWidget
     private HwndSource? _hwndSource;
     private HwndSourceHook? _hwndHook;
     private CancellationTokenSource? _deviceChangeDebounceCts;
+    private WeakReference<StackPanel>? _activeFlyoutPanel;
     private readonly Dictionary<string, int> _notifiedThresholdByDevice = new(StringComparer.OrdinalIgnoreCase);
 
     internal int TileRebuildCount { get; private set; }
+    internal int SettingsApplyCount { get; private set; }
     internal long EffectivePollIntervalMs => Math.Clamp(Settings.WirelessBatteryPollSeconds, 15, 300) * 1000L;
 
     internal Func<Task<IReadOnlyList<BluetoothDeviceBatteryInfo>>> BatteryReader { get; set; } = WirelessBatteryAggregator.ReadAllAsync;
@@ -168,6 +170,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
 
     protected override void OnDeactivated()
     {
+        _activeFlyoutPanel = null;
         DetachDeviceChangeHook();
         CancelDeviceChangeDebounce();
     }
@@ -175,12 +178,14 @@ public sealed class BluetoothBatteryWidget : DockWidget
     protected override void OnDisposed()
     {
         _disposed = true;
+        _activeFlyoutPanel = null;
         DetachDeviceChangeHook();
         CancelDeviceChangeDebounce();
     }
 
     protected override void OnSettingsChanged()
     {
+        SettingsApplyCount++;
         _devices = ApplyUserPreferences(_rawDevices, Settings);
         EvaluateLowBatteryNotifications(_devices);
         UpdateDisplay();
@@ -192,7 +197,39 @@ public sealed class BluetoothBatteryWidget : DockWidget
             RefreshBatteries();
     }
 
-    protected override void OnLanguageChanged() => UpdateDisplay();
+    protected override void OnLanguageChanged()
+    {
+        _rawDevices = RelocalizeCoarseLevels(_rawDevices);
+        _devices = ApplyUserPreferences(_rawDevices, Settings);
+        UpdateDisplay();
+    }
+
+    internal static IReadOnlyList<BluetoothDeviceBatteryInfo> RelocalizeCoarseLevels(
+        IReadOnlyList<BluetoothDeviceBatteryInfo> devices)
+    {
+        if (devices is null || devices.Count == 0)
+            return [];
+
+        var output = new List<BluetoothDeviceBatteryInfo>(devices.Count);
+        for (var i = 0; i < devices.Count; i++)
+        {
+            var dev = devices[i];
+            if (!string.IsNullOrWhiteSpace(dev.LevelOverrideText)
+                && (string.Equals(dev.SourceLabel, "XInput", StringComparison.OrdinalIgnoreCase)
+                    || dev.Id.StartsWith("xinput:", StringComparison.OrdinalIgnoreCase)))
+            {
+                var localized = XInputBatteryProvider.GetLocalizedLevelTextForBucket(dev.BatteryLevel);
+                output.Add(string.Equals(localized, dev.LevelOverrideText, StringComparison.Ordinal)
+                    ? dev
+                    : dev with { LevelOverrideText = localized });
+            }
+            else
+            {
+                output.Add(dev);
+            }
+        }
+        return output;
+    }
 
     protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
     protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
@@ -594,7 +631,12 @@ public sealed class BluetoothBatteryWidget : DockWidget
     {
         if (UpdateSettings is not null)
         {
+            var before = SettingsApplyCount;
             UpdateSettings(updated);
+            if (SettingsApplyCount == before)
+            {
+                ApplySettings(updated);
+            }
         }
         else
         {
@@ -614,6 +656,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             AutomationProperties.SetName(_cardButton, UiText.Get("WidgetBluetoothBattery"));
             _fullWidth = 78;
             _compactWidth = 46;
+            RefreshOpenFlyout();
             RaiseContentWidthChanged();
             return;
         }
@@ -627,6 +670,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             {
                 var dev = connected[i];
                 var isLow = IsLowBatteryWarning(dev.BatteryLevel, dev.IsCharging, threshold);
+                var levelText = FormatLevelText(dev);
                 nextSignature[i] = new RenderedTileState(
                     dev.Id,
                     dev.Name,
@@ -634,7 +678,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
                     dev.BatteryLevel,
                     dev.IsCharging,
                     dev.IsStale,
-                    dev.LevelOverrideText,
+                    levelText,
                     dev.SecondaryBatteryLevel,
                     isLow);
                 _deviceTiles.Children.Add(CreateDeviceTile(dev, isLast: i == connected.Count - 1));
@@ -660,7 +704,16 @@ public sealed class BluetoothBatteryWidget : DockWidget
             $"{UiText.Get("WidgetBluetoothBattery")}: {string.Join(", ", connected.Select(device => device.Name))}");
         _fullWidth = Math.Max(78, connected.Count * 62 + 12);
         _compactWidth = Math.Max(46, connected.Count * 24 + 8);
+        RefreshOpenFlyout();
         RaiseContentWidthChanged();
+    }
+
+    private void RefreshOpenFlyout()
+    {
+        if (_activeFlyoutPanel is not null && _activeFlyoutPanel.TryGetTarget(out var panel))
+        {
+            PopulateHoverFlyoutPanel(panel);
+        }
     }
 
     private bool MatchesRenderedSignature(IReadOnlyList<BluetoothDeviceBatteryInfo> connected, int lowThreshold)
@@ -677,13 +730,14 @@ public sealed class BluetoothBatteryWidget : DockWidget
             var dev = connected[i];
             var prev = _lastRenderedTiles[i];
             var isLow = IsLowBatteryWarning(dev.BatteryLevel, dev.IsCharging, lowThreshold);
+            var levelText = FormatLevelText(dev);
             if (!string.Equals(prev.Id, dev.Id, StringComparison.Ordinal)
                 || !string.Equals(prev.Name, dev.Name, StringComparison.Ordinal)
                 || prev.Kind != dev.Kind
                 || prev.BatteryLevel != dev.BatteryLevel
                 || prev.IsCharging != dev.IsCharging
                 || prev.IsStale != dev.IsStale
-                || !string.Equals(prev.LevelOverrideText, dev.LevelOverrideText, StringComparison.Ordinal)
+                || !string.Equals(prev.LevelOverrideText, levelText, StringComparison.Ordinal)
                 || prev.SecondaryBatteryLevel != dev.SecondaryBatteryLevel
                 || prev.IsLowWarning != isLow)
             {
@@ -704,7 +758,15 @@ public sealed class BluetoothBatteryWidget : DockWidget
     internal static string FormatLevelText(BluetoothDeviceBatteryInfo device)
     {
         if (!string.IsNullOrWhiteSpace(device.LevelOverrideText))
+        {
+            if (device.LevelOverrideText.StartsWith("WirelessBatteryLevel", StringComparison.Ordinal)
+                && UiText.TryGet(device.LevelOverrideText, out var localized)
+                && !string.IsNullOrWhiteSpace(localized))
+            {
+                return localized;
+            }
             return device.LevelOverrideText!;
+        }
         return device.BatteryLevel >= 0
             ? $"{device.BatteryLevel.ToString(CultureInfo.InvariantCulture)}%"
             : "—";
@@ -807,6 +869,14 @@ public sealed class BluetoothBatteryWidget : DockWidget
     public override UIElement? BuildHoverFlyoutContent()
     {
         var panel = new StackPanel { Width = 276 };
+        _activeFlyoutPanel = new WeakReference<StackPanel>(panel);
+        PopulateHoverFlyoutPanel(panel);
+        return panel;
+    }
+
+    private void PopulateHoverFlyoutPanel(StackPanel panel)
+    {
+        panel.Children.Clear();
 
         var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -839,7 +909,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
         {
             panel.Children.Add(DockFlyout.Caption(UiText.Get("BluetoothNoDevices")));
             AppendFlyoutFooterControls(panel);
-            return panel;
+            return;
         }
 
         var listPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
@@ -1021,7 +1091,6 @@ public sealed class BluetoothBatteryWidget : DockWidget
 
         panel.Children.Add(listPanel);
         AppendFlyoutFooterControls(panel);
-        return panel;
     }
 
     private void AppendFlyoutFooterControls(StackPanel panel)

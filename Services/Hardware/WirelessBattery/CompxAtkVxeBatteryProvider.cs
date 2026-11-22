@@ -194,14 +194,13 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
     internal static bool IsValidNordic64ReplyHeader(ReadOnlySpan<byte> reply)
     {
         var payload = NormalizeNordic64Framing(reply);
-        return payload.Length >= 10
-               && payload[0] is ReportId or BatteryQueryCommand
-               && (payload[0] == BatteryQueryCommand || payload[1] == BatteryQueryCommand);
+        return (payload.Length >= 10 && payload[0] == ReportId && payload[1] == BatteryQueryCommand)
+               || (payload.Length >= 9 && payload[0] == BatteryQueryCommand);
     }
 
     private static ReadOnlySpan<byte> NormalizeNordic64Framing(ReadOnlySpan<byte> raw)
     {
-        if (raw.Length >= 11 && raw[0] == 0x00 && raw[1] is ReportId or BatteryQueryCommand)
+        if (raw.Length >= 10 && raw[0] == 0x00 && raw[1] is ReportId or BatteryQueryCommand)
             return raw[1..];
         return raw;
     }
@@ -263,24 +262,38 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
     {
         reading = null;
         var reply = NormalizeNordic64Framing(rawReply);
-        if (reply.Length < 10) return false;
+        if (reply.Length < 9) return false;
 
         // If the 64-byte packet embeds a standard 17-byte Compx header + checksum at [0..16], parse it directly.
-        if (reply[0] == ReportId && reply[1] == BatteryQueryCommand && ComputeChecksum(reply[..ReportByteLength]) == reply[ReportByteLength - 1])
+        if (reply.Length >= ReportByteLength
+            && reply[0] == ReportId
+            && reply[1] == BatteryQueryCommand
+            && ComputeChecksum(reply[..ReportByteLength]) == reply[ReportByteLength - 1])
         {
             return TryParseBatteryReply(reply[..ReportByteLength], id, name, sampledAt, out reading);
         }
 
-        if (reply[0] != ReportId || reply[1] != BatteryQueryCommand)
+        int baseOffset;
+        if (reply.Length >= 10 && reply[0] == ReportId && reply[1] == BatteryQueryCommand)
+        {
+            baseOffset = 6;
+        }
+        else if (reply.Length >= 9 && reply[0] == BatteryQueryCommand)
+        {
+            baseOffset = 5;
+        }
+        else
+        {
             return false;
+        }
 
-        var batteryPercent = (int)reply[6];
-        var chargeFlag = reply[7];
+        var batteryPercent = (int)reply[baseOffset];
+        var chargeFlag = reply[baseOffset + 1];
         if (batteryPercent is < 0 or > 100 || chargeFlag > 1)
             return false;
 
         var isCharging = chargeFlag == 1;
-        var voltageMv = (reply[8] << 8) | reply[9];
+        var voltageMv = (reply[baseOffset + 2] << 8) | reply[baseOffset + 3];
         if (batteryPercent == 0 && !isCharging && voltageMv == 0)
             return false;
 

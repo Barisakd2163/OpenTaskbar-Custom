@@ -385,6 +385,24 @@ internal static class WirelessBatteryChecks
               && nordicReading.IsCharging,
             "Compx/Nordic 64-byte parser must decode 64-byte vendor battery responses.");
 
+        // Regression test: 10..16-byte replies starting with [0x08, 0x04] (or 11..17-byte with leading 0x00)
+        // must never throw ArgumentOutOfRangeException, and unnumbered [0x04, ...] replies must match IsValidNordic64ReplyHeader.
+        byte[] shortNordic12 = [0x08, 0x04, 0, 0, 0, 0x02, 77, 0x00, 0x0F, 0x50, 0, 0];
+        byte[] framedShortNordic13 = [0x00, 0x08, 0x04, 0, 0, 0, 0x02, 77, 0x00, 0x0F, 0x50, 0, 0];
+        byte[] unnumberedNordic10 = [0x04, 0, 0, 0, 0x02, 63, 0x01, 0x0F, 0x80, 0];
+        check(CompxAtkVxeBatteryProvider.IsValidNordic64ReplyHeader(shortNordic12)
+              && CompxAtkVxeBatteryProvider.TryParseNordic64BatteryReply(shortNordic12, "compx:short12", "Lamzu Maya", now, out var short12Reading)
+              && short12Reading is not null && short12Reading.BatteryLevel == 77 && !short12Reading.IsCharging,
+            "TryParseNordic64BatteryReply must safely parse 10..16-byte [0x08, 0x04] replies without throwing.");
+        check(CompxAtkVxeBatteryProvider.IsValidNordic64ReplyHeader(framedShortNordic13)
+              && CompxAtkVxeBatteryProvider.TryParseNordic64BatteryReply(framedShortNordic13, "compx:short13", "Lamzu Maya", now, out var short13Reading)
+              && short13Reading is not null && short13Reading.BatteryLevel == 77,
+            "TryParseNordic64BatteryReply must safely unwrap leading 0x00 on 11..17-byte replies without throwing.");
+        check(CompxAtkVxeBatteryProvider.IsValidNordic64ReplyHeader(unnumberedNordic10)
+              && CompxAtkVxeBatteryProvider.TryParseNordic64BatteryReply(unnumberedNordic10, "compx:unnum", "Scyrox V8", now, out var unnumReading)
+              && unnumReading is not null && unnumReading.BatteryLevel == 63 && unnumReading.IsCharging,
+            "IsValidNordic64ReplyHeader and TryParseNordic64BatteryReply must consistently accept unnumbered 0x04 replies.");
+
         // Reject wrong header, > 100%, corrupted checksum, or all-zero uninitialized payload
         byte[] badHeader = [0x09, 0x04, 0, 0, 0, 0, 50, 0, 0x0E, 0x00];
         byte[] badPercent = [0x08, 0x04, 0, 0, 0, 0, 150, 0, 0x0E, 0x00];
@@ -656,7 +674,8 @@ internal static class WirelessBatteryChecks
 
         var now = DateTimeOffset.UtcNow;
         byte[] sinowealthReply = [0x83, 0x01, 86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        check(WirelessKeyboard24gProvider.TryParseBatteryReply(
+        check(WirelessKeyboard24gProvider.IsValidBatteryReplyHeader(WirelessKeyboard24gProvider.LongVendorReportLength, sinowealthReply)
+              && WirelessKeyboard24gProvider.TryParseBatteryReply(
                   WirelessKeyboard24gProvider.LongVendorReportLength,
                   sinowealthReply,
                   "kbd24g:258A:010C",
@@ -669,6 +688,19 @@ internal static class WirelessBatteryChecks
               && aulaReading.Kind == BluetoothDeviceKind.Keyboard
               && aulaReading.Source == WirelessBatterySource.Keyboard24gHid,
             "WirelessKeyboard24gProvider must parse 64-byte Sinowealth/AULA battery reply.");
+
+        byte[] unnumberedKbdReply = [0x04, 0, 0, 0, 0x02, 54, 0x00, 0x0F, 0x20, 0];
+        check(WirelessKeyboard24gProvider.IsValidBatteryReplyHeader(WirelessKeyboard24gProvider.LongVendorReportLength, unnumberedKbdReply)
+              && WirelessKeyboard24gProvider.TryParseBatteryReply(
+                  WirelessKeyboard24gProvider.LongVendorReportLength,
+                  unnumberedKbdReply,
+                  "kbd24g:3151:4011",
+                  "MonsGeek Wireless Keyboard",
+                  now,
+                  out var monsReading)
+              && monsReading is not null
+              && monsReading.BatteryLevel == 54,
+            "WirelessKeyboard24gProvider header validator and parser must consistently handle unnumbered 0x04 replies.");
     }
 
     private static void CheckXInputProvider(Action<bool, string> check)
@@ -1077,7 +1109,7 @@ internal static class WirelessBatteryChecks
                    && diagResult == copiedDiagnostics,
             "CopyDiagnosticsToClipboard must copy the PII-free VID/PID/UsagePage summary.");
 
-        // Flyout verification
+        // Flyout verification & live in-place flyout refresh on settings/device changes
         var flyout = widget.BuildHoverFlyoutContent();
         LocalCheck(flyout is StackPanel, "Hover flyout root must remain a StackPanel.");
         var allTexts = CollectTextBlocks((DependencyObject)flyout!).Select(t => t.Text).ToList();
@@ -1087,6 +1119,60 @@ internal static class WirelessBatteryChecks
             "Hover flyout must display spare dock battery badge and percentages.");
         LocalCheck(allTexts.Contains(UiText.Get("WirelessBatteryCopyDiagnostics")),
             "Hover flyout must include the Copy Diagnostic IDs action.");
+
+        // Verify live open flyout refreshes in-place when Poll, Threshold, Alias, Hide, and Restore are triggered,
+        // and verify UpdateSettings applies settings exactly once per change (no triple ApplySettings).
+        DockSettings? savedByHost = null;
+        widget.UpdateSettings = updated =>
+        {
+            savedByHost = updated;
+            widget.ApplySettings(updated);
+        };
+        var applyBefore = widget.SettingsApplyCount;
+        widget.CyclePollInterval();
+        LocalCheck(widget.SettingsApplyCount == applyBefore + 1 && savedByHost?.WirelessBatteryPollSeconds == 60,
+            "CyclePollInterval via UpdateSettings must invoke OnSettingsChanged exactly once and update poll seconds to 60.");
+        var textsAfterPoll = CollectTextBlocks((DependencyObject)flyout!).Select(t => t.Text).ToList();
+        LocalCheck(textsAfterPoll.Contains(UiText.Format("WirelessBatteryPollInterval", 60)),
+            "Open hover flyout must immediately update the Poll Interval button label in place.");
+
+        widget.SetDeviceAlias("compx:373B:1119", "Flyout Renamed Mouse");
+        var textsAfterRename = CollectTextBlocks((DependencyObject)flyout!).Select(t => t.Text).ToList();
+        LocalCheck(textsAfterRename.Contains("Flyout Renamed Mouse"),
+            "Open hover flyout must immediately reflect a renamed device alias in place.");
+
+        widget.HideDevice("xinput:slot:0");
+        var textsAfterHide = CollectTextBlocks((DependencyObject)flyout!).Select(t => t.Text).ToList();
+        LocalCheck(!textsAfterHide.Contains("Xbox Wireless Controller (1)")
+                   && textsAfterHide.Contains(UiText.Format("WirelessBatteryRestoreHidden", 1)),
+            "Open hover flyout must immediately remove a hidden device row and display the Restore Hidden button in place.");
+
+        widget.RestoreIgnoredDevices();
+        widget.SetDeviceAlias("compx:373B:1119", null);
+        var textsAfterRestore = CollectTextBlocks((DependencyObject)flyout!).Select(t => t.Text).ToList();
+        LocalCheck(textsAfterRestore.Contains("Xbox Wireless Controller (1)") && textsAfterRestore.Contains("ATK A9 Ultra"),
+            "Open hover flyout must immediately restore unhidden device rows in place.");
+
+        // Regression test: XInput coarse level text must re-localize immediately on language switch without waiting for a new poll.
+        var originalLanguage = UiText.Current.Language;
+        try
+        {
+            UiText.Current.SetLanguage(AppLanguage.English);
+            var englishLow = UiText.Get("WirelessBatteryLevelLow");
+            var xinputStack = (StackPanel)((Border)tiles.Children[2]).Child!;
+            LocalCheck(((TextBlock)xinputStack.Children[1]).Text == englishLow,
+                "XInput tile must display English 'Low' after switching language to English.");
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            var turkishLow = UiText.Get("WirelessBatteryLevelLow");
+            xinputStack = (StackPanel)((Border)tiles.Children[2]).Child!;
+            LocalCheck(turkishLow != englishLow && ((TextBlock)xinputStack.Children[1]).Text == turkishLow,
+                "XInput tile must immediately re-localize to Turkish 'Düşük' on language change without re-polling.");
+        }
+        finally
+        {
+            UiText.Current.SetLanguage(originalLanguage);
+        }
 
         widget.Deactivate();
         if (includeLegacyBluetoothSuite && Application.Current is { } app)

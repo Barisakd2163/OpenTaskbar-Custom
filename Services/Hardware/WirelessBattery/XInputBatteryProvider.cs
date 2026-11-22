@@ -120,6 +120,21 @@ internal sealed class XInputBatteryProvider : IWirelessBatteryProvider
         _ => "Full"
     };
 
+    internal static string GetLocalizedLevelTextForBucket(int batteryPercent)
+    {
+        var (labelKey, fallback) = batteryPercent switch
+        {
+            <= 12 => ("WirelessBatteryLevelEmpty", "Empty"),
+            <= 30 => ("WirelessBatteryLevelLow", "Low"),
+            <= 75 => ("WirelessBatteryLevelMedium", "Medium"),
+            _ => ("WirelessBatteryLevelFull", "Full")
+        };
+
+        return UiText.TryGet(labelKey, out var text) && !string.IsNullOrWhiteSpace(text)
+            ? text
+            : fallback;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct XINPUT_GAMEPAD
     {

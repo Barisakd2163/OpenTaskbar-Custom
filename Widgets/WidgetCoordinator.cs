@@ -153,8 +153,14 @@ public sealed class WidgetCoordinator : IDisposable
         widget.ReportError = _reportError;
         widget.UpdateSettings = updated =>
         {
-            widget.ApplySettings(updated);
-            WidgetSettingsUpdated?.Invoke(updated);
+            if (WidgetSettingsUpdated is not null)
+            {
+                WidgetSettingsUpdated(updated);
+            }
+            else
+            {
+                widget.ApplySettings(updated);
+            }
         };
         widget.AllowDrop = true;
         widget.PreviewMouseLeftButtonDown += Widget_PreviewMouseLeftButtonDown;

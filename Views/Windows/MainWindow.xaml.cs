@@ -203,9 +203,6 @@ public partial class MainWindow : Window
         {
             var err = _preferences.Save(updated);
             if (err is not null) ReportError(err);
-            _widgetCoordinator.Apply(updated);
-            ResizeDockToContent();
-            _replacementSession?.RefreshPosition();
         };
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
         _widgetCoordinator.DragEnded += CancelLiveDrag;
