@@ -863,8 +863,9 @@ public sealed class WindowThumbnailPreview : IDisposable
             PeekAction(show, target, caller);
             return true;
         }
-        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException or ExternalException)
+        catch (Exception ex)
         {
+            // Peek is a non-essential flourish; no exception from it may reach the UI dispatcher.
             AppLog.Warning($"Window peek failed: {ex.Message}");
             return false;
         }

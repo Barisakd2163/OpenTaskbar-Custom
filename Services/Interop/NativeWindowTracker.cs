@@ -40,7 +40,14 @@ public sealed class NativeWindowTracker : IDisposable
     private readonly DispatcherTimer _locationTimer;
     private readonly WinEventDelegate _eventCallback;
     private readonly EnumWindowsDelegate _enumCallback;
-    private readonly HashSet<nint> _notificationWindows = [];
+    // HWND + PID: a recycled handle must not inherit a previous window's notification badge.
+    private readonly Dictionary<nint, uint> _notificationWindows = [];
+
+    private static uint PidOf(nint windowHandle)
+    {
+        GetWindowThreadProcessId(windowHandle, out var pid);
+        return pid;
+    }
     // Only suppresses redundant name-change events from helper windows. Eligibility is always re-evaluated
     // during enumeration: a cached "ignore" entry would otherwise survive style changes and HWND reuse.
     private readonly HashSet<nint> _quietWindows = [];
@@ -109,8 +116,11 @@ public sealed class NativeWindowTracker : IDisposable
         // Cloak changes are the only notification for a suspended/background UWP frame becoming (in)visible;
         // without them the snapshot can keep a phantom app button until an unrelated window event arrives.
         _cloakHook = SetWinEventHook(EventObjectCloaked, EventObjectUncloaked, 0, _eventCallback, 0, 0, WinEventFlags);
+        if (_cloakHook == 0) AppLog.Warning("Cloak-change hook unavailable; UWP visibility changes may be delayed.");
         _locationHook = SetWinEventHook(EventObjectLocationChange, EventObjectLocationChange, 0, _eventCallback, 0, 0, WinEventFlags);
+        if (_locationHook == 0) AppLog.Warning("Location-change hook unavailable.");
         _systemEventHook = SetWinEventHook(EventSystemAlert, EventSystemForeground, 0, _eventCallback, 0, 0, WinEventFlags);
+        if (_systemEventHook == 0) AppLog.Warning("Foreground-event hook unavailable; using polling fallback.");
         RefreshWindows();
         PublishForeground(NormalizedForeground());
     }
@@ -174,7 +184,7 @@ public sealed class NativeWindowTracker : IDisposable
             var target = NormalizeRootWindow(windowHandle);
             if (target != 0 && target != _excludedWindow && IsWindowVisible(target) && GetWindow(target, WindowOwner) == 0)
             {
-                _notificationWindows.Add(target);
+                _notificationWindows[target] = PidOf(target);
                 QueueRefresh();
             }
             return;
@@ -284,7 +294,12 @@ public sealed class NativeWindowTracker : IDisposable
 
         EnumWindows(_enumCallback, 0);
 
-        _notificationWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
+        foreach (var stale in _notificationWindows.Keys
+            .Where(handle => !IsWindow(handle)
+                || (!_notificationWindows.TryGetValue(handle, out var pid) || PidOf(handle) != pid)).ToList())
+        {
+            _notificationWindows.Remove(stale);
+        }
         _quietWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
 
         if (Snapshot.SequenceEqual(_pendingWindows))
@@ -373,7 +388,8 @@ public sealed class NativeWindowTracker : IDisposable
             return true;
         }
 
-        var hasNotification = _notificationWindows.Contains(windowHandle);
+        var hasNotification = _notificationWindows.TryGetValue(windowHandle, out var notificationPid)
+            && PidOf(windowHandle) == notificationPid;
         if (previous is not null)
         {
             var title = trimmedSpan.SequenceEqual(previous.Title) ? previous.Title : trimmedSpan.ToString();
@@ -419,7 +435,10 @@ public sealed class NativeWindowTracker : IDisposable
             ShowWindowAsync(windowHandle, ShowRestore);
         }
 
-        AllowSetForegroundWindow(-1);
+        // Grant foreground privilege only to the app being activated, never ASFW_ANY (-1)
+        // which would let every process steal focus during this window's input window.
+        GetWindowThreadProcessId(windowHandle, out var targetPid);
+        if (targetPid != 0 && targetPid <= int.MaxValue) AllowSetForegroundWindow((int)targetPid);
         // Fast path: a dock click is the last input event, so this process may set the foreground window directly.
         // Attaching input queues and raising the window first waits on both apps' UI threads and cost 50-250 ms per
         // click; keep that only as the fallback for when Windows refuses the plain request.
