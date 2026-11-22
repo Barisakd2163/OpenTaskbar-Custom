@@ -98,6 +98,9 @@ public partial class MainWindow : Window
     private int _wheelRemainder;
     private System.Windows.Threading.DispatcherTimer? _searchTransitionTimer;
     private DateTime _searchTransitionDeadlineUtc;
+    // Suppresses the "menu is open → close it" branch briefly after we open it: the shell's cloak state lags
+    // the entrance animation, so rapid repeat clicks would otherwise send Escape and cancel the opening.
+    private long _startOpenRequestedAt;
 
     static MainWindow()
     {
@@ -130,7 +133,13 @@ public partial class MainWindow : Window
         StartupStopwatch.Mark("XAML inflated");
         // LayoutUpdated fires on every Arrange (including fisheye's per-frame slot writes). Rebuilding
         // rest geometry from it created a feedback loop; subscribe to the concrete geometry changes instead.
-        DockContents.SizeChanged += (_, _) => InvalidateMagnificationTargets();
+        DockContents.SizeChanged += (_, _) =>
+        {
+            InvalidateMagnificationTargets();
+            // Text-driven widgets change their width without raising ContentWidthChanged; a coalesced refit keeps
+            // "Fit to content" from drifting a few pixels narrower and showing a scroll arrow with free space (#126).
+            ScheduleCoalescedDockFit();
+        };
         DockScrollViewer.ScrollChanged += (_, _) => InvalidateMagnificationTargetsAfterScroll();
         _widgetPanel = new WidgetPanelHost(this);
         _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
@@ -329,6 +338,11 @@ public partial class MainWindow : Window
                 || _draggedApp is not null
                 || (_settingsWindow is { IsVisible: true, IsActive: true, WindowState: not WindowState.Minimized })
                 || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
+        _autoHideController.VisibilityChanged += visible =>
+        {
+            foreach (var widget in _widgetCoordinator.ActiveWidgets.Values)
+                widget.SetDockVisible(visible);
+        };
         _autoHideController.DockBoundsProvider = GetDockPhysicalBounds;
         _autoHideController.IsShellMenuOpen = _startMenu.IsStartMenuOpenNow;
         // The Start menu and the Alt+Tab switcher cover the dock but are not applications: look past them.
@@ -399,31 +413,32 @@ public partial class MainWindow : Window
         _startupFinalized = true;
 
         StartupStopwatch.Mark("dock first paint");
-        // Loaded priority sits below Render but above Input: both phases run right after the first
-        // paint, cannot be starved by mouse movement, and the handler itself returns immediately.
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, PopulateDockContent);
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, FinalizeStartup);
+        // Split startup into short phases at Background priority so input can preempt each step. Previously two
+        // monolithic Loaded jobs (390-510 ms + 170-260 ms) blocked every click during the first half second.
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!IsLoaded) return;
+            var content = StartupStopwatch.Start("dock content");
+            _widgetCoordinator.Apply(_preferences.Current);
+            StartupStopwatch.Mark("widgets placed");
+            ApplyStartIcon();
+            StartupStopwatch.Mark("start icon applied");
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                if (!IsLoaded) return;
+                LoadPinnedApps(_preferences.Current.PinOrder);
+                StartupStopwatch.Mark("pinned apps and icons loaded");
+                InitializeExtras();
+                RebuildDockOrder();
+                PositionDock();
+                content.Finish("content total");
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FinalizeWindowTracking));
+            }));
+        }));
     }
 
-    /// <summary>Fills the already-visible dock with pins, the start logo and extras.</summary>
-    private void PopulateDockContent()
-    {
-        if (!IsLoaded) return;
-        var startup = StartupStopwatch.Start("dock content");
-        _widgetCoordinator.Apply(_preferences.Current);
-        StartupStopwatch.Mark("widgets placed");
-        ApplyStartIcon();
-        StartupStopwatch.Mark("start icon applied");
-        LoadPinnedApps(_preferences.Current.PinOrder);
-        StartupStopwatch.Mark("pinned apps and icons loaded");
-        InitializeExtras();
-        RebuildDockOrder();
-        PositionDock();
-        startup.Finish("content total");
-    }
-
-    /// <summary>Native taskbar replacement, window tracking and feature wiring, after the dock is visible.</summary>
-    private void FinalizeStartup()
+    /// <summary>Starts native window tracking in its own short phase (#128 finding 8).</summary>
+    private void FinalizeWindowTracking()
     {
         if (!IsLoaded) return;
         var startup = StartupStopwatch.Start("startup finalize");
@@ -445,23 +460,18 @@ public partial class MainWindow : Window
                 _windowTracker = null;
             }
         }
-
         StartupStopwatch.Mark("window tracking started");
-
-        // Taskbar replacement already reserved the shelf in SourceInitialized; start TrayHost (ManagedShell)
-        // here after first paint so its COM/broadcast init never delays rendering.
-        if (_replacementSession is null)
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
-            StartReplacementMode(startTrayHost: true);
-        }
-        else if (_replacementSession.IsActive)
-        {
-            EnsureTrayHostStarted();
-        }
-        StartupStopwatch.Mark("taskbar replacement started");
-        InitializeFeatures();
-        StartupStopwatch.Mark("features initialized");
-        startup.Finish("finalize total");
+            // Taskbar replacement already reserved the shelf in SourceInitialized; start TrayHost (ManagedShell)
+            // after the layout phase so its COM/broadcast init never delays painting or input.
+            if (_replacementSession is null) StartReplacementMode(startTrayHost: true);
+            else if (_replacementSession.IsActive) EnsureTrayHostStarted();
+            StartupStopwatch.Mark("taskbar replacement started");
+            InitializeFeatures();
+            StartupStopwatch.Mark("features initialized");
+            startup.Finish("finalize total");
+        }));
     }
 
     private (int Left, int Top, int Right, int Bottom)? GetDockPhysicalBounds()
@@ -706,7 +716,9 @@ public partial class MainWindow : Window
         var apps = result.Apps.ToList();
         foreach (var app in apps)
         {
-            app.Icon = ApplyApplicationIcon(app);
+            // Cold shell-item loads cost 130-175 ms each on the UI thread (#128 finding 7). DockApp.Icon notifies,
+            // so the icon can pop in once the shared STA loader finishes without blocking first paint.
+            LoadPinnedIconAsync(app);
         }
 
         if (preferredOrder is { Count: > 0 })
@@ -741,6 +753,8 @@ public partial class MainWindow : Window
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
     {
+        // A window list change can move another window over the dock without a foreground change.
+        _autoHideController?.InvalidateWindowOverlap();
         windows = FilterWindows(windows);
         _runningAppIcons.Retain(windows);
         var foreground = NativeWindowTracker.GetForegroundApplicationWindow();
@@ -1179,6 +1193,13 @@ public partial class MainWindow : Window
         _startMenuOpenAtPress = false;
         if (startMenuWasOpen)
         {
+            // The shell reports the Start canvas as "open" while it is still animating in. A repeat click in
+            // that window must not be treated as a close request, otherwise the menu appears to never open.
+            var sinceOpenMs = (_startOpenRequestedAt == 0)
+                ? double.MaxValue
+                : (Stopwatch.GetTimestamp() - _startOpenRequestedAt) * 1000.0 / Stopwatch.Frequency;
+            if (sinceOpenMs <= 800) return;
+            _startOpenRequestedAt = 0;
             CloseStartMenu();
             return;
         }
@@ -1191,6 +1212,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            _startOpenRequestedAt = Stopwatch.GetTimestamp();
             ShellShortcuts.ScheduleStartMenuReposition(StartButton);
         }
     }
@@ -1263,6 +1285,11 @@ public partial class MainWindow : Window
     {
         var executablePath = app.ExecutablePath;
         var arguments = app.LaunchArguments ?? string.Empty;
+        // A pin created from a running window can hold a helper executable (e.g. Steam's steamwebhelper.exe)
+        // instead of the app's launcher. Map it back to the real launcher and drop helper-only arguments.
+        var resolved = LaunchTargetResolver.Resolve(executablePath);
+        executablePath = resolved.Path;
+        if (resolved.DropArguments) arguments = string.Empty;
         // Pins imported from .lnk shortcuts do not carry an AUMID, so a packaged Store app would be launched by
         // its WindowsApps executable directly and fail. Resolve it from AppxManifest.xml as a fallback — the same
         // path the icon provider already uses.
@@ -2110,13 +2137,26 @@ public partial class MainWindow : Window
         _settingsWindow.Activate();
     }
 
-    private System.Windows.Media.Imaging.BitmapSource? ApplyApplicationIcon(DockApp app)
+    /// <summary>
+    /// Loads a pinned app's shell/Store icon on the shared STA loader and applies the theme on the UI thread.
+    /// </summary>
+    private void LoadPinnedIconAsync(DockApp app)
     {
-        // Pinned apps need IconLocation (Chrome/Edge PWA .ico) or AUMID (Store apps); the
-        // executable alone has no icon resource for those. GetForPinnedApp tries both before
-        // falling back to the executable's own icon.
-        var raw = ApplicationIconProvider.GetForPinnedApp(app.ExecutablePath, app.IconLocation, app.AppUserModelId);
-        return ThemePacks.ApplyIcon(raw, app.ExecutablePath);
+        // Pinned apps need IconLocation (Chrome/Edge PWA .ico) or AUMID (Store apps); the executable alone has no
+        // icon resource for those. GetForPinnedApp tries both before falling back to the executable's own icon.
+        _ = RunningAppIconCache.IconLoaderThread.Run(() =>
+                ApplicationIconProvider.GetForPinnedApp(app.ExecutablePath, app.IconLocation, app.AppUserModelId))
+            .ContinueWith(task =>
+            {
+                if (task.IsCompletedSuccessfully && task.Result is { } raw)
+                {
+                    Dispatcher.BeginInvoke(new Action(() => app.Icon = ThemePacks.ApplyIcon(raw, app.ExecutablePath)));
+                }
+                else if (task.Exception is { } failure)
+                {
+                    AppLog.Warning($"Pinned icon load failed for {app.ExecutablePath}: {failure.GetBaseException().Message}");
+                }
+            }, TaskScheduler.Default);
     }
 
     private void ThemePacks_Changed(object? sender, EventArgs e)
@@ -2125,7 +2165,7 @@ public partial class MainWindow : Window
         ApplyStartIcon();
         foreach (var app in _pinnedApps)
         {
-            app.Icon = ApplyApplicationIcon(app);
+            LoadPinnedIconAsync(app);
         }
         if (_windowTracker is not null)
         {
@@ -3295,7 +3335,30 @@ public partial class MainWindow : Window
     }
 
     private bool _deferredDockResize;
+    private bool _dockFitPending;
     private double _dockWidthAnimationTarget = double.NaN;
+
+    /// <summary>
+    /// Coalesces content-size signals into one refit on the next layout pass. Calling FitDockToContent inline from
+    /// SizeChanged would re-enter through MeasureContentWidth -> UpdateLayout; the pending flag plus the existing
+    /// _resizingDock/_resizePending caps keep the feedback bounded to one extra pass.
+    /// </summary>
+    private void ScheduleCoalescedDockFit()
+    {
+        if (_magnificationLayoutActive || _magnificationRendering)
+        {
+            _deferredDockResize = true;
+            return;
+        }
+        if (_dockFitPending) return;
+        _dockFitPending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            _dockFitPending = false;
+            if (_magnificationLayoutActive || _magnificationRendering) return;
+            ResizeDockToContent();
+        }));
+    }
 
     private void ResizeDockToContent()
     {

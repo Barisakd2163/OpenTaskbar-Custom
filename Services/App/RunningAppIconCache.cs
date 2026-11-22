@@ -39,7 +39,11 @@ public sealed class RunningAppIconCache
 
     public RunningAppIconCache()
         : this(
-            Guard<string, BitmapSource>(path => ApplicationIconProvider.GetForResource(path, 0)),
+            // Request at least 64 px: many Electron apps ship a higher-resolution icon resource, but
+            // PrivateExtractIcons returns the exact requested size. A 64 px source stays crisp both at rest
+            // and under the 1.5x magnification hover (#128 follow-up, Bitwarden icon quality).
+            Guard<string, BitmapSource>(path => ApplicationIconProvider.GetForResource(
+                path, 0, Math.Max(64, ApplicationIconProvider.PreferredIconPixels))),
             Guard<nint, string>(window => NativeJumpListSession.ReadWindowAppId(window) ?? NativeWindowTracker.GetPackagedAppId(window)),
             Guard<string, BitmapSource>(appId => ApplicationIconProvider.GetForShellItem(@"shell:AppsFolder\" + appId, ApplicationIconProvider.PreferredIconPixels, iconOnly: true)),
             Guard<string, BitmapSource>(path => ApplicationIconProvider.GetForFile(path)),
@@ -240,7 +244,7 @@ public sealed class RunningAppIconCache
     /// One background STA thread for Shell icon work: shell items and icon handlers expect an apartment thread,
     /// and a single thread keeps the loads in order without competing for the CPU with the UI.
     /// </summary>
-    private static class IconLoaderThread
+    internal static class IconLoaderThread
     {
         private static readonly BlockingCollection<Action> Work = new();
         private static readonly Lazy<Thread> Worker = new(() =>
