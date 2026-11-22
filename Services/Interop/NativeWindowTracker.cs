@@ -381,7 +381,13 @@ public sealed class NativeWindowTracker : IDisposable
         }
         else
         {
-            _pendingWindows.Add(new TrackedWindow(windowHandle, trimmedSpan.ToString(), executablePath, hasNotification));
+            // Read the Shell AppUserModelId once per window (cached in _previousByHandle on later refreshes)
+            // so windows from different executables of the same app (e.g. FortiClient helpers) group together.
+            // A COM hiccup must never take down the whole tracker — fall back to path-only grouping.
+            string? appId = null;
+            try { appId = NativeJumpListSession.ReadWindowAppId(windowHandle); }
+            catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException) { }
+            _pendingWindows.Add(new TrackedWindow(windowHandle, trimmedSpan.ToString(), executablePath, hasNotification, appId));
         }
 
         return true;

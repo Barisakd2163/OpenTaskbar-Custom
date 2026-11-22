@@ -36,19 +36,25 @@ internal static class RunningAppProjection
             var window = windows[i];
             var path = window.ExecutablePath;
             if (string.IsNullOrEmpty(path) || excludedPaths.Contains(path) || !fileExists(path)) continue;
-            if (!groups.TryGetValue(path, out var group))
+            // Windows groups taskbar buttons by AppUserModelID, not by executable: a single app can
+            // spawn helper processes with different executables (e.g. FortiClient tray/popup helpers).
+            // Use the AUMID as the grouping key when present, falling back to the executable path.
+            var key = string.IsNullOrWhiteSpace(window.AppUserModelId) ? path : window.AppUserModelId!;
+            if (!groups.TryGetValue(key, out var group))
             {
                 group = [];
-                groups.Add(path, group);
-                order.Add(path);
+                groups.Add(key, group);
+                order.Add(key);
             }
             group.Add(window);
         }
 
         var candidates = new List<RunningAppCandidate>(order.Count);
-        foreach (var path in order)
+        foreach (var key in order)
         {
-            var group = groups[path];
+            var group = groups[key];
+            // The representative path is the first window's executable (icon + launch target).
+            var path = group[0].ExecutablePath!;
             candidates.Add(new RunningAppCandidate(
                 path,
                 group,

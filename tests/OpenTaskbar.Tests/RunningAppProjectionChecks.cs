@@ -42,6 +42,26 @@ internal static class RunningAppProjectionChecks
         Check(candidates[1].WindowCount == 1 && !candidates[1].HasNotification && !candidates[1].IsForeground,
             "An unrelated app keeps its own state.");
 
+        // One app can spawn helpers with different executables (e.g. FortiClient tray/popup).
+        // Windows groups them by AppUserModelID; secondary docks must do the same so closing one
+        // window does not make a "new" app button appear for a helper process.
+        const string Helper = @"C:\Apps\VendorHelper.exe";
+        IReadOnlyList<TrackedWindow> aumidWindows =
+        [
+            new(10, "Main", First, AppUserModelId: "Vendor.Suite_abc!App"),
+            new(11, "Helper", Helper, AppUserModelId: "Vendor.Suite_abc!App"),
+            new(12, "Other", Second, AppUserModelId: "Other.App_xyz!App")
+        ];
+        var aumidExists = new HashSet<string>([First, Helper, Second], StringComparer.OrdinalIgnoreCase);
+        var aumidCandidates = RunningAppProjection.Project(aumidWindows,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), foreground: 11,
+            notificationBadgesEnabled: true, aumidExists.Contains);
+        Check(aumidCandidates.Count == 2 && aumidCandidates[0].WindowCount == 2
+              && string.Equals(aumidCandidates[0].ExecutablePath, First, StringComparison.OrdinalIgnoreCase),
+            "Windows sharing an AppUserModelID group into one candidate even with different executables.");
+        Check(aumidCandidates[0].IsForeground,
+            "A helper window carrying the same AUMID still marks the group as foreground.");
+
         var quiet = RunningAppProjection.Project(windows, excluded, foreground: 2,
             notificationBadgesEnabled: false, Exists);
         Check(quiet.All(candidate => !candidate.HasNotification),
