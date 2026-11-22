@@ -115,18 +115,18 @@ internal static class AdaptiveWidgetAndConfirmChecks
     private static void CheckAdaptiveDensityAndHysteresis(Dispatcher dispatcher, Action<bool, string> check)
     {
         var strip = new StackPanel { Orientation = Orientation.Horizontal };
-        // Use side-effect-free widgets (Weather is stubbed via WeatherService.TestLoaderOverride) so adaptive
-        // density tests never activate live Core Audio, SMTC, PDH/GPU sensors, or Wi-Fi/Bluetooth radios.
+        // Use side-effect-free, always-visible widgets so adaptive density tests never activate live
+        // Windows Location, Core Audio, SMTC, PDH/GPU sensors, or Wi-Fi/Bluetooth radios.
         using var coordinator = new WidgetCoordinator(strip, dispatcher, _ => { }, lazy: true);
-        var widgets = new[] { "Weather", "Battery", "DayProgress", "Clock" };
+        var widgets = new[] { "Focus", "DayProgress", "Clock" };
         var settings = new DockSettings(
             Widgets: widgets,
             InstalledWidgets: widgets,
             GlobalWidgetDensity: WidgetDensityMode.Auto);
         coordinator.Apply(settings);
 
-        var weather = strip.Children.OfType<WeatherWidget>().Single();
-        var battery = strip.Children.OfType<BatteryWidget>().Single();
+        var focus = strip.Children.OfType<FocusWidget>().Single();
+        var clock = strip.Children.OfType<ClockWidget>().Single();
         var autoCandidates = strip.Children.OfType<OpenTaskbar.Widgets.DockWidget>()
             .Where(widget => widget.Visibility == Visibility.Visible && widget.SupportsCompactMode)
             .OrderBy(widget => widget.ShrinkPriority).ToArray();
@@ -160,12 +160,12 @@ internal static class AdaptiveWidgetAndConfirmChecks
         {
             WidgetDensityOverrides = new Dictionary<string, WidgetDensityMode>
             {
-                ["Weather"] = WidgetDensityMode.Compact,
-                ["Battery"] = WidgetDensityMode.Full
+                ["Focus"] = WidgetDensityMode.Compact,
+                ["Clock"] = WidgetDensityMode.Full
             }
         };
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, overridden);
-        check(weather.IsCompact && !battery.IsCompact,
+        check(focus.IsCompact && !clock.IsCompact,
             "Per-widget Compact/Full choices must override Auto.");
 
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, settings, widgetScale: 1.35);
