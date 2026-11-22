@@ -510,6 +510,104 @@ internal static class AiUsageChecks
             }
         }
 
+        // GitHub CLI (`gh auth login`) fallback for Copilot, isolated from the real hosts.yml and keyring.
+        var hosts = AiUsageService.ParseGhHostsYaml("""
+            enterprise.example.com:
+                user: enterprise-user
+                oauth_token: fixture-enterprise-token
+            github.com:
+                users:
+                    fixture-user:
+                        oauth_token: fixture-nested-token
+                git_protocol: https
+                user: fixture-user
+            """);
+        Check(hosts == ("fixture-user", "fixture-nested-token"),
+            "hosts.yml parsing must read the github.com user and its token while ignoring other hosts.");
+        var directHosts = AiUsageService.ParseGhHostsYaml("github.com:\r\n  oauth_token: \"fixture-direct\"  \r\n  user: 'quoted-user' # comment\r\nother.host:\r\n  user: nope\r\n");
+        Check(directHosts == ("quoted-user", "fixture-direct"), "hosts.yml parsing must handle quotes, comments and CRLF.");
+        Check(AiUsageService.ParseGhHostsYaml("other.host:\n  user: nope\n  oauth_token: nope\n") == (null, null)
+            && AiUsageService.ParseGhHostsYaml("") == (null, null), "hosts.yml without github.com must yield nothing.");
+
+        var fixtureGho = "gho_" + new string('x', 36);
+        var encodedGho = "go-keyring-base64:" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(fixtureGho));
+        Check(AiUsageService.DecodeGhKeyringToken(fixtureGho) == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(encodedGho) == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken("  " + encodedGho + "\0\0\n") == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(fixtureGho + "\0 \r\n") == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(string.Join("\0", fixtureGho.ToCharArray()) + "\0") == fixtureGho,
+            "gh keyring tokens must decode plain, base64-prefixed, padded and UTF-16-as-UTF-8 blobs.");
+        Check(AiUsageService.DecodeGhKeyringToken("go-keyring-base64:!!not-base64!!") is null
+            && AiUsageService.DecodeGhKeyringToken("go-keyring-base64:") is null
+            && AiUsageService.DecodeGhKeyringToken(null) is null && AiUsageService.DecodeGhKeyringToken(" \0 ") is null,
+            "Invalid or empty gh keyring blobs must fail closed.");
+
+        var previousHostsOverride = AiUsageService.GhHostsPathOverride;
+        var previousKeyringOverride = AiUsageService.GhKeyringReaderOverride;
+        var previousProbeOverride = AiUsageService.GhCliTokenProbeOverride;
+        var ghHostsPath = Path.Combine(Path.GetTempPath(), $"opentaskbar-gh-hosts-{Guid.NewGuid():N}.yml");
+        try
+        {
+            var keyringReads = new List<string>();
+            var keyring = new Dictionary<string, (string? Value, DateTime LastWrittenUtc)>();
+            var probeCalls = 0;
+            AiUsageService.GhHostsPathOverride = ghHostsPath;
+            AiUsageService.GhKeyringReaderOverride = target =>
+            {
+                keyringReads.Add(target);
+                return keyring.TryGetValue(target, out var entry) ? entry : (null, DateTime.MinValue);
+            };
+            AiUsageService.GhCliTokenProbeOverride = () => { probeCalls++; return "fixture-cli-token"; };
+
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out var emptyStamp) is null && emptyStamp == DateTime.MinValue
+                && keyringReads.SequenceEqual(["gh:github.com:"]) && probeCalls == 0,
+                "Without hosts.yml only the default gh keyring target is read and no CLI probe runs.");
+
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n    git_protocol: https\n");
+            var userWritten = new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+            keyring["gh:github.com:fixture-user"] = (encodedGho, userWritten);
+            keyringReads.Clear();
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out var userStamp) == fixtureGho && userStamp == userWritten
+                && keyringReads.SequenceEqual(["gh:github.com:", "gh:github.com:fixture-user"]) && probeCalls == 0,
+                "The per-user gh keyring target must be read after the default one and decoded.");
+
+            keyring["gh:github.com:"] = (fixtureGho + "-default", DateTime.MinValue);
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out _) == fixtureGho + "-default",
+                "The default gh keyring target must win over the per-user one.");
+
+            keyring.Clear();
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n    oauth_token: fixture-plain-token\n");
+            Check(AiUsageService.TryReadGitHubCliCredential(true, out var plainStamp) == "fixture-plain-token"
+                && plainStamp == File.GetLastWriteTimeUtc(ghHostsPath) && probeCalls == 0,
+                "A plaintext hosts.yml token must be used when the keyring has none, before any CLI probe.");
+
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n");
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out _) is null && probeCalls == 0,
+                "allowCliProbe:false must never run `gh auth token`.");
+            Check(AiUsageService.TryReadGitHubCliCredential(true, out _) == "fixture-cli-token" && probeCalls == 1,
+                "allowCliProbe:true must fall back to `gh auth token`.");
+
+            _ = AiUsageService.HasCredential(AiProviders.Copilot);
+            _ = AiUsageService.CredentialStamp(AiProviders.Copilot);
+            Check(probeCalls == 1, "HasCredential/CredentialStamp for Copilot must not invoke any CLI subprocess.");
+
+            var stampBefore = AiUsageService.CredentialStamp(AiProviders.Copilot);
+            keyring["gh:github.com:fixture-user"] = (encodedGho, DateTime.UtcNow.AddYears(5));
+            Check(AiUsageService.CredentialStamp(AiProviders.Copilot) > stampBefore,
+                "CredentialStamp(Copilot) must change when `gh auth login` writes the keyring.");
+
+            var ghStartInfo = AiUsageService.HiddenCliStartInfo("gh", "auth", "token");
+            Check(ghStartInfo.ArgumentList.SequenceEqual(["auth", "token"]) && ghStartInfo.CreateNoWindow && ghStartInfo.RedirectStandardInput,
+                "`gh auth token` must run hidden with redirected stdin.");
+        }
+        finally
+        {
+            AiUsageService.GhHostsPathOverride = previousHostsOverride;
+            AiUsageService.GhKeyringReaderOverride = previousKeyringOverride;
+            AiUsageService.GhCliTokenProbeOverride = previousProbeOverride;
+            File.Delete(ghHostsPath);
+        }
+
         // Widgets need an STA thread; this also runs headless, without application resources.
         Exception? renderFailure = null;
         var thread = new Thread(() =>

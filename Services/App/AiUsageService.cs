@@ -389,9 +389,11 @@ public static class AiUsageService
             }
             if (provider == AiProviders.Copilot)
             {
-                var fallbackPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "github-copilot", "apps.json");
-                var fallbackStamp = File.GetLastWriteTimeUtc(fallbackPath);
+                var fallbackStamp = File.GetLastWriteTimeUtc(CopilotConfigAppsPath());
                 if (fallbackStamp > stamp) stamp = fallbackStamp;
+                // `gh auth login` writes hosts.yml and the Credential Manager entries, never apps.json.
+                var ghStamp = GitHubCliStamp(out _);
+                if (ghStamp > stamp) stamp = ghStamp;
             }
             return stamp;
         }
@@ -484,10 +486,11 @@ public static class AiUsageService
                 if (File.Exists(legacyPath)) targetPath = legacyPath;
                 else if (allowCliProbe && TryReadOpenCodeCliCredential() is { } cliCred) return cliCred;
             }
-            if (provider == AiProviders.Copilot && path is null && !File.Exists(targetPath))
+            if (provider == AiProviders.Copilot && path is null)
             {
-                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "github-copilot", "apps.json");
-                if (File.Exists(configPath)) targetPath = configPath;
+                foreach (var appsPath in new[] { targetPath, CopilotConfigAppsPath() })
+                    if (TryReadCopilotApps(appsPath) is { } appsCred) return appsCred;
+                return TryReadGitHubCliCredential(allowCliProbe, out _) is { } ghToken ? new(ghToken) : null;
             }
             using var stream = new FileStream(targetPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var document = JsonDocument.Parse(stream);
@@ -755,6 +758,207 @@ public static class AiUsageService
             }
         }
         return null;
+    }
+
+    private const string GhKeyringBase64Prefix = "go-keyring-base64:";
+    private const string GhKeyringTargetPrefix = "gh:github.com:";
+
+    /// <summary>Test hook: replaces %APPDATA%\GitHub CLI\hosts.yml.</summary>
+    internal static string? GhHostsPathOverride { get; set; }
+    /// <summary>Test hook: replaces Credential Manager reads for gh targets.</summary>
+    internal static Func<string, (string? Value, DateTime LastWrittenUtc)>? GhKeyringReaderOverride { get; set; }
+    /// <summary>Test hook: replaces the `gh auth token` subprocess.</summary>
+    internal static Func<string?>? GhCliTokenProbeOverride { get; set; }
+
+    private static string CopilotConfigAppsPath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "github-copilot", "apps.json");
+
+    private static Credential? TryReadCopilotApps(string appsPath)
+    {
+        try
+        {
+            if (!File.Exists(appsPath)) return null;
+            using var stream = new FileStream(appsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (stream.Length == 0) return null;
+            using var document = JsonDocument.Parse(stream);
+            return ParseCopilotCredential(document.RootElement);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+            or ArgumentException or NotSupportedException or SecurityException) { return null; }
+    }
+
+    internal static string GhHostsPath()
+    {
+        if (GhHostsPathOverride is { } overridePath) return overridePath;
+        var configDir = Environment.GetEnvironmentVariable("GH_CONFIG_DIR");
+        if (string.IsNullOrWhiteSpace(configDir))
+            configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GitHub CLI");
+        return Path.Combine(configDir, "hosts.yml");
+    }
+
+    /// <summary>Extracts `user:` and an insecure-storage `oauth_token:` from the github.com block of gh's hosts.yml.</summary>
+    internal static (string? User, string? PlainToken) ParseGhHostsYaml(string yaml)
+    {
+        string? user = null, directToken = null, nestedToken = null;
+        var inGitHub = false;
+        var childIndent = -1;
+        foreach (var rawLine in yaml.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            var content = line.TrimStart();
+            if (content.Length == 0 || content.StartsWith('#')) continue;
+            var indent = line.Length - content.Length;
+            if (indent == 0)
+            {
+                inGitHub = string.Equals(YamlKey(content), "github.com", StringComparison.OrdinalIgnoreCase);
+                childIndent = -1;
+                continue;
+            }
+            if (!inGitHub) continue;
+            if (childIndent < 0 || indent < childIndent) childIndent = indent;
+            var key = YamlKey(content);
+            if (key is null) continue;
+            var value = YamlValue(content);
+            if (indent == childIndent)
+            {
+                if (key == "user" && value is not null) user = value;
+                else if (key == "oauth_token" && value is not null) directToken = value;
+            }
+            else if (key == "oauth_token" && value is not null) nestedToken ??= value;
+        }
+        return (user, directToken ?? nestedToken);
+    }
+
+    private static string? YamlKey(string content)
+    {
+        var colon = content.IndexOf(':');
+        if (colon <= 0) return null;
+        return content[..colon].Trim().Trim('"', '\'');
+    }
+
+    private static string? YamlValue(string content)
+    {
+        var colon = content.IndexOf(':');
+        var value = content[(colon + 1)..].Trim();
+        if (value.Length >= 2 && value[0] is '"' or '\'')
+        {
+            var close = value.IndexOf(value[0], 1);
+            value = close > 0 ? value[1..close] : string.Empty;
+        }
+        else
+        {
+            var comment = value.IndexOf(" #", StringComparison.Ordinal);
+            if (comment >= 0) value = value[..comment].TrimEnd();
+        }
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    /// <summary>
+    /// Decodes a gh Credential Manager blob. go-keyring stores the token as UTF-8 bytes, optionally as
+    /// "go-keyring-base64:" + Base64(UTF-8). NUL padding (or a UTF-16 blob read as UTF-8) is stripped.
+    /// </summary>
+    internal static string? DecodeGhKeyringToken(string? raw)
+    {
+        if (raw is null) return null;
+        var value = raw.Replace("\0", string.Empty, StringComparison.Ordinal).Trim();
+        if (value.StartsWith(GhKeyringBase64Prefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                value = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(value[GhKeyringBase64Prefix.Length..].Trim()))
+                    .Replace("\0", string.Empty, StringComparison.Ordinal).Trim();
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException) { return null; }
+        }
+        return value.Length == 0 ? null : value;
+    }
+
+    private static (string? Value, DateTime LastWrittenUtc) ReadGhKeyring(string target)
+    {
+        if (GhKeyringReaderOverride is { } reader) return reader(target);
+        var value = ReadKeyringCredential(target, out var written);
+        return (value, written);
+    }
+
+    private static (string? User, string? PlainToken, DateTime Stamp) ReadGhHosts()
+    {
+        try
+        {
+            var hostsPath = GhHostsPath();
+            if (!File.Exists(hostsPath)) return (null, null, DateTime.MinValue);
+            var stamp = File.GetLastWriteTimeUtc(hostsPath);
+            using var stream = new FileStream(hostsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (stream.Length > 1 << 20) return (null, null, stamp);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var (user, plainToken) = ParseGhHostsYaml(reader.ReadToEnd());
+            return (user, plainToken, stamp);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or NotSupportedException or SecurityException) { return (null, null, DateTime.MinValue); }
+    }
+
+    private static string[] GhKeyringTargets(string? user) =>
+        string.IsNullOrWhiteSpace(user) ? [GhKeyringTargetPrefix] : [GhKeyringTargetPrefix, GhKeyringTargetPrefix + user];
+
+    /// <summary>Latest write time across hosts.yml and gh's Credential Manager entries; no subprocess.</summary>
+    private static DateTime GitHubCliStamp(out string? user)
+    {
+        var (hostsUser, _, stamp) = ReadGhHosts();
+        user = hostsUser;
+        foreach (var target in GhKeyringTargets(hostsUser))
+        {
+            var (_, written) = ReadGhKeyring(target);
+            if (written > stamp) stamp = written;
+        }
+        return stamp;
+    }
+
+    /// <summary>
+    /// Reads the token `gh auth login` stored: Credential Manager first, then a plaintext hosts.yml token,
+    /// then (only when allowed, never on the UI thread) `gh auth token`. Never logs the token.
+    /// </summary>
+    internal static string? TryReadGitHubCliCredential(bool allowCliProbe, out DateTime stamp)
+    {
+        var (user, plainToken, hostsStamp) = ReadGhHosts();
+        stamp = hostsStamp;
+        string? token = null;
+        foreach (var target in GhKeyringTargets(user))
+        {
+            var (raw, written) = ReadGhKeyring(target);
+            if (written > stamp) stamp = written;
+            token ??= DecodeGhKeyringToken(raw);
+        }
+        if (token is null && !string.IsNullOrWhiteSpace(plainToken)) token = plainToken.Trim();
+        if (token is null && allowCliProbe) token = GhCliTokenProbeOverride is { } probe ? probe() : RunGhAuthToken();
+        return string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+    }
+
+    private static string? RunGhAuthToken()
+    {
+        try
+        {
+            using var process = new Process { StartInfo = HiddenCliStartInfo("gh", "auth", "token") };
+            if (!process.Start()) return null;
+            process.StandardInput.Close();
+            AppLog.Info($"AI usage CLI started: GitHub CLI pid={process.Id}");
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                return null;
+            }
+            if (!stdoutTask.Wait(1000)) return null;
+            _ = stderrTask.Wait(1000);
+            if (process.ExitCode != 0) return null;
+            var stdout = stdoutTask.Result.Trim();
+            return stdout.Length == 0 ? null : stdout;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException
+            or AggregateException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private static Credential? ParseDeepSeekCredential(JsonElement root)
