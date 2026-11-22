@@ -256,6 +256,18 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private CornerRadius ActiveCornerRadius => SettingsBackdrop.SupportsNativeRoundedCorners && WindowState != WindowState.Maximized
+        ? new CornerRadius(SettingsBackdrop.NativeCornerRadius)
+        : new CornerRadius(0);
+
+    private void ApplySettingsBorderCornerRadius()
+    {
+        if (SettingsBackdrop.SupportsNativeRoundedCorners)
+            SettingsBorderOverlay.ClearValue(System.Windows.Controls.Border.CornerRadiusProperty);
+        else
+            SettingsBorderOverlay.CornerRadius = new CornerRadius(0);
+    }
+
     private void PlayOpenAnimation()
     {
         var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(180))
@@ -267,8 +279,13 @@ public partial class SettingsWindow : Window
             EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
         };
         var transform = new ScaleTransform(0.96, 0.96);
+        SettingsFrame.CornerRadius = ActiveCornerRadius;
         SettingsFrame.RenderTransformOrigin = new Point(0.5, 0.5);
         SettingsFrame.RenderTransform = transform;
+        fade.Completed += (_, _) =>
+        {
+            if (!_isClosing && !_closed) SettingsFrame.CornerRadius = new CornerRadius(0);
+        };
         SettingsFrame.BeginAnimation(UIElement.OpacityProperty, fade);
         transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
@@ -382,36 +399,26 @@ public partial class SettingsWindow : Window
         if (!_sourceReady) return;
         var chrome = WindowChrome.GetWindowChrome(this);
         var surfaceMode = ThemeManager.GetSurface(SurfaceKind.Settings).Background;
+        SettingsFrame.CornerRadius = new CornerRadius(0);
+        ApplySettingsBorderCornerRadius();
         if (surfaceMode == SurfaceBackground.None)
         {
             var transparent = SettingsBackdrop.TryEnableTransparent(this, ThemeManager.EffectiveTheme);
             SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty,
                 transparent ? "SettingsGlassMaterial" : "SettingsBackground");
             chrome.GlassFrameThickness = transparent ? new Thickness(-1) : new Thickness(0);
-            if (transparent) SettingsFrame.ClearValue(System.Windows.Controls.Border.CornerRadiusProperty);
-            else SettingsFrame.CornerRadius = new CornerRadius(0);
             return;
         }
         if (surfaceMode == SurfaceBackground.Solid)
         {
-            SettingsBackdrop.Disable(this);
+            SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
             SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsGlassMaterial");
             chrome.GlassFrameThickness = new Thickness(0);
-            SettingsFrame.CornerRadius = new CornerRadius(0);
             return;
         }
         var glass = SettingsBackdrop.TryEnable(this, ThemeManager.EffectiveTheme);
         SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, glass ? "SettingsGlassMaterial" : "SettingsBackground");
-        if (glass)
-        {
-            chrome.GlassFrameThickness = new Thickness(-1);
-            SettingsFrame.ClearValue(System.Windows.Controls.Border.CornerRadiusProperty);
-        }
-        else
-        {
-            chrome.GlassFrameThickness = new Thickness(0);
-            SettingsFrame.CornerRadius = new CornerRadius(0);
-        }
+        chrome.GlassFrameThickness = glass ? new Thickness(-1) : new Thickness(0);
     }
 
     private DockSettings ReadSelection()
@@ -2135,6 +2142,7 @@ public partial class SettingsWindow : Window
         };
 
         var transform = new ScaleTransform(1.0, 1.0);
+        SettingsFrame.CornerRadius = ActiveCornerRadius;
         SettingsFrame.RenderTransformOrigin = new Point(0.5, 0.5);
         SettingsFrame.RenderTransform = transform;
 

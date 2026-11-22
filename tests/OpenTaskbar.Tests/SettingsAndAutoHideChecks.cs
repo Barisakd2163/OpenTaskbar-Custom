@@ -32,6 +32,7 @@ internal static class SettingsAndAutoHideChecks
         CheckClockWidgetFlyoutAndAutoHide(application, Check);
         CheckTrayTransientTooltips(Check);
         CheckForegroundLocationForceRepublish(application, Check);
+        CheckSettingsWindowCornerAndBorder(application, Check);
         return checks;
     }
 
@@ -618,6 +619,70 @@ internal static class SettingsAndAutoHideChecks
             ThemePacks.Root = previousThemesRoot;
             if (File.Exists(path)) File.Delete(path);
             if (Directory.Exists(themesRoot)) Directory.Delete(themesRoot, recursive: true);
+        }
+    }
+
+    private static void CheckSettingsWindowCornerAndBorder(Application application, Action<bool, string> check)
+    {
+        check(SettingsBackdrop.NativeCornerRadius == 8, "Settings window native corner radius must match Windows 11's 8 DIP.");
+        check(SettingsBackdrop.DwmwaBorderColor == 34 && SettingsBackdrop.DwmwaColorNone == unchecked((int)0xFFFFFFFE),
+            "SettingsBackdrop must suppress the native DWM outer border with DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE.");
+
+        var path = Path.Combine(Path.GetTempPath(), $"opentaskbar-corners-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(path, CultureInfo.GetCultureInfo("en-US"));
+            var initial = new DockSettings(
+                Theme: AppTheme.Dark,
+                AnimationsEnabled: false,
+                SettingsBackground: SurfaceBackground.Glass,
+                SettingsOpacity: 0.92,
+                Widgets: ["Clock"],
+                InstalledWidgets: ["Clock"]);
+            check(store.Save(initial) is null, "Initial settings for corner check must save.");
+
+            var preferences = new ApplicationPreferences(store);
+            ThemeManager.Apply(preferences.Current.Theme, preferences.Current);
+            var sw = new SettingsWindow(preferences)
+            {
+                Left = -20000,
+                Top = -20000,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+            try
+            {
+                sw.Show();
+                PumpDispatcher(application.Dispatcher, 120);
+
+                check(sw.SettingsFrame.CornerRadius == new CornerRadius(0)
+                    && sw.SettingsFrame.BorderThickness == new Thickness(0),
+                    $"SettingsFrame must stay square with no border under the DWM clip (got radius={sw.SettingsFrame.CornerRadius}, thickness={sw.SettingsFrame.BorderThickness}).");
+
+                var expectedRadius = SettingsBackdrop.SupportsNativeRoundedCorners ? new CornerRadius(8) : new CornerRadius(0);
+                check(!sw.SettingsBorderOverlay.IsHitTestVisible
+                    && sw.SettingsBorderOverlay.CornerRadius == expectedRadius,
+                    $"SettingsBorderOverlay must be hit-test invisible and match corner radius {expectedRadius} (got {sw.SettingsBorderOverlay.CornerRadius}).");
+
+                var maximizedTrigger = sw.SettingsBorderOverlay.Style?.Triggers
+                    .OfType<DataTrigger>()
+                    .FirstOrDefault(t => Equals(t.Value, WindowState.Maximized)
+                        || string.Equals(t.Value?.ToString(), nameof(WindowState.Maximized), StringComparison.Ordinal));
+                var hasZeroCornerSetter = maximizedTrigger?.Setters
+                    .OfType<Setter>()
+                    .Any(s => ReferenceEquals(s.Property, Border.CornerRadiusProperty)
+                        && ((s.Value is CornerRadius cr && cr == new CornerRadius(0)) || s.Value?.ToString() == "0")) == true;
+                check(hasZeroCornerSetter, "SettingsBorderOverlay must switch to CornerRadius(0) when maximized.");
+            }
+            finally
+            {
+                sw.Close();
+                PumpDispatcher(application.Dispatcher, 120);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
         }
     }
 

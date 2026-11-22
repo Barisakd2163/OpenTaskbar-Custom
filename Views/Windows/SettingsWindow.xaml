@@ -24,17 +24,7 @@
         </ResourceDictionary>
     </Window.Resources>
     <Border x:Name="SettingsFrame" Background="{DynamicResource SettingsGlassMaterial}"
-            BorderBrush="{DynamicResource SettingsStrokeMaterial}" BorderThickness="{DynamicResource SettingsStrokeThickness}">
-        <Border.Style>
-            <Style TargetType="Border">
-                <Setter Property="CornerRadius" Value="10" />
-                <Style.Triggers>
-                    <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
-                        <Setter Property="CornerRadius" Value="0" />
-                    </DataTrigger>
-                </Style.Triggers>
-            </Style>
-        </Border.Style>
+            CornerRadius="0" BorderThickness="0">
         <Grid>
             <Grid.RowDefinitions><RowDefinition Height="45" /><RowDefinition Height="*" /></Grid.RowDefinitions>
             <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource StrokeSubtle}" SnapsToDevicePixels="True">
@@ -972,6 +962,22 @@
                         <GradientStop Color="#00000000" Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>
+            </Border>
+            <!-- Outer border drawn at Windows 11's 8 DIP corner radius while SettingsFrame fills square under DWM clip. -->
+            <Border x:Name="SettingsBorderOverlay" Grid.RowSpan="2" IsHitTestVisible="False" Panel.ZIndex="6"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource SettingsStrokeMaterial}"
+                    BorderThickness="{DynamicResource SettingsStrokeThickness}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="8" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                                <Setter Property="CornerRadius" Value="0" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
             </Border>
         </Grid>
     </Border>
