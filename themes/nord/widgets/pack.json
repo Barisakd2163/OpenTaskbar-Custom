@@ -31,6 +31,7 @@
     "DockHighlight": { "stops": ["#2288C0D0", "#0888C0D0", "#0088C0D0"] },
     "WidgetCard": "#1888C0D0",
     "WidgetCardHover": "#2A88C0D0",
+    "WidgetCardPressed": "#4288C0D0",
     "WidgetCardStroke": "#2888C0D0",
     "WidgetTrack": "#3288C0D0",
     "WidgetIsland": "#1288C0D0",
@@ -54,7 +55,10 @@
     "WidgetAccent": "#FF5E81AC",
     "WidgetCard": "#185E81AC",
     "WidgetCardHover": "#2A5E81AC",
+    "WidgetCardPressed": "#425E81AC",
     "WidgetCardStroke": "#265E81AC",
+    "SurfaceHover": "#245E81AC",
+    "SurfacePressed": "#3C5E81AC",
     "AccentBrush": "#FF5E81AC",
     "AccentText": "#FFFFFFFF"
   }

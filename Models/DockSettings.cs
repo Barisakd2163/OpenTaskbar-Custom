@@ -95,7 +95,9 @@ public sealed record DockProfile(
     bool? ThemeApplicationIcons = null,
     HotkeyChoice? LauncherHotkey = null,
     HotkeyChoice? DockHotkey = null,
-    AutoHideMode? AutoHide = null);
+    AutoHideMode? AutoHide = null,
+    string? CustomLauncherHotkey = null,
+    string? CustomDockHotkey = null);
 
 /// <summary>A user-defined group of applications shown as a single dock icon with a flyout.</summary>
 public sealed record DockAppGroup(string Id, string Name, IReadOnlyList<string> ExecutablePaths);
@@ -205,7 +207,9 @@ public sealed record DockSettings(
     // Extra gap (DIP) between dock icons, independent of the size profile and DockScale.
     // Zero keeps the original layout; older settings files fall back to this default.
     int DockIconPadding = 0,
-    bool FocusModeEnabled = false)
+    bool FocusModeEnabled = false,
+    string? CustomLauncherHotkey = null,
+    string? CustomDockHotkey = null)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

@@ -3,5 +3,7 @@
     <CubicEase x:Key="WidgetHoverEase" EasingMode="EaseOut" />
     <Duration x:Key="WidgetHoverInDuration">0:0:0.16</Duration>
     <Duration x:Key="WidgetHoverOutDuration">0:0:0.16</Duration>
+    <Duration x:Key="WidgetPressInDuration">0:0:0.08</Duration>
+    <Duration x:Key="WidgetPressOutDuration">0:0:0.12</Duration>
     <Duration x:Key="FlyoutOpenDuration">0:0:0.19</Duration>
 </ResourceDictionary>

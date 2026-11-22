@@ -92,7 +92,8 @@
     <SolidColorBrush x:Key="CaptionCloseForeground" Color="#FFFFFFFF" />
     <!-- Dock widgets -->
     <SolidColorBrush x:Key="WidgetCard" Color="#00000000" />
-    <SolidColorBrush x:Key="WidgetCardHover" Color="#18FFFFFF" />
+    <SolidColorBrush x:Key="WidgetCardHover" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="WidgetCardPressed" Color="#38FFFFFF" />
     <SolidColorBrush x:Key="WidgetCardStroke" Color="#00000000" />
     <SolidColorBrush x:Key="WidgetGlassCard" Color="#00000000" />
     <SolidColorBrush x:Key="WidgetGlassCardHover" Color="#18FFFFFF" />

@@ -121,27 +121,29 @@ public static class WindowsPalette
         var page = Hex(dark ? "#1B2029" : "#F3F3F3");
         var sidebar = Hex(dark ? "#171C26" : "#EEEEEE");
         var card = Hex(dark ? "#252B37" : "#FFFFFF");
-        var hover = Hex(dark ? "#2F3745" : "#F5F5F5");
         var track = Hex(dark ? "#141922" : "#E9E9E9");
         var border = Hex(dark ? "#3A4352" : "#E5E5E5");
         var divider = Hex(dark ? "#323A48" : "#E8E8E8");
+        var overlayBase = dark ? Colors.White : Colors.Black;
 
         Solid("SettingsBackground", page);
         Solid("SettingsControl", card);
         // Hover is a translucent overlay, not a solid fill, so it adapts to whatever surface sits beneath.
-        Solid("SettingsControlHover", dark ? Colors.White : Colors.Black, dark ? (byte)0x14 : (byte)0x0D);
+        Solid("SettingsControlHover", overlayBase, dark ? (byte)0x14 : (byte)0x0D);
         Solid("SettingsTrack", track);
         Solid("SettingsSidebarOverlay", sidebar);
         Solid("SurfacePopup", card, 0xF7);
         Solid("StrokeSubtle", border);
         Solid("MenuDivider", divider);
-        Solid("SurfaceHover", dark ? Colors.White : Colors.Black, dark ? (byte)0x14 : (byte)0x0D);
-        Solid("SurfacePressed", dark ? Colors.White : Colors.Black, dark ? (byte)0x22 : (byte)0x16);
-        Solid("SurfaceSelected", dark ? Colors.White : Colors.Black, dark ? (byte)0x14 : (byte)0x0D);
-        Solid("SurfaceSelectedStrong", dark ? Colors.White : Colors.Black, dark ? (byte)0x22 : (byte)0x16);
-        Solid("ShellButtonHover", dark ? Colors.White : Colors.Black, dark ? (byte)0x22 : (byte)0x14);
-        Solid("ShellButtonPressed", dark ? Colors.White : Colors.Black, dark ? (byte)0x33 : (byte)0x22);
-        values["SurfaceHoverColor"] = Color.FromArgb(dark ? (byte)0x14 : (byte)0x0D, hover.R, hover.G, hover.B);
+        Solid("SurfaceHover", overlayBase, dark ? (byte)0x14 : (byte)0x0D);
+        Solid("SurfacePressed", overlayBase, dark ? (byte)0x22 : (byte)0x16);
+        Solid("SurfaceSelected", overlayBase, dark ? (byte)0x14 : (byte)0x0D);
+        Solid("SurfaceSelectedStrong", overlayBase, dark ? (byte)0x22 : (byte)0x16);
+        Solid("ShellButtonHover", overlayBase, dark ? (byte)0x22 : (byte)0x14);
+        Solid("ShellButtonPressed", overlayBase, dark ? (byte)0x33 : (byte)0x22);
+        values["SurfaceHoverColor"] = Color.FromArgb(dark ? (byte)0x14 : (byte)0x0D, overlayBase.R, overlayBase.G, overlayBase.B);
+        Solid("WidgetCardHover", overlayBase, dark ? (byte)0x22 : (byte)0x18);
+        Solid("WidgetCardPressed", overlayBase, dark ? (byte)0x38 : (byte)0x2A);
 
         Solid("TextPrimary", dark ? Color.FromRgb(243, 244, 246) : Color.FromRgb(27, 27, 27));
         Solid("TextSecondary", dark ? Color.FromRgb(170, 178, 192) : Color.FromRgb(97, 102, 110));

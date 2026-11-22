@@ -14,8 +14,9 @@ namespace OpenTaskbar;
 public partial class MainWindow
 {
     private const int WmHotkey = 0x0312;
+    private const int LauncherHotkeyId = 0x4F01;
     private const int DockHotkeyId = 0x4F02;
-    private HotkeyChoice? _registeredDockHotkey;
+    private (HotkeyBinding? Launcher, HotkeyBinding? Dock)? _registeredHotkeys;
     private bool _keyboardNavigationActive;
     private nint _foregroundBeforeKeyboard;
     private UpdateChecker.Release? _availableUpdate;
@@ -131,24 +132,46 @@ public partial class MainWindow
     private void RegisterHotkeys()
     {
         if (_source is null) return;
-        var wanted = _preferences.Current.DockHotkey;
-        if (_registeredDockHotkey == wanted) return;
+        var launcher = HotkeyBinding.Resolve(_preferences.Current.LauncherHotkey, _preferences.Current.CustomLauncherHotkey);
+        var dock = HotkeyBinding.Resolve(_preferences.Current.DockHotkey, _preferences.Current.CustomDockHotkey);
+        var wanted = (Launcher: launcher, Dock: dock);
+        if (_registeredHotkeys == wanted) return;
         UnregisterHotkeys();
-        _registeredDockHotkey = wanted;
-        if (DescribeHotkey(wanted) is not { } hotkey) return;
         const uint noRepeat = 0x4000;
-        if (!RegisterHotKey(_source.Handle, DockHotkeyId, hotkey.Modifiers | noRepeat, hotkey.Key))
+        var failed = false;
+        // Only latch bindings that actually registered. A failed registration stays pending so a
+        // later retry (e.g. after the conflicting app exits) can succeed without a settings change.
+        var registeredLauncher = false;
+        var registeredDock = false;
+        if (launcher is { } launcherBinding
+            && !RegisterHotKey(_source.Handle, LauncherHotkeyId, launcherBinding.Modifiers | noRepeat, launcherBinding.VirtualKey))
         {
-            AppLog.Warning($"RegisterHotKey {wanted} failed: {Marshal.GetLastPInvokeError()}");
-            ReportError("ErrorHotkeyRegister");
+            AppLog.Warning($"RegisterHotKey launcher ({launcherBinding.DisplayText}) failed: {Marshal.GetLastPInvokeError()}");
+            failed = true;
         }
+        else if (launcher is not null) registeredLauncher = true;
+
+        if (dock is { } dockBinding
+            && !HotkeyBinding.EqualsBinding(launcher, dock)
+            && !RegisterHotKey(_source.Handle, DockHotkeyId, dockBinding.Modifiers | noRepeat, dockBinding.VirtualKey))
+        {
+            AppLog.Warning($"RegisterHotKey dock ({dockBinding.DisplayText}) failed: {Marshal.GetLastPInvokeError()}");
+            failed = true;
+        }
+        else if (dock is not null && !HotkeyBinding.EqualsBinding(launcher, dock)) registeredDock = true;
+
+        _registeredHotkeys = (
+            registeredLauncher ? launcher : null,
+            registeredDock ? dock : null);
+        if (failed) ReportError("ErrorHotkeyRegister");
     }
 
     private void UnregisterHotkeys()
     {
         if (_source is null) return;
+        UnregisterHotKey(_source.Handle, LauncherHotkeyId);
         UnregisterHotKey(_source.Handle, DockHotkeyId);
-        _registeredDockHotkey = null;
+        _registeredHotkeys = null;
     }
 
     private bool HandleHotkeyMessage(int message, nint wParam)
@@ -156,6 +179,9 @@ public partial class MainWindow
         if (message != WmHotkey) return false;
         switch (wParam.ToInt32())
         {
+            case LauncherHotkeyId:
+                ReportResult(ShellShortcuts.OpenWindowsSearch());
+                return true;
             case DockHotkeyId:
                 if (_keyboardNavigationActive) EndKeyboardNavigation(restoreForeground: true);
                 else StartKeyboardNavigation();

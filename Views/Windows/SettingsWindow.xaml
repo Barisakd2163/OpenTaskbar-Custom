@@ -702,18 +702,37 @@
                             <!-- Hotkeys -->
                             <TextBlock Text="{local:Loc SectionHotkeys}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
                             <Border Style="{StaticResource SettingsRowsGroup}"><StackPanel>
-                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
-                                    <ComboBox x:Name="HotkeyBox" views:IconGlyph.Glyph="{StaticResource IconKeyboard}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="250" Width="Auto" VerticalAlignment="Center"
-                                              AutomationProperties.Name="{local:Loc DockHotkey}" SelectionChanged="SegmentChoice_SelectionChanged">
-                                        <ComboBoxItem Content="Ctrl+Alt+D" Tag="CtrlAltD" />
-                                        <ComboBoxItem Content="{local:Loc HotkeyDisabled}" Tag="Disabled" />
-                                    </ComboBox>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="DockHotkeyCaptureButton" Style="{StaticResource SettingsButton}" views:IconGlyph.Glyph="{StaticResource IconKeyboard}"
+                                                MinWidth="150" HorizontalContentAlignment="Center" Margin="0,0,6,0"
+                                                AutomationProperties.Name="{local:Loc DockHotkey}" Click="HotkeyCaptureButton_Click" />
+                                        <Button x:Name="DockHotkeyResetButton" Style="{StaticResource SettingsGhostButton}" views:IconGlyph.Glyph="{StaticResource IconRotate}"
+                                                Padding="8,6" ToolTip="{local:Loc HotkeyReset}" AutomationProperties.Name="{local:Loc HotkeyReset}"
+                                                Click="HotkeyResetButton_Click" />
+                                    </StackPanel>
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
                                         <TextBlock Text="{local:Loc DockHotkey}" Style="{StaticResource SettingsRowLabel}" />
                                         <TextBlock Text="{local:Loc DockHotkeyDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="LauncherHotkeyCaptureButton" Style="{StaticResource SettingsButton}" views:IconGlyph.Glyph="{StaticResource IconKeyboard}"
+                                                MinWidth="150" HorizontalContentAlignment="Center" Margin="0,0,6,0"
+                                                AutomationProperties.Name="{local:Loc LauncherHotkey}" Click="HotkeyCaptureButton_Click" />
+                                        <Button x:Name="LauncherHotkeyResetButton" Style="{StaticResource SettingsGhostButton}" views:IconGlyph.Glyph="{StaticResource IconRotate}"
+                                                Padding="8,6" ToolTip="{local:Loc HotkeyReset}" AutomationProperties.Name="{local:Loc HotkeyReset}"
+                                                Click="HotkeyResetButton_Click" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc LauncherHotkey}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc LauncherHotkeyDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
                             </StackPanel></Border>
+                            <TextBlock x:Name="HotkeyCaptureHintText" Text="{local:Loc HotkeyCaptureHint}" Style="{StaticResource SettingsRowDescription}" Margin="2,4,2,6" />
+                            <TextBlock x:Name="HotkeyValidationText" Foreground="{DynamicResource DangerText}" FontSize="12" TextWrapping="Wrap" Margin="2,2,2,8" Visibility="Collapsed" />
 
                             <!-- Start Button & Interactions -->
                             <TextBlock Text="{local:Loc SectionInteractions}" Style="{StaticResource SettingsSectionHeading}" />

@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -269,6 +270,9 @@ internal static class FeatureAndMemoryChecks
 
             // 13. Combined theme + settings full backup archive checks
             CheckFullBackupArchive(Check);
+
+            // 14. Custom hotkey parsing, resolution, and per-profile persistence
+            CheckCustomHotkeys(Check);
         }
         finally
         {
@@ -991,6 +995,179 @@ internal static class FeatureAndMemoryChecks
                     && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()),
                     $"{resource} must have a non-empty translation for {key}.");
             }
+        }
+    }
+
+    private static void CheckCustomHotkeys(Action<bool, string> Check)
+    {
+        void CheckParsed(string text, string display, uint modifiers, Key key, string message)
+        {
+            var expectedVk = (uint)KeyInterop.VirtualKeyFromKey(key);
+            Check(HotkeyBinding.TryParse(text, out var binding)
+                && binding.DisplayText == display
+                && binding.Modifiers == modifiers
+                && binding.VirtualKey == expectedVk
+                && HotkeyBinding.TryParse(binding.DisplayText, out var roundTrip)
+                && roundTrip.DisplayText == display
+                && roundTrip.Modifiers == modifiers
+                && roundTrip.VirtualKey == expectedVk,
+                message);
+        }
+
+        CheckParsed("Ctrl+Alt+D", "Ctrl+Alt+D", HotkeyBinding.ModControl | HotkeyBinding.ModAlt, Key.D,
+            "Ctrl+Alt+D must parse to its canonical binding and round-trip.");
+        CheckParsed("ctrl+shift+k", "Ctrl+Shift+K", HotkeyBinding.ModControl | HotkeyBinding.ModShift, Key.K,
+            "A lowercase Ctrl+Shift combo must canonicalize and round-trip.");
+        CheckParsed("Alt+Space", "Alt+Space", HotkeyBinding.ModAlt, Key.Space,
+            "Alt+Space must parse to its canonical binding and round-trip.");
+        CheckParsed("Ctrl+Alt+Shift+F5", "Ctrl+Alt+Shift+F5",
+            HotkeyBinding.ModControl | HotkeyBinding.ModAlt | HotkeyBinding.ModShift, Key.F5,
+            "Ctrl+Alt+Shift+F5 must parse to its canonical binding and round-trip.");
+        CheckParsed("Ctrl++", "Ctrl++", HotkeyBinding.ModControl, Key.OemPlus,
+            "Ctrl++ must parse the OemPlus key and round-trip.");
+
+        foreach (var invalid in new string?[]
+        {
+            null, "", "Disabled", "K", "Shift+K", "Win+Alt+D", "LWin+D",
+            "Ctrl+Ctrl+A", "Ctrl+A+B", "Ctrl+Escape", "Ctrl+Snapshot", "Ctrl+99"
+        })
+        {
+            Check(!HotkeyBinding.TryParse(invalid, out _),
+                $"TryParse must reject '{invalid ?? "<null>"}'.");
+        }
+
+        void CheckKeyEvent(ModifierKeys modifiers, Key key, string display, string message)
+        {
+            Check(HotkeyBinding.TryFromKeyEvent(modifiers, key, out var binding, out var error)
+                && error is null
+                && binding.DisplayText == display,
+                message);
+        }
+
+        CheckKeyEvent(ModifierKeys.Control | ModifierKeys.Shift, Key.K, "Ctrl+Shift+K",
+            "Ctrl+Shift+K must be accepted from a key event.");
+        CheckKeyEvent(ModifierKeys.Alt, Key.Space, "Alt+Space",
+            "Alt+Space must be accepted from a key event.");
+        CheckKeyEvent(ModifierKeys.Control, Key.D5, "Ctrl+5",
+            "Ctrl+5 must be accepted from a key event.");
+
+        foreach (var modifierKey in new[] { Key.LeftCtrl, Key.LeftAlt, Key.LeftShift, Key.LWin, Key.System })
+        {
+            Check(!HotkeyBinding.TryFromKeyEvent(ModifierKeys.Control, modifierKey, out _, out var error) && error is null,
+                $"A modifier-only {modifierKey} event must be ignored without an error key.");
+        }
+
+        Check(!HotkeyBinding.TryFromKeyEvent(ModifierKeys.Windows, Key.D, out _, out var winError)
+            && winError == "HotkeyWinNotAllowed",
+            "The Windows modifier must be rejected.");
+        Check(!HotkeyBinding.TryFromKeyEvent(ModifierKeys.None, Key.A, out _, out var noneError)
+            && noneError == "HotkeyModifierRequired",
+            "A key with no modifier must be rejected.");
+        Check(!HotkeyBinding.TryFromKeyEvent(ModifierKeys.Shift, Key.A, out _, out var shiftError)
+            && shiftError == "HotkeyModifierRequired",
+            "Shift alone must be rejected.");
+
+        var resolvedPreset = HotkeyBinding.Resolve(HotkeyChoice.CtrlAltD, null);
+        Check(resolvedPreset?.DisplayText == "Ctrl+Alt+D"
+            && resolvedPreset.Value.Modifiers == (HotkeyBinding.ModControl | HotkeyBinding.ModAlt)
+            && resolvedPreset.Value.VirtualKey == 0x44,
+            "Resolving CtrlAltD with no custom text must return Ctrl+Alt+D.");
+        Check(HotkeyBinding.Resolve(HotkeyChoice.WinAltD, null) is null,
+            "Resolving WinAltD must return null so MOD_WIN is never registered.");
+        Check(HotkeyBinding.Resolve(HotkeyChoice.AltSpace, "Disabled") is null,
+            "Resolving a Disabled custom string must return null.");
+        var resolvedCustom = HotkeyBinding.Resolve(HotkeyChoice.AltSpace, "Ctrl+Shift+P");
+        Check(resolvedCustom?.DisplayText == "Ctrl+Shift+P"
+            && resolvedCustom.Value.Modifiers == (HotkeyBinding.ModControl | HotkeyBinding.ModShift)
+            && resolvedCustom.Value.VirtualKey == (uint)KeyInterop.VirtualKeyFromKey(Key.P),
+            "A custom string must override the legacy AltSpace choice.");
+
+        Check(HotkeyBinding.TryParse("ctrl+alt+d", out var lowerCtrlAltD)
+            && HotkeyBinding.EqualsBinding(lowerCtrlAltD, HotkeyBinding.FromChoice(HotkeyChoice.CtrlAltD)),
+            "EqualsBinding must treat differently cased inputs as the same hotkey.");
+        Check(!HotkeyBinding.EqualsBinding(null, null),
+            "Two Disabled hotkeys must not count as a conflict.");
+
+        Check(HotkeyBinding.IsValidCustomString(null), "A null custom hotkey must be valid.");
+        Check(HotkeyBinding.IsValidCustomString("Disabled"), "Disabled must be a valid custom hotkey.");
+        Check(HotkeyBinding.IsValidCustomString("Ctrl+Shift+P"), "Ctrl+Shift+P must be a valid custom hotkey.");
+        Check(!HotkeyBinding.IsValidCustomString("Win+D"), "Win+D must be rejected as a custom hotkey.");
+        Check(!HotkeyBinding.IsValidCustomString("Shift+P"), "Shift+P must be rejected as a custom hotkey.");
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ot-hotkeys-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(tempPath);
+            var saved = new DockSettings(
+                CustomLauncherHotkey: "Ctrl+Shift+L",
+                CustomDockHotkey: "Disabled");
+            Check(DockSettingsStore.Validate(saved), "Custom launcher and Disabled dock hotkeys must validate.");
+            Check(store.Save(saved) is null, "Custom hotkeys must save.");
+            var (loaded, loadError) = store.Load();
+            Check(loadError is null
+                && loaded.CustomLauncherHotkey == "Ctrl+Shift+L"
+                && loaded.CustomDockHotkey == "Disabled"
+                && DockSettingsStore.Validate(loaded),
+                "Custom hotkeys must survive a settings restart and stay valid.");
+
+            var invalid = saved with { CustomDockHotkey = "Win+D" };
+            Check(!DockSettingsStore.Validate(invalid) && store.Save(invalid) is not null,
+                "Win+D must fail validation and must not save.");
+
+            var captured = DockProfileService.Capture("Home", saved);
+            Check(captured.CustomLauncherHotkey == "Ctrl+Shift+L" && captured.CustomDockHotkey == "Disabled",
+                "Capture must copy both custom hotkeys.");
+
+            var (withWork, createWorkError) = DockProfileService.Create(saved, "Work");
+            Check(createWorkError is null && withWork.ActiveProfile == "Work"
+                && withWork.CustomLauncherHotkey == "Ctrl+Shift+L"
+                && withWork.CustomDockHotkey == "Disabled",
+                "Create must keep the live custom hotkeys on the new profile.");
+            Check(ProfileHotkeys(withWork, "Work", "Ctrl+Shift+L", "Disabled")
+                && ProfileHotkeys(withWork, "Default", "Ctrl+Shift+L", "Disabled"),
+                "Create must snapshot the same custom hotkeys onto Work and Default.");
+
+            var edited = withWork with
+            {
+                CustomLauncherHotkey = "Alt+Space",
+                CustomDockHotkey = "Ctrl+Alt+D"
+            };
+            var (withGaming, createGamingError) = DockProfileService.Create(edited, "Gaming");
+            Check(createGamingError is null && withGaming.ActiveProfile == "Gaming"
+                && withGaming.CustomLauncherHotkey == "Alt+Space"
+                && withGaming.CustomDockHotkey == "Ctrl+Alt+D",
+                "Create must activate Gaming with the edited custom hotkeys.");
+            Check(ProfileHotkeys(withGaming, "Gaming", "Alt+Space", "Ctrl+Alt+D")
+                && ProfileHotkeys(withGaming, "Work", "Alt+Space", "Ctrl+Alt+D")
+                && ProfileHotkeys(withGaming, "Default", "Ctrl+Shift+L", "Disabled"),
+                "Create must capture the outgoing profile and leave the untouched profile unchanged.");
+
+            var (backToWork, workError) = DockProfileService.Switch(withGaming, "Work");
+            Check(workError is null
+                && backToWork.CustomLauncherHotkey == "Alt+Space"
+                && backToWork.CustomDockHotkey == "Ctrl+Alt+D"
+                && ProfileHotkeys(backToWork, "Default", "Ctrl+Shift+L", "Disabled"),
+                "Switch must restore the target profile's custom hotkeys.");
+
+            var (backToDefault, defaultError) = DockProfileService.Switch(backToWork, "Default");
+            Check(defaultError is null
+                && backToDefault.CustomLauncherHotkey == "Ctrl+Shift+L"
+                && backToDefault.CustomDockHotkey == "Disabled"
+                && ProfileHotkeys(backToDefault, "Work", "Alt+Space", "Ctrl+Alt+D")
+                && ProfileHotkeys(backToDefault, "Gaming", "Alt+Space", "Ctrl+Alt+D"),
+                "Switch must restore Default and keep each other profile's custom hotkeys.");
+        }
+        finally
+        {
+            try { File.Delete(tempPath); } catch (IOException) { }
+        }
+
+        static bool ProfileHotkeys(DockSettings settings, string name, string? launcher, string? dock)
+        {
+            var profile = settings.Profiles?.SingleOrDefault(item => item.Name == name);
+            return profile is not null
+                && profile.CustomLauncherHotkey == launcher
+                && profile.CustomDockHotkey == dock;
         }
     }
 
