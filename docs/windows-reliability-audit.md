@@ -54,7 +54,9 @@
 ## P1/P2: performance, security, delivery
 
 - PERF-01: Record idle and active CPU, private bytes, handles, GDI objects, GPU usage, UI frame time at 10/30/60 windows, 1/2/3 displays and 1h/8h uptime.
+  - Partial baseline captured on 2026-11-22 (Windows 11 build 26300, 16 cores, single 2560x1440 display, x64 self-contained publish, user's full widget set): steady-state working set 60–120 MB after idle trimming, private bytes 180–190 MB, ~31–35 threads, ~1300 handles. Idle CPU ~22% of one core, fisheye sweep ~36% of one core. Short private-byte spikes to ~275 MB occur on periodic widget/CLI polling and settle after GC. `scripts/measure-baseline.ps1 -Label <name>` produces the raw CSV and `summary.json` for A/B comparisons; `scripts/compare-perf.ps1` diffs two runs. Still open: 10/30/60-window scaling, multi-display, 1h/8h uptime, GDI objects and GPU usage.
 - PERF-02: Profile `UpdateLayout()`, window tracking refreshes, thumbnail previews, image decoding, widget timers and allocations; optimize only after measurement.
+  - Existing icon/flag/album-art decode caps and the bounded `RunningAppIconCache` already cover the obvious allocation sources; no single dominant leak was found in the idle/sweep baseline. The ~180 MB private footprint is mostly .NET/WPF runtime and widget visuals, not an app-level cache. Any further reduction (trimming unused assemblies, compacting GC) needs an A/B measurement before adoption.
 - SEC-01: Theme ZIP traversal, duplicate entries, reserved Windows names, size limits and import/export symmetry.
 - SEC-02: Update executable asset selection, SHA-256 verification, signing policy, atomic replacement, backup and rollback; coordinate with separate updater PR.
 - SEC-03: Review shell command arguments, paths with special characters, log privacy and permission boundaries.

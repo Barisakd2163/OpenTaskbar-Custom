@@ -29,12 +29,6 @@ internal static class SurfaceStyleChecks
             Check(Alpha(app, "DockBorderMaterial") == 0, "None must remove the dock rim.");
             Check((app.FindResource("DockShadow") as DropShadowEffect)?.Opacity == 0,
                 "None must remove the dock shadow.");
-            Check(Alpha(app, "DockAcrylicMaterial") == 0, "None must remove the acrylic dock tint too.");
-            ThemeManager.SetSurface(SurfaceKind.Dock, SurfaceBackground.Glass, 1.0);
-            var acrylicAlpha = Alpha(app, "DockAcrylicMaterial");
-            Check(acrylicAlpha > 0 && acrylicAlpha < Alpha(app, "DockMaterial"),
-                "Glass dock tint must be lighter than the plain fill so native acrylic shows through.");
-            ThemeManager.SetSurface(SurfaceKind.Dock, SurfaceBackground.None, 0.2);
             Check(Alpha(app, "MenuMaterial") == 255, "Solid must be fully opaque regardless of its opacity slider.");
             ThemeManager.SetSurface(SurfaceKind.Menu, SurfaceBackground.None, 0.3);
             Check(Alpha(app, "MenuMaterial") == 0 && Alpha(app, "MenuSheenMaterial") == 0,

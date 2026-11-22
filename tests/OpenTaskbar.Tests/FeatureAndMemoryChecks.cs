@@ -245,6 +245,9 @@ internal static class FeatureAndMemoryChecks
 
             // 16. Thumbnail preview peek delay, grace window, and middle-click close (issue #93)
             CheckThumbnailPreviewPeekAndMiddleClick(app, Check);
+
+            // 17. SettingsWindow lazy live-preview loading, theme-restore guard, and rapid close/reopen
+            CheckSettingsOpenClosePerformance(app, Check);
         }
         finally
         {
@@ -1488,6 +1491,103 @@ internal static class FeatureAndMemoryChecks
 
     private static string SerializeSettings(DockSettings settings) =>
         JsonSerializer.Serialize(settings, DockSettingsStore.SerializerOptions);
+
+    private static void CheckSettingsOpenClosePerformance(Application app, Action<bool, string> Check)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ot-settings-perf-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DockSettingsStore(tempPath);
+            var initial = new DockSettings(
+                Theme: ThemeManager.Current,
+                Language: AppLanguage.English,
+                AnimationsEnabled: false,
+                DockBackground: SurfaceBackground.Glass,
+                DockOpacity: 0.85,
+                Widgets: ["Clock"],
+                InstalledWidgets: ["Clock"]);
+            Check(store.Save(initial) is null, "Initial settings for open/close performance check must save cleanly.");
+            var preferences = new ApplicationPreferences(store);
+            ThemeManager.Apply(preferences.Current.Theme, preferences.Current);
+            Check(ThemeManager.IsApplied(preferences.Current), "ThemeManager.IsApplied must return true when theme and surfaces match.");
+
+            var changeCount = 0;
+            preferences.Changed += (_, _) => changeCount++;
+
+            // 1. Opening SettingsWindow on the default Dock tab must NOT attach live widget previews.
+            var window1 = new SettingsWindow(preferences)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20000,
+                Top = -20000,
+                ShowInTaskbar = false,
+                ShowActivated = false
+            };
+            window1.Show();
+            PumpDispatcher(app.Dispatcher, 60);
+
+            var options1 = ((System.Windows.Data.ListCollectionView)window1.WidgetOptionsList.ItemsSource)
+                .SourceCollection.Cast<DockWidgetOption>().ToArray();
+            Check(window1.LivePreviewWidgetCount == 0 && options1.All(o => o.LivePreview is null),
+                "Opening SettingsWindow on the default Dock tab must not eagerly instantiate live widget previews.");
+
+            var themeChangedOnCleanClose = 0;
+            EventHandler onThemeChanged = (_, _) => themeChangedOnCleanClose++;
+            ThemeManager.ThemeChanged += onThemeChanged;
+            try
+            {
+                window1.Close();
+                PumpDispatcher(app.Dispatcher, 60);
+            }
+            finally
+            {
+                ThemeManager.ThemeChanged -= onThemeChanged;
+            }
+            Check(themeChangedOnCleanClose == 0,
+                "Closing SettingsWindow without theme or surface preview changes must skip redundant ThemeManager.Apply.");
+            Check(changeCount == 0, "Opening and closing SettingsWindow without edits must not mutate stored preferences.");
+
+            // 2. Immediate reopen + selecting WidgetsTab attaches live previews, and closing disposes them cleanly.
+            var window2 = new SettingsWindow(preferences)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20000,
+                Top = -20000,
+                ShowInTaskbar = false,
+                ShowActivated = false
+            };
+            window2.Show();
+            PumpDispatcher(app.Dispatcher, 60);
+            Check(window2.LivePreviewWidgetCount == 0, "Reopened SettingsWindow must still start with zero live widget previews on DockTab.");
+
+            window2.SettingsTabs.SelectedItem = window2.WidgetsTab;
+            PumpDispatcher(app.Dispatcher, 60);
+            var options2 = ((System.Windows.Data.ListCollectionView)window2.WidgetOptionsList.ItemsSource)
+                .SourceCollection.Cast<DockWidgetOption>().ToArray();
+            Check(window2.LivePreviewWidgetCount > 0
+                && options2.Any(o => o.Id == "Clock" && o.LivePreview is OpenTaskbar.Widgets.DockWidget),
+                "Selecting WidgetsTab must lazily attach live widget previews.");
+
+            // Dirty a surface preview directly without saving and confirm close restores the saved surface state.
+            ThemeManager.SetSurface(SurfaceKind.Dock, SurfaceBackground.Solid, 0.42);
+            Check(!ThemeManager.IsApplied(preferences.Current),
+                "ThemeManager.IsApplied must detect an unsaved surface preview change.");
+
+            window2.Close();
+            PumpDispatcher(app.Dispatcher, 60);
+            Check(window2.LivePreviewWidgetCount == 0 && options2.All(o => o.LivePreview is null),
+                "Closing SettingsWindow must dispose and detach all live widget previews.");
+            Check(ThemeManager.IsApplied(preferences.Current),
+                "Closing SettingsWindow after an unsaved surface preview change must restore the saved theme state.");
+            Check(changeCount == 0,
+                "Rapid close/reopen and visiting WidgetsTab must not fire spurious preference saves.");
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+            if (File.Exists(tempPath + ".tmp")) File.Delete(tempPath + ".tmp");
+        }
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (DockFlyout Flyout, WeakReference ContentRef) ExerciseDockFlyout(

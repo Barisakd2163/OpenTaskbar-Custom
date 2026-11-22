@@ -128,8 +128,28 @@ public static class PerfNative
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    public static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int index);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    public static extern int GetWindowLong32(IntPtr hWnd, int index);
+    public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+    public static IntPtr FindDockWindow(uint targetPid)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hWnd, _) =>
+        {
+            uint owner; GetWindowThreadProcessId(hWnd, out owner);
+            if (owner != targetPid) return true;
+            long style = IntPtr.Size == 8 ? GetWindowLongPtr64(hWnd, -20).ToInt64() : GetWindowLong32(hWnd, -20);
+            if ((style & 0x80000L) == 0) return true; // WS_EX_LAYERED: the dock surface, not its popups.
+            found = hWnd; return false;
+        }, IntPtr.Zero);
+        return found;
+    }
 }
 '@
 }
@@ -208,14 +228,15 @@ try {
     $app = Start-Process -FilePath $exe -PassThru
     Write-Timeline "app launched PID $($app.Id)"
 
+    # The dock is ShowInTaskbar=false, so Process.MainWindowHandle stays zero; find its layered HWND.
     $deadline = (Get-Date).AddSeconds(15)
+    $hwnd = [IntPtr]::Zero
     do {
         Start-Sleep -Milliseconds 250
         $app.Refresh()
-    } while ($app.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
-    if ($app.MainWindowHandle -eq 0) { throw 'Dock window handle could not be found.' }
-
-    $hwnd = $app.MainWindowHandle
+        $hwnd = [PerfNative]::FindDockWindow([uint32]$app.Id)
+    } while ($hwnd -eq [IntPtr]::Zero -and -not $app.HasExited -and (Get-Date) -lt $deadline)
+    if ($hwnd -eq [IntPtr]::Zero) { throw 'Dock window handle could not be found.' }
     [PerfNative]::SetForegroundWindow($hwnd) | Out-Null
     # Keep the dock above the console so synthetic cursor moves actually reach it.
     $swpNoMoveNoSize = 0x0001 -bor 0x0002

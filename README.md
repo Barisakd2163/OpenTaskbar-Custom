@@ -31,7 +31,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 ## Key Features
 
 ### Optical Glass Dock
-- **Aurora Visual Language:** Dark (Midnight Obsidian) and Light glass materials with top specular sheen, 1px optical bevel, and soft ambient drop shadows. On Windows 11, Glass mode adds a real DWM Desktop Acrylic plate behind the dock pill, clipped to its rounded shape; the layered surface keeps icons, headroom and click-through gaps intact.
+- **Aurora Visual Language:** Dark (Midnight Obsidian) and Light glass materials with top specular sheen, 1px optical bevel, and soft ambient drop shadows.
 - **Dock Edge Placement:** Position the dock at the Bottom, Left, or Right edge of your primary screen, with independent alignment (Center, Left, Right, or Full-Width).
 - **Size, Scale & Corner Radius:** Choose between Compact (48 DIP), Medium (58 DIP), and Large (66 DIP) presets, fine-tune scale from 75% to 150%, and customize frame corner radius from 0 px (sharp) to 32 px while screen edge spacing adjusts automatically from the active profile.
 - **Per-Surface Materials:** Configure the dock, menus, widgets and Settings window independently. Each surface has Glass (translucent), Solid (fully opaque) or None (background, rim and shadow completely removed) with its own 0–100% opacity and live preview.
