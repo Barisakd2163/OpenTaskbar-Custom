@@ -194,17 +194,18 @@ public sealed class SecondaryDockWindow : Window
             // whatever strip remains, so the dock is visible and maximized windows still avoid it.
             if (_appBarRegistered && _reservation != (info.Monitor.Left, info.Monitor.Right, additional))
             {
-                var bottom = info.Monitor.Bottom - stripHeight;
+                var (top, bottom) = ComputeReservationBounds(info.Monitor.Bottom, stripHeight, _reservation?.Height ?? 0, additional);
                 var data = CreateData();
                 data.uEdge = AbeBottom;
                 data.rc = new NativeRect
                 {
                     Left = info.Monitor.Left,
-                    Top = bottom - additional,
+                    Top = top,
                     Right = info.Monitor.Right,
                     Bottom = bottom
                 };
                 SHAppBarMessage(AbmQueryPos, ref data);
+                data.rc.Bottom = Math.Min(data.rc.Bottom, bottom);
                 data.rc.Top = data.rc.Bottom - additional;
                 if (SHAppBarMessage(AbmSetPos, ref data) != 0)
                     _reservation = (info.Monitor.Left, info.Monitor.Right, additional);
@@ -230,10 +231,19 @@ public sealed class SecondaryDockWindow : Window
         MissingShelfPixels(stripHeight, 0, dpi, shelfHeight) > 0;
 
     // A monitor's work-area strip contains both the Explorer reservation and our own shelf.
-    // Only the external portion should determine whether our shelf is still needed.
+    // Only the external portion should determine whether our shelf is still needed and where our band sits.
+    internal static int ExternalStripPixels(int totalStripHeight, int ownReservedHeight) =>
+        Math.Max(0, totalStripHeight - Math.Max(0, ownReservedHeight));
+
+    internal static (int Top, int Bottom) ComputeReservationBounds(int monitorBottom, int totalStripHeight, int ownReservedHeight, int additionalHeight)
+    {
+        var bottom = monitorBottom - ExternalStripPixels(totalStripHeight, ownReservedHeight);
+        return (bottom - Math.Max(0, additionalHeight), bottom);
+    }
+
     internal static int MissingShelfPixels(int totalStripHeight, int ownReservedHeight, uint dpi, double shelfHeight = DockMetrics.ShelfHeight) =>
         DockLayoutMetrics.Calculate(shelfHeight, 0, 0, dpi)
-            .AdditionalReservation(Math.Max(0, totalStripHeight - Math.Max(0, ownReservedHeight)), false);
+            .AdditionalReservation(ExternalStripPixels(totalStripHeight, ownReservedHeight), false);
 
     // A hidden fullscreen dock must not be re-shown by a subsequent position refresh.
     internal static uint PositionFlags(bool visible) => 0x0010u | (visible ? 0x0040u : 0u);
@@ -299,7 +309,7 @@ public sealed class SecondaryDockWindow : Window
                 ? app.Windows
                 : app.Windows.Where(window => MonitorFromWindow(window.Handle, 2) == _monitor).ToList();
             if (windows.Count == 0) continue;
-            mine.Add((app.ExecutablePath, windows, _icons.Get(app.ExecutablePath, app.IconWindow)));
+            mine.Add((app.ExecutablePath, windows, _icons.Get(app.ExecutablePath, windows[0].Handle)));
         }
         // Captionless windows covering the display (games, video) hide this dock like the main one.
         _fullScreen = foreground != 0 && MonitorFromWindow(foreground, 2) == _monitor && IsFullScreen(foreground);

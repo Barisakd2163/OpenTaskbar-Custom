@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -522,9 +523,11 @@ public partial class MainWindow
         }
 
         var showSecondaryWidgets = _preferences.Current.SecondaryWidgets && !_preferences.Current.FocusModeEnabled;
+        var effectiveShelf = EffectiveShelfHeight;
         foreach (var monitor in wanted.Where(monitor => _secondaryDocks.All(dock => dock.Monitor != monitor)))
         {
             var dock = new SecondaryDockWindow(monitor, _runningAppIcons, _preferences.Current.SecondaryApps, showSecondaryWidgets);
+            dock.ApplyShelfHeight(effectiveShelf);
             dock.Show();
             _secondaryDocks.Add(dock);
         }
@@ -532,7 +535,7 @@ public partial class MainWindow
         foreach (var dock in _secondaryDocks)
         {
             dock.Configure(_preferences.Current.SecondaryApps, showSecondaryWidgets);
-            dock.ApplyShelfHeight(Profile.Shelf);
+            dock.ApplyShelfHeight(effectiveShelf);
             dock.PositionOnMonitor();
         }
         if (_secondaryDocks.Count > 0)
@@ -572,10 +575,26 @@ public partial class MainWindow
         return timer;
     }
 
+    /// <summary>
+    /// Projects running apps for secondary monitor docks. Unlike the primary running-app strip, secondary docks do
+    /// not have a pinned-app row, so pinned apps with open windows must remain included alongside unpinned ones.
+    /// </summary>
+    internal static IReadOnlyList<RunningAppCandidate> ProjectSecondaryDockCandidates(
+        IReadOnlyList<TrackedWindow> windows,
+        nint foreground,
+        bool notificationBadgesEnabled,
+        Func<string, bool> fileExists) =>
+        RunningAppProjection.Project(windows, new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            foreground, notificationBadgesEnabled, fileExists);
+
     private void UpdateSecondaryDocks()
     {
         if (_secondaryDocks.Count == 0) return;
-        var candidates = RunningCandidates();
+        var candidates = ProjectSecondaryDockCandidates(
+            VisibleSnapshot,
+            _foregroundWindow,
+            _preferences.Current.EffectiveNotificationBadgesEnabled,
+            File.Exists);
         foreach (var dock in _secondaryDocks) dock.Update(candidates, _foregroundWindow);
     }
 
