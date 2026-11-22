@@ -598,6 +598,10 @@ public partial class MainWindow
         var timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(10) };
         timer.Tick += (_, _) =>
         {
+            // Explorer can recreate a secondary tray window well after the initial hide (notably following a
+            // TaskbarCreated broadcast). Re-assert on this slow tick so a native taskbar never lingers over
+            // a secondary dock (#124).
+            if (_secondaryDocks.Count > 0) TaskbarReplacementSession.EnforceSecondaryTraysHidden();
             foreach (var dock in _secondaryDocks) dock.PositionOnMonitor();
             UpdateSecondaryDocks();
         };

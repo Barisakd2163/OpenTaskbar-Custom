@@ -507,14 +507,18 @@ public sealed class TaskbarReplacementSession : IDisposable
                 reason = deferred;
             }
 
-            if (Volatile.Read(ref _deferredReconcileReason) is not null)
-            {
-                QueueReconcile(reason, 300);
-            }
         }
         finally
         {
             Volatile.Write(ref _reconcileActive, 0);
+        }
+
+        // Only schedule the deferred pass AFTER releasing the guard: QueueReconcile refuses to arm the timer
+        // while _reconcileActive is set, so scheduling it inside the try silently dropped the late pass that
+        // re-hides a secondary tray recreated by Explorer (#124).
+        if (Volatile.Read(ref _deferredReconcileReason) is not null)
+        {
+            QueueReconcile(reason, 300);
         }
     }
 
@@ -1293,6 +1297,19 @@ public sealed class TaskbarReplacementSession : IDisposable
         return DwmGetWindowAttribute(handle, DwmwaCloaked, out int cloaked, sizeof(int)) == 0 && cloaked != 0;
     }
 
+    /// <summary>
+    /// Periodic safety net for secondary docks: Explorer can recreate a Shell_SecondaryTrayWnd long after
+    /// startup (e.g. after a TaskbarCreated broadcast). Hides any that are still visible without touching
+    /// the primary taskbar or the session's state machine.
+    /// </summary>
+    internal static void EnforceSecondaryTraysHidden()
+    {
+        foreach (var secondary in NativeTaskbarWindow.FindSecondaryLeases())
+        {
+            if (IsWindowVisible(secondary.Handle)) ShowWindow(secondary.Handle, SwHide);
+        }
+    }
+
     private static bool HideNativeTaskbar()
     {
         if (!NativeTaskbarWindow.TryAcquire(out var taskbar))
@@ -1305,13 +1322,20 @@ public sealed class TaskbarReplacementSession : IDisposable
             ShowWindow(taskbar.Handle, SwHide);
         }
 
-        // Secondary-monitor taskbars are best effort; the primary one decides success.
-        foreach (var secondary in NativeTaskbarWindow.FindSecondaryLeases().Where(s => IsWindowVisible(s.Handle)))
+        var secondaries = NativeTaskbarWindow.FindSecondaryLeases();
+        foreach (var secondary in secondaries.Where(s => IsWindowVisible(s.Handle)))
         {
             ShowWindow(secondary.Handle, SwHide);
         }
 
-        return !IsWindowVisible(taskbar.Handle);
+        // Every tray must be gone before reporting success. Checking only the primary used to stop the
+        // retry loop while a secondary taskbar was still painted over the secondary dock (#124).
+        if (IsWindowVisible(taskbar.Handle)) return false;
+        foreach (var secondary in secondaries)
+        {
+            if (IsWindowVisible(secondary.Handle)) return false;
+        }
+        return true;
     }
 
     private static bool ShowNativeTaskbar()
@@ -1368,7 +1392,9 @@ public sealed class TaskbarReplacementSession : IDisposable
                 return null;
             }
 
-            if (backgroundThread && attempt < RestoreAttempts - 1) Thread.Sleep(5);
+            // Explorer can re-apply auto-hide right after we show the taskbar, and secondary tray windows
+            // can appear a moment later. Give them time to settle before the next verification pass.
+            if (backgroundThread && attempt < RestoreAttempts - 1) Thread.Sleep(40);
         }
 
         ShellTelemetry.Result("TaskbarRestore", reason, success: false, verified: false,
@@ -1400,7 +1426,8 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!HideNativeTaskbar()) RetryHideNativeTaskbar("EnforceHidden");
     }
 
-    // Explorer briefly re-shows an auto-hidden taskbar when the pointer touches the screen edge; retry before reporting.
+    // Explorer briefly re-shows an auto-hidden taskbar when the pointer touches the screen edge, and on
+    // multi-monitor setups it can recreate a secondary tray a beat later. Keep retrying long enough to cover both.
     private void RetryHideNativeTaskbar(string reason = "Hide")
     {
         if (_hideRetryPending || _disposed) return;
@@ -1411,7 +1438,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             _hideRetryTimer = new DispatcherTimer(DispatcherPriority.Background, _window.Dispatcher)
             {
-                Interval = TimeSpan.FromMilliseconds(300)
+                Interval = TimeSpan.FromMilliseconds(500)
             };
             _hideRetryTimer.Tick += HideRetryTimer_Tick;
         }
@@ -1429,8 +1456,10 @@ public sealed class TaskbarReplacementSession : IDisposable
             return;
         }
 
+        // HideNativeTaskbar now verifies primary AND secondaries, so `hidden` is only true once the whole
+        // strip is clear. Ten 500 ms attempts cover late-created secondary trays after TaskbarCreated.
         var hidden = HideNativeTaskbar();
-        if (hidden || _hideRetryAttempts >= 3)
+        if (hidden || _hideRetryAttempts >= 10)
         {
             _hideRetryTimer?.Stop();
             _hideRetryPending = false;
