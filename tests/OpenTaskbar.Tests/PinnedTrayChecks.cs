@@ -468,6 +468,14 @@ internal static class PinnedTrayChecks
         check(opened.Count == 1 && opened[0].ExecutablePath == @"C:\Apps\PathApp.exe",
             "Left-clicking a path-based pinned tray button must open the app by executable path.");
 
+        // A path pin matched to a live icon that ALSO exposes a GUID must keep the path strategy.
+        var guidPathIcon = CreateTestNotifyIcon(new Guid("33333333-3333-3333-3333-333333333333"),
+            @"C:\Apps\GuidPathApp.exe", 11, "Guid Path App");
+        strip.UpdateFromIcons([guidPathIcon], [@"path:c:\apps\guidpathapp.exe"]);
+        strip.Children.OfType<Button>().Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(opened.Count == 2 && opened[1].ExecutablePath == @"C:\Apps\GuidPathApp.exe",
+            "A stored path pin must open by path even when the live icon has a GUID.");
+
         // A pin created from the background-apps flyout still gets a dock button when Windows
         // has no visible NotifyIcon for it (Discord hiding its icon while running, etc.).
         var hiddenApp = new TrayApp("Hidden App", @"C:\Apps\Hidden.exe", null);
@@ -477,7 +485,7 @@ internal static class PinnedTrayChecks
         check(AutomationProperties.GetName(fallbackButton) == "Hidden App",
             "A path-based pin must render from the registry app list when no live tray icon matches.");
         fallbackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        check(opened.Count == 2 && opened[1].ExecutablePath == @"C:\Apps\Hidden.exe",
+        check(opened.Count == 3 && opened[2].ExecutablePath == @"C:\Apps\Hidden.exe",
             "Clicking a registry-backed pinned tray button must open that app by path.");
 
         // Clearing running icons collapses the strip.

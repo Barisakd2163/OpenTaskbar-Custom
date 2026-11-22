@@ -223,7 +223,12 @@ public sealed class PinnedTrayStrip : StackPanel
             if (!string.IsNullOrWhiteSpace(icon.Path)) livePaths.Add(icon.Path.Trim());
 
             var captured = icon;
-            var key = TrayPinIdentity.KeyFor(captured.GUID, captured.Path, captured.UID);
+            // Use the STORED pin key (not the freshly computed canonical one) for both identity and
+            // click strategy. A path-based pin matched to a live icon that happens to expose a GUID
+            // must keep opening by path — otherwise we fall back to the synthetic tray click that
+            // apps like Steam ignore.
+            var key = TrayPinIdentity.FindMatchingKey(pinnedKeys, captured.GUID, captured.Path, captured.UID)
+                ?? TrayPinIdentity.KeyFor(captured.GUID, captured.Path, captured.UID);
             var title = TrayPinIdentity.CleanTitle(captured.Title, captured.Path, fallbackTitle);
             candidates.Add((pinIndex, i, new PinnedTrayItem(key, title, captured.Icon, button =>
             {
