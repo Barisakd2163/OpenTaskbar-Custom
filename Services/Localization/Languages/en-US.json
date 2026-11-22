@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "Empty",
   "WirelessBatteryLevelLow": "Low",
   "WirelessBatteryLevelMedium": "Medium",
-  "WirelessBatteryLevelFull": "Full"
+  "WirelessBatteryLevelFull": "Full",
+  "AiUsageAntigravityGroupsLabel": "Visible model groups"
 }

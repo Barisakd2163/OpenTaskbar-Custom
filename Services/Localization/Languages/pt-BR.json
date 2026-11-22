@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "Vazia",
   "WirelessBatteryLevelLow": "Baixa",
   "WirelessBatteryLevelMedium": "Média",
-  "WirelessBatteryLevelFull": "Cheia"
+  "WirelessBatteryLevelFull": "Cheia",
+  "AiUsageAntigravityGroupsLabel": "Grupos de modelos visíveis"
 }

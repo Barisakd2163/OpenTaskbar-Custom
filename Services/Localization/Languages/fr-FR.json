@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "Vide",
   "WirelessBatteryLevelLow": "Faible",
   "WirelessBatteryLevelMedium": "Moyen",
-  "WirelessBatteryLevelFull": "Plein"
+  "WirelessBatteryLevelFull": "Plein",
+  "AiUsageAntigravityGroupsLabel": "Groupes de modèles visibles"
 }

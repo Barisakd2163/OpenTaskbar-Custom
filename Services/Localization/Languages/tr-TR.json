@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "Boş",
   "WirelessBatteryLevelLow": "Düşük",
   "WirelessBatteryLevelMedium": "Orta",
-  "WirelessBatteryLevelFull": "Dolu"
+  "WirelessBatteryLevelFull": "Dolu",
+  "AiUsageAntigravityGroupsLabel": "Gösterilen model grupları"
 }

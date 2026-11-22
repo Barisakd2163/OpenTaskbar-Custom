@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "空",
   "WirelessBatteryLevelLow": "低",
   "WirelessBatteryLevelMedium": "中",
-  "WirelessBatteryLevelFull": "满"
+  "WirelessBatteryLevelFull": "满",
+  "AiUsageAntigravityGroupsLabel": "显示的模型分组"
 }

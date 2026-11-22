@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "Порожньо",
   "WirelessBatteryLevelLow": "Низький",
   "WirelessBatteryLevelMedium": "Середній",
-  "WirelessBatteryLevelFull": "Повний"
+  "WirelessBatteryLevelFull": "Повний",
+  "AiUsageAntigravityGroupsLabel": "Відображувані групи моделей"
 }

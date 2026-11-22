@@ -862,5 +862,6 @@
   "WirelessBatteryLevelEmpty": "방전",
   "WirelessBatteryLevelLow": "낮음",
   "WirelessBatteryLevelMedium": "보통",
-  "WirelessBatteryLevelFull": "가득 참"
+  "WirelessBatteryLevelFull": "가득 참",
+  "AiUsageAntigravityGroupsLabel": "표시할 모델 그룹"
 }

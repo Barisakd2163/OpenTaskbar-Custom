@@ -46,6 +46,8 @@ public sealed class DockSettingsStore
             // Older files without a language follow the same system-language rule as a first launch.
             if (settings is not null && !document.RootElement.TryGetProperty(nameof(DockSettings.Language), out _))
                 settings = settings with { Language = _defaultLanguage };
+            if (settings is not null && !document.RootElement.TryGetProperty(nameof(DockSettings.AntigravityGroups), out _))
+                settings = settings with { AntigravityGroups = AntigravityGroups.All };
             // Normalize the legacy enabled-only format before enforcing the installed subset invariant.
             if (settings is { InstalledWidgets: null })
                 settings = settings with { InstalledWidgets = settings.Widgets ?? Array.Empty<string>() };
@@ -361,6 +363,8 @@ public sealed class DockSettingsStore
         && (settings.StatsMeters & ~SystemMeters.All) == 0
         && (settings.AiUsageProviders & ~AiProviders.All) == 0
         && Enum.IsDefined(settings.AiUsageRing)
+        && settings.AntigravityGroups != AntigravityGroups.None
+        && (settings.AntigravityGroups & ~AntigravityGroups.All) == 0
         && settings.WeatherCity is { Length: <= 80 }
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
