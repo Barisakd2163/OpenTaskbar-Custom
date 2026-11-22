@@ -117,6 +117,15 @@ public static class DockMetrics
     public const double WidgetDesignHeight = 46;
 
     /// <summary>
+    /// Smallest real (unscaled) widget card height. Between this and the design height the cards are laid out at
+    /// their true size with no fractional LayoutTransform, so text and vectors stay pixel-snapped and crisp.
+    /// </summary>
+    public const double WidgetMinCardHeight = 34;
+
+    /// <summary>Largest available widget height (cell height − 2) that still renders the strip unscaled.</summary>
+    public const double WidgetUnscaledMaxAvailable = 48;
+
+    /// <summary>
     /// Resolves an external dock gap to DIPs. Pixels are used as-is; percent is a share of the full screen extent
     /// along the relevant axis. Negative values are clamped to zero so a user can make the gap flush.
     /// </summary>
@@ -164,4 +173,29 @@ public readonly record struct DockSizeProfile(double Shelf, double BottomGap, do
     public double EffectiveCellHeight => CellHeight > 0 ? CellHeight : Cell;
     public double SurfaceHeight => EffectiveCellHeight + VerticalPadding * 2 + 2;
     public double WidgetScale => Math.Clamp((EffectiveCellHeight - 2) / DockMetrics.WidgetDesignHeight, 0.45, 1.35);
+
+    /// <summary>
+    /// Real height of every widget card (drives the dynamic <c>WidgetHeight</c> resource). Cards shrink to the
+    /// available cell height instead of being bitmap-scaled down from the 46 DIP design height.
+    /// </summary>
+    public double WidgetCardHeight => EffectiveCellHeight <= 0
+        ? DockMetrics.WidgetDesignHeight
+        : Math.Clamp(Math.Floor(EffectiveCellHeight - 2), DockMetrics.WidgetMinCardHeight, DockMetrics.WidgetDesignHeight);
+
+    /// <summary>
+    /// Residual LayoutTransform applied to the widget strip. Exactly 1.0 whenever the cards fit at their real size
+    /// (Compact/Medium/Large at 100%), so no fractional scale blurs text; otherwise only the gap between
+    /// <see cref="WidgetCardHeight"/> and the available height is scaled.
+    /// </summary>
+    public double WidgetLayoutScale
+    {
+        get
+        {
+            if (EffectiveCellHeight <= 0) return 1.0;
+            var available = EffectiveCellHeight - 2;
+            if (available >= DockMetrics.WidgetMinCardHeight && available <= DockMetrics.WidgetUnscaledMaxAvailable)
+                return 1.0;
+            return Math.Clamp(available / WidgetCardHeight, 0.45, 1.35);
+        }
+    }
 }

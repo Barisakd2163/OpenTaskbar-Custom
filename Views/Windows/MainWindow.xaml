@@ -11,6 +11,7 @@
         MinHeight="0"
         FontFamily="{StaticResource InterfaceFont}"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="Auto"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"

@@ -407,7 +407,11 @@ public sealed class BatteryWidget : DockWidget
         if (!_renderedPresent) return;
 
         var width = _surface.ActualWidth > 1 ? _surface.ActualWidth : MinCardWidth;
-        var height = _surface.ActualHeight > 1 ? _surface.ActualHeight : WaveHeight;
+        // Before the first layout pass fall back to the live WidgetHeight (34–46 DIP), not the 46 DIP design
+        // height, so the liquid clip never overshoots a compact card.
+        var height = _surface.ActualHeight > 1
+            ? _surface.ActualHeight
+            : TryFindResource("WidgetHeight") is double widgetHeight && widgetHeight > 1 ? widgetHeight : WaveHeight;
         var radius = _card.CornerRadius.TopLeft > 0 ? _card.CornerRadius.TopLeft : 10;
         _surface.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
 
