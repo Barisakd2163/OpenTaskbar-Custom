@@ -718,7 +718,9 @@ public partial class MainWindow
 
         if (added > 0)
         {
+            SavePinOrder();
             if (_windowTracker is not null) RefreshRunningApps();
+            RebuildDockOrder();
             ResizeDockToContent();
             _replacementSession?.RefreshPosition();
         }

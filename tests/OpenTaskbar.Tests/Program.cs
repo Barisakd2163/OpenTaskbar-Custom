@@ -22,6 +22,7 @@ StartMenuAndOverlayChecks();
 AppLaunchChecks();
 TrayListChecks();
 ShellTokenChecks();
+DockGroupsProfilesAndPinsChecks();
 checks += RunningAppChecks.Run();
 checks += TaskbarWindowChecks.Run();
 checks += RunningAppProjectionChecks.Run();
@@ -84,6 +85,112 @@ void ShellTokenChecks()
         new DockSettings(ShowSearchButton: false, ShowTaskViewButton: false, ShowTrayButton: false));
     Check(hiddenPinned.SequenceEqual(["start", "app:a"], StringComparer.OrdinalIgnoreCase),
         "Hidden pinned buttons must be omitted rather than leave gaps between the groups.");
+}
+
+void DockGroupsProfilesAndPinsChecks()
+{
+    const string appA = @"C:\Apps\Alpha.exe";
+    const string appB = @"C:\Apps\Bravo.exe";
+    const string appC = @"C:\Apps\Charlie.exe";
+    const string appExternal = @"C:\Apps\ExternalPin.exe";
+
+    // Bug #1: Creating a new empty group and adding/dropping its first app must not delete the empty target group.
+    var emptyGroup = new DockAppGroup("grp-new", "New Group", []);
+    var afterRemoveUnassigned = OpenTaskbar.MainWindow.RemoveAppFromGroups([emptyGroup], appA, preserveGroupId: emptyGroup.Id);
+    Check(afterRemoveUnassigned.Count == 1 && afterRemoveUnassigned[0].Id == emptyGroup.Id,
+        "Removing an unassigned app from previous groups must preserve a newly created empty target group.");
+    var populatedGroup = afterRemoveUnassigned
+        .Select(g => g.Id == emptyGroup.Id ? g with { ExecutablePaths = [.. g.ExecutablePaths, appA] } : g)
+        .ToList();
+    Check(populatedGroup is [{ Id: "grp-new", ExecutablePaths: [appA] }],
+        "Adding the first app to a newly created empty group must populate and retain the group.");
+
+    // Moving the sole app from an existing group into a newly created empty group drops the emptied source group
+    // while keeping and populating the new target group.
+    var singleSourceGroup = new DockAppGroup("grp-old", "Old Group", [appA]);
+    var afterMoveFromSingle = OpenTaskbar.MainWindow.RemoveAppFromGroups([singleSourceGroup, emptyGroup], appA, preserveGroupId: emptyGroup.Id);
+    Check(afterMoveFromSingle is [{ Id: "grp-new", ExecutablePaths: [] }],
+        "Removing the sole member of an old group must drop the old group while preserving the empty target group.");
+
+    // Moving one app from a multi-app group into a newly created empty group preserves both groups.
+    var multiSourceGroup = new DockAppGroup("grp-multi", "Multi Group", [appA, appB]);
+    var afterMoveFromMulti = OpenTaskbar.MainWindow.RemoveAppFromGroups([multiSourceGroup, emptyGroup], appA, preserveGroupId: emptyGroup.Id);
+    Check(afterMoveFromMulti is [{ Id: "grp-multi", ExecutablePaths: [appB] }, { Id: "grp-new", ExecutablePaths: [] }],
+        "Moving one app out of a multi-app group into an empty target group must keep both groups.");
+
+    // Dropping an app onto the same group where it is the sole member must preserve that group.
+    var afterSameGroupDrop = OpenTaskbar.MainWindow.RemoveAppFromGroups([singleSourceGroup], appA, preserveGroupId: singleSourceGroup.Id);
+    Check(afterSameGroupDrop is [{ Id: "grp-old", ExecutablePaths: [] }],
+        "Dropping a sole member back onto its own group must preserve the target group for re-addition.");
+
+    // Removing the last app from a group (unchecking in ToggleAppInGroup) must drop that group while keeping any unrelated empty group.
+    var afterExplicitRemove = OpenTaskbar.MainWindow.RemoveAppFromGroups([singleSourceGroup, emptyGroup], appA);
+    Check(afterExplicitRemove is [{ Id: "grp-new", ExecutablePaths: [] }],
+        "Removing the last app from a group must delete only the group that became empty.");
+
+    // Bug #2: "Hide in profile" (HiddenApps) must hide pinned apps on the dock when idle, show them from _runningApps
+    // while running, and preserve HiddenApps when other items are reordered.
+    var pinnedApps = new[]
+    {
+        new DockApp("Alpha", appA) { ShortcutPath = @"C:\Pins\Alpha.lnk" },
+        new DockApp("Bravo", appB) { ShortcutPath = @"C:\Pins\Bravo.lnk" },
+        new DockApp("Charlie", appC) { ShortcutPath = @"C:\Pins\Charlie.lnk" }
+    };
+    var profileSettings = new DockSettings(
+        PinOrder: [appA, appB, appC],
+        Profiles:
+        [
+            new DockProfile("Default", []),
+            new DockProfile("Work", [appB])
+        ],
+        ActiveProfile: "Work");
+
+    Check(OpenTaskbar.MainWindow.IsHiddenByProfile(profileSettings, appB)
+        && OpenTaskbar.MainWindow.IsHiddenByProfile(profileSettings, appB.ToLowerInvariant())
+        && !OpenTaskbar.MainWindow.IsHiddenByProfile(profileSettings, appA),
+        "IsHiddenByProfile must match active profile HiddenApps case-insensitively.");
+
+    var visiblePinsInWork = OpenTaskbar.MainWindow.GetVisiblePinnedPaths(pinnedApps, profileSettings);
+    Check(visiblePinsInWork.SequenceEqual([appA, appC], StringComparer.OrdinalIgnoreCase),
+        "GetVisiblePinnedPaths must exclude apps hidden by the active profile even when listed in PinOrder.");
+
+    Check(OpenTaskbar.MainWindow.FindVisibleDockApp(pinnedApps, [], profileSettings, appB) is null,
+        "FindVisibleDockApp must return null for a profile-hidden pinned app that is not running.");
+    Check(ReferenceEquals(OpenTaskbar.MainWindow.FindVisibleDockApp(pinnedApps, [], profileSettings, appA), pinnedApps[0]),
+        "FindVisibleDockApp must resolve non-hidden pinned apps normally.");
+
+    var runningBravo = new DockApp("Bravo", appB) { WindowCount = 2, IsForeground = true };
+    Check(ReferenceEquals(OpenTaskbar.MainWindow.FindVisibleDockApp(pinnedApps, [runningBravo], profileSettings, appB), runningBravo),
+        "A profile-hidden pinned app that is currently running must resolve to its running DockApp instance.");
+
+    var savedOrder = new[] { "start", "app:" + appA, "app:" + appB, "app:" + appC, "tray" };
+    var visibleOrder = new[] { "app:" + appA, "app:" + appC };
+    var reorderedWithHidden = DockItemOrdering.MoveVisibleItem(savedOrder, visibleOrder, "app:" + appC, 0);
+    var reorderedWorkSettings = DockProfileService.SyncActive(profileSettings with { DockItemOrder = reorderedWithHidden });
+    Check(OpenTaskbar.MainWindow.IsHiddenByProfile(reorderedWorkSettings, appB)
+        && reorderedWorkSettings.DockItemOrder!.Contains("app:" + appB, StringComparer.OrdinalIgnoreCase),
+        "Reordering visible dock items must keep HiddenApps intact and preserve the hidden app token slot.");
+
+    var (defaultProfileSettings, switchErr) = DockProfileService.Switch(reorderedWorkSettings, "Default");
+    Check(switchErr is null
+        && OpenTaskbar.MainWindow.GetVisiblePinnedPaths(pinnedApps, defaultProfileSettings)
+            .SequenceEqual([appA, appB, appC], StringComparer.OrdinalIgnoreCase)
+        && ReferenceEquals(OpenTaskbar.MainWindow.FindVisibleDockApp(pinnedApps, [], defaultProfileSettings, appB), pinnedApps[1]),
+        "Switching to a profile that does not hide the app must restore it to the visible pinned apps.");
+
+    // Bug #9: Pinned apps added outside OpenTaskbar or via ImportPins must remain visible when PinOrder already exists.
+    var pinsWithExternal = new[]
+    {
+        new DockApp("Alpha", appA) { ShortcutPath = @"C:\Pins\Alpha.lnk" },
+        new DockApp("Bravo", appB) { ShortcutPath = @"C:\Pins\Bravo.lnk" },
+        new DockApp("External", appExternal) { ShortcutPath = @"C:\Pins\External.lnk" },
+        new DockApp("Charlie", appC) { ShortcutPath = @"C:\Pins\Charlie.lnk" }
+    };
+    var partialPinOrderSettings = new DockSettings(
+        PinOrder: [appB, appA, @"C:\Apps\UnpinnedStale.exe"]);
+    var mergedPins = OpenTaskbar.MainWindow.GetVisiblePinnedPaths(pinsWithExternal, partialPinOrderSettings);
+    Check(mergedPins.SequenceEqual([appB, appA, appExternal, appC], StringComparer.OrdinalIgnoreCase),
+        "GetVisiblePinnedPaths must keep PinOrder sequence for known pins, append externally pinned/imported apps missing from PinOrder, and drop stale unpinned entries.");
 }
 
 void CountdownChecks()
