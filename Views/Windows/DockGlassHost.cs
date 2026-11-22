@@ -77,25 +77,26 @@ internal sealed class DockGlassHost : Window
             && SettingsBackdrop.TryEnable(this, ThemeManager.EffectiveTheme);
         if (!enable) SettingsBackdrop.Disable(this);
 
-        if (enable != _active)
+        if (enable)
         {
-            _active = enable;
-            if (enable)
+            if (!_active)
             {
+                _active = true;
                 Show();
                 if (_dockHandle != 0)
                     _ = SetWindowPos(_handle, _dockHandle, 0, 0, 0, 0,
                         SwpNoMove | SwpNoSize | SwpNoActivate);
             }
-            else
-            {
-                Hide();
-                _x = int.MinValue;
-                _y = int.MinValue;
-                _width = -1;
-                _height = -1;
-                _radius = -1;
-            }
+        }
+        else if (_active || IsVisible)
+        {
+            _active = false;
+            Hide();
+            _x = int.MinValue;
+            _y = int.MinValue;
+            _width = -1;
+            _height = -1;
+            _radius = -1;
         }
     }
 

@@ -78,16 +78,16 @@ public partial class MainWindow
         if (DockHost is null || !IsLoaded) return;
 
         var fallbackCell = Profile.Cell;
-        foreach (var button in GetAllDockButtons())
+        // Cheap guards go into the sequence filter; the visual-tree lookup (GetButtonIcon) stays in the
+        // body so it only runs for buttons that already passed every cheap check. Native shell buttons
+        // are filtered here too, saving that lookup entirely for them.
+        foreach (var button in GetAllDockButtons().Where(b =>
+            b.Visibility == Visibility.Visible
+            && b.ActualWidth > 0 && b.ActualHeight > 0
+            && b.IsDescendantOf(DockHost)
+            && !IsNativeShellButton(b)))
         {
-            if (button.Visibility != Visibility.Visible) continue;
-            if (button.ActualWidth <= 0 || button.ActualHeight <= 0) continue;
-            if (!button.IsDescendantOf(DockHost)) continue;
             if (GetButtonIcon(button) is not { } icon) continue;
-            // Native shell buttons (Start, Search, Task View, tray, Show Desktop, Recycle Bin) are Windows'
-            // own surfaces. Magnifying them makes the dock fight the native flyouts they open, so keep the
-            // fisheye for application icons and stacks only.
-            if (IsNativeShellButton(button)) continue;
 
             if (previousRest is not null && previousRest.TryGetValue(button, out var known) && ReferenceEquals(known.Icon, icon))
             {
@@ -225,7 +225,7 @@ public partial class MainWindow
 
         foreach (var icon in _magnifiedIcons)
         {
-            if (!_magnificationScaleTargets.ContainsKey(icon)) _magnificationScaleTargets[icon] = 1.0;
+            _magnificationScaleTargets.TryAdd(icon, 1.0);
         }
         _magnifiedIcons.Clear();
         foreach (var icon in _currentMagnifiedBuffer) _magnifiedIcons.Add(icon);
