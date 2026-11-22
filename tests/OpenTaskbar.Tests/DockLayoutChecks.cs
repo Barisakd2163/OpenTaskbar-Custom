@@ -755,6 +755,25 @@ internal static class DockLayoutChecks
         Check(TaskbarReplacementSession.IsFullScreenBounds(autoHideVideoWin, 0, isZoomed: false, autoHideMon, autoHideWork),
             "Fullscreen video in auto-hide mode must be detected as full screen.");
 
+        foreach (var shellClass in new[] { "Progman", "WorkerW", "Shell_TrayWnd", "LogonUI", "LockAppWindow" })
+        {
+            Check(TaskbarReplacementSession.IsExcludedFullScreenClass(shellClass, includeCoreWindow: false),
+                $"Shell class '{shellClass}' must be excluded from fullscreen suppression.");
+            Check(TaskbarReplacementSession.IsExcludedFullScreenClass(shellClass, includeCoreWindow: true),
+                $"Shell class '{shellClass}' must remain excluded when CoreWindow filtering is enabled.");
+        }
+        Check(!TaskbarReplacementSession.IsExcludedFullScreenClass("Windows.UI.Core.CoreWindow", includeCoreWindow: false),
+            "Windows.UI.Core.CoreWindow must only be excluded on the taskbar-button secondary check.");
+        Check(TaskbarReplacementSession.IsExcludedFullScreenClass("Windows.UI.Core.CoreWindow", includeCoreWindow: true),
+            "Windows.UI.Core.CoreWindow must be excluded when includeCoreWindow is true.");
+        foreach (var appClass in new[] { "Chrome_WidgetWin_1", "ApplicationFrameWindow", "" })
+        {
+            Check(!TaskbarReplacementSession.IsExcludedFullScreenClass(appClass, includeCoreWindow: false),
+                $"Application class '{appClass}' must not be excluded from fullscreen suppression.");
+            Check(!TaskbarReplacementSession.IsExcludedFullScreenClass(appClass, includeCoreWindow: true),
+                $"Application class '{appClass}' must not be excluded when includeCoreWindow is true.");
+        }
+
         Check(UiText.Get("ErrorMediaControl") == "Cannot control the media session.",
             "ErrorMediaControl must return localized media control failure message.");
 
