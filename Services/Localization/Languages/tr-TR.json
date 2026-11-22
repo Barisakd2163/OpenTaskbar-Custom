@@ -389,8 +389,8 @@
   "SpeedTestRetry": "Tekrar Dene",
   "SpeedTestPrivacyNote": "Gizlilik odaklı · Kayıt tutulmaz",
   "NetworkSettings": "Windows Ağ Ayarları",
-  "WidgetBluetoothBattery": "Bluetooth Pilleri",
-  "WidgetBluetoothBatteryDescription": "Bağlı Bluetooth cihazlarının pil seviyelerini gösterir.",
+  "WidgetBluetoothBattery": "Kablosuz ve Bluetooth Pilleri",
+  "WidgetBluetoothBatteryDescription": "Bağlı kablosuz ve Bluetooth cihazlarının pil seviyelerini gösterir.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "Bağlı değil",
   "WidgetAiUsage": "Yapay zekâ kullanımı",
@@ -852,5 +852,13 @@
   "ThemeFieldWidgetRadius": "Widget köşe yarıçapı",
   "ThemeFieldWidgetSelectedFill": "Widget seçili dolgusu",
   "ThemeFieldWidgetSelectedForeground": "Widget seçili metni",
-  "ThemeFieldWidgetSelectedStroke": "Widget seçili kenarlığı"
+  "ThemeFieldWidgetSelectedStroke": "Widget seçili kenarlığı",
+  "WirelessBatteryCharging": "Şarj oluyor",
+  "WirelessBatteryLastReading": "Son okuma {0} önce",
+  "WirelessBatteryRefresh": "Yenile",
+  "WirelessBatterySpareDock": "İstasyon: %{0}",
+  "WirelessBatteryLevelEmpty": "Boş",
+  "WirelessBatteryLevelLow": "Düşük",
+  "WirelessBatteryLevelMedium": "Orta",
+  "WirelessBatteryLevelFull": "Dolu"
 }

@@ -329,8 +329,8 @@
   "SpeedTestRetry": "重试",
   "SpeedTestPrivacyNote": "隐私优先 · 不保存日志",
   "NetworkSettings": "Windows 网络设置",
-  "WidgetBluetoothBattery": "蓝牙电量",
-  "WidgetBluetoothBatteryDescription": "显示已连接蓝牙设备的电池电量。",
+  "WidgetBluetoothBattery": "无线与蓝牙设备电量",
+  "WidgetBluetoothBatteryDescription": "显示已连接无线与蓝牙设备的电池电量。",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "未连接",
   "WidgetAiUsage": "AI 用量",
@@ -852,5 +852,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "充电中",
+  "WirelessBatteryLastReading": "上次读取于 {0}前",
+  "WirelessBatteryRefresh": "刷新",
+  "WirelessBatterySpareDock": "底座: {0}%",
+  "WirelessBatteryLevelEmpty": "空",
+  "WirelessBatteryLevelLow": "低",
+  "WirelessBatteryLevelMedium": "中",
+  "WirelessBatteryLevelFull": "满"
 }

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -27,11 +28,17 @@ public sealed record BluetoothDeviceBatteryInfo(
     string Id,
     bool IsConnected,
     int BatteryLevel,
-    BluetoothDeviceKind Kind = BluetoothDeviceKind.Generic);
+    BluetoothDeviceKind Kind = BluetoothDeviceKind.Generic,
+    bool IsCharging = false,
+    bool IsStale = false,
+    string? SourceLabel = null,
+    DateTimeOffset? SampledAt = null,
+    string? LevelOverrideText = null,
+    int? SecondaryBatteryLevel = null);
 
 /// <summary>
-/// A single dock card that lists every connected Bluetooth device side by side with a device-type icon
-/// and its battery percentage. Battery data comes from the standard Bluetooth LE GATT Battery Service.
+/// A single dock card that lists connected wireless and Bluetooth devices side by side with a device-type icon,
+/// battery percentage or coarse level, charging bolt indicator, and multi-protocol hover flyout.
 /// </summary>
 public sealed class BluetoothBatteryWidget : DockWidget
 {
@@ -78,7 +85,6 @@ public sealed class BluetoothBatteryWidget : DockWidget
         AppearanceProperty
     ];
 
-
     private readonly StackPanel _deviceTiles = new()
     {
         Orientation = Orientation.Horizontal,
@@ -100,7 +106,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
     private double _compactWidth = 46;
     private const long RefreshIntervalMs = 15000;
 
-    internal Func<Task<IReadOnlyList<BluetoothDeviceBatteryInfo>>> BatteryReader { get; set; } = ReadLiveBluetoothBatteriesAsync;
+    internal Func<Task<IReadOnlyList<BluetoothDeviceBatteryInfo>>> BatteryReader { get; set; } = WirelessBatteryAggregator.ReadAllAsync;
     internal Action OpenSettingsAction { get; set; } = DefaultOpenBluetoothSettings;
 
     public BluetoothBatteryWidget()
@@ -134,11 +140,14 @@ public sealed class BluetoothBatteryWidget : DockWidget
     private void ApplyDensityLayout()
     {
         var compact = IsCompact && !IsHoverExpanded;
-        // Compact keeps only the type icons; percentages come back in the expanded dock or inline hover expansion.
+        // Compact keeps only the type icons; percentages (and optional charging bolt) come back in expanded or hover-expanded mode.
         foreach (var child in _deviceTiles.Children)
         {
             if (child is Border { Child: StackPanel stack } && stack.Children.Count > 1)
-                stack.Children[1].Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            {
+                for (var i = 1; i < stack.Children.Count; i++)
+                    stack.Children[i].Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            }
         }
     }
 
@@ -198,8 +207,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
                 _deviceTiles.Children.Add(CreateDeviceTile(connected[i], isLast: i == connected.Count - 1));
             }
             _cardButton.Content = _deviceTiles;
-            _cardButton.ToolTip = string.Join("\n", connected.Select(device =>
-                $"{device.Name}: {(device.BatteryLevel >= 0 ? device.BatteryLevel + "%" : "—")}"));
+            _cardButton.ToolTip = string.Join("\n", connected.Select(FormatDeviceTooltip));
             AutomationProperties.SetName(_cardButton,
                 $"{UiText.Get("WidgetBluetoothBattery")}: {string.Join(", ", connected.Select(device => device.Name))}");
             _fullWidth = Math.Max(78, connected.Count * 62 + 12);
@@ -208,13 +216,39 @@ public sealed class BluetoothBatteryWidget : DockWidget
         RaiseContentWidthChanged();
     }
 
+    internal static bool IsLowBatteryWarning(int batteryLevel, bool isCharging) =>
+        batteryLevel >= 0 && (batteryLevel <= 15 || (!isCharging && batteryLevel <= 20));
+
+    internal static string FormatLevelText(BluetoothDeviceBatteryInfo device)
+    {
+        if (!string.IsNullOrWhiteSpace(device.LevelOverrideText))
+            return device.LevelOverrideText!;
+        return device.BatteryLevel >= 0
+            ? $"{device.BatteryLevel.ToString(CultureInfo.InvariantCulture)}%"
+            : "—";
+    }
+
+    private static string FormatDeviceTooltip(BluetoothDeviceBatteryInfo device)
+    {
+        var levelText = FormatLevelText(device);
+        var summary = $"{device.Name}: {levelText}";
+        if (device.IsCharging)
+            summary += $" ({UiText.Get("WirelessBatteryCharging")})";
+        if (device.SecondaryBatteryLevel is >= 0 and <= 100)
+            summary += $" · {UiText.Format("WirelessBatterySpareDock", device.SecondaryBatteryLevel.Value)}";
+        return summary;
+    }
+
     private FrameworkElement CreateDeviceTile(BluetoothDeviceBatteryInfo device, bool isLast)
     {
         var icon = CreateDeviceIcon(device.Kind);
         var compact = IsCompact && !IsHoverExpanded;
+        var levelText = FormatLevelText(device);
+        var isLow = IsLowBatteryWarning(device.BatteryLevel, device.IsCharging);
+
         var percent = new TextBlock
         {
-            Text = device.BatteryLevel >= 0 ? $"{device.BatteryLevel}%" : "—",
+            Text = levelText,
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(5, 0, 0, 0),
@@ -223,20 +257,38 @@ public sealed class BluetoothBatteryWidget : DockWidget
             Visibility = compact ? Visibility.Collapsed : Visibility.Visible
         };
         percent.SetResourceReference(StyleProperty, "WidgetText");
-        percent.SetResourceReference(ForegroundProperty,
-            device.BatteryLevel >= 0 && device.BatteryLevel <= 20 ? "WidgetWarning" : "TextPrimary");
+        percent.SetResourceReference(ForegroundProperty, isLow ? "WidgetWarning" : "TextPrimary");
 
         var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(icon);
-        stack.Children.Add(percent);
+        stack.Children.Add(percent); // Index 1 is strictly preserved as the percentage/level TextBlock.
+
+        if (device.IsCharging)
+        {
+            var bolt = new ContentControl
+            {
+                Content = Application.Current?.TryFindResource("IconZap"),
+                Width = 10,
+                Height = 10,
+                Margin = new Thickness(3, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+                Visibility = compact ? Visibility.Collapsed : Visibility.Visible
+            };
+            bolt.SetResourceReference(StyleProperty, "WidgetGlyph");
+            bolt.SetResourceReference(ForegroundProperty, "WidgetAccent");
+            stack.Children.Add(bolt);
+        }
+
         var border = new Border
         {
             Child = stack,
             Height = 20,
+            Opacity = device.IsStale ? 0.55 : 1.0,
             Padding = new Thickness(0, 0, isLast ? 0 : 9, 0),
             Margin = new Thickness(0, 0, isLast ? 0 : 9, 0),
             BorderThickness = new Thickness(0, 0, isLast ? 0 : 1, 0),
-            ToolTip = $"{device.Name}: {percent.Text}"
+            ToolTip = FormatDeviceTooltip(device)
         };
         if (!isLast) border.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
         return border;
@@ -272,18 +324,52 @@ public sealed class BluetoothBatteryWidget : DockWidget
 
     public override UIElement? BuildHoverFlyoutContent()
     {
-        var panel = new StackPanel { Width = 240 };
-        panel.Children.Add(DockFlyout.Heading(UiText.Get("WidgetBluetoothBattery")));
+        var panel = new StackPanel { Width = 264 };
+
+        var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var heading = DockFlyout.Heading(UiText.Get("WidgetBluetoothBattery"));
+        heading.Margin = new Thickness(4, 0, 4, 0);
+        heading.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(heading, 0);
+        headerGrid.Children.Add(heading);
+
+        var refreshLabel = UiText.Get("WirelessBatteryRefresh");
+        var refreshBtn = DockFlyout.FlatButton(
+            new TextBlock
+            {
+                Text = refreshLabel,
+                FontSize = 10.5,
+                FontWeight = FontWeights.SemiBold
+            },
+            (_, _) => RefreshBatteries(),
+            refreshLabel);
+        refreshBtn.Padding = new Thickness(7, 3, 7, 3);
+        refreshBtn.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(refreshBtn, 1);
+        headerGrid.Children.Add(refreshBtn);
+
+        panel.Children.Add(headerGrid);
+
         if (_devices.Count == 0)
         {
             panel.Children.Add(DockFlyout.Caption(UiText.Get("BluetoothNoDevices")));
+            panel.Children.Add(BuildSettingsFooterButton());
             return panel;
         }
 
-        var listPanel = new StackPanel { Margin = new Thickness(0, 6, 0, 4) };
+        var listPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
         foreach (var device in _devices)
         {
-            var itemGrid = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+            var rowStack = new StackPanel
+            {
+                Margin = new Thickness(4, 4, 4, 6),
+                Opacity = device.IsStale ? 0.65 : 1.0
+            };
+
+            var itemGrid = new Grid();
             itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -292,44 +378,184 @@ public sealed class BluetoothBatteryWidget : DockWidget
             Grid.SetColumn(icon, 0);
             itemGrid.Children.Add(icon);
 
-            var nameStack = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(6, 0, 0, 0) };
-            nameStack.Children.Add(new TextBlock
+            var nameStack = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(7, 0, 6, 0) };
+
+            var titleWrap = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            titleWrap.Children.Add(new TextBlock
             {
                 Text = device.Name,
                 FontSize = 11.5,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = (Brush)FindResource("TextPrimary"),
-                TextTrimming = TextTrimming.CharacterEllipsis
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 138,
+                VerticalAlignment = VerticalAlignment.Center
             });
-            nameStack.Children.Add(new TextBlock
+
+            if (!string.IsNullOrWhiteSpace(device.SourceLabel))
             {
-                Text = device.IsConnected ? UiText.Get("BluetoothConnected") : UiText.Get("BluetoothDisconnected"),
+                var sourceBadge = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(5, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Background = (Brush)FindResource("SurfaceSelected")
+                };
+                sourceBadge.Child = new TextBlock
+                {
+                    Text = device.SourceLabel,
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("TextSecondary")
+                };
+                titleWrap.Children.Add(sourceBadge);
+            }
+            nameStack.Children.Add(titleWrap);
+
+            var subtitleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 0) };
+            subtitleRow.Children.Add(new TextBlock
+            {
+                Text = BuildDeviceSubtitle(device),
                 FontSize = 10,
-                Foreground = device.IsConnected
+                Foreground = device.IsCharging || (device.IsConnected && !device.IsStale)
                     ? (Brush)FindResource("WidgetAccent")
                     : (Brush)FindResource("TextSecondary")
             });
+
+            if (device.SecondaryBatteryLevel is >= 0 and <= 100)
+            {
+                var spareBadge = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(4, 0, 4, 0),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Background = (Brush)FindResource("SurfaceSelected")
+                };
+                spareBadge.Child = new TextBlock
+                {
+                    Text = UiText.Format("WirelessBatterySpareDock", device.SecondaryBatteryLevel.Value),
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Medium,
+                    Foreground = (Brush)FindResource("TextPrimary")
+                };
+                subtitleRow.Children.Add(spareBadge);
+            }
+
+            nameStack.Children.Add(subtitleRow);
             Grid.SetColumn(nameStack, 1);
             itemGrid.Children.Add(nameStack);
 
+            var valueRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+
+            if (device.IsCharging)
+            {
+                var bolt = new ContentControl
+                {
+                    Content = Application.Current?.TryFindResource("IconZap"),
+                    Width = 10,
+                    Height = 10,
+                    Margin = new Thickness(0, 0, 3, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    IsHitTestVisible = false
+                };
+                bolt.SetResourceReference(StyleProperty, "WidgetGlyph");
+                bolt.SetResourceReference(ForegroundProperty, "WidgetAccent");
+                valueRow.Children.Add(bolt);
+            }
+
+            var isLow = IsLowBatteryWarning(device.BatteryLevel, device.IsCharging);
             var batteryText = new TextBlock
             {
-                Text = device.BatteryLevel >= 0 ? $"{device.BatteryLevel}%" : "—",
+                Text = FormatLevelText(device),
                 FontSize = 11.5,
                 FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0)
+                Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
             };
             batteryText.SetResourceReference(StyleProperty, "WidgetText");
-            batteryText.SetResourceReference(ForegroundProperty,
-                device.BatteryLevel >= 0 && device.BatteryLevel <= 20 ? "WidgetWarning" : "TextPrimary");
-            Grid.SetColumn(batteryText, 2);
-            itemGrid.Children.Add(batteryText);
+            batteryText.SetResourceReference(ForegroundProperty, isLow ? "WidgetWarning" : "TextPrimary");
+            valueRow.Children.Add(batteryText);
 
-            listPanel.Children.Add(itemGrid);
+            Grid.SetColumn(valueRow, 2);
+            itemGrid.Children.Add(valueRow);
+            rowStack.Children.Add(itemGrid);
+
+            if (device.BatteryLevel >= 0)
+            {
+                const double barTrackWidth = 248.0;
+                var clampedLevel = Math.Clamp(device.BatteryLevel, 0, 100);
+                var barFill = new Border
+                {
+                    Height = 3.5,
+                    CornerRadius = new CornerRadius(1.75),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Width = Math.Max(4.0, barTrackWidth * clampedLevel / 100.0)
+                };
+                barFill.SetResourceReference(
+                    Border.BackgroundProperty,
+                    isLow ? "WidgetWarning" : "WidgetAccent");
+
+                var barTrack = new Border
+                {
+                    Height = 3.5,
+                    CornerRadius = new CornerRadius(1.75),
+                    Margin = new Thickness(0, 5, 0, 0),
+                    Child = barFill
+                };
+                barTrack.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
+                rowStack.Children.Add(barTrack);
+            }
+
+            listPanel.Children.Add(rowStack);
         }
+
         panel.Children.Add(listPanel);
+        panel.Children.Add(BuildSettingsFooterButton());
         return panel;
+    }
+
+    private Button BuildSettingsFooterButton()
+    {
+        var settingsLabel = UiText.Format("RadioSettings", UiText.Get("Bluetooth"));
+        var button = DockFlyout.FlatButton(
+            new TextBlock
+            {
+                Text = settingsLabel,
+                FontSize = 11,
+                FontWeight = FontWeights.Medium,
+                Foreground = (Brush)FindResource("TextSecondary")
+            },
+            (_, _) => OpenSettingsAction(),
+            settingsLabel);
+        button.Margin = new Thickness(0, 2, 0, 0);
+        return button;
+    }
+
+    private static string BuildDeviceSubtitle(BluetoothDeviceBatteryInfo device)
+    {
+        if (device.IsCharging)
+            return UiText.Get("WirelessBatteryCharging");
+
+        if (device.IsStale)
+        {
+            if (device.SampledAt is { } sampledAt)
+            {
+                var elapsed = DateTimeOffset.UtcNow - sampledAt;
+                var minutes = Math.Max(1, (int)Math.Round(elapsed.TotalMinutes));
+                var timeLabel = UiText.Format("MinutesShort", minutes);
+                return UiText.Format("WirelessBatteryLastReading", timeLabel);
+            }
+            return UiText.Format("WirelessBatteryLastReading", "—");
+        }
+
+        return device.IsConnected ? UiText.Get("BluetoothConnected") : UiText.Get("BluetoothDisconnected");
     }
 
     private sealed class BatteryCandidate
@@ -358,11 +584,28 @@ public sealed class BluetoothBatteryWidget : DockWidget
         return candidateArrival > existingArrival;
     }
 
+    internal static async Task<IReadOnlyList<WirelessDeviceReading>> ReadLiveBluetoothReadingsAsync(CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested) return [];
+        var list = await ReadLiveBluetoothBatteriesAsync().ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        return list.Select(info => new WirelessDeviceReading(
+            Id: info.Id,
+            Name: info.Name,
+            Kind: info.Kind,
+            BatteryLevel: info.BatteryLevel,
+            IsConnected: info.IsConnected,
+            IsCharging: info.IsCharging,
+            IsStale: info.IsStale,
+            Source: WirelessBatterySource.Bluetooth,
+            SampledAt: info.SampledAt ?? now)).ToList();
+    }
+
     /// <summary>
     /// Reads battery straight from PnP device nodes (~150 ms). Enumerating Bluetooth association endpoints
     /// instead takes ~30 s per protocol on Windows because it starts a fresh discovery every time.
     /// </summary>
-    private static async Task<IReadOnlyList<BluetoothDeviceBatteryInfo>> ReadLiveBluetoothBatteriesAsync()
+    internal static async Task<IReadOnlyList<BluetoothDeviceBatteryInfo>> ReadLiveBluetoothBatteriesAsync()
     {
         DeviceInformationCollection nodes;
         try
@@ -450,9 +693,17 @@ public sealed class BluetoothBatteryWidget : DockWidget
             }
         }
 
+        var now = DateTimeOffset.UtcNow;
         return candidates
             .Where(candidate => candidate.Connected)
-            .Select(candidate => new BluetoothDeviceBatteryInfo(candidate.Name, candidate.Id, true, candidate.Battery, candidate.Kind))
+            .Select(candidate => new BluetoothDeviceBatteryInfo(
+                Name: candidate.Name,
+                Id: candidate.Id,
+                IsConnected: true,
+                BatteryLevel: candidate.Battery,
+                Kind: candidate.Kind,
+                SourceLabel: "Bluetooth",
+                SampledAt: now))
             .ToList();
     }
 

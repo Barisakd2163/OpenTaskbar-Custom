@@ -1,0 +1,590 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace OpenTaskbar.Services;
+
+internal sealed record HidInterfaceDescriptor(
+    string DevicePath,
+    ushort VendorId,
+    ushort ProductId,
+    ushort VersionNumber,
+    ushort UsagePage,
+    ushort Usage,
+    ushort InputReportLength,
+    ushort OutputReportLength,
+    ushort FeatureReportLength,
+    string ProductName);
+
+/// <summary>
+/// Clean-room Win32 SetupAPI + HidD/HidP + Overlapped I/O transport for reading wireless peripheral
+/// battery reports without blocking threads or acquiring exclusive device locks.
+/// </summary>
+internal static class Win32HidTransport
+{
+    private const uint DIGCF_PRESENT = 0x00000002;
+    private const uint DIGCF_DEVICEINTERFACE = 0x00000010;
+
+    private const uint GENERIC_READ = 0x80000000;
+    private const uint GENERIC_WRITE = 0x40000000;
+    private const uint FILE_SHARE_READ = 0x00000001;
+    private const uint FILE_SHARE_WRITE = 0x00000002;
+    private const uint OPEN_EXISTING = 3;
+    private const uint FILE_FLAG_OVERLAPPED = 0x40000000;
+
+    internal const int ERROR_IO_PENDING = 997;
+    internal const int ERROR_TIMEOUT = 1460;
+    internal const int ERROR_INVALID_PARAMETER = 87;
+    private const uint WAIT_OBJECT_0 = 0x00000000;
+    private const int HIDP_STATUS_SUCCESS = 0x00110000;
+
+    public static IReadOnlyList<HidInterfaceDescriptor> EnumerateInterfaces(Func<ushort, ushort, bool>? vidPidFilter = null)
+    {
+        var results = new List<HidInterfaceDescriptor>();
+        HidD_GetHidGuid(out var hidGuid);
+        var infoSet = SetupDiGetClassDevsW(ref hidGuid, nint.Zero, nint.Zero, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+        if (infoSet == nint.Zero || infoSet == -1) return results;
+
+        try
+        {
+            uint index = 0;
+            var interfaceDataSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DATA>();
+            while (true)
+            {
+                var interfaceData = new SP_DEVICE_INTERFACE_DATA { cbSize = interfaceDataSize };
+                if (!SetupDiEnumDeviceInterfaces(infoSet, nint.Zero, ref hidGuid, index++, ref interfaceData))
+                    break;
+
+                SetupDiGetDeviceInterfaceDetailW(infoSet, ref interfaceData, nint.Zero, 0, out var requiredSize, nint.Zero);
+                if (requiredSize is 0 or > 4096) continue;
+
+                var detailBuffer = Marshal.AllocHGlobal((int)requiredSize);
+                try
+                {
+                    Marshal.WriteInt32(detailBuffer, nint.Size == 8 ? 8 : 6);
+                    if (!SetupDiGetDeviceInterfaceDetailW(infoSet, ref interfaceData, detailBuffer, requiredSize, out _, nint.Zero))
+                        continue;
+
+                    var devicePath = Marshal.PtrToStringUni(nint.Add(detailBuffer, 4));
+                    if (string.IsNullOrWhiteSpace(devicePath)) continue;
+
+                    using var metaHandle = CreateFileW(
+                        devicePath,
+                        dwDesiredAccess: 0,
+                        dwShareMode: FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        lpSecurityAttributes: nint.Zero,
+                        dwCreationDisposition: OPEN_EXISTING,
+                        dwFlagsAndAttributes: 0,
+                        hTemplateFile: nint.Zero);
+
+                    if (metaHandle.IsInvalid) continue;
+
+                    var attributes = new HIDD_ATTRIBUTES { Size = (uint)Marshal.SizeOf<HIDD_ATTRIBUTES>() };
+                    if (!HidD_GetAttributes(metaHandle, ref attributes)) continue;
+
+                    if (vidPidFilter is not null && !vidPidFilter(attributes.VendorID, attributes.ProductID))
+                        continue;
+
+                    if (!HidD_GetPreparsedData(metaHandle, out var preparsedData) || preparsedData == nint.Zero)
+                        continue;
+
+                    HIDP_CAPS caps;
+                    try
+                    {
+                        if (HidP_GetCaps(preparsedData, out caps) != HIDP_STATUS_SUCCESS)
+                            continue;
+                    }
+                    finally
+                    {
+                        HidD_FreePreparsedData(preparsedData);
+                    }
+
+                    var productName = ReadProductString(metaHandle);
+                    results.Add(new HidInterfaceDescriptor(
+                        DevicePath: devicePath,
+                        VendorId: attributes.VendorID,
+                        ProductId: attributes.ProductID,
+                        VersionNumber: attributes.VersionNumber,
+                        UsagePage: caps.UsagePage,
+                        Usage: caps.Usage,
+                        InputReportLength: caps.InputReportByteLength,
+                        OutputReportLength: caps.OutputReportByteLength,
+                        FeatureReportLength: caps.FeatureReportByteLength,
+                        ProductName: productName));
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(detailBuffer);
+                }
+            }
+        }
+        finally
+        {
+            SetupDiDestroyDeviceInfoList(infoSet);
+        }
+
+        return results;
+    }
+
+    public static bool TryOpenSession(
+        string devicePath,
+        bool featureOnly,
+        out HidDeviceSession? session,
+        out int win32Error)
+    {
+        session = null;
+        var access = featureOnly ? 0u : (GENERIC_READ | GENERIC_WRITE);
+        var flags = featureOnly ? 0u : FILE_FLAG_OVERLAPPED;
+        var handle = CreateFileW(
+            devicePath,
+            dwDesiredAccess: access,
+            dwShareMode: FILE_SHARE_READ | FILE_SHARE_WRITE,
+            lpSecurityAttributes: nint.Zero,
+            dwCreationDisposition: OPEN_EXISTING,
+            dwFlagsAndAttributes: flags,
+            hTemplateFile: nint.Zero);
+
+        if (handle.IsInvalid && featureOnly)
+        {
+            handle.Dispose();
+            handle = CreateFileW(
+                devicePath,
+                dwDesiredAccess: GENERIC_READ | GENERIC_WRITE,
+                dwShareMode: FILE_SHARE_READ | FILE_SHARE_WRITE,
+                lpSecurityAttributes: nint.Zero,
+                dwCreationDisposition: OPEN_EXISTING,
+                dwFlagsAndAttributes: 0,
+                hTemplateFile: nint.Zero);
+        }
+
+        if (handle.IsInvalid)
+        {
+            win32Error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            return false;
+        }
+
+        win32Error = 0;
+        session = new HidDeviceSession(handle);
+        return true;
+    }
+
+    private static string ReadProductString(SafeFileHandle handle)
+    {
+        var buffer = new byte[256];
+        if (!HidD_GetProductString(handle, buffer, (uint)buffer.Length))
+            return string.Empty;
+
+        var text = Encoding.Unicode.GetString(buffer);
+        var nullIndex = text.IndexOf('\0');
+        return (nullIndex >= 0 ? text[..nullIndex] : text).Trim();
+    }
+
+    internal sealed class HidDeviceSession : IDisposable
+    {
+        private readonly SafeFileHandle _handle;
+        private bool _disposed;
+
+        internal HidDeviceSession(SafeFileHandle handle)
+        {
+            _handle = handle;
+        }
+
+        public bool TryWriteReport(ReadOnlySpan<byte> report, int timeoutMs, out int win32Error)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var clampedTimeout = Math.Clamp(timeoutMs, 50, 300);
+            var buffer = report.ToArray();
+            var hEvent = CreateEventW(nint.Zero, bManualReset: true, bInitialState: false, lpName: null);
+            if (hEvent == nint.Zero)
+            {
+                win32Error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            var pinned = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            try
+            {
+                var overlapped = new OVERLAPPED { hEvent = hEvent };
+                var ok = WriteFile(_handle, buffer, (uint)buffer.Length, out var written, ref overlapped);
+                var err = Marshal.GetLastWin32Error();
+                if (!ok)
+                {
+                    if (err == ERROR_IO_PENDING)
+                    {
+                        var wait = WaitForSingleObject(hEvent, (uint)clampedTimeout);
+                        if (wait == WAIT_OBJECT_0)
+                        {
+                            ok = GetOverlappedResult(_handle, ref overlapped, out written, bWait: false);
+                            err = ok ? 0 : Marshal.GetLastWin32Error();
+                        }
+                        else
+                        {
+                            CancelIoEx(_handle, ref overlapped);
+                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: true);
+                            win32Error = ERROR_TIMEOUT;
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        win32Error = err;
+                        return false;
+                    }
+                }
+                else
+                {
+                    err = 0;
+                }
+
+                win32Error = err;
+                return ok && written > 0;
+            }
+            finally
+            {
+                if (pinned.IsAllocated) pinned.Free();
+                CloseHandle(hEvent);
+            }
+        }
+
+        public bool TryReadReport(Span<byte> destination, int timeoutMs, out int bytesRead, out int win32Error)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            bytesRead = 0;
+            var clampedTimeout = Math.Clamp(timeoutMs, 50, 300);
+            var buffer = new byte[destination.Length];
+            var hEvent = CreateEventW(nint.Zero, bManualReset: true, bInitialState: false, lpName: null);
+            if (hEvent == nint.Zero)
+            {
+                win32Error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            var pinned = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            try
+            {
+                var overlapped = new OVERLAPPED { hEvent = hEvent };
+                var ok = ReadFile(_handle, buffer, (uint)buffer.Length, out var transferred, ref overlapped);
+                var err = Marshal.GetLastWin32Error();
+                if (!ok)
+                {
+                    if (err == ERROR_IO_PENDING)
+                    {
+                        var wait = WaitForSingleObject(hEvent, (uint)clampedTimeout);
+                        if (wait == WAIT_OBJECT_0)
+                        {
+                            ok = GetOverlappedResult(_handle, ref overlapped, out transferred, bWait: false);
+                            err = ok ? 0 : Marshal.GetLastWin32Error();
+                        }
+                        else
+                        {
+                            CancelIoEx(_handle, ref overlapped);
+                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: true);
+                            win32Error = ERROR_TIMEOUT;
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        win32Error = err;
+                        return false;
+                    }
+                }
+                else
+                {
+                    err = 0;
+                }
+
+                win32Error = err;
+                if (!ok || transferred == 0) return false;
+
+                bytesRead = (int)Math.Min(transferred, (uint)destination.Length);
+                buffer.AsSpan(0, bytesRead).CopyTo(destination);
+                return true;
+            }
+            finally
+            {
+                if (pinned.IsAllocated) pinned.Free();
+                CloseHandle(hEvent);
+            }
+        }
+
+        public bool TrySetOutputReport(ReadOnlySpan<byte> report, out int win32Error)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var buffer = report.ToArray();
+            var ok = HidD_SetOutputReport(_handle, buffer, (uint)buffer.Length);
+            win32Error = ok ? 0 : Marshal.GetLastWin32Error();
+            return ok;
+        }
+
+        public bool TryGetInputReport(Span<byte> report, out int win32Error)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var buffer = report.ToArray();
+            var ok = HidD_GetInputReport(_handle, buffer, (uint)buffer.Length);
+            win32Error = ok ? 0 : Marshal.GetLastWin32Error();
+            if (ok) buffer.CopyTo(report);
+            return ok;
+        }
+
+        public bool TrySetFeature(ReadOnlySpan<byte> report, out int win32Error)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var buffer = report.ToArray();
+            var ok = HidD_SetFeature(_handle, buffer, (uint)buffer.Length);
+            win32Error = ok ? 0 : Marshal.GetLastWin32Error();
+            return ok;
+        }
+
+        public bool TryGetFeature(Span<byte> report, out int win32Error)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var buffer = report.ToArray();
+            var ok = HidD_GetFeature(_handle, buffer, (uint)buffer.Length);
+            win32Error = ok ? 0 : Marshal.GetLastWin32Error();
+            if (ok) buffer.CopyTo(report);
+            return ok;
+        }
+
+        public bool TryTransactInterrupt(
+            ReadOnlySpan<byte> request,
+            Span<byte> response,
+            int timeoutMs,
+            Func<ReadOnlySpan<byte>, bool>? validator,
+            out int bytesRead,
+            out int win32Error)
+        {
+            bytesRead = 0;
+            var clampedTimeout = Math.Clamp(timeoutMs, 100, 300);
+            if (!TryWriteReport(request, clampedTimeout, out win32Error))
+            {
+                if (!TrySetOutputReport(request, out win32Error))
+                    return false;
+            }
+
+            var startTick = Stopwatch.GetTimestamp();
+            var maxAttempts = 4;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                var elapsedMs = (int)Stopwatch.GetElapsedTime(startTick).TotalMilliseconds;
+                var remainingMs = clampedTimeout - elapsedMs;
+                if (remainingMs < 40) break;
+
+                if (!TryReadReport(response, remainingMs, out bytesRead, out win32Error))
+                    return false;
+
+                if (validator is null || validator(response[..bytesRead]))
+                    return true;
+            }
+
+            win32Error = ERROR_TIMEOUT;
+            return false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _handle.Dispose();
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SP_DEVICE_INTERFACE_DATA
+    {
+        public uint cbSize;
+        public Guid InterfaceClassGuid;
+        public uint Flags;
+        public nint Reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HIDD_ATTRIBUTES
+    {
+        public uint Size;
+        public ushort VendorID;
+        public ushort ProductID;
+        public ushort VersionNumber;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HIDP_CAPS
+    {
+        public ushort Usage;
+        public ushort UsagePage;
+        public ushort InputReportByteLength;
+        public ushort OutputReportByteLength;
+        public ushort FeatureReportByteLength;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 17)]
+        public ushort[] Reserved;
+        public ushort NumberLinkCollectionNodes;
+        public ushort NumberInputButtonCaps;
+        public ushort NumberInputValueCaps;
+        public ushort NumberInputDataIndices;
+        public ushort NumberOutputButtonCaps;
+        public ushort NumberOutputValueCaps;
+        public ushort NumberOutputDataIndices;
+        public ushort NumberFeatureButtonCaps;
+        public ushort NumberFeatureValueCaps;
+        public ushort NumberFeatureDataIndices;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct OVERLAPPED
+    {
+        public nint Internal;
+        public nint InternalHigh;
+        public uint Offset;
+        public uint OffsetHigh;
+        public nint hEvent;
+    }
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern void HidD_GetHidGuid(out Guid hidGuid);
+
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern nint SetupDiGetClassDevsW(
+        ref Guid classGuid,
+        nint enumerator,
+        nint hwndParent,
+        uint flags);
+
+    [DllImport("setupapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetupDiEnumDeviceInterfaces(
+        nint deviceInfoSet,
+        nint deviceInfoData,
+        ref Guid interfaceClassGuid,
+        uint memberIndex,
+        ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
+
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetupDiGetDeviceInterfaceDetailW(
+        nint deviceInfoSet,
+        ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData,
+        nint deviceInterfaceDetailData,
+        uint deviceInterfaceDetailDataSize,
+        out uint requiredSize,
+        nint deviceInfoData);
+
+    [DllImport("setupapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetupDiDestroyDeviceInfoList(nint deviceInfoSet);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        nint lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        nint hTemplateFile);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_GetAttributes(
+        SafeFileHandle hidDeviceObject,
+        ref HIDD_ATTRIBUTES attributes);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_GetPreparsedData(
+        SafeFileHandle hidDeviceObject,
+        out nint preparsedData);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_FreePreparsedData(nint preparsedData);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern int HidP_GetCaps(
+        nint preparsedData,
+        out HIDP_CAPS capabilities);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_GetProductString(
+        SafeFileHandle hidDeviceObject,
+        byte[] buffer,
+        uint bufferLength);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_GetFeature(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        uint reportBufferLength);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_SetFeature(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        uint reportBufferLength);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_SetOutputReport(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        uint reportBufferLength);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_GetInputReport(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        uint reportBufferLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WriteFile(
+        SafeFileHandle hFile,
+        byte[] lpBuffer,
+        uint nNumberOfBytesToWrite,
+        out uint lpNumberOfBytesWritten,
+        ref OVERLAPPED lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadFile(
+        SafeFileHandle hFile,
+        byte[] lpBuffer,
+        uint nNumberOfBytesToRead,
+        out uint lpNumberOfBytesRead,
+        ref OVERLAPPED lpOverlapped);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern nint CreateEventW(
+        nint lpEventAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool bManualReset,
+        [MarshalAs(UnmanagedType.Bool)] bool bInitialState,
+        string? lpName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(
+        nint hHandle,
+        uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CancelIoEx(
+        SafeFileHandle hFile,
+        ref OVERLAPPED lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetOverlappedResult(
+        SafeFileHandle hFile,
+        ref OVERLAPPED lpOverlapped,
+        out uint lpNumberOfBytesTransferred,
+        [MarshalAs(UnmanagedType.Bool)] bool bWait);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(nint hObject);
+}
