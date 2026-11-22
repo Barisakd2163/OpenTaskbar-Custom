@@ -763,9 +763,9 @@ public partial class MainWindow
             // ScrollableWidth does not reflect the previous expanded frame and flicker '>' for one frame (#82).
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
             {
-                // In full-width mode the bar spans the whole monitor; keep arrows suppressed
-                // even after magnification so sub-pixel scroll range never surfaces them.
-                if (!_magnificationLayoutActive && !IsFullWidth) DockScrollViewer.SuppressOverflowIndicators = false;
+                // Release after WPF arranges the restored rest widths so ScrollableWidth does not
+                // reflect the previous expanded frame and flicker '>' for one frame (#82).
+                if (!_magnificationLayoutActive) DockScrollViewer.SuppressOverflowIndicators = false;
             }));
         }
         finally

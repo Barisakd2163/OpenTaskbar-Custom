@@ -2775,8 +2775,10 @@ public partial class MainWindow : Window
                     DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
                     AppsColumn.Width = new GridLength(1, GridUnitType.Star);
                 }
-                // No real overflow in a full-width bar; suppress any sub-pixel scroll range.
-                DockScrollViewer.SuppressOverflowIndicators = true;
+                // Scroll indicators reflect genuine overflow only. The apps column now includes the
+                // ContentInset, so ScrollableWidth stays 0 when nothing overflows — no blanket
+                // suppression needed here (magnification handles its own short-lived suppression).
+                DockScrollViewer.SuppressOverflowIndicators = false;
             }
             else
             {
