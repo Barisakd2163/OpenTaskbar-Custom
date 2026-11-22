@@ -276,14 +276,18 @@
             <!-- SystemStats widget taskbar preview (CPU & RAM rings) -->
             <StackPanel x:Name="SystemStatsPreview" Orientation="Horizontal" Visibility="Collapsed">
                 <Border Style="{StaticResource WidgetCardBorder}" Width="{DynamicResource WidgetHeight}" Padding="3">
-                    <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="CPU" Value="0" Text="—"
-                                 CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
-                                 ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                    <Viewbox Stretch="Uniform">
+                        <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="CPU" Value="0" Text="—"
+                                     CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
+                                     ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                    </Viewbox>
                 </Border>
                 <Border Style="{StaticResource WidgetCardBorder}" Width="{DynamicResource WidgetHeight}" Padding="3">
-                    <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="RAM" Value="0" Text="—"
-                                 CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
-                                 ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                    <Viewbox Stretch="Uniform">
+                        <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="RAM" Value="0" Text="—"
+                                     CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
+                                     ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                    </Viewbox>
                 </Border>
             </StackPanel>
 

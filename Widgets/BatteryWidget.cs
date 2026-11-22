@@ -46,6 +46,8 @@ public sealed class BatteryWidget : DockWidget
     private BatteryStatus _status;
     private bool _hasSample;
     private bool _isAnimatingCharging;
+    private double _animatedWaveHeight;
+    private double _animatedWaveEdgeX;
     private bool _isPressed;
     private long _lastPollMs;
     private int _renderedPercent = -1;
@@ -430,7 +432,9 @@ public sealed class BatteryWidget : DockWidget
             return;
         }
 
-        if (_isAnimatingCharging && !forceAnimationRestart) return;
+        var geometryChanged = Math.Abs(height - _animatedWaveHeight) > 0.5
+            || Math.Abs(edgeX - _animatedWaveEdgeX) > 0.5;
+        if (_isAnimatingCharging && !forceAnimationRestart && !geometryChanged) return;
 
         StartChargingAnimation(edgeX, height, animateWave: _renderedPercent < 100);
     }
@@ -499,6 +503,8 @@ public sealed class BatteryWidget : DockWidget
     {
         StopChargingAnimation();
         _isAnimatingCharging = true;
+        _animatedWaveHeight = height;
+        _animatedWaveEdgeX = edgeX;
 
         if (animateWave)
         {
@@ -547,6 +553,8 @@ public sealed class BatteryWidget : DockWidget
     {
         if (!_isAnimatingCharging) return;
         _isAnimatingCharging = false;
+        _animatedWaveHeight = 0;
+        _animatedWaveEdgeX = 0;
         _waveTransform.BeginAnimation(TranslateTransform.YProperty, null);
         _waveTransform.Y = 0;
         _sheenTransform.BeginAnimation(TranslateTransform.XProperty, null);
