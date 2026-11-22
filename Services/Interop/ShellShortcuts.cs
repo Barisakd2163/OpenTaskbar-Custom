@@ -332,7 +332,7 @@ public static class ShellShortcuts
         return list;
     }
 
-    private static void ScheduleSearchReposition(FrameworkElement anchor)
+    internal static void ScheduleSearchReposition(FrameworkElement anchor)
     {
         AppLog.Info("ScheduleSearchReposition: scheduled.");
         var next = new CancellationTokenSource();

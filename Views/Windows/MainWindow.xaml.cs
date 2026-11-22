@@ -95,6 +95,8 @@ public partial class MainWindow : Window
     private double? _radiusPreviewOverride;
     private AudioEndpointMonitor.SharedHandle? _wheelAudio;
     private int _wheelRemainder;
+    private System.Windows.Threading.DispatcherTimer? _searchTransitionTimer;
+    private DateTime _searchTransitionDeadlineUtc;
 
     static MainWindow()
     {
@@ -211,8 +213,15 @@ public partial class MainWindow : Window
                 {
                     ShellShortcuts.ScheduleStartMenuReposition(StartButton, hwnd);
                 }
+                WatchForStartToSearchTransition();
             });
         };
+
+        // Typing in the Start menu makes Windows hand off to SearchHost. The Search-button click path positions
+        // the flyout, but this handoff bypasses it. Watch briefly after Start opens and reposition when Search
+        // appears so it opens above the Search button instead of centered on screen.
+        _searchTransitionTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _searchTransitionTimer.Tick += SearchTransitionTimer_Tick;
         _widgetCoordinator.AvailabilityChanged += () =>
         {
             ResizeDockToContent();
@@ -344,6 +353,26 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => OpenSettings_Click(this, new RoutedEventArgs()));
         }
 #endif
+    }
+
+    /// <summary>Starts (or restarts) the short watch for the Start-to-Search handoff.</summary>
+    private void WatchForStartToSearchTransition()
+    {
+        _searchTransitionDeadlineUtc = DateTime.UtcNow.AddSeconds(8);
+        _searchTransitionTimer?.Start();
+    }
+
+    private void SearchTransitionTimer_Tick(object? sender, EventArgs e)
+    {
+        if (ShellShortcuts.IsSearchFlyoutOpen())
+        {
+            _searchTransitionTimer?.Stop();
+            var anchor = SearchButton.IsVisible ? SearchButton : StartButton;
+            ShellShortcuts.ScheduleSearchReposition(anchor);
+            return;
+        }
+        if (DateTime.UtcNow >= _searchTransitionDeadlineUtc)
+            _searchTransitionTimer?.Stop();
     }
 
     private bool _startupFinalized;
@@ -3353,6 +3382,8 @@ public partial class MainWindow : Window
         _thumbnailPreview.Dispose();
         _autoHideController?.Dispose();
         _autoHideController = null;
+        _searchTransitionTimer?.Stop();
+        _searchTransitionTimer = null;
         _startMenu.Dispose();
         _widgetCoordinator.Dispose();
         _jumpLists.Dispose();

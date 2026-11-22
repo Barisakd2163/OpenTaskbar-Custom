@@ -79,8 +79,8 @@ void ShellTokenChecks()
     var pinned = DockItemOrdering.ApplyPinnedGroups(
         ["app:a", "tray", "app:b", "taskview", "start", "search"],
         new DockSettings(ShowTaskViewButton: true));
-    Check(pinned.SequenceEqual(["start", "search", "taskview", "app:a", "app:b", "bin", "tray"], StringComparer.OrdinalIgnoreCase),
-        "Native shell buttons must lead; Recycle Bin and background apps must trail regardless of the saved order.");
+    Check(pinned.SequenceEqual(["start", "search", "taskview", "app:a", "app:b", "tray", "bin"], StringComparer.OrdinalIgnoreCase),
+        "Native shell buttons must lead; background apps must trail with the Recycle Bin rightmost regardless of the saved order.");
     var hiddenPinned = DockItemOrdering.ApplyPinnedGroups(
         ["app:a", "tray", "start", "search", "taskview", "bin"],
         new DockSettings(ShowSearchButton: false, ShowTaskViewButton: false, ShowTrayButton: false, ShowRecycleBin: false));

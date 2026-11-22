@@ -9,10 +9,10 @@ internal static class DockItemOrdering
     internal static readonly string[] PinnedLeadTokens = ["start", "search", "taskview"];
 
     /// <summary>
-    /// The Recycle Bin and the background-apps button are always pinned to the right edge of the dock,
-    /// with the bin immediately before the tray button.
+    /// The background-apps button and the Recycle Bin are always pinned to the right edge of the dock,
+    /// with the bin occupying the rightmost slot.
     /// </summary>
-    internal static readonly string[] PinnedTrailTokens = ["bin", "tray"];
+    internal static readonly string[] PinnedTrailTokens = ["tray", "bin"];
 
     private static readonly string[] PinnedTokens = [.. PinnedLeadTokens, .. PinnedTrailTokens];
 
@@ -32,8 +32,8 @@ internal static class DockItemOrdering
 
         var result = new List<string>(lead);
         result.AddRange(order.Where(token => !IsPinned(token)));
-        if (settings.ShowRecycleBin) result.Add("bin");
         if (settings.ShowTrayButton) result.Add("tray");
+        if (settings.ShowRecycleBin) result.Add("bin");
         return result;
     }
 
