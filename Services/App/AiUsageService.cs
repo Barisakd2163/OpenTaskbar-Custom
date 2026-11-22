@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -57,7 +58,23 @@ public static class AiUsageService
         _ => $"api-key:{provider.ToString().ToLowerInvariant()}"
     };
 
-    public static bool HasCredential(AiProviders provider) => ReadCredential(provider) is not null;
+    public static bool HasCredential(AiProviders provider) =>
+        ReadCredential(provider, allowCliProbe: false) is not null
+        || (provider == AiProviders.OpenCode && HasOpenCodeDatabase());
+
+    private static bool HasOpenCodeDatabase()
+    {
+        try
+        {
+            var dbPath = Path.Combine(Path.GetDirectoryName(CredentialPath(AiProviders.OpenCode)) ?? string.Empty, "opencode.db");
+            return File.Exists(dbPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or NotSupportedException or SecurityException)
+        {
+            return false;
+        }
+    }
 
     public static bool HasSavedSecret(AiProviders provider) =>
         IsApiKeyProvider(provider) && AiSecretStore.HasSecret(SecretKey(provider));
@@ -89,18 +106,49 @@ public static class AiUsageService
         _ => null
     };
 
-    internal static ProcessStartInfo? BuildSignInStartInfo(AiProviders provider)
+    private static string[]? CliSignInArguments(AiProviders provider) => provider switch
     {
-        if (CliSignInCommand(provider) is not { } command) return null;
-        var startInfo = new ProcessStartInfo("cmd.exe")
+        AiProviders.Claude => ["claude", "auth", "login"],
+        AiProviders.Codex => ["codex", "login"],
+        AiProviders.Copilot => ["gh", "auth", "login"],
+        AiProviders.OpenCode => ["opencode", "auth", "login"],
+        AiProviders.Antigravity => ["agy"],
+        _ => null
+    };
+
+    private static readonly ConcurrentDictionary<AiProviders, CancellationTokenSource> SignInWatchers = new();
+
+    internal static ProcessStartInfo? BuildSignInStartInfo(AiProviders provider) =>
+        BuildSignInStartInfo(provider, FindExecutableOnPath("wt"));
+
+    internal static ProcessStartInfo? BuildSignInStartInfo(AiProviders provider, string? windowsTerminalPath)
+    {
+        if (CliSignInArguments(provider) is not { } args || CliSignInCommand(provider) is not { } command)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
         {
-            UseShellExecute = false,
-            CreateNoWindow = false,
-            WindowStyle = ProcessWindowStyle.Normal
+            var wtInfo = new ProcessStartInfo(windowsTerminalPath)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Normal
+            };
+            wtInfo.ArgumentList.Add("-w");
+            wtInfo.ArgumentList.Add("new");
+            wtInfo.ArgumentList.Add("--");
+            wtInfo.ArgumentList.Add("cmd.exe");
+            wtInfo.ArgumentList.Add("/c");
+            foreach (var arg in args) wtInfo.ArgumentList.Add(arg);
+            return wtInfo;
+        }
+
+        return new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Normal,
+            Arguments = $"/c {command}"
         };
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add(command);
-        return startInfo;
     }
 
     internal static Func<ProcessStartInfo, bool>? ProcessLauncherOverride { get; set; }
@@ -146,6 +194,9 @@ public static class AiUsageService
         if (FindExecutableOnPath(exeName) is null)
             return "ErrorAiUsageSignIn";
 
+        var initialStamp = CredentialStamp(provider);
+        var initiallyConnected = HasCredential(provider);
+
         try
         {
             var process = Process.Start(startInfo);
@@ -156,12 +207,46 @@ public static class AiUsageService
                 process.Dispose();
                 NotifyCredentialsChanged(provider);
             }, TaskScheduler.Default);
+            StartSignInWatcher(provider, initialStamp, initiallyConnected);
             return null;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
         {
             return "ErrorAiUsageSignIn";
         }
+    }
+
+    private static void StartSignInWatcher(AiProviders provider, DateTime initialStamp, bool initiallyConnected)
+    {
+        var next = new CancellationTokenSource();
+        next.CancelAfter(TimeSpan.FromMinutes(3));
+        SignInWatchers.AddOrUpdate(provider, next, (_, existing) =>
+        {
+            try { existing.Cancel(); } catch (ObjectDisposedException) { }
+            return next;
+        });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+                while (await timer.WaitForNextTickAsync(next.Token).ConfigureAwait(false))
+                {
+                    if (CredentialStamp(provider) != initialStamp || (!initiallyConnected && HasCredential(provider)))
+                    {
+                        NotifyCredentialsChanged(provider);
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (next.IsCancellationRequested) { }
+            finally
+            {
+                SignInWatchers.TryRemove(new KeyValuePair<AiProviders, CancellationTokenSource>(provider, next));
+                next.Dispose();
+            }
+        });
     }
 
     // Keep background quota queries non-interactive and out of the foreground.
@@ -354,7 +439,7 @@ public static class AiUsageService
         return await Client.SendAsync(request, cancellation).ConfigureAwait(false);
     }
 
-    private static Credential? ReadCredential(AiProviders provider, string? path = null)
+    private static Credential? ReadCredential(AiProviders provider, string? path = null, bool allowCliProbe = true)
     {
         if (path is null && IsApiKeyProvider(provider) && AiSecretStore.Get(SecretKey(provider)) is { Length: > 0 } savedSecret)
             return new(savedSecret);
@@ -397,7 +482,7 @@ public static class AiUsageService
             {
                 var legacyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".opencode", "auth.json");
                 if (File.Exists(legacyPath)) targetPath = legacyPath;
-                else if (TryReadOpenCodeCliCredential() is { } cliCred) return cliCred;
+                else if (allowCliProbe && TryReadOpenCodeCliCredential() is { } cliCred) return cliCred;
             }
             if (provider == AiProviders.Copilot && path is null && !File.Exists(targetPath))
             {

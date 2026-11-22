@@ -475,6 +475,31 @@ internal static class AiUsageChecks
                 Check(signInInfo is not null && !signInInfo.CreateNoWindow && signInInfo.WindowStyle != ProcessWindowStyle.Hidden,
                     $"{cliProvider} interactive sign-in must use a visible window rather than HiddenCliStartInfo.");
             }
+
+            // Windows Terminal ConPTY path and cmd.exe fallback for CLI Sign-In (so paste works in Claude TUI).
+            var wtInfo = AiUsageService.BuildSignInStartInfo(AiProviders.Claude, @"C:\fake\wt.exe");
+            Check(wtInfo is not null && wtInfo.FileName == @"C:\fake\wt.exe"
+                && !wtInfo.CreateNoWindow && !wtInfo.UseShellExecute
+                && wtInfo.ArgumentList.SequenceEqual(["-w", "new", "--", "cmd.exe", "/c", "claude", "auth", "login"]),
+                "Claude CLI sign-in must launch inside Windows Terminal when wt.exe is available so bracketed paste works.");
+
+            var cmdFallback = AiUsageService.BuildSignInStartInfo(AiProviders.Claude, "");
+            Check(cmdFallback is not null && cmdFallback.FileName == "cmd.exe"
+                && cmdFallback.UseShellExecute && cmdFallback.Arguments == "/c claude auth login",
+                "CLI sign-in must fall back to UseShellExecute cmd.exe when Windows Terminal is absent.");
+
+            // Secret store path hardening & oversized secret guard.
+            var sanitizedPath = AiSecretStore.SecretPath("../../evil");
+            var fullRoot = Path.GetFullPath(AiSecretStore.Root);
+            if (!fullRoot.EndsWith(Path.DirectorySeparatorChar)) fullRoot += Path.DirectorySeparatorChar;
+            Check(sanitizedPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(sanitizedPath).Contains("..", StringComparison.Ordinal),
+                "AiSecretStore.SecretPath must neutralize traversal characters and stay within Root.");
+
+            var oversizedPath = AiSecretStore.SecretPath("api-key:oversized");
+            Directory.CreateDirectory(Path.GetDirectoryName(oversizedPath)!);
+            File.WriteAllBytes(oversizedPath, new byte[(1 << 16) + 16]);
+            Check(AiSecretStore.Get("api-key:oversized") is null,
+                "AiSecretStore.Get must reject oversized (>64 KB) secret files cleanly.");
         }
         finally
         {
@@ -804,9 +829,12 @@ internal static class AiUsageChecks
                 var claudeSignInBtn = FindTagged<Button>(claudeView, $"AiAccountSignIn:{AiProviders.Claude}")!;
                 claudeSignInBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher(application.Dispatcher, 40);
-                Check(capturedSignIn is not null && !capturedSignIn.CreateNoWindow
+                var launchedCommandOk = capturedSignIn is not null
+                    && !capturedSignIn.CreateNoWindow
                     && capturedSignIn.WindowStyle == ProcessWindowStyle.Normal
-                    && capturedSignIn.ArgumentList.Contains("claude auth login"),
+                    && (capturedSignIn.ArgumentList.SequenceEqual(["-w", "new", "--", "cmd.exe", "/c", "claude", "auth", "login"])
+                        || (capturedSignIn.UseShellExecute && capturedSignIn.Arguments == "/c claude auth login"));
+                Check(launchedCommandOk,
                     "Claude Sign-in button must launch an interactive visible CLI login command.");
                 Check(changeCount == 0, "Clicking CLI Sign-in must not trigger preference saves.");
             }

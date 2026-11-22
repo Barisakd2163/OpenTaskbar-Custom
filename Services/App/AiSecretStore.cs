@@ -13,6 +13,8 @@ namespace OpenTaskbar.Services;
 internal static class AiSecretStore
 {
     private const uint CryptProtectUiForbidden = 0x1;
+    private const int MaxSecretFileBytes = 1 << 16;
+    private static readonly object Sync = new();
     private static readonly byte[] EntropyBytes = "OpenTaskbar.AiSecretStore.v1"u8.ToArray();
 
     public static string DefaultRoot { get; } = Path.Combine(
@@ -31,9 +33,16 @@ internal static class AiSecretStore
         var builder = new StringBuilder(trimmed.Length);
         foreach (var ch in trimmed)
         {
-            builder.Append(char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_');
+            builder.Append(char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_');
         }
-        return Path.Combine(Root, builder + ".bin");
+        var rootFull = Path.GetFullPath(Root);
+        var candidateFull = Path.GetFullPath(Path.Combine(rootFull, builder + ".bin"));
+        var rootPrefix = rootFull.EndsWith(Path.DirectorySeparatorChar)
+            ? rootFull
+            : rootFull + Path.DirectorySeparatorChar;
+        if (!candidateFull.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Secret key resolves outside secret store root.", nameof(key));
+        return candidateFull;
     }
 
     public static bool HasSecret(string key) => Get(key) is not null;
@@ -43,7 +52,10 @@ internal static class AiSecretStore
         try
         {
             var path = SecretPath(key);
-            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+            lock (Sync)
+            {
+                return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
             or NotSupportedException or SecurityException)
@@ -58,14 +70,26 @@ internal static class AiSecretStore
         try
         {
             var path = SecretPath(key);
-            if (!File.Exists(path)) return null;
-            var encrypted = File.ReadAllBytes(path);
-            if (encrypted.Length is 0 or > (1 << 16)) return null;
+            byte[] encrypted;
+            lock (Sync)
+            {
+                if (!File.Exists(path)) return null;
+                var length = new FileInfo(path).Length;
+                if (length <= 0 || length > MaxSecretFileBytes) return null;
+                encrypted = File.ReadAllBytes(path);
+            }
+            if (encrypted.Length is 0 or > MaxSecretFileBytes) return null;
             var decrypted = Unprotect(encrypted);
             if (decrypted is null || decrypted.Length == 0) return null;
-            var text = Encoding.UTF8.GetString(decrypted).Trim();
-            Array.Clear(decrypted, 0, decrypted.Length);
-            return text.Length > 0 ? text : null;
+            try
+            {
+                var text = Encoding.UTF8.GetString(decrypted).Trim();
+                return text.Length > 0 ? text : null;
+            }
+            finally
+            {
+                Array.Clear(decrypted, 0, decrypted.Length);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
             or NotSupportedException or SecurityException or Win32Exception)
@@ -82,11 +106,14 @@ internal static class AiSecretStore
         var path = SecretPath(key);
         if (string.IsNullOrWhiteSpace(value))
         {
-            try
+            lock (Sync)
             {
-                if (File.Exists(path)) File.Delete(path);
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             return;
         }
 
@@ -95,11 +122,24 @@ internal static class AiSecretStore
         {
             var encrypted = Protect(plainBytes);
             var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
-                Directory.CreateDirectory(directory);
-            var tmpPath = path + ".tmp";
-            File.WriteAllBytes(tmpPath, encrypted);
-            File.Move(tmpPath, path, overwrite: true);
+            var tmpPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            lock (Sync)
+            {
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+                try
+                {
+                    File.WriteAllBytes(tmpPath, encrypted);
+                    File.Move(tmpPath, path, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(tmpPath))
+                    {
+                        try { File.Delete(tmpPath); } catch (IOException) { }
+                    }
+                }
+            }
         }
         finally
         {
