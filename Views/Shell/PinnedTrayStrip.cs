@@ -27,11 +27,15 @@ public sealed class PinnedTrayStrip : StackPanel
         ImageSource? Icon,
         Action<MouseButton> OnClick);
 
+    private static readonly Func<IReadOnlyList<TrayApp>> SharedAppsProvider = static () => TrayIconSource.Shared.Snapshot;
+
     private readonly List<INotifyPropertyChanged> _subscribedIcons = [];
     private readonly Dictionary<Button, Action<MouseButton>> _clickActions = [];
     private TrayHost? _attachedHost;
     private bool _isStripEnabled = true;
     private bool _refreshQueued;
+    private bool _snapshotSubscribed;
+    private int _refreshRequested;
     private double _buttonSize = 24;
     private double _imageSize = 18;
 
@@ -48,11 +52,16 @@ public sealed class PinnedTrayStrip : StackPanel
         if (error is not null) AppLog.Warning($"Cannot open pinned tray app {app.Name}: {error}");
     };
 
-    /// <summary>Seam for tests: supplies registry-fallback apps for path-based pins with no live icon.</summary>
-    internal Func<IReadOnlyList<TrayApp>> AppsProvider { get; set; } = TrayIcons.RunningApps;
+    /// <summary>Seam for tests: supplies apps for path-based pins with no live icon. Defaults to the shared snapshot.</summary>
+    internal Func<IReadOnlyList<TrayApp>> AppsProvider { get; set; } = SharedAppsProvider;
 
+    /// <summary>Seam for tests: captures <c>PinClick(keyKind, strategy)</c> telemetry without parsing logs.</summary>
+    internal Action<string, string>? PinClickTelemetry { get; set; }
+
+    // Mirror of the single shared snapshot; never populated by an independent enumeration.
     private IReadOnlyList<TrayApp> _fallbackApps = [];
-    private Task<IReadOnlyList<TrayApp>>? _fallbackRefresh;
+    private Task? _fallbackRefresh;
+    private CancellationTokenSource? _fallbackCts;
 
     /// <summary>Raised whenever the visible pinned count, visibility, or item sizing changes.</summary>
     public event Action? LayoutChanged;
@@ -65,6 +74,39 @@ public sealed class PinnedTrayStrip : StackPanel
         Margin = new Thickness(0, 0, 2, 0);
         Visibility = Visibility.Collapsed;
         ContextMenuOpening += (_, e) => e.Handled = true;
+        Loaded += (_, _) => SubscribeSharedSnapshot();
+        Unloaded += (_, _) =>
+        {
+            TrayIconSource.Shared.SnapshotChanged -= OnSharedSnapshotChanged;
+            _snapshotSubscribed = false;
+            _fallbackCts?.Cancel();
+            _fallbackCts?.Dispose();
+            _fallbackCts = null;
+        };
+        SubscribeSharedSnapshot();
+    }
+
+    private void SubscribeSharedSnapshot()
+    {
+        if (_snapshotSubscribed) return;
+        _snapshotSubscribed = true;
+        TrayIconSource.Shared.SnapshotChanged += OnSharedSnapshotChanged;
+    }
+
+    /// <summary>Adopts the shared snapshot on the dispatcher; the strip never keeps a private enumeration.</summary>
+    private void OnSharedSnapshotChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+            {
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, OnSharedSnapshotChanged);
+            }
+            return;
+        }
+        if (!ReferenceEquals(AppsProvider, SharedAppsProvider)) return;
+        _fallbackApps = TrayIconSource.Shared.Snapshot;
+        if (_attachedHost is not null) Refresh();
     }
 
     /// <summary>Controls whether the strip may appear (mirrors <c>ShowTrayButton</c>).</summary>
@@ -90,7 +132,7 @@ public sealed class PinnedTrayStrip : StackPanel
     {
         if (ReferenceEquals(_attachedHost, host))
         {
-            RefreshFallbackApps();
+            InvalidateFallbackApps();
             Refresh();
             return;
         }
@@ -98,14 +140,14 @@ public sealed class PinnedTrayStrip : StackPanel
         DetachHost();
         if (host is null)
         {
-            UpdateItems([]);
+            UpdateItemsDeferred([]);
             return;
         }
 
         _attachedHost = host;
         _attachedHost.Icons.CollectionChanged += HostIcons_CollectionChanged;
         SyncIconPropertySubscriptions();
-        RefreshFallbackApps();
+        InvalidateFallbackApps();
         Refresh();
     }
 
@@ -120,6 +162,8 @@ public sealed class PinnedTrayStrip : StackPanel
 
         ClearIconPropertySubscriptions();
         _refreshQueued = false;
+        // Bound any in-flight enumeration when the host goes away; a later attach starts a fresh one.
+        _fallbackCts?.Cancel();
     }
 
     /// <summary>Switches layout axis and spacing between bottom (horizontal) and side (vertical) docks.</summary>
@@ -171,9 +215,15 @@ public sealed class PinnedTrayStrip : StackPanel
     /// <summary>Re-synchronizes displayed pinned buttons against the current <see cref="TrayHost"/>.</summary>
     public void Refresh()
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, Refresh);
+            return;
+        }
         if (!_isStripEnabled || _attachedHost is not { IsRunning: true } host)
         {
-            UpdateItems([]);
+            UpdateItemsDeferred([]);
             return;
         }
 
@@ -181,29 +231,82 @@ public sealed class PinnedTrayStrip : StackPanel
     }
 
     /// <summary>
-    /// Loads the registry/process fallback list off the UI thread. Path-based pins (created from the
-    /// background-apps flyout) can match these even when Windows has no visible NotifyIcon — e.g. an
-    /// app that hides its icon while running — so the pin still gets a dock button.
+    /// Requests a bounded, coalesced refresh of the shared app snapshot. Multiple registry changes while a refresh
+    /// is running collapse into one follow-up pass instead of stacking work.
     /// </summary>
-    private async void RefreshFallbackApps()
+    private void InvalidateFallbackApps()
     {
+        Volatile.Write(ref _refreshRequested, 1);
         if (_fallbackRefresh is { IsCompleted: false }) return;
-        var provider = AppsProvider;
-        var refresh = _fallbackRefresh = Task.Run(provider);
+        _ = RefreshFallbackAppsAsync();
+    }
+
+    private Task RefreshFallbackAppsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return Task.CompletedTask;
+            return Dispatcher.InvokeAsync(() => { _ = RefreshFallbackAppsAsync(cancellationToken); }).Task;
+        }
+        if (_fallbackRefresh is { IsCompleted: false } && _fallbackCts is { IsCancellationRequested: false })
+        {
+            return _fallbackRefresh;
+        }
+
+        _fallbackCts?.Cancel();
+        _fallbackCts?.Dispose();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _fallbackCts = cts;
+        return _fallbackRefresh = RefreshFallbackCoreAsync(cts.Token);
+    }
+
+    private async Task RefreshFallbackCoreAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            _fallbackApps = await refresh.ConfigureAwait(true);
-            if (_attachedHost is not null) Refresh();
+            do
+            {
+                Volatile.Write(ref _refreshRequested, 0);
+                IReadOnlyList<TrayApp> apps;
+                if (ReferenceEquals(AppsProvider, SharedAppsProvider))
+                {
+                    await TrayIconSource.Shared.RefreshAsync(cancellationToken).ConfigureAwait(true);
+                    apps = TrayIconSource.Shared.Snapshot;
+                }
+                else
+                {
+                    var provider = AppsProvider;
+                    apps = await Task.Run(provider, cancellationToken).ConfigureAwait(true);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                // Await above resumes on the captured dispatcher; Children is only touched here on that thread.
+                _fallbackApps = apps;
+                if (_attachedHost is not null) Refresh();
+            }
+            while (Volatile.Read(ref _refreshRequested) == 1 && !cancellationToken.IsCancellationRequested);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Host detached or strip unloaded; a later attach will request a fresh snapshot.
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException
             or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             AppLog.Warning($"Pinned tray app enumeration failed: {ex.Message}");
         }
-        finally
+    }
+
+    private void UpdateItemsDeferred(IReadOnlyList<PinnedTrayItem> items)
+    {
+        if (Dispatcher.CheckAccess())
         {
-            if (ReferenceEquals(_fallbackRefresh, refresh)) _fallbackRefresh = null;
+            UpdateItems(items);
+            return;
         }
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        var copy = items.ToArray();
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, () => UpdateItems(copy));
     }
 
     internal void UpdateFromIcons(
@@ -230,19 +333,21 @@ public sealed class PinnedTrayStrip : StackPanel
             var key = TrayPinIdentity.FindMatchingKey(pinnedKeys, captured.GUID, captured.Path, captured.UID)
                 ?? TrayPinIdentity.KeyFor(captured.GUID, captured.Path, captured.UID);
             var title = TrayPinIdentity.CleanTitle(captured.Title, captured.Path, fallbackTitle);
+            var strategy = StrategyFor(key);
             candidates.Add((pinIndex, i, new PinnedTrayItem(key, title, captured.Icon, button =>
             {
+                ReportPinClick(TrayPinIdentity.KeyKindOf(key).ToString(), strategy);
                 // GUID pins are system/virtual icons whose own tray message handler is the only
                 // reliable way to open them. Path pins belong to real executables: activating the
                 // existing window (or launching the exe) is far more reliable than synthetic tray
                 // clicks, which some apps (Steam, etc.) only answer on double-click.
-                if (button == MouseButton.Right || key.StartsWith("guid:", StringComparison.OrdinalIgnoreCase)
-                    || !CanOpenByPath(captured.Path))
+                if (button == MouseButton.Right || strategy != "open-path" || !CanOpenByPath(captured.Path))
                 {
                     ClickHandler(captured, button);
                     return;
                 }
-                OpenAppHandler(new TrayApp(title, captured.Path.Trim(), captured.Icon as BitmapSource), button);
+                OpenAppHandler(new TrayApp(title, captured.Path.Trim(), captured.Icon as BitmapSource,
+                    captured.GUID == Guid.Empty ? (Guid?)null : captured.GUID, captured.UID, IconSource.Live), button);
             })));
         }
 
@@ -269,13 +374,17 @@ public sealed class PinnedTrayStrip : StackPanel
                 var captured = app;
                 candidates.Add((pinIndex, runningIcons.Count + i, new PinnedTrayItem(
                     matchedKey, captured.Name, captured.Icon,
-                    button => OpenAppHandler(captured, button))));
+                    button =>
+                    {
+                        ReportPinClick(TrayPinIdentity.KeyKindOf(matchedKey).ToString(), "open-path");
+                        OpenAppHandler(captured, button);
+                    })));
             }
         }
 
         if (candidates.Count == 0)
         {
-            UpdateItems([]);
+            UpdateItemsDeferred([]);
             return;
         }
 
@@ -284,7 +393,26 @@ public sealed class PinnedTrayStrip : StackPanel
             var byPin = a.PinIndex.CompareTo(b.PinIndex);
             return byPin != 0 ? byPin : a.SourceIndex.CompareTo(b.SourceIndex);
         });
-        UpdateItems(candidates.Select(static c => c.Item).ToArray());
+        UpdateItemsDeferred(candidates.Select(static c => c.Item).ToArray());
+    }
+
+    /// <summary>
+    /// Chooses the click strategy from the persisted key kind only. A path pin matched to a live icon that also
+    /// exposes a GUID must still open by path; the live icon's GUID never changes the stored intent.
+    /// </summary>
+    private static string StrategyFor(string key) => TrayPinIdentity.KeyKindOf(key) switch
+    {
+        PinKeyKind.Path => "open-path",
+        PinKeyKind.Structured when TrayPinIdentity.TryParseRef(key, out var reference)
+            && !string.IsNullOrEmpty(reference.NormalizedPath) => "open-path",
+        PinKeyKind.Guid => "tray-click",
+        _ => "unknown"
+    };
+
+    private void ReportPinClick(string keyKind, string strategy)
+    {
+        PinClickTelemetry?.Invoke(keyKind, strategy);
+        ShellTelemetry.Event("PinClick", ("keyKind", keyKind), ("strategy", strategy));
     }
 
     private static bool CanOpenByPath(string? path) =>

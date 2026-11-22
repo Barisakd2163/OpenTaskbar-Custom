@@ -62,6 +62,8 @@ public sealed class DockSettingsStore
             if (settings is not null)
                 settings = MigrateLegacyIconPadding(settings, document.RootElement);
             if (settings is not null)
+                settings = MigratePinnedTrayIcons(settings, document.RootElement);
+            if (settings is not null)
                 settings = settings with { StatsMeters = settings.StatsMeters & SystemMeters.All };
             if (settings is not null)
                 settings = DockProfileService.EnsureDefaultProfile(settings);
@@ -257,6 +259,52 @@ public sealed class DockSettingsStore
             || legacy.ValueKind != JsonValueKind.Number
             || !legacy.TryGetInt32(out var value)) return settings;
         return settings with { DockIconPadding = Math.Clamp(value, 0, (int)DockMetrics.MaxIconPadding) };
+    }
+
+    /// <summary>
+    /// Keeps <see cref="DockSettings.PinnedTrayIcons"/> a plain string list for backward compatibility while
+    /// parsing legacy <c>guid:</c>/<c>path:</c> keys and converting future structured JSON pin objects into their
+    /// canonical legacy key. Invalid entries are dropped instead of invalidating the whole settings file.
+    /// </summary>
+    public static DockSettings MigratePinnedTrayIcons(DockSettings settings, JsonElement root)
+    {
+        if (!root.TryGetProperty(nameof(DockSettings.PinnedTrayIcons), out var array)
+            || array.ValueKind != JsonValueKind.Array)
+        {
+            return settings;
+        }
+
+        var migrated = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var element in array.EnumerateArray())
+        {
+            string? key = null;
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                key = element.GetString()?.Trim();
+                if (string.IsNullOrWhiteSpace(key) || key.Length > TrayPinIdentity.MaxKeyLength) continue;
+            }
+            else if (element.ValueKind == JsonValueKind.Object
+                && TrayIconRef.TryParse(element.GetRawText(), out var reference)
+                && reference.IsPinnable)
+            {
+                key = reference.Key;
+            }
+
+            if (key is null || !seen.Add(key) || migrated.Count >= TrayPinIdentity.MaxPinnedIcons) continue;
+            migrated.Add(key);
+        }
+
+        if (migrated.Count == 0)
+        {
+            return settings.PinnedTrayIcons is null ? settings : settings with { PinnedTrayIcons = null };
+        }
+        if (settings.PinnedTrayIcons is { Count: > 0 }
+            && settings.PinnedTrayIcons.SequenceEqual(migrated, StringComparer.Ordinal))
+        {
+            return settings;
+        }
+        return settings with { PinnedTrayIcons = migrated };
     }
 
     /// <summary>

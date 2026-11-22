@@ -12,15 +12,18 @@ namespace OpenTaskbar.Views.Shell;
 /// </summary>
 public sealed class TrayShellButton : Button
 {
+    private static readonly Func<IReadOnlyList<TrayApp>> SharedReader = static () => TrayIconSource.Shared.Snapshot;
+
     private readonly DockFlyout _flyout = new();
     private readonly ContentControl _glyph;
     private int _requestVersion;
     private IReadOnlyList<TrayApp>? _lastApps;
     private Task<IReadOnlyList<TrayApp>>? _refresh;
     private Action<string>? _reportError;
+    private bool _snapshotSubscribed;
 
-    /// <summary>Seam for tests: enumerates the tray apps (registry snapshot plus every running process).</summary>
-    internal Func<IReadOnlyList<TrayApp>> AppsReader { get; set; } = TrayIcons.RunningApps;
+    /// <summary>Seam for tests: enumerates the tray apps. Defaults to the shared tray icon snapshot.</summary>
+    internal Func<IReadOnlyList<TrayApp>> AppsReader { get; set; } = SharedReader;
 
     /// <summary>Supplies the persisted pinned tray icon keys so the flyout reflects pinned state.</summary>
     public Func<IReadOnlyList<string>?>? PinnedKeysProvider { get; set; }
@@ -73,13 +76,41 @@ public sealed class TrayShellButton : Button
         Click += Button_Click;
         // Warm the list while the pointer approaches, so a click can show it at once.
         MouseEnter += (_, _) => _ = RefreshAppsQuietlyAsync();
+        Loaded += (_, _) => SubscribeSharedSnapshot();
         Unloaded += (_, _) =>
         {
             UiText.Current.PropertyChanged -= UiText_PropertyChanged;
+            TrayIconSource.Shared.SnapshotChanged -= OnSharedSnapshotChanged;
+            _snapshotSubscribed = false;
             _flyout.Close();
         };
+        SubscribeSharedSnapshot();
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         Localize();
+    }
+
+    private void SubscribeSharedSnapshot()
+    {
+        if (_snapshotSubscribed) return;
+        _snapshotSubscribed = true;
+        TrayIconSource.Shared.SnapshotChanged += OnSharedSnapshotChanged;
+    }
+
+    /// <summary>Adopts the shared snapshot on the UI thread so the flyout never shows a stale private cache.</summary>
+    private void OnSharedSnapshotChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, OnSharedSnapshotChanged);
+            return;
+        }
+        if (!ReferenceEquals(AppsReader, SharedReader)) return;
+        _lastApps = TrayIconSource.Shared.Snapshot;
+        if (_flyout.IsOpen && TrayHost.Current is not { IsRunning: true })
+        {
+            _flyout.Show(this, BuildContent(_lastApps ?? []), animate: false);
+        }
     }
 
     private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -96,7 +127,7 @@ public sealed class TrayShellButton : Button
             if (TrayHost.Current is { IsRunning: true } host)
                 _flyout.Show(this, BuildLiveContent(host.AppIcons()), animate: false);
             else if (_lastApps is not null)
-                _flyout.Show(this, BuildContent(_lastApps), animate: false);
+                _flyout.Show(this, BuildContent(_lastApps ?? []), animate: false);
         }
     }
 
@@ -124,21 +155,25 @@ public sealed class TrayShellButton : Button
     private void Report(string? message) => _reportError?.Invoke(message ?? string.Empty);
 
     /// <summary>
-    /// One enumeration at a time, shared by every caller. It reads the tray registry snapshot and every running
-    /// process (~100 ms), so it always runs off the UI thread and its result is kept for the next click.
+    /// One enumeration at a time. The default reader is the shared <see cref="TrayIconSource"/>; a test seam reader
+    /// still runs off the UI thread with cancellation. The await continues on the dispatcher that started it.
     /// </summary>
-    private Task<IReadOnlyList<TrayApp>> RefreshAppsAsync()
+    private Task<IReadOnlyList<TrayApp>> RefreshAppsAsync(CancellationToken cancellationToken = default)
     {
         if (_refresh is { IsCompleted: false } running) return running;
+        if (ReferenceEquals(AppsReader, SharedReader))
+        {
+            return _refresh = TrayIconSource.Shared.RefreshAsync(cancellationToken);
+        }
         var reader = AppsReader;
-        return _refresh = Task.Run(reader);
+        return _refresh = Task.Run(reader, cancellationToken);
     }
 
     private async Task RefreshAppsQuietlyAsync()
     {
         try
         {
-            await RefreshAppsAsync();
+            await RefreshAppsAsync().ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException
             or System.ComponentModel.Win32Exception or InvalidOperationException)

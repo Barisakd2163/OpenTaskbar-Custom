@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Views;
 
@@ -27,6 +28,17 @@ public sealed class DockScrollViewer : ScrollViewer
     private bool? _lastExternalVertical;
     private double _lastExternalRadius = double.NaN;
     private bool _suppressOverflowIndicators;
+
+    // The viewer is the single owner of the desired offset. Every write path (wheel, pan, step,
+    // reset, external ScrollTo/DP writes) funnels through the helpers below, so an in-flight
+    // smooth-scroll target can never fight an explicit reset. Gesture scopes are also the
+    // refcounted guard the layout code uses to keep a transient "no overflow" measurement from
+    // yanking the strip back to offset 0 while the user is still scrolling.
+    private int _gestureDepth;
+    private bool _suppressScrollReset;
+    // Conservative default: until a caller reports otherwise, assume the strip may overflow so a
+    // layout measurement made before the first real signal never resets the user's position.
+    private bool _contentOverflows = true;
 
     // Edge-fade brushes are recreated on every scroll frame today (~6 allocations + a render
     // invalidation per wheel tick). Cache one frozen brush per (axis, before, after) combination
@@ -86,6 +98,88 @@ public sealed class DockScrollViewer : ScrollViewer
     public OpenTaskbar.Models.DockEdge DockEdge { get => (OpenTaskbar.Models.DockEdge)GetValue(DockEdgeProperty); set => SetValue(DockEdgeProperty, value); }
     public bool IsPanning => _panStart is not null;
 
+    /// <summary>Desired (target) horizontal offset owned by this viewer, even while smooth scrolling.</summary>
+    public double DesiredHorizontalOffset => _targetHorizontalOffset;
+
+    /// <summary>Desired (target) vertical offset owned by this viewer, even while smooth scrolling.</summary>
+    public double DesiredVerticalOffset => _targetVerticalOffset;
+
+    /// <summary>Last authoritative overflow signal from layout (true also means "unknown").</summary>
+    public bool ContentOverflows => _contentOverflows;
+
+    /// <summary>
+    /// True while a user gesture or an explicit external scope is active. Layout code must not reset the
+    /// strip to offset 0 during this window, because a mid-gesture layout measurement can briefly report
+    /// "no overflow" (magnification expansion, deferred resize) and would otherwise yank the user back.
+    /// </summary>
+    public bool IsGestureActive => _gestureDepth > 0 || _panStart is not null || _smoothScrolling;
+
+    /// <summary>
+    /// Hard guard for external callers: while true, <see cref="ResetHorizontalScroll"/> and
+    /// <see cref="SetContentOverflow"/> keep the current offset instead of resetting it.
+    /// </summary>
+    public bool SuppressScrollReset
+    {
+        get => _suppressScrollReset;
+        set
+        {
+            if (_suppressScrollReset == value) return;
+            _suppressScrollReset = value;
+            ShellTelemetry.Event("ScrollReset", ("reason", value ? "suppress-enabled" : "suppress-released"),
+                ("before", HorizontalOffset), ("after", HorizontalOffset));
+        }
+    }
+
+    /// <summary>Opens a refcounted scope in which resets are forbidden. Always pair with <see cref="EndGesture"/>.</summary>
+    public void BeginGesture()
+    {
+        _gestureDepth++;
+        ShellTelemetry.Event("ScrollGesture", ("phase", "begin"), ("depth", _gestureDepth),
+            ("offset", HorizontalOffset), ("target", _targetHorizontalOffset));
+    }
+
+    /// <summary>Closes one gesture scope. Clamps (never rewrites) the desired offset to the current range.</summary>
+    public void EndGesture()
+    {
+        if (_gestureDepth == 0) return;
+        _gestureDepth--;
+        ClampTargetsToRange();
+        ShellTelemetry.Event("ScrollGesture", ("phase", "end"), ("depth", _gestureDepth),
+            ("offset", HorizontalOffset), ("target", _targetHorizontalOffset));
+    }
+
+    /// <summary>
+    /// Reports whether the apps strip genuinely overflows. This is the only reset signal external layout
+    /// code should send: the viewer decides if and when returning to offset 0 is safe. Passing
+    /// <c>true</c> (or "unknown") always preserves the current offset; passing <c>false</c> only resets
+    /// when no gesture/deferred resize is in flight and the caller is not suppressing resets.
+    /// </summary>
+    public void SetContentOverflow(bool overflows)
+    {
+        var before = HorizontalOffset;
+        _contentOverflows = overflows;
+        if (overflows)
+        {
+            // An overflow signal may shrink the range; clamp the target but never move the strip.
+            ClampTargetsToRange();
+            return;
+        }
+
+        if (SuppressScrollReset || IsGestureActive)
+        {
+            // Stop the render loop so a frame cannot drag us to a stale (or already clamped-to-zero) target,
+            // but keep the offset exactly where the user left it.
+            StopSmoothScroll();
+            _targetHorizontalOffset = HorizontalOffset;
+            ShellTelemetry.Event("ScrollReset", ("reason", "content-no-overflow-deferred"),
+                ("before", before), ("after", HorizontalOffset),
+                ("gesture", IsGestureActive), ("suppressed", SuppressScrollReset));
+            return;
+        }
+
+        ResetHorizontalScrollCore("content-no-overflow", before);
+    }
+
     /// <summary>Returns the width a part of the content needs to be shown without scrolling.</summary>
     public double MeasureContentWidth(UIElement part)
     {
@@ -114,8 +208,7 @@ public sealed class DockScrollViewer : ScrollViewer
             }
             else
             {
-                ScrollToVerticalOffset(VerticalOffset - distance);
-                _targetVerticalOffset = VerticalOffset;
+                ApplyVerticalOffset(VerticalOffset - distance);
             }
             return true;
         }
@@ -129,36 +222,60 @@ public sealed class DockScrollViewer : ScrollViewer
             }
             else
             {
-                ScrollToHorizontalOffset(HorizontalOffset - distance);
-                _targetHorizontalOffset = HorizontalOffset;
+                ApplyHorizontalOffset(HorizontalOffset - distance);
             }
             return true;
         }
         return false;
     }
 
+    /// <summary>Single write path for immediate horizontal offset changes.</summary>
+    private void ApplyHorizontalOffset(double value)
+    {
+        var max = Math.Max(0.0, ScrollableWidth);
+        ScrollToHorizontalOffset(double.IsFinite(value) ? Math.Clamp(value, 0, max) : 0);
+        // WPF may clamp to a different value than we requested; the actual offset is authoritative.
+        _targetHorizontalOffset = HorizontalOffset;
+    }
+
+    /// <summary>Single write path for immediate vertical offset changes.</summary>
+    private void ApplyVerticalOffset(double value)
+    {
+        var max = Math.Max(0.0, ScrollableHeight);
+        ScrollToVerticalOffset(double.IsFinite(value) ? Math.Clamp(value, 0, max) : 0);
+        _targetVerticalOffset = VerticalOffset;
+    }
+
+    /// <summary>Single write path for animated horizontal targets.</summary>
     private void AnimateScrollHorizontal(double target)
     {
-        target = Math.Clamp(target, 0, ScrollableWidth);
-        _targetHorizontalOffset = target;
+        _targetHorizontalOffset = double.IsFinite(target) ? Math.Clamp(target, 0, Math.Max(0.0, ScrollableWidth)) : 0;
         if (!SystemParameters.ClientAreaAnimation)
         {
-            ScrollToHorizontalOffset(target);
+            ScrollToHorizontalOffset(_targetHorizontalOffset);
             return;
         }
         BeginSmoothScroll();
     }
 
+    /// <summary>Single write path for animated vertical targets.</summary>
     private void AnimateScrollVertical(double target)
     {
-        target = Math.Clamp(target, 0, ScrollableHeight);
-        _targetVerticalOffset = target;
+        _targetVerticalOffset = double.IsFinite(target) ? Math.Clamp(target, 0, Math.Max(0.0, ScrollableHeight)) : 0;
         if (!SystemParameters.ClientAreaAnimation)
         {
-            ScrollToVerticalOffset(target);
+            ScrollToVerticalOffset(_targetVerticalOffset);
             return;
         }
         BeginSmoothScroll();
+    }
+
+    private void ClampTargetsToRange()
+    {
+        var maxH = Math.Max(0.0, ScrollableWidth);
+        var maxV = Math.Max(0.0, ScrollableHeight);
+        _targetHorizontalOffset = double.IsFinite(_targetHorizontalOffset) ? Math.Clamp(_targetHorizontalOffset, 0, maxH) : 0;
+        _targetVerticalOffset = double.IsFinite(_targetVerticalOffset) ? Math.Clamp(_targetVerticalOffset, 0, maxV) : 0;
     }
 
     private void BeginSmoothScroll()
@@ -181,8 +298,25 @@ public sealed class DockScrollViewer : ScrollViewer
         var t = 1.0 - Math.Exp(-dt / 0.045);
 
         var horizontal = ScrollableWidth > 0 && ScrollableHeight <= 0;
-        var current = horizontal ? HorizontalOffset : VerticalOffset;
+        // A layout/magnification change can shrink the range mid-gesture. Clamp the desired offset to
+        // the live range instead of chasing a target that no longer exists; stopping below handles the
+        // case where the strip stopped overflowing altogether (WPF clamps the actual offset itself).
+        if (!horizontal && ScrollableHeight <= 0)
+        {
+            _targetHorizontalOffset = HorizontalOffset;
+            _targetVerticalOffset = VerticalOffset;
+            StopSmoothScroll();
+            return;
+        }
+
+        var max = horizontal ? ScrollableWidth : ScrollableHeight;
         var target = horizontal ? _targetHorizontalOffset : _targetVerticalOffset;
+        if (target > max) target = max;
+        else if (target < 0) target = 0;
+        if (horizontal) _targetHorizontalOffset = target;
+        else _targetVerticalOffset = target;
+
+        var current = horizontal ? HorizontalOffset : VerticalOffset;
         var next = current + (target - current) * t;
 
         if (Math.Abs(target - next) < 0.3)
@@ -227,8 +361,7 @@ public sealed class DockScrollViewer : ScrollViewer
             }
             else
             {
-                ScrollToHorizontalOffset(HorizontalOffset - distance);
-                _targetHorizontalOffset = HorizontalOffset;
+                ApplyHorizontalOffset(HorizontalOffset - distance);
             }
             e.Handled = true;
             return;
@@ -245,8 +378,7 @@ public sealed class DockScrollViewer : ScrollViewer
             }
             else
             {
-                ScrollToVerticalOffset(VerticalOffset - distance);
-                _targetVerticalOffset = VerticalOffset;
+                ApplyVerticalOffset(VerticalOffset - distance);
             }
             e.Handled = true;
             return;
@@ -276,8 +408,7 @@ public sealed class DockScrollViewer : ScrollViewer
         if (_panStart is { } origin)
         {
             var target = _panOffset + origin.X - e.GetPosition(this).X;
-            ScrollToHorizontalOffset(target);
-            _targetHorizontalOffset = HorizontalOffset;
+            ApplyHorizontalOffset(target);
             e.Handled = true;
         }
         base.OnMouseMove(e);
@@ -356,10 +487,34 @@ public sealed class DockScrollViewer : ScrollViewer
     /// </summary>
     public void ResetHorizontalScroll()
     {
+        if (SuppressScrollReset || IsGestureActive)
+        {
+            // A reset requested from inside a scroll/resize gesture is the feedback loop this class now
+            // breaks. Keep the offset; the caller should use SetContentOverflow for layout-driven resets.
+            ShellTelemetry.Event("ScrollReset", ("reason", "reset-suppressed"),
+                ("before", HorizontalOffset), ("after", HorizontalOffset),
+                ("gesture", IsGestureActive), ("suppressed", SuppressScrollReset));
+            return;
+        }
+        ResetHorizontalScrollCore("explicit", HorizontalOffset);
+    }
+
+    /// <summary>
+    /// Unconditional reset used by the viewer itself (and by SetContentOverflow after its guards pass).
+    /// Stops the render loop and cancels DP animations first, so no target can pull the strip back.
+    /// </summary>
+    private void ResetHorizontalScrollCore(string reason, double before)
+    {
+        var targetBefore = _targetHorizontalOffset;
         StopSmoothScroll();
         BeginAnimation(CurrentHorizontalOffsetProperty, null);
         _targetHorizontalOffset = 0;
+        _contentOverflows = false;
         ScrollToHorizontalOffset(0);
+        // Adopt WPF's clamped result so target and actual offset stay identical after the reset.
+        _targetHorizontalOffset = HorizontalOffset;
+        ShellTelemetry.Event("ScrollReset", ("reason", reason), ("before", before),
+            ("after", HorizontalOffset), ("targetBefore", targetBefore));
     }
 
     private void ScrollStep(bool forward)
@@ -609,6 +764,14 @@ public sealed class DockScrollViewer : ScrollViewer
     protected override void OnScrollChanged(ScrollChangedEventArgs e)
     {
         base.OnScrollChanged(e);
+        // External ScrollTo / CurrentHorizontalOffset writes bypass the write helpers above. Adopt their
+        // result as the desired offset so no stale target survives them — except while the render loop
+        // owns the offset (its per-frame ScrollTo raises this event too).
+        if (!_smoothScrolling && !IsPanning)
+        {
+            _targetHorizontalOffset = HorizontalOffset;
+            _targetVerticalOffset = VerticalOffset;
+        }
         UpdateEdgeFade();
     }
 

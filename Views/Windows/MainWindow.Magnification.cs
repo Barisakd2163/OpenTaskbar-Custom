@@ -42,6 +42,78 @@ public partial class MainWindow
     private readonly List<(double Min, double Max)> _nonMagnifiedRestSpans = [];
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Image, BitmapSource> _restingIcons = new();
 
+    // Layout phases. The bool fields below are kept as the public surface other partials read, but all
+    // writes go through the guards so there is one explicit "measure -> decide -> apply -> verify" chain.
+    private enum MagnificationLayoutPhase
+    {
+        Rest,               // no overrides; rest geometry is safe to sample
+        ApplyingOverrides,  // overrides installed/being written; re-entrant measurement must stay out
+        ClearingOverrides   // overrides being restored to their dynamic styles
+    }
+    private MagnificationLayoutPhase _layoutPhase = MagnificationLayoutPhase.Rest;
+    private bool _scrollGestureScopeActive;
+    private bool _deferredResizeScheduled;
+
+    private bool MagnificationLayoutBusy => _magnificationLayoutActive || _updatingMagnificationLayout;
+    private bool IsMagnificationRest => !_magnificationLayoutActive && !_magnificationRendering;
+    private bool CanRecaptureRestGeometry => IsMagnificationRest && !_updatingMagnificationLayout;
+    private bool CanInvalidateTargets(bool allowWhileRendering) =>
+        !MagnificationLayoutBusy && (allowWhileRendering || !_magnificationRendering);
+    private bool CanRebuildTargets => !_magnificationLayoutActive;
+
+    private void EnterLayoutPhase(MagnificationLayoutPhase phase, bool active, bool updating)
+    {
+        if (_layoutPhase != phase)
+            ShellTelemetry.Event("MagnificationLayout", ("phase", phase), ("active", active), ("updating", updating));
+        _layoutPhase = phase;
+        _magnificationLayoutActive = active;
+        _updatingMagnificationLayout = updating;
+    }
+
+    /// <summary>
+    /// Holds a scroll gesture scope from ScrollChanged until the deferred resize triggered by the
+    /// magnification reset completes. FitDockToContent's content-overflow signal cannot reset the strip
+    /// inside this scope, which breaks the ScrollChanged -> reset -> resize -> reset feedback loop.
+    /// </summary>
+    internal void BeginScrollGestureScope()
+    {
+        if (_scrollGestureScopeActive) return;
+        _scrollGestureScopeActive = true;
+        DockScrollViewer.BeginGesture();
+    }
+
+    private bool CanEndScrollGestureScope => _scrollGestureScopeActive && !_deferredResizeScheduled;
+
+    internal void EndScrollGestureScope(string reason)
+    {
+        if (!CanEndScrollGestureScope) return;
+        _scrollGestureScopeActive = false;
+        DockScrollViewer.EndGesture();
+        ShellTelemetry.Event("ScrollLayout", ("phase", "gesture-end"), ("reason", reason),
+            ("offset", DockScrollViewer.HorizontalOffset), ("target", DockScrollViewer.DesiredHorizontalOffset));
+    }
+
+    /// <summary>Runs at most one deferred resize per gesture, then closes the gesture scope.</summary>
+    private void FlushDeferredDockResize(string reason)
+    {
+        if (!_deferredDockResize || _deferredResizeScheduled) return;
+        // Never start another resize from inside one: that is the feedback loop being broken here.
+        if (_resizingDock || MagnificationLayoutBusy || _magnificationRendering) return;
+        _deferredDockResize = false;
+        _deferredResizeScheduled = true;
+        var before = DockScrollViewer.HorizontalOffset;
+        ShellTelemetry.Event("ScrollLayout", ("phase", "resize-flush"), ("reason", reason), ("before", before));
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            _deferredResizeScheduled = false;
+            ResizeDockToContent();
+            ShellTelemetry.Event("ScrollLayout", ("phase", "resize-done"), ("reason", reason),
+                ("before", before), ("after", DockScrollViewer.HorizontalOffset),
+                ("target", DockScrollViewer.DesiredHorizontalOffset));
+            EndScrollGestureScope("deferred-resize-complete");
+        }));
+    }
+
     // Cache the transform pair per icon so the per-frame render loop never runs an
     // OfType/FirstOrDefault LINQ walk after the first frame.
     private sealed class IconTransforms(ScaleTransform scale, TranslateTransform translate, TransformGroup group)
@@ -67,8 +139,7 @@ public partial class MainWindow
 
     private void InvalidateMagnificationTargets(bool allowWhileRendering)
     {
-        if (_updatingMagnificationLayout || _magnificationLayoutActive) return;
-        if (!allowWhileRendering && _magnificationRendering) return;
+        if (!CanInvalidateTargets(allowWhileRendering)) return;
         _magnificationTargetsDirty = true;
     }
 
@@ -76,7 +147,7 @@ public partial class MainWindow
     {
         // Only reuse previously captured rest geometry while slots/frame are actively expanded; once at rest,
         // always re-measure so dock resizes, scrolling, app changes, or edge switches never leave stale centers.
-        var atRest = !_magnificationLayoutActive && !_magnificationRendering;
+        var atRest = IsMagnificationRest;
         Dictionary<Button, MagnificationTarget>? previousRest = null;
         if (!atRest)
         {
@@ -254,10 +325,17 @@ public partial class MainWindow
             profile.Cell, visualIconSize, DockMetrics.HoverScale, _availableExpansion);
     }
 
+    /// <summary>Samples the un-magnified surface width only from a rest-phase layout pass.</summary>
+    private double CaptureRestSurfaceWidth()
+    {
+        if (MagnificationLayoutBusy) return _restSurfaceWidth;
+        return !double.IsNaN(DockSurface.Width) && DockSurface.Width > 0 ? DockSurface.Width : DockSurface.ActualWidth;
+    }
+
     private void CaptureMagnificationExpansionBudget()
     {
         // Resting geometry must be sampled while the dock is at rest, not while slots are expanded.
-        if (_magnificationRendering || _magnificationLayoutActive) return;
+        if (!CanRecaptureRestGeometry) return;
         var margin = DockSurface.Margin;
         if (IsVertical)
         {
@@ -278,12 +356,8 @@ public partial class MainWindow
         // Read local Width only when no magnification override is active. A locally set Width is the expanded
         // value while the fisheye runs; capturing it as "rest" shrinks the budget on the next hover and makes the
         // peak scale drift between hovers. ActualWidth is the layout width and is safe only after overrides clear.
-        _restSurfaceWidth = _magnificationLayoutActive || _updatingMagnificationLayout
-            ? _restSurfaceWidth
-            : (!double.IsNaN(DockSurface.Width) && DockSurface.Width > 0 ? DockSurface.Width : DockSurface.ActualWidth);
-        _restScrollMaxWidth = _magnificationLayoutActive || _updatingMagnificationLayout
-            ? _restScrollMaxWidth
-            : DockScrollViewer.MaxWidth;
+        _restSurfaceWidth = CaptureRestSurfaceWidth();
+        _restScrollMaxWidth = MagnificationLayoutBusy ? _restScrollMaxWidth : DockScrollViewer.MaxWidth;
 
         if (!IsFullWidth
             && _dockWidthOverride is null
@@ -522,7 +596,7 @@ public partial class MainWindow
             return;
         }
 
-        if (_magnificationTargetsDirty && !_magnificationLayoutActive)
+        if (_magnificationTargetsDirty && CanRebuildTargets)
         {
             RebuildMagnificationTargets();
         }
@@ -552,6 +626,7 @@ public partial class MainWindow
     /// </summary>
     internal void ResetMagnificationAfterScroll()
     {
+        BeginScrollGestureScope();
         _magnificationScrollResetTimer ??= CreateScrollResetTimer();
         _magnificationScrollResetTimer.Stop();
         _magnificationScrollResetTimer.Start();
@@ -570,9 +645,16 @@ public partial class MainWindow
         var point = _lastDockMousePoint;
         var hadPoint = _hasLastDockMousePoint;
         // A real mouse move since the last scroll frame already restarted the effect; don't interrupt it.
-        if (!DockFisheyeLayout.ShouldResumeAfterScroll(_hasMagnificationPointer, _magnificationRendering, hadPoint)) return;
+        if (!DockFisheyeLayout.ShouldResumeAfterScroll(_hasMagnificationPointer, _magnificationRendering, hadPoint))
+        {
+            EndScrollGestureScope("mouse-move-resumed");
+            return;
+        }
 
+        ShellTelemetry.Event("ScrollLayout", ("phase", "magnification-reset"), ("gesture", DockScrollViewer.IsGestureActive));
         ResetMagnification(immediate: true);
+        FlushDeferredDockResize("scroll-gesture-settled");
+        EndScrollGestureScope("magnification-reset-settled");
         _lastDockMousePoint = point;
         _hasLastDockMousePoint = hadPoint;
 
@@ -615,7 +697,7 @@ public partial class MainWindow
 
     private void RenderMagnification(object? sender, EventArgs e)
     {
-        if (_magnificationTargetsDirty && !_magnificationLayoutActive)
+        if (_magnificationTargetsDirty && CanRebuildTargets)
         {
             RebuildMagnificationTargets();
             // The rebuilt targets already use the fresh cap; refresh the spring goals in the same frame.
@@ -648,17 +730,19 @@ public partial class MainWindow
             var (next, nextVelocity, iconSettled) = DockFisheyeLayout.StepSpring(current, targetScale, velocity, dtSeconds, maxScale);
             if (!iconSettled) settled = false;
 
-            if (Math.Abs(current - next) >= 0.0001 || iconSettled)
+            // Swapping the bitmap is comparatively expensive (visual-tree walk, binding, CWT write); do it only
+            // when the icon crosses the magnification threshold, with hysteresis to avoid boundary flicker.
+            var wasHover = _hoverIconStates.TryGetValue(icon, out var state) && state;
+            var wantHover = wasHover ? next > 1.06 : next > HoverIconThreshold;
+            if (wantHover != wasHover)
             {
-                // Swapping the bitmap is comparatively expensive (visual-tree walk, binding, CWT write); do it only
-                // when the icon crosses the magnification threshold, with hysteresis to avoid boundary flicker.
-                var wasHover = _hoverIconStates.TryGetValue(icon, out var state) && state;
-                var wantHover = wasHover ? next > 1.06 : next > HoverIconThreshold;
-                if (wantHover != wasHover)
-                {
-                    _hoverIconStates[icon] = wantHover;
-                    UseHoverIcon(icon, wantHover);
-                }
+                _hoverIconStates[icon] = wantHover;
+                UseHoverIcon(icon, wantHover);
+            }
+            // StepSpring returns the exact target with zero velocity once settled. Writing the same ScaleX/Y and
+            // lift every frame invalidates ~4 transforms per icon for nothing on a transparent layered window.
+            if (Math.Abs(current - next) >= 0.0001)
+            {
                 scale.ScaleX = next;
                 scale.ScaleY = next;
             }
@@ -668,13 +752,15 @@ public partial class MainWindow
                 var lift = DockFisheyeLayout.ComputeSafeLift(next, maxScale, profile.Icon, availableHeadroom);
                 if (vertical)
                 {
-                    translate.X = lift * liftSign;
-                    translate.Y = 0;
+                    var targetX = lift * liftSign;
+                    if (Math.Abs(translate.X - targetX) >= 0.01) translate.X = targetX;
+                    if (translate.Y != 0) translate.Y = 0;
                 }
                 else
                 {
-                    translate.X = 0;
-                    translate.Y = lift * liftSign;
+                    if (translate.X != 0) translate.X = 0;
+                    var targetY = lift * liftSign;
+                    if (Math.Abs(translate.Y - targetY) >= 0.01) translate.Y = targetY;
                 }
             }
 
@@ -709,28 +795,12 @@ public partial class MainWindow
 
         if (settled)
         {
-            var allAtRest = true;
-            foreach (var targetScale in _magnificationScaleTargets.Values)
-            {
-                if (targetScale > 1.001)
-                {
-                    allAtRest = false;
-                    break;
-                }
-            }
-
-            if (allAtRest)
-            {
-                ClearMagnificationLayoutOverrides();
-                ClearMagnificationZIndexes();
-                _magnificationScaleTargets.Clear();
-                _magnifiedIcons.Clear();
-                _hoverIconStates.Clear();
-                StopMagnificationRendering();
-            }
-            // While the pointer still sits over a magnified icon, keep the loop alive (it becomes nearly free once
-            // the transforms stop changing). Detaching here used to discard velocity and restart the spring at zero
-            // on the next mouse move, which felt like a stutter.
+            // Detach the per-frame loop once the springs have converged, but KEEP the expanded layout and targets:
+            // clearing overrides here (the old allAtRest behaviour) would snap DockSurface.Width back by ~58 px
+            // while the icon ScaleTransform stays at 1.5x, causing overlap and a re-bloom on the next MouseMove.
+            // StepSpring zeroes velocity on Settled, so the next real MouseMove just re-arms the converged spring.
+            // Layout overrides are restored by ResetMagnification when the pointer actually leaves the dock.
+            StopMagnificationRendering();
         }
     }
 
@@ -738,7 +808,7 @@ public partial class MainWindow
     {
         if (totalActualExtra > 0.01)
         {
-            _updatingMagnificationLayout = true;
+            EnterLayoutPhase(MagnificationLayoutPhase.ApplyingOverrides, active: _magnificationLayoutActive, updating: true);
             try
             {
                 if (!_magnificationLayoutActive
@@ -801,7 +871,7 @@ public partial class MainWindow
     internal void ClearMagnificationLayoutOverrides()
     {
         if (!_magnificationLayoutActive) return;
-        _updatingMagnificationLayout = true;
+        EnterLayoutPhase(MagnificationLayoutPhase.ClearingOverrides, active: true, updating: true);
         try
         {
             foreach (var target in _magnificationTargets)
@@ -821,6 +891,7 @@ public partial class MainWindow
             }
 
             _magnificationLayoutActive = false;
+            _layoutPhase = MagnificationLayoutPhase.Rest;
             // Release overflow suppression after WPF finishes arranging the restored rest widths so
             // ScrollableWidth does not reflect the previous expanded frame and flicker '>' for one frame (#82).
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
@@ -834,6 +905,10 @@ public partial class MainWindow
         {
             _updatingMagnificationLayout = false;
         }
+
+        // Once rest geometry is back, a resize deferred by an earlier call during magnification can
+        // safely run. Flush is guarded against re-entrancy, so FitDockToContent -> Clear cannot loop.
+        FlushDeferredDockResize("layout-overrides-cleared");
     }
 
     private void ClearMagnificationZIndexes()
@@ -852,11 +927,8 @@ public partial class MainWindow
         _magnificationRendering = false;
         _magnificationLastFrame = null;
         _magnificationVelocity.Clear();
-        if (_deferredDockResize && !_magnificationLayoutActive)
-        {
-            _deferredDockResize = false;
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(ResizeDockToContent));
-        }
+        FlushDeferredDockResize("magnification-stopped");
+        EndScrollGestureScope("magnification-stopped");
     }
 
     private void DockSurface_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)

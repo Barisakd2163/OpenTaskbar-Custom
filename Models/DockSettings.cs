@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
+using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Models;
 
@@ -245,4 +246,19 @@ public sealed record DockSettings(
     /// <summary>Effective notification badge state, suppressed while focus mode is active.</summary>
     [JsonIgnore]
     public bool EffectiveNotificationBadgesEnabled => NotificationBadgesEnabled && !FocusModeEnabled;
+
+    /// <summary>
+    /// Parsed view of <see cref="PinnedTrayIcons"/>. Legacy <c>guid:</c>/<c>path:</c> strings and structured JSON
+    /// entries are both understood; unparsable entries are skipped so one bad pin cannot break the settings UI.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<TrayIconRef> PinnedTrayIconRefs => PinnedTrayIcons is null
+        ? []
+        : PinnedTrayIcons
+            .Select(key => TrayPinIdentity.TryParseRef(key, out var reference) && reference.IsPinnable
+                ? reference
+                : (TrayIconRef?)null)
+            .Where(reference => reference.HasValue)
+            .Select(reference => reference!.Value)
+            .ToArray();
 }

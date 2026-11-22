@@ -119,8 +119,29 @@ public partial class MainWindow
     {
         if (e.HorizontalChange == 0) return;
         _widgetPanel.Close(restoreFocus: false);
-        // Smooth scrolling fires this once per frame; resetting here would stall the fisheye after the last
-        // frame. Defer to the end of the gesture and re-arm from the last pointer position.
+
+        // This is the entry to the documented feedback chain:
+        //   ScrollChanged -> ResetMagnification -> deferred ResizeDockToContent -> FitDockToContent.
+        // Opening a gesture scope here and closing it only after the deferred resize completes keeps
+        // DockScrollViewer.SetContentOverflow(false) from resetting the strip to offset 0 on a transient
+        // "no overflow" measurement taken mid-chain. If a resize is already running, the ScrollChanged was
+        // caused by that resize's own offset write, so stop here instead of starting another loop pass.
+        BeginScrollGestureScope();
+        var before = DockScrollViewer.HorizontalOffset;
+        if (_resizingDock)
+        {
+            ShellTelemetry.Event("ScrollLayout", ("phase", "scroll-reentrant-skipped"),
+                ("before", before), ("target", DockScrollViewer.DesiredHorizontalOffset),
+                ("resizePending", _deferredDockResize));
+            EndScrollGestureScope("resize-in-progress");
+            return;
+        }
+
+        // Smooth scrolling fires this once per frame; the 90ms reset timer coalesces the frames into a
+        // single magnification reset, and the deferred resize is flushed at most once per gesture.
+        ShellTelemetry.Event("ScrollLayout", ("phase", "scroll-reset-deferred"),
+            ("before", before), ("target", DockScrollViewer.DesiredHorizontalOffset),
+            ("resizePending", _deferredDockResize), ("gesture", DockScrollViewer.IsGestureActive));
         ResetMagnificationAfterScroll();
     }
 }

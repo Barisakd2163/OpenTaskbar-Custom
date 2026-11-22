@@ -28,11 +28,15 @@ public static class TrayPinIdentity
             : pathKey + "|" + uid.ToString(CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Normalizes an executable path for identity comparisons (trimmed, lowercase invariant).</summary>
+    public static string NormalizePath(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? string.Empty : path.Trim().ToLowerInvariant();
+
     /// <summary>Builds the path-only fallback key for registry-enumerated tray apps, or <see cref="string.Empty"/>.</summary>
     public static string KeyForPath(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path)) return string.Empty;
-        return PathPrefix + path.Trim().ToLowerInvariant();
+        var normalized = NormalizePath(path);
+        return normalized.Length == 0 ? string.Empty : PathPrefix + normalized;
     }
 
     /// <summary>
@@ -152,6 +156,25 @@ public static class TrayPinIdentity
 
         return null;
     }
+
+    /// <summary>Returns true when a stored key matches the supplied structured identity.</summary>
+    public static bool Matches(string? pinKey, TrayIconRef reference) =>
+        Matches(pinKey, reference.Guid ?? Guid.Empty, reference.NormalizedPath, reference.Uid);
+
+    /// <summary>Resolves the stored key matching a structured identity, or <c>null</c> when unpinned.</summary>
+    public static string? FindMatchingKey(IReadOnlyList<string>? pinned, TrayIconRef reference) =>
+        FindMatchingKey(pinned, reference.Guid ?? Guid.Empty, reference.NormalizedPath, reference.Uid);
+
+    /// <summary>Parses a stored key into its structured identity without throwing on legacy or unknown input.</summary>
+    public static bool TryParseRef(string? pinKey, out TrayIconRef reference) =>
+        TrayIconRef.TryParse(pinKey, out reference);
+
+    /// <summary>Classifies a stored key so click strategy can be chosen from persisted intent, not live metadata.</summary>
+    public static PinKeyKind KeyKindOf(string? pinKey) =>
+        TrayIconRef.TryParse(pinKey, out var reference) ? reference.KeyKind : PinKeyKind.Unknown;
+
+    /// <summary>Serializes a structured identity in the forward-compatible JSON pin shape.</summary>
+    public static string ToStructuredJson(TrayIconRef reference) => reference.ToJson();
 
     /// <summary>
     /// Toggles <paramref name="key"/> in <paramref name="pinned"/> (case-insensitively), deduplicating valid entries

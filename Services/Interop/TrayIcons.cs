@@ -7,7 +7,20 @@ using Microsoft.Win32;
 
 namespace OpenTaskbar.Services;
 
-public sealed record TrayApp(string Name, string ExecutablePath, BitmapSource? Icon);
+/// <summary>
+/// A background app that can be listed in the tray flyout. Identity fields travel with the app so the shared
+/// <see cref="TrayIconSource"/> can dedupe live and registry entries on <c>(path, GUID, UID)</c>, never on tooltip.
+/// </summary>
+public sealed record TrayApp(
+    string Name,
+    string ExecutablePath,
+    BitmapSource? Icon,
+    Guid? Guid = null,
+    uint Uid = 0,
+    IconSource Source = IconSource.Registry)
+{
+    internal TrayIconRef Reference => new(Guid, ExecutablePath, Uid, Source);
+}
 
 /// <summary>
 /// Background apps that own a notification-area icon. Windows 11 records every tray icon (path, tooltip and an icon
@@ -27,10 +40,18 @@ public static class TrayIcons
 
     private static readonly int CurrentSessionId = ResolveCurrentSessionId();
 
-    private sealed record CandidateEntry(string Path, string FileName, string? Tooltip, byte[]? SnapshotBytes, bool IsPromoted, bool PreferExeIcon);
+    private sealed record CandidateEntry(string Path, string FileName, string? Tooltip, byte[]? SnapshotBytes, bool IsPromoted, bool PreferExeIcon, Guid? Guid, uint Uid);
     private sealed record CachedIconEntry(int SnapshotLen, int SnapshotHash, bool PreferExeIcon, BitmapSource? Icon);
 
     public static IReadOnlyList<TrayApp> RunningApps()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var apps = EnumerateRunningApps();
+        ShellTelemetry.Event("TrayEnumeration", ("source", "registry"), ("count", apps.Count), ("ms", stopwatch.ElapsedMilliseconds));
+        return apps;
+    }
+
+    private static IReadOnlyList<TrayApp> EnumerateRunningApps()
     {
         var candidates = ReadCandidateEntries();
         if (candidates.Count == 0) return [];
@@ -45,17 +66,22 @@ public static class TrayIcons
         if (running.Count == 0) return [];
 
         var apps = new List<TrayApp>();
-        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Dedupe on stable identity, never on tooltip: two distinct icons (different GUID or UID) can share the
+        // same tooltip, and a localized tooltip can change while the icon identity stays the same.
+        var seen = new HashSet<TrayIconRef>(TrayIconRefComparer.Instance);
         foreach (var candidate in candidates
             .OrderByDescending(c => c.IsPromoted)
             .ThenBy(c => IsDriverStorePath(c.Path))
             .Where(c => running.Contains(c.Path)))
         {
+            var identity = new TrayIconRef(candidate.Guid, candidate.Path, candidate.Uid, IconSource.Registry);
+            if (!seen.Add(identity)) continue;
             var name = string.IsNullOrWhiteSpace(candidate.Tooltip)
                 ? DescribeExecutable(candidate.Path)
                 : candidate.Tooltip;
-            if (!seenNames.Add(name)) continue;
-            apps.Add(new TrayApp(name, candidate.Path, GetCachedIcon(candidate.Path, candidate.SnapshotBytes, candidate.PreferExeIcon)));
+            apps.Add(new TrayApp(name, candidate.Path,
+                GetCachedIcon(candidate.Path, candidate.SnapshotBytes, candidate.PreferExeIcon),
+                identity.Guid, identity.Uid, IconSource.Registry));
         }
 
         apps.Sort((a, b) => StringComparer.CurrentCultureIgnoreCase.Compare(a.Name, b.Name));
@@ -100,7 +126,11 @@ public static class TrayIcons
                 var preferExe = IsTransientTooltip(rawTooltip);
                 var tooltip = rawTooltip?.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
                 var isPromoted = entry.GetValue("IsPromoted") as int? == 1;
-                candidates.Add(new CandidateEntry(path, fileName, tooltip, entry.GetValue("IconSnapshot") as byte[], isPromoted, preferExe));
+                // Vista+ names each NotifyIconSettings subkey with the icon's GUID; keep it so two icons from the
+                // same executable (or with the same tooltip) remain distinguishable.
+                var guid = Guid.TryParse(name, out var parsedGuid) ? parsedGuid : (Guid?)null;
+                candidates.Add(new CandidateEntry(path, fileName, tooltip, entry.GetValue("IconSnapshot") as byte[],
+                    isPromoted, preferExe, guid, ReadUid(entry)));
             }
         }
         catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
@@ -111,9 +141,22 @@ public static class TrayIcons
         return candidates
             .OrderByDescending(candidate => candidate.IsPromoted)
             .ThenBy(candidate => candidate.PreferExeIcon)
-            .GroupBy(candidate => candidate.Path, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(candidate => new TrayIconRef(candidate.Guid, candidate.Path, candidate.Uid, IconSource.Registry),
+                TrayIconRefComparer.Instance)
             .Select(group => group.First())
             .ToList();
+    }
+
+    private static uint ReadUid(Microsoft.Win32.RegistryKey entry)
+    {
+        foreach (var name in new[] { "UID", "uID", "UId" })
+        {
+            var value = entry.GetValue(name);
+            if (value is int number && number >= 0) return (uint)number;
+            if (value is long longNumber && longNumber is >= 0 and <= uint.MaxValue) return (uint)longNumber;
+            if (value is string text && uint.TryParse(text, out var parsed)) return parsed;
+        }
+        return 0;
     }
 
     /// <summary>Focus an existing app window when possible; otherwise use the application's normal launch behavior.</summary>

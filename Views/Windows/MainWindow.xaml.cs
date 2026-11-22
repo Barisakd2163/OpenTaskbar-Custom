@@ -3384,13 +3384,12 @@ public partial class MainWindow : Window
             _resizePending = true; // Measure again after the widget templates switch to compact mode.
 
         DockScrollViewer.MaxWidth = maxAppsWidth;
-        // In a full-width bar appsContentWidth is deliberately measured as 0 (the apps column
-        // takes the remaining space), so this comparison would always succeed and yank the user
-        // back to the start on every deferred resize — including the one triggered by scrolling
-        // itself (ScrollChanged -> ResetMagnification -> ResizeDockToContent). WPF already clamps
-        // the offset against the real ScrollableWidth when content stops overflowing.
-        if (!IsFullWidth && appsContentWidth <= maxAppsWidth + 0.5 && DockScrollViewer.HorizontalOffset > 0)
-            DockScrollViewer.ResetHorizontalScroll();
+        // Report genuine overflow only from a trustworthy measurement. In full-width mode
+        // appsContentWidth is deliberately 0 (the apps column takes the remaining space), so treat
+        // it as unknown/overflowing and let the viewer keep the user's offset. DockScrollViewer owns
+        // the decision: it only returns to 0 when overflow really ended and no scroll gesture or
+        // deferred resize is in flight.
+        DockScrollViewer.SetContentOverflow(IsFullWidth || appsContentWidth > maxAppsWidth + 0.5);
 
         if (IsFullWidth)
         {
