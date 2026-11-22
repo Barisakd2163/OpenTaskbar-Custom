@@ -40,6 +40,7 @@ public partial class SettingsWindow : Window
     private string? _selectedThemePackId;
     private bool _closingApplication;
     private bool _initializing = true;
+    private bool _initializingWeather;
     private bool _isSaving;
     private bool _isInternalSave;
     private bool _hasUnappliedThemePreview;
@@ -460,12 +461,20 @@ public partial class SettingsWindow : Window
             DockWidthMode = Enum.TryParse<DockWidthMode>(Choice(DockWidthModeBox), out var widthMode) ? widthMode : DockWidthMode.Auto,
             DockWidthPixels = widthMode == DockWidthMode.Pixels ? (int)Math.Round(DockWidthSlider.Value) : _preferences.Current.DockWidthPixels,
             DockWidthPercent = widthMode == DockWidthMode.Percent ? (int)Math.Round(DockWidthSlider.Value) : _preferences.Current.DockWidthPercent,
-            DockTopGapUnit = GapUnit(DockTopGapUnitBox),
-            DockTopGapPixels = (int)Math.Round(DockTopGapSlider.Value),
-            DockTopGapPercent = (int)Math.Round(DockTopGapSlider.Value),
-            DockBottomGapUnit = GapUnit(DockBottomGapUnitBox),
-            DockBottomGapPixels = (int)Math.Round(DockBottomGapSlider.Value),
-            DockBottomGapPercent = (int)Math.Round(DockBottomGapSlider.Value),
+            DockTopGapUnit = GapUnit(DockTopGapUnitBox) is var topGapUnit ? topGapUnit : DockGapUnit.Pixels,
+            DockTopGapPixels = topGapUnit == DockGapUnit.Pixels
+                ? Math.Clamp((int)Math.Round(DockTopGapSlider.Value), 0, 200)
+                : Math.Clamp(_preferences.Current.DockTopGapPixels, 0, 200),
+            DockTopGapPercent = topGapUnit == DockGapUnit.Percent
+                ? Math.Clamp((int)Math.Round(DockTopGapSlider.Value), 0, 100)
+                : Math.Clamp(_preferences.Current.DockTopGapPercent, 0, 100),
+            DockBottomGapUnit = GapUnit(DockBottomGapUnitBox) is var bottomGapUnit ? bottomGapUnit : DockGapUnit.Pixels,
+            DockBottomGapPixels = bottomGapUnit == DockGapUnit.Pixels
+                ? Math.Clamp((int)Math.Round(DockBottomGapSlider.Value), 0, 200)
+                : Math.Clamp(_preferences.Current.DockBottomGapPixels, 0, 200),
+            DockBottomGapPercent = bottomGapUnit == DockGapUnit.Percent
+                ? Math.Clamp((int)Math.Round(DockBottomGapSlider.Value), 0, 100)
+                : Math.Clamp(_preferences.Current.DockBottomGapPercent, 0, 100),
             DockCornerRadius = (int)Math.Round(CornerRadiusSlider.Value),
             ShowClock = IsEnabled("Clock"),
             ShowMedia = IsEnabled("Media"),
@@ -1675,17 +1684,52 @@ public partial class SettingsWindow : Window
         try
         {
             var countries = await CountryCityService.GetCountriesAsync();
-            WeatherCountryBox.ItemsSource = countries.Select(c => c.Name).ToList();
+            if (_closed) return;
+            var (matchedCountry, matchedCities) = CountryCityService.FindCachedCountryForCity(savedCity);
 
-            if (!string.IsNullOrWhiteSpace(savedCity))
+            var wasInitializing = _initializing;
+            _initializing = true;
+            _initializingWeather = true;
+            try
             {
-                var trCities = await CountryCityService.GetCitiesAsync("Turkey");
-                string matchedCountry = trCities.Contains(savedCity, StringComparer.OrdinalIgnoreCase) ? "Turkey" : "Turkey";
-                WeatherCountryBox.SelectedItem = matchedCountry;
-                WeatherCityContainer.Visibility = Visibility.Visible;
-                WeatherCityCombo.ItemsSource = trCities;
-                WeatherCityCombo.SelectedItem = savedCity;
-                WeatherCityBox.Text = savedCity;
+                WeatherCountryBox.ItemsSource = countries.Select(c => c.Name).ToList();
+
+                if (!string.IsNullOrWhiteSpace(savedCity))
+                {
+                    WeatherCityContainer.Visibility = Visibility.Visible;
+                    if (matchedCountry is not null)
+                    {
+                        var canonicalCity = matchedCities.FirstOrDefault(c => string.Equals(c, savedCity, StringComparison.OrdinalIgnoreCase)) ?? savedCity;
+                        WeatherCountryBox.SelectedItem = matchedCountry;
+                        WeatherCountryBox.Text = matchedCountry;
+                        WeatherCityCombo.ItemsSource = matchedCities;
+                        WeatherCityCombo.SelectedItem = canonicalCity;
+                    }
+                    else
+                    {
+                        WeatherCountryBox.SelectedItem = null;
+                        WeatherCountryBox.Text = string.Empty;
+                        WeatherCityCombo.ItemsSource = Array.Empty<string>();
+                        WeatherCityCombo.SelectedItem = null;
+                    }
+                    WeatherCityCombo.Text = savedCity;
+                    WeatherCityBox.Text = savedCity;
+                }
+                else
+                {
+                    WeatherCountryBox.SelectedItem = null;
+                    WeatherCountryBox.Text = string.Empty;
+                    WeatherCityCombo.ItemsSource = Array.Empty<string>();
+                    WeatherCityCombo.SelectedItem = null;
+                    WeatherCityCombo.Text = string.Empty;
+                    WeatherCityBox.Text = string.Empty;
+                    WeatherCityContainer.Visibility = Visibility.Collapsed;
+                }
+            }
+            finally
+            {
+                _initializingWeather = false;
+                _initializing = wasInitializing;
             }
         }
         catch (Exception ex)
@@ -1696,8 +1740,8 @@ public partial class SettingsWindow : Window
 
     private async void WeatherCountryBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initializing) return;
-        var country = WeatherCountryBox.SelectedItem as string ?? WeatherCountryBox.Text.Trim();
+        if (_initializing || _initializingWeather) return;
+        if (WeatherCountryBox.SelectedItem is not string country) return;
         await OnCountrySelectedAsync(country);
     }
 
@@ -1714,16 +1758,49 @@ public partial class SettingsWindow : Window
     {
         if (string.IsNullOrWhiteSpace(country))
         {
-            WeatherCityContainer.Visibility = Visibility.Collapsed;
-            WeatherCityBox.Text = string.Empty;
+            var wasInit = _initializing;
+            _initializing = true;
+            try
+            {
+                WeatherCityContainer.Visibility = Visibility.Collapsed;
+                WeatherCityCombo.SelectedItem = null;
+                WeatherCityCombo.Text = string.Empty;
+                WeatherCityBox.Text = string.Empty;
+            }
+            finally
+            {
+                _initializing = wasInit;
+            }
             SaveSettings();
             return;
         }
 
         WeatherCityContainer.Visibility = Visibility.Visible;
         var cities = await CountryCityService.GetCitiesAsync(country);
-        WeatherCityCombo.ItemsSource = cities;
-        if (cities.Count > 0)
+        if (_closed) return;
+        var previousCity = WeatherCityBox.Text;
+        var wasInitializing = _initializing;
+        _initializing = true;
+        try
+        {
+            WeatherCityCombo.ItemsSource = cities;
+            if (!string.IsNullOrWhiteSpace(previousCity)
+                && cities.FirstOrDefault(c => string.Equals(c, previousCity, StringComparison.OrdinalIgnoreCase)) is { } match)
+            {
+                WeatherCityCombo.SelectedItem = match;
+                WeatherCityCombo.Text = match;
+            }
+            else
+            {
+                WeatherCityCombo.SelectedItem = null;
+                WeatherCityCombo.Text = previousCity;
+            }
+        }
+        finally
+        {
+            _initializing = wasInitializing;
+        }
+        if (cities.Count > 0 && IsVisible)
         {
             WeatherCityCombo.IsDropDownOpen = true;
         }
@@ -1870,6 +1947,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         var targetThemePack = restoreTheme ? (importedThemeId ?? settings.ThemePack) : (preview.HasTheme ? _preferences.Current.ThemePack : settings.ThemePack);
         settings = settings with { ThemePack = targetThemePack, PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder };
         _isSaving = true;
@@ -1886,7 +1964,6 @@ public partial class SettingsWindow : Window
             _isSaving = false;
         }
 
-        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         _applied = _preferences.Current;
         _initializing = true;
         try
@@ -1918,6 +1995,7 @@ public partial class SettingsWindow : Window
         DockScaleSlider.Value = Math.Round(settings.DockScale * 100);
         SelectChoice(DockWidthModeBox, settings.DockWidthMode.ToString());
         UpdateDockWidthControls();
+        LoadDockGapControls(settings);
         UpdateDockScaleLabel();
         var reloadProfile = DockMetrics.For(settings.Size, settings.DockScale);
         CornerRadiusSlider.Value = settings.DockCornerRadius ?? (int)Math.Round(reloadProfile.Radius);
@@ -2275,7 +2353,9 @@ public partial class SettingsWindow : Window
         slider.Minimum = 0;
         slider.Maximum = unit == DockGapUnit.Percent ? 100 : 200;
         slider.TickFrequency = 1;
-        slider.Value = unit == DockGapUnit.Percent ? percent : pixels;
+        slider.Value = unit == DockGapUnit.Percent
+            ? Math.Clamp(percent, 0, 100)
+            : Math.Clamp(pixels, 0, 200);
     }
 
     private void UpdateDockGapLabels()
@@ -2290,8 +2370,17 @@ public partial class SettingsWindow : Window
     {
         if (_initializing) return;
         var unit = GapUnit(DockTopGapUnitBox);
-        var value = Math.Round(DockTopGapSlider.Value);
-        ConfigureGapSlider(DockTopGapSlider, unit, (int)value, (int)value);
+        var current = _preferences.Current;
+        var wasInitializing = _initializing;
+        _initializing = true;
+        try
+        {
+            ConfigureGapSlider(DockTopGapSlider, unit, current.DockTopGapPixels, current.DockTopGapPercent);
+        }
+        finally
+        {
+            _initializing = wasInitializing;
+        }
         UpdateDockGapLabels();
         PreferenceEdited(sender, e);
     }
@@ -2300,8 +2389,17 @@ public partial class SettingsWindow : Window
     {
         if (_initializing) return;
         var unit = GapUnit(DockBottomGapUnitBox);
-        var value = Math.Round(DockBottomGapSlider.Value);
-        ConfigureGapSlider(DockBottomGapSlider, unit, (int)value, (int)value);
+        var current = _preferences.Current;
+        var wasInitializing = _initializing;
+        _initializing = true;
+        try
+        {
+            ConfigureGapSlider(DockBottomGapSlider, unit, current.DockBottomGapPixels, current.DockBottomGapPercent);
+        }
+        finally
+        {
+            _initializing = wasInitializing;
+        }
         UpdateDockGapLabels();
         PreferenceEdited(sender, e);
     }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ using System.Windows.Threading;
 using OpenTaskbar;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Views;
 using OpenTaskbar.Widgets;
 
 internal static class SettingsAndAutoHideChecks
@@ -23,6 +25,7 @@ internal static class SettingsAndAutoHideChecks
         }
 
         CheckSettingsSurviveReopen(application, Check);
+        CheckGapUnitsWeatherAndThemeEditor(application, Check);
         CheckLegacySettingsMigration(Check);
         CheckAutoHideLifecycleAndPointerSync(application, Check);
         CheckFlyoutState(application, Check);
@@ -480,6 +483,141 @@ internal static class SettingsAndAutoHideChecks
         finally
         {
             if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
+    }
+
+    private static void CheckGapUnitsWeatherAndThemeEditor(Application application, Action<bool, string> check)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"opentaskbar-pr-c-{Guid.NewGuid():N}.json");
+        var themesRoot = Path.Combine(Path.GetTempPath(), $"opentaskbar-pr-c-themes-{Guid.NewGuid():N}");
+        var previousThemesRoot = ThemePacks.Root;
+        try
+        {
+            // Bugs #3, #4, #6: Gap slider > 100px must not corrupt gap percent, external reload must refresh gap controls,
+            // and non-Turkish weather city must not be overwritten with Turkey.
+            var store = new DockSettingsStore(path, CultureInfo.GetCultureInfo("en-US"));
+            var initial = new DockSettings(
+                Language: AppLanguage.English,
+                Theme: AppTheme.Dark,
+                DockTopGapUnit: DockGapUnit.Pixels,
+                DockTopGapPixels: 150,
+                DockTopGapPercent: 25,
+                DockBottomGapUnit: DockGapUnit.Pixels,
+                DockBottomGapPixels: 165,
+                DockBottomGapPercent: 35,
+                ShowWeather: true,
+                WeatherCity: "Tokyo",
+                Widgets: ["Clock", "Weather"],
+                InstalledWidgets: ["Clock", "Weather"]);
+            check(store.Save(initial) is null, "Initial settings with >100px gaps and non-Turkish city must save.");
+
+            var preferences = new ApplicationPreferences(store);
+            var sw = new SettingsWindow(preferences)
+            {
+                Left = -20000,
+                Top = -20000,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+            try
+            {
+                sw.Show();
+                PumpDispatcher(application.Dispatcher, 180);
+
+                var countryBox = (ComboBox)sw.FindName("WeatherCountryBox");
+                var cityCombo = (ComboBox)sw.FindName("WeatherCityCombo");
+                var cityBox = (TextBox)sw.FindName("WeatherCityBox");
+                check(countryBox.SelectedItem is null,
+                    $"Non-Turkish custom city 'Tokyo' must not select Turkey (got '{countryBox.SelectedItem}').");
+                check(cityCombo.Text == "Tokyo" && cityBox.Text == "Tokyo" && preferences.Current.WeatherCity == "Tokyo",
+                    $"Non-Turkish custom city 'Tokyo' must be preserved in weather controls (got combo='{cityCombo.Text}', box='{cityBox.Text}').");
+
+                // Bug #3: Trigger a preference edit while gap sliders are at 150px / 165px (>100); save must succeed and preserve percents.
+                var animationsToggle = (CheckBox)sw.FindName("AnimationsToggle");
+                animationsToggle.IsChecked = false;
+                PumpDispatcher(application.Dispatcher, 60);
+                check(!preferences.Current.AnimationsEnabled,
+                    "Saving an unrelated setting when pixel gaps exceed 100px must succeed.");
+                check(preferences.Current.DockTopGapPixels == 150 && preferences.Current.DockTopGapPercent == 25
+                    && preferences.Current.DockBottomGapPixels == 165 && preferences.Current.DockBottomGapPercent == 35,
+                    "Reading gap sliders in Pixels mode (>100px) must preserve saved DockTopGapPercent/DockBottomGapPercent.");
+
+                // Switch gap units to Percent: sliders must switch to saved percent values (25% / 35%) and keep pixel values (150px / 165px).
+                var topUnitBox = (ComboBox)sw.FindName("DockTopGapUnitBox");
+                var bottomUnitBox = (ComboBox)sw.FindName("DockBottomGapUnitBox");
+                var topSlider = (Slider)sw.FindName("DockTopGapSlider");
+                var bottomSlider = (Slider)sw.FindName("DockBottomGapSlider");
+                topUnitBox.SelectedItem = topUnitBox.Items.OfType<ComboBoxItem>().First(i => (string)i.Tag == nameof(DockGapUnit.Percent));
+                bottomUnitBox.SelectedItem = bottomUnitBox.Items.OfType<ComboBoxItem>().First(i => (string)i.Tag == nameof(DockGapUnit.Percent));
+                PumpDispatcher(application.Dispatcher, 60);
+                check((int)Math.Round(topSlider.Value) == 25 && (int)Math.Round(bottomSlider.Value) == 35,
+                    $"Switching gap unit to Percent must load saved percent values (got top={topSlider.Value}, bottom={bottomSlider.Value}).");
+                check(preferences.Current.DockTopGapUnit == DockGapUnit.Percent
+                    && preferences.Current.DockTopGapPixels == 150 && preferences.Current.DockTopGapPercent == 25
+                    && preferences.Current.DockBottomGapUnit == DockGapUnit.Percent
+                    && preferences.Current.DockBottomGapPixels == 165 && preferences.Current.DockBottomGapPercent == 35,
+                    "Switching gap unit to Percent must save valid settings and preserve saved pixel values.");
+
+                // Bug #6: External preference update must refresh gap controls via LoadAllSelections -> LoadDockGapControls.
+                var externalUpdate = preferences.Current with
+                {
+                    DockTopGapUnit = DockGapUnit.Pixels,
+                    DockTopGapPixels = 88,
+                    DockTopGapPercent = 12,
+                    DockBottomGapUnit = DockGapUnit.Percent,
+                    DockBottomGapPixels = 110,
+                    DockBottomGapPercent = 44,
+                    WeatherCity = "Ankara"
+                };
+                check(preferences.Save(externalUpdate) is null, "External gap and weather update must save.");
+                PumpDispatcher(application.Dispatcher, 180);
+                check((int)Math.Round(topSlider.Value) == 88 && (int)Math.Round(bottomSlider.Value) == 44,
+                    $"LoadAllSelections must refresh gap sliders on external update (got top={topSlider.Value}, bottom={bottomSlider.Value}).");
+                check(countryBox.SelectedItem as string == "Turkey" && cityCombo.Text == "Ankara" && cityBox.Text == "Ankara",
+                    "Turkish city 'Ankara' must match Turkey and preserve Ankara in weather controls.");
+            }
+            finally
+            {
+                sw.Close();
+                PumpDispatcher(application.Dispatcher, 220);
+            }
+
+            // Bug #13: ThemePropertyEditor must read pack tokens from _widgetPack before RadiusManager.Derived overrides
+            // and match pack IDs case-insensitively in SaveTheme().
+            ThemePacks.Root = themesRoot;
+            var packDir = Path.Combine(themesRoot, "My-Custom-Pack");
+            var widgetDir = Path.Combine(packDir, ThemePack.WidgetFolder);
+            Directory.CreateDirectory(widgetDir);
+            File.WriteAllText(Path.Combine(packDir, ThemePack.ManifestFileName), """{"Name": "My Custom Pack", "Author": "Tester"}""");
+            File.WriteAllText(Path.Combine(widgetDir, WidgetPack.ManifestFileName), """
+                {
+                  "name": "My Custom Pack Widgets",
+                  "dark": {
+                    "DockRadius": "14,14,14,14"
+                  }
+                }
+                """);
+
+            RadiusManager.Initialize();
+            RadiusManager.Apply(32);
+            var editor = new ThemePropertyEditor();
+            editor.LoadTheme("MY-CUSTOM-PACK", AppTheme.Dark);
+            var resolvedRadius = editor.ResolveTokenValue("DockRadius");
+            check(resolvedRadius is CornerRadius { TopLeft: 14, TopRight: 14, BottomRight: 14, BottomLeft: 14 },
+                $"ThemePropertyEditor must read DockRadius=14 from _widgetPack instead of RadiusManager.Derived=32 (got '{resolvedRadius}').");
+
+            editor.UpdateToken("DockRadius", JsonValue.Create("16,16,16,16"), immediate: true);
+            var savedPackJson = JsonNode.Parse(File.ReadAllText(Path.Combine(widgetDir, WidgetPack.ManifestFileName)))?.AsObject();
+            check(savedPackJson?["dark"]?["DockRadius"]?.GetValue<string>() == "16,16,16,16",
+                "ThemePropertyEditor.SaveTheme must match theme ID case-insensitively and persist updated token to widgets/pack.json.");
+        }
+        finally
+        {
+            RadiusManager.Apply(20);
+            ThemePacks.Select(null);
+            ThemePacks.Root = previousThemesRoot;
+            if (File.Exists(path)) File.Delete(path);
+            if (Directory.Exists(themesRoot)) Directory.Delete(themesRoot, recursive: true);
         }
     }
 

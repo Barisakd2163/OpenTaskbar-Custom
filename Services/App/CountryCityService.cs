@@ -61,6 +61,27 @@ public static class CountryCityService
 
     public static IReadOnlyList<CountryItem> GetInitialCountries() => _cachedCountries;
 
+    /// <summary>
+    /// Looks up a cached country whose city list contains <paramref name="city"/> (case-insensitive).
+    /// Returns <c>(null, [])</c> when the city belongs to an uncached or custom location.
+    /// </summary>
+    public static (string? Country, IReadOnlyList<string> Cities) FindCachedCountryForCity(string? city)
+    {
+        if (string.IsNullOrWhiteSpace(city)) return (null, []);
+        var trimmed = city.Trim();
+        if (TurkeyProvinces.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+            return ("Turkey", TurkeyProvinces);
+
+        foreach (var (country, cities) in CityCache)
+        {
+            if (string.Equals(country, "Türkiye", StringComparison.OrdinalIgnoreCase)) continue;
+            if (cities.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+                return (country, cities);
+        }
+
+        return (null, []);
+    }
+
     public static async Task<IReadOnlyList<CountryItem>> GetCountriesAsync(CancellationToken cancellation = default)
     {
         if (_cachedCountries is not null) return _cachedCountries;

@@ -162,7 +162,7 @@ public sealed class ThemePropertyEditor : UserControl
             _fieldHost = panel;
             foreach (var key in keys)
             {
-                var existing = Application.Current.Resources[key];
+                var existing = ResolveTokenValue(key);
                 if (existing is null) continue;
                 if (key == "DockBackgroundMode") AddModeField(key, existing.ToString() ?? "Glass");
                 else if (existing is Brush brush) AddBrushField(key, brush);
@@ -184,7 +184,7 @@ public sealed class ThemePropertyEditor : UserControl
                      .Distinct(StringComparer.Ordinal)
                      .OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
         {
-            var existing = Application.Current.TryFindResource(key);
+            var existing = ResolveTokenValue(key);
             if (existing is Brush brush) AddBrushField(key, brush);
             else if (existing is Color color) AddBrushField(key, new SolidColorBrush(color));
             else if (existing is CornerRadius radius) AddCornerField(key, radius);
@@ -216,7 +216,7 @@ public sealed class ThemePropertyEditor : UserControl
         var strip = new WrapPanel { Margin = new Thickness(0, 0, 0, 3) };
         foreach (var (labelKey, key) in ColorOverview)
         {
-            if (Application.Current.TryFindResource(key) is not Brush brush) continue;
+            if (ResolveTokenValue(key) is not Brush brush) continue;
             var cell = new StackPanel { Width = 92, Margin = new Thickness(0, 0, 10, 6) };
             cell.Children.Add(new Border
             {
@@ -607,16 +607,52 @@ public sealed class ThemePropertyEditor : UserControl
         return JsonValue.Create("#FF20232A")!;
     }
 
-    private void UpdateToken(string key, JsonNode? value, bool immediate = true)
+    internal object? ResolveTokenValue(string key)
+    {
+        var resources = Application.Current?.Resources;
+        if (resources is null) return null;
+
+        object? fallback = RadiusManager.Dictionary.Contains(key) && ThemePacks.FindOwner(resources, key) is { } owner
+            ? owner[key]
+            : (resources[key] ?? Application.Current?.TryFindResource(key));
+        if (fallback is null || _widgetPack is null) return fallback;
+
+        var sectionName = _mode == AppTheme.Dark ? "dark" : "light";
+        var node = FindSectionToken(_widgetPack, sectionName, key)
+            ?? FindSectionToken(_widgetPack, "tokens", key);
+        if (node is null) return fallback;
+
+        try
+        {
+            var element = node.Deserialize<JsonElement>();
+            return WidgetPack.Convert(element, fallback) ?? fallback;
+        }
+        catch (JsonException)
+        {
+            return fallback;
+        }
+    }
+
+    private static JsonNode? FindSectionToken(JsonObject root, string sectionName, string key)
+    {
+        var section = root.FirstOrDefault(pair => string.Equals(pair.Key, sectionName, StringComparison.OrdinalIgnoreCase)).Value as JsonObject;
+        if (section is null) return null;
+        if (section.TryGetPropertyValue(key, out var exact) && exact is not null) return exact;
+        return section.FirstOrDefault(pair => string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
+    }
+
+    internal void UpdateToken(string key, JsonNode? value, bool immediate = true)
     {
         if (_loadingTheme || _widgetPack is null || _id is null) return;
         var section = _mode == AppTheme.Dark ? "dark" : "light";
-        if (_widgetPack[section] is not JsonObject sectionNode)
+        var sectionKey = _widgetPack.FirstOrDefault(pair => string.Equals(pair.Key, section, StringComparison.OrdinalIgnoreCase)).Key ?? section;
+        if (_widgetPack[sectionKey] is not JsonObject sectionNode)
         {
             sectionNode = new JsonObject();
-            _widgetPack[section] = sectionNode;
+            _widgetPack[sectionKey] = sectionNode;
         }
-        sectionNode[key] = value;
+        var tokenKey = sectionNode.FirstOrDefault(pair => string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)).Key ?? key;
+        sectionNode[tokenKey] = value;
         ScheduleAutoSave(immediate);
     }
 
@@ -635,7 +671,7 @@ public sealed class ThemePropertyEditor : UserControl
         if (_id is null || _widgetPack is null || _manifest is null) return;
         try
         {
-            var pack = ThemePacks.Discover().FirstOrDefault(p => p.Id == _id);
+            var pack = ThemePacks.Discover().FirstOrDefault(p => string.Equals(p.Id, _id, StringComparison.OrdinalIgnoreCase));
             if (pack is null || ThemePack.IsBuiltInTheme(pack.Id)) return;
 
             var name = _name?.Text.Trim() ?? string.Empty;

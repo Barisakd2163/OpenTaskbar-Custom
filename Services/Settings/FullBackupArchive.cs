@@ -163,7 +163,17 @@ public static class FullBackupArchive
                 TryDeleteDirectory(tempTarget);
             }
 
-            return (staged.Settings with { ThemePack = id }, staged.Pins, id, null);
+            var profiles = staged.Settings.Profiles;
+            if (profiles is not null && !string.IsNullOrWhiteSpace(staged.ThemeId))
+            {
+                profiles = profiles
+                    .Select(profile => string.Equals(profile.ThemePack, staged.ThemeId, StringComparison.OrdinalIgnoreCase)
+                        ? profile with { ThemePack = id }
+                        : profile)
+                    .ToArray();
+            }
+
+            return (staged.Settings with { ThemePack = id, Profiles = profiles }, staged.Pins, id, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
