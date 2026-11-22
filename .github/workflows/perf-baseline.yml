@@ -30,7 +30,7 @@ jobs:
     runs-on: [self-hosted, windows, x64]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
@@ -52,7 +52,7 @@ jobs:
             -SweepSeconds ${{ inputs.sweep_seconds }}
 
       - name: Upload measurement
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perf-${{ inputs.label }}
           path: artifacts/perf/${{ inputs.label }}/

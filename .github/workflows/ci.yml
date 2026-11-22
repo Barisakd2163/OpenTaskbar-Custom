@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload Windows preview build
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: OpenTaskbar-redesign-preview
           path: release/
