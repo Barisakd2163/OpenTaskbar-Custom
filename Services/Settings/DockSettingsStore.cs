@@ -430,8 +430,26 @@ public sealed class DockSettingsStore
             .Distinct(StringComparer.OrdinalIgnoreCase).Count()
             == settings.AppGroups?.Sum(group => (group.ExecutablePaths ?? []).Count)
         && (settings.DockCornerRadius is null || settings.DockCornerRadius is >= 0 and <= 48)
+        && settings.WirelessBatteryPollSeconds is >= 15 and <= 300
+        && settings.WirelessBatteryLowThreshold is 0 or 10 or 20 or 30
+        && IsValidIgnoredWirelessDevices(settings.IgnoredWirelessDevices)
+        && IsValidWirelessDeviceAliases(settings.WirelessDeviceAliases)
         && IsValidPinnedTrayIcons(settings.PinnedTrayIcons)
         && !HotkeysConflict(settings);
+
+    private static bool IsValidIgnoredWirelessDevices(IReadOnlyList<string>? ignored) =>
+        ignored is null
+        || (ignored.Count <= 128
+            && !ignored.Any(entry => string.IsNullOrWhiteSpace(entry) || entry.Length > 256));
+
+    private static bool IsValidWirelessDeviceAliases(IReadOnlyDictionary<string, string>? aliases) =>
+        aliases is null
+        || (aliases.Count <= 128
+            && !aliases.Any(pair =>
+                string.IsNullOrWhiteSpace(pair.Key)
+                || pair.Key.Length > 256
+                || string.IsNullOrWhiteSpace(pair.Value)
+                || pair.Value.Length > 120));
 
     private static bool IsValidPinnedTrayIcons(IReadOnlyList<string>? pinned) =>
         pinned is null

@@ -66,6 +66,7 @@ public sealed class WidgetCoordinator : IDisposable
     private bool _disposed;
 
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
+    public Action<DockSettings>? WidgetSettingsUpdated { get; set; }
     public event Action? WidgetsPlaced;
     public event Action<string>? WidgetRemoveRequested;
     /// <summary>Raised when a widget drag ends, so the host can clean up any live-reorder state.</summary>
@@ -150,6 +151,11 @@ public sealed class WidgetCoordinator : IDisposable
         var widget = slot.Factory();
         widget.Tag = slot.Id;
         widget.ReportError = _reportError;
+        widget.UpdateSettings = updated =>
+        {
+            widget.ApplySettings(updated);
+            WidgetSettingsUpdated?.Invoke(updated);
+        };
         widget.AllowDrop = true;
         widget.PreviewMouseLeftButtonDown += Widget_PreviewMouseLeftButtonDown;
         widget.PreviewMouseLeftButtonUp += Widget_PreviewMouseLeftButtonUp;

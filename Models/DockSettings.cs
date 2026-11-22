@@ -237,7 +237,11 @@ public sealed record DockSettings(
     // Appended at the end so older settings files and positional constructor calls keep working.
     DockHeightMode DockHeightMode = DockHeightMode.Auto,
     int DockHeightPixels = 48,
-    int DockHeightPercent = 7)
+    int DockHeightPercent = 7,
+    int WirelessBatteryPollSeconds = 30,
+    int WirelessBatteryLowThreshold = 0,
+    IReadOnlyList<string>? IgnoredWirelessDevices = null,
+    IReadOnlyDictionary<string, string>? WirelessDeviceAliases = null)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

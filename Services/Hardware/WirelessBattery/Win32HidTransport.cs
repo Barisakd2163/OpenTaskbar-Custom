@@ -5,6 +5,15 @@ using Microsoft.Win32.SafeHandles;
 
 namespace OpenTaskbar.Services;
 
+internal sealed record HidBatteryValueCap(
+    bool IsFeatureReport,
+    byte ReportId,
+    ushort UsagePage,
+    ushort Usage,
+    ushort LinkCollection,
+    int LogicalMin,
+    int LogicalMax);
+
 internal sealed record HidInterfaceDescriptor(
     string DevicePath,
     ushort VendorId,
@@ -15,7 +24,8 @@ internal sealed record HidInterfaceDescriptor(
     ushort InputReportLength,
     ushort OutputReportLength,
     ushort FeatureReportLength,
-    string ProductName);
+    string ProductName,
+    IReadOnlyList<HidBatteryValueCap>? BatteryValueCaps = null);
 
 /// <summary>
 /// Clean-room Win32 SetupAPI + HidD/HidP + Overlapped I/O transport for reading wireless peripheral
@@ -37,7 +47,11 @@ internal static class Win32HidTransport
     internal const int ERROR_TIMEOUT = 1460;
     internal const int ERROR_INVALID_PARAMETER = 87;
     private const uint WAIT_OBJECT_0 = 0x00000000;
-    private const int HIDP_STATUS_SUCCESS = 0x00110000;
+    internal const int HIDP_STATUS_SUCCESS = 0x00110000;
+
+    internal const int HidP_Input = 0;
+    internal const int HidP_Output = 1;
+    internal const int HidP_Feature = 2;
 
     public static IReadOnlyList<HidInterfaceDescriptor> EnumerateInterfaces(Func<ushort, ushort, bool>? vidPidFilter = null)
     {
@@ -90,10 +104,13 @@ internal static class Win32HidTransport
                         continue;
 
                     HIDP_CAPS caps;
+                    IReadOnlyList<HidBatteryValueCap>? batteryCaps = null;
                     try
                     {
                         if (HidP_GetCaps(preparsedData, out caps) != HIDP_STATUS_SUCCESS)
                             continue;
+
+                        batteryCaps = ExtractStandardBatteryValueCaps(preparsedData, caps);
                     }
                     finally
                     {
@@ -111,7 +128,8 @@ internal static class Win32HidTransport
                         InputReportLength: caps.InputReportByteLength,
                         OutputReportLength: caps.OutputReportByteLength,
                         FeatureReportLength: caps.FeatureReportByteLength,
-                        ProductName: productName));
+                        ProductName: productName,
+                        BatteryValueCaps: batteryCaps));
                 }
                 finally
                 {
@@ -125,6 +143,78 @@ internal static class Win32HidTransport
         }
 
         return results;
+    }
+
+    private static IReadOnlyList<HidBatteryValueCap>? ExtractStandardBatteryValueCaps(nint preparsedData, HIDP_CAPS caps)
+    {
+        List<HidBatteryValueCap>? matches = null;
+        ExtractFromReportType(preparsedData, HidP_Feature, caps.NumberFeatureValueCaps, isFeature: true, ref matches);
+        ExtractFromReportType(preparsedData, HidP_Input, caps.NumberInputValueCaps, isFeature: false, ref matches);
+        return matches;
+    }
+
+    private static void ExtractFromReportType(
+        nint preparsedData,
+        int reportType,
+        ushort count,
+        bool isFeature,
+        ref List<HidBatteryValueCap>? matches)
+    {
+        if (count is 0 or > 64) return;
+        var length = count;
+        var valueCaps = new HIDP_VALUE_CAPS[length];
+        if (HidP_GetValueCaps(reportType, valueCaps, ref length, preparsedData) != HIDP_STATUS_SUCCESS)
+            return;
+
+        for (var i = 0; i < length && i < valueCaps.Length; i++)
+        {
+            var vc = valueCaps[i];
+            if (!TryMatchBatteryUsage(vc, out var usage))
+                continue;
+
+            matches ??= new List<HidBatteryValueCap>(2);
+            matches.Add(new HidBatteryValueCap(
+                IsFeatureReport: isFeature,
+                ReportId: vc.ReportID,
+                UsagePage: vc.UsagePage,
+                Usage: usage,
+                LinkCollection: vc.LinkCollection,
+                LogicalMin: vc.LogicalMin,
+                LogicalMax: vc.LogicalMax));
+        }
+    }
+
+    private static bool TryMatchBatteryUsage(HIDP_VALUE_CAPS vc, out ushort matchedUsage)
+    {
+        matchedUsage = 0;
+        ushort[] targetUsages = vc.UsagePage switch
+        {
+            0x0006 => [0x0020], // Generic Device Controls: Battery Strength
+            0x0084 => [0x0065, 0x00D0], // Power Device: Capacity / AC Present
+            0x0085 => [0x0064, 0x0065, 0x0066, 0x0044, 0x0045], // Battery System: Rel/Abs StateOfCharge, RemainingCapacity, Charging, Discharging
+            _ => []
+        };
+
+        if (targetUsages.Length == 0) return false;
+
+        foreach (var target in targetUsages)
+        {
+            if (vc.IsRange == 0)
+            {
+                if (vc.UsageOrUsageMin == target)
+                {
+                    matchedUsage = target;
+                    return true;
+                }
+            }
+            else if (target >= vc.UsageOrUsageMin && target <= vc.UsageMax)
+            {
+                matchedUsage = target;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static bool TryOpenSession(
@@ -354,6 +444,38 @@ internal static class Win32HidTransport
             return ok;
         }
 
+        public bool TryExtractUsageValue(
+            bool isFeatureReport,
+            ushort usagePage,
+            ushort linkCollection,
+            ushort usage,
+            byte[] reportBuffer,
+            out uint usageValue)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            usageValue = 0;
+            if (!HidD_GetPreparsedData(_handle, out var preparsedData) || preparsedData == nint.Zero)
+                return false;
+
+            try
+            {
+                var reportType = isFeatureReport ? HidP_Feature : HidP_Input;
+                return HidP_GetUsageValue(
+                    reportType,
+                    usagePage,
+                    linkCollection,
+                    usage,
+                    out usageValue,
+                    preparsedData,
+                    reportBuffer,
+                    (uint)reportBuffer.Length) == HIDP_STATUS_SUCCESS;
+            }
+            finally
+            {
+                HidD_FreePreparsedData(preparsedData);
+            }
+        }
+
         public bool TryTransactInterrupt(
             ReadOnlySpan<byte> request,
             Span<byte> response,
@@ -438,6 +560,45 @@ internal static class Win32HidTransport
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct HIDP_VALUE_CAPS
+    {
+        public ushort UsagePage;
+        public byte ReportID;
+        public byte IsAlias;
+        public ushort BitField;
+        public ushort LinkCollection;
+        public ushort LinkUsage;
+        public ushort LinkUsagePage;
+        public byte IsRange;
+        public byte IsStringRange;
+        public byte IsDesignatorRange;
+        public byte IsAbsolute;
+        public byte HasNull;
+        public byte Reserved;
+        public ushort BitSize;
+        public ushort ReportCount;
+        public ushort Reserved2_0;
+        public ushort Reserved2_1;
+        public ushort Reserved2_2;
+        public ushort Reserved2_3;
+        public ushort Reserved2_4;
+        public uint UnitsExp;
+        public uint Units;
+        public int LogicalMin;
+        public int LogicalMax;
+        public int PhysicalMin;
+        public int PhysicalMax;
+        public ushort UsageOrUsageMin;
+        public ushort UsageMax;
+        public ushort StringMin;
+        public ushort StringMax;
+        public ushort DesignatorMin;
+        public ushort DesignatorMax;
+        public ushort DataIndexMin;
+        public ushort DataIndexMax;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct OVERLAPPED
     {
         public nint Internal;
@@ -510,6 +671,24 @@ internal static class Win32HidTransport
     private static extern int HidP_GetCaps(
         nint preparsedData,
         out HIDP_CAPS capabilities);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern int HidP_GetValueCaps(
+        int reportType,
+        [Out] HIDP_VALUE_CAPS[] valueCaps,
+        ref ushort valueCapsLength,
+        nint preparsedData);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern int HidP_GetUsageValue(
+        int reportType,
+        ushort usagePage,
+        ushort linkCollection,
+        ushort usage,
+        out uint usageValue,
+        nint preparsedData,
+        byte[] report,
+        uint reportLength);
 
     [DllImport("hid.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

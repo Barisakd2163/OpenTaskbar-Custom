@@ -19,17 +19,38 @@ internal sealed class RazerBatteryProvider : IWirelessBatteryProvider
     public const byte CommandIdGetBatteryLevel = 0x80;
     public const byte CommandIdGetChargingStatus = 0x84;
 
-    private static readonly byte[] CandidateTransactionIds = [0x1F, 0x3F, 0xFF];
+    private static readonly byte[] CandidateTransactionIds = [0x1F, 0x3F, 0xFF, 0x7F, 0x00];
 
     public WirelessBatterySource Source => WirelessBatterySource.RazerHid;
 
-    public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken) =>
-        Task.Run(() => ProbeHidDevices(cancellationToken), CancellationToken.None);
+    public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(
+        IReadOnlyList<HidInterfaceDescriptor> hidInterfaces,
+        CancellationToken cancellationToken)
+    {
+        if (hidInterfaces.Count == 0 || !HasAnyMatchingInterface(hidInterfaces))
+            return Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]);
 
-    internal static IReadOnlyList<WirelessDeviceReading> ProbeHidDevices(CancellationToken cancellationToken = default)
+        return Task.Run(() => ProbeHidDevices(hidInterfaces, cancellationToken), CancellationToken.None);
+    }
+
+    internal static bool HasAnyMatchingInterface(IReadOnlyList<HidInterfaceDescriptor> interfaces)
+    {
+        for (var i = 0; i < interfaces.Count; i++)
+        {
+            if (IsMatchingInterface(interfaces[i]))
+                return true;
+        }
+        return false;
+    }
+
+    internal static IReadOnlyList<WirelessDeviceReading> ProbeHidDevices(CancellationToken cancellationToken = default) =>
+        ProbeHidDevices(Win32HidTransport.EnumerateInterfaces((vid, _) => vid == RazerVendorId), cancellationToken);
+
+    internal static IReadOnlyList<WirelessDeviceReading> ProbeHidDevices(
+        IReadOnlyList<HidInterfaceDescriptor> interfaces,
+        CancellationToken cancellationToken = default)
     {
         var results = new List<WirelessDeviceReading>();
-        var interfaces = Win32HidTransport.EnumerateInterfaces((vid, _) => vid == RazerVendorId);
         var now = DateTimeOffset.UtcNow;
         var seenProducts = new HashSet<ushort>();
 
@@ -186,17 +207,19 @@ internal sealed class RazerBatteryProvider : IWirelessBatteryProvider
         return TryParseCommandReply(response, commandId, out arg1Value);
     }
 
-    private static BluetoothDeviceKind ClassifyRazerKind(string name)
+    internal static BluetoothDeviceKind ClassifyRazerKind(string name)
     {
         var classified = BluetoothBatteryWidget.ClassifyNode(name, string.Empty);
         if (classified != BluetoothDeviceKind.Generic) return classified;
         if (name.Contains("BlackShark", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Barracuda", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Kraken", StringComparison.OrdinalIgnoreCase))
+            || name.Contains("Kraken", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Kaira", StringComparison.OrdinalIgnoreCase))
             return BluetoothDeviceKind.Headphones;
         if (name.Contains("BlackWidow", StringComparison.OrdinalIgnoreCase)
             || name.Contains("DeathStalker", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Huntsman", StringComparison.OrdinalIgnoreCase))
+            || name.Contains("Huntsman", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Pro Type", StringComparison.OrdinalIgnoreCase))
             return BluetoothDeviceKind.Keyboard;
         if (name.Contains("Wolverine", StringComparison.OrdinalIgnoreCase))
             return BluetoothDeviceKind.Gamepad;

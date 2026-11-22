@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -49,6 +50,14 @@ public sealed class BluetoothBatteryWidget : DockWidget
     public override double CompactWidthEstimate => _compactWidth;
     public override double FullWidthEstimate => _fullWidth;
 
+    internal const int WM_DEVICECHANGE = 0x0219;
+    internal const int DBT_DEVNODES_CHANGED = 0x0007;
+    internal const int DBT_DEVICEARRIVAL = 0x8000;
+    internal const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
+
+    private static readonly int[] PollSecondPresets = [15, 30, 60, 120, 300];
+    private static readonly int[] LowThresholdPresets = [0, 10, 20, 30];
+
     // Windows publishes the same 0..100 battery byte under both names. This is also the value
     // shown in Settings > Bluetooth, and it covers classic headsets/mice with no GATT service.
     // Bluetooth AEP enumeration is intentionally NOT used: on Windows it starts a fresh discovery
@@ -85,6 +94,17 @@ public sealed class BluetoothBatteryWidget : DockWidget
         AppearanceProperty
     ];
 
+    private readonly record struct RenderedTileState(
+        string Id,
+        string Name,
+        BluetoothDeviceKind Kind,
+        int BatteryLevel,
+        bool IsCharging,
+        bool IsStale,
+        string? LevelOverrideText,
+        int? SecondaryBatteryLevel,
+        bool IsLowWarning);
+
     private readonly StackPanel _deviceTiles = new()
     {
         Orientation = Orientation.Horizontal,
@@ -99,16 +119,31 @@ public sealed class BluetoothBatteryWidget : DockWidget
         VerticalAlignment = VerticalAlignment.Center
     };
     private readonly Button _cardButton;
+    private IReadOnlyList<BluetoothDeviceBatteryInfo> _rawDevices = [];
     private IReadOnlyList<BluetoothDeviceBatteryInfo> _devices = [];
-    private int _refreshing;
+    private RenderedTileState[] _lastRenderedTiles = [];
+    private bool _lastRenderedCompact;
+    private bool _lastRenderedHoverExpanded;
+    private int _refreshFlag;
     private volatile bool _disposed;
     private long _lastRefreshTickMs;
     private double _fullWidth = 78;
     private double _compactWidth = 46;
-    private const long RefreshIntervalMs = 15000;
+
+    private HwndSource? _hwndSource;
+    private HwndSourceHook? _hwndHook;
+    private CancellationTokenSource? _deviceChangeDebounceCts;
+    private readonly Dictionary<string, int> _notifiedThresholdByDevice = new(StringComparer.OrdinalIgnoreCase);
+
+    internal int TileRebuildCount { get; private set; }
+    internal long EffectivePollIntervalMs => Math.Clamp(Settings.WirelessBatteryPollSeconds, 15, 300) * 1000L;
 
     internal Func<Task<IReadOnlyList<BluetoothDeviceBatteryInfo>>> BatteryReader { get; set; } = WirelessBatteryAggregator.ReadAllAsync;
     internal Action OpenSettingsAction { get; set; } = DefaultOpenBluetoothSettings;
+    internal Func<string, string, string, string?> RenamePrompt { get; set; } = TextPrompt.Ask;
+    internal Action<string> LowBatteryNotifier { get; set; } = NotificationService.ShowInfoToast;
+    internal Func<string> DiagnosticsProvider { get; set; } = WirelessBatteryAggregator.BuildLivePrivacySafeDiagnosticSummary;
+    internal Action<string> ClipboardSetter { get; set; } = DefaultSetClipboardText;
 
     public BluetoothBatteryWidget()
     {
@@ -119,26 +154,150 @@ public sealed class BluetoothBatteryWidget : DockWidget
         _cardButton.SetResourceReference(StyleProperty, "WidgetCardButton");
         _cardButton.Click += (_, _) => OpenSettingsAction();
         Content = _cardButton;
+        Loaded += OnWidgetLoaded;
+        Unloaded += OnWidgetUnloaded;
         UpdateDisplay();
     }
 
     protected override void OnActivated()
     {
         _lastRefreshTickMs = 0;
+        AttachDeviceChangeHook();
         RefreshBatteries();
     }
 
-    protected override void OnDisposed() => _disposed = true;
+    protected override void OnDeactivated()
+    {
+        DetachDeviceChangeHook();
+        CancelDeviceChangeDebounce();
+    }
+
+    protected override void OnDisposed()
+    {
+        _disposed = true;
+        DetachDeviceChangeHook();
+        CancelDeviceChangeDebounce();
+    }
+
+    protected override void OnSettingsChanged()
+    {
+        _devices = ApplyUserPreferences(_rawDevices, Settings);
+        EvaluateLowBatteryNotifications(_devices);
+        UpdateDisplay();
+    }
 
     protected override void OnTick(DateTime now)
     {
-        if (Environment.TickCount64 - _lastRefreshTickMs >= RefreshIntervalMs) RefreshBatteries();
+        if (Environment.TickCount64 - _lastRefreshTickMs >= EffectivePollIntervalMs)
+            RefreshBatteries();
     }
 
     protected override void OnLanguageChanged() => UpdateDisplay();
 
     protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
     protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void OnWidgetLoaded(object sender, RoutedEventArgs e)
+    {
+        if (IsActive && !_disposed)
+            AttachDeviceChangeHook();
+    }
+
+    private void OnWidgetUnloaded(object sender, RoutedEventArgs e)
+    {
+        DetachDeviceChangeHook();
+    }
+
+    private void AttachDeviceChangeHook()
+    {
+        if (_hwndSource is not null || _disposed || !IsActive)
+            return;
+
+        var source = PresentationSource.FromVisual(this) as HwndSource;
+        if (source is null && Application.Current?.MainWindow is { } mainWin)
+        {
+            source = PresentationSource.FromVisual(mainWin) as HwndSource;
+        }
+
+        if (source is null || source.IsDisposed)
+            return;
+
+        _hwndHook = WndProcDeviceChange;
+        _hwndSource = source;
+        _hwndSource.AddHook(_hwndHook);
+    }
+
+    private void DetachDeviceChangeHook()
+    {
+        if (_hwndSource is not null && _hwndHook is not null)
+        {
+            try
+            {
+                if (!_hwndSource.IsDisposed)
+                    _hwndSource.RemoveHook(_hwndHook);
+            }
+            catch
+            {
+            }
+        }
+        _hwndSource = null;
+        _hwndHook = null;
+    }
+
+    private void CancelDeviceChangeDebounce()
+    {
+        var cts = Interlocked.Exchange(ref _deviceChangeDebounceCts, null);
+        if (cts is not null)
+        {
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
+        }
+    }
+
+    private nint WndProcDeviceChange(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        if (msg == WM_DEVICECHANGE && IsActive && !_disposed)
+        {
+            var eventType = wParam.ToInt32();
+            if (eventType is DBT_DEVNODES_CHANGED or DBT_DEVICEARRIVAL or DBT_DEVICEREMOVECOMPLETE)
+            {
+                NotifyDeviceChange(500);
+            }
+        }
+        return nint.Zero;
+    }
+
+    internal void NotifyDeviceChange(int debounceMs = 500)
+    {
+        if (_disposed || !IsActive) return;
+
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _deviceChangeDebounceCts, newCts);
+        if (oldCts is not null)
+        {
+            try { oldCts.Cancel(); } catch { }
+            oldCts.Dispose();
+        }
+
+        var token = newCts.Token;
+        var clampedDelay = Math.Clamp(debounceMs, 20, 2000);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(clampedDelay, token).ConfigureAwait(false);
+                if (token.IsCancellationRequested || _disposed || !IsActive)
+                    return;
+                RefreshBatteries();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+        }, CancellationToken.None);
+    }
 
     private void ApplyDensityLayout()
     {
@@ -152,6 +311,8 @@ public sealed class BluetoothBatteryWidget : DockWidget
                     stack.Children[i].Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
             }
         }
+        _lastRenderedCompact = IsCompact;
+        _lastRenderedHoverExpanded = IsHoverExpanded;
         RaiseContentWidthChanged();
     }
 
@@ -164,8 +325,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             if (Dispatcher.CheckAccess())
             {
                 if (_disposed || (requireActive && !IsActive)) return;
-                _devices = list;
-                UpdateDisplay();
+                ApplyFreshDeviceList(list);
             }
             else
             {
@@ -173,8 +333,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
                 await Dispatcher.InvokeAsync(() =>
                 {
                     if (_disposed || (requireActive && !IsActive)) return;
-                    _devices = list;
-                    UpdateDisplay();
+                    ApplyFreshDeviceList(list);
                 });
             }
         }
@@ -183,15 +342,264 @@ public sealed class BluetoothBatteryWidget : DockWidget
         }
     }
 
+    private void ApplyFreshDeviceList(IReadOnlyList<BluetoothDeviceBatteryInfo> rawList)
+    {
+        _rawDevices = rawList ?? [];
+        _devices = ApplyUserPreferences(_rawDevices, Settings);
+        EvaluateLowBatteryNotifications(_devices);
+        UpdateDisplay();
+    }
+
     internal void RefreshBatteries()
     {
-        if (_disposed || Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
+        if (_disposed || Interlocked.CompareExchange(ref _refreshFlag, 1, 0) != 0) return;
         _lastRefreshTickMs = Environment.TickCount64;
         _ = Task.Run(async () =>
         {
             try { await RefreshBatteriesAsync(requireActive: true).ConfigureAwait(false); }
-            finally { Interlocked.Exchange(ref _refreshing, 0); }
+            finally { Interlocked.Exchange(ref _refreshFlag, 0); }
         });
+    }
+
+    internal static IReadOnlyList<BluetoothDeviceBatteryInfo> ApplyUserPreferences(
+        IReadOnlyList<BluetoothDeviceBatteryInfo> rawDevices,
+        DockSettings settings)
+    {
+        if (rawDevices is null || rawDevices.Count == 0)
+            return [];
+
+        var output = new List<BluetoothDeviceBatteryInfo>(rawDevices.Count);
+        foreach (var device in rawDevices)
+        {
+            if (IsDeviceIgnored(device.Id, device.Name, settings))
+                continue;
+
+            var displayName = ResolveDeviceDisplayName(device.Id, device.Name, settings);
+            output.Add(string.Equals(displayName, device.Name, StringComparison.Ordinal)
+                ? device
+                : device with { Name = displayName });
+        }
+
+        return output;
+    }
+
+    internal static bool IsDeviceIgnored(string? id, string? name, DockSettings settings)
+    {
+        if (WirelessBatteryAggregator.IsIgnoredWiredDevice(0, 0, name))
+            return true;
+        if (!string.IsNullOrWhiteSpace(id)
+            && id.Contains("2E3C", StringComparison.OrdinalIgnoreCase)
+            && id.Contains("C368", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (settings.IgnoredWirelessDevices is not { Count: > 0 } ignored)
+            return false;
+
+        for (var i = 0; i < ignored.Count; i++)
+        {
+            var entry = ignored[i]?.Trim();
+            if (string.IsNullOrEmpty(entry)) continue;
+            if (!string.IsNullOrWhiteSpace(id) && string.Equals(entry, id.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.IsNullOrWhiteSpace(name) && string.Equals(entry, name.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    internal static string ResolveDeviceDisplayName(string? id, string? originalName, DockSettings settings)
+    {
+        var fallback = string.IsNullOrWhiteSpace(originalName) ? "Wireless Device" : originalName.Trim();
+        if (settings.WirelessDeviceAliases is not { Count: > 0 } aliases)
+            return fallback;
+
+        if (!string.IsNullOrWhiteSpace(id) && TryLookupAlias(aliases, id.Trim(), out var byId))
+            return byId;
+
+        if (!string.IsNullOrWhiteSpace(originalName) && TryLookupAlias(aliases, originalName.Trim(), out var byName))
+            return byName;
+
+        return fallback;
+    }
+
+    private static bool TryLookupAlias(IReadOnlyDictionary<string, string> aliases, string key, out string alias)
+    {
+        if (aliases.TryGetValue(key, out var direct) && !string.IsNullOrWhiteSpace(direct))
+        {
+            alias = direct.Trim();
+            return true;
+        }
+
+        foreach (var pair in aliases)
+        {
+            if (string.Equals(pair.Key.Trim(), key, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(pair.Value))
+            {
+                alias = pair.Value.Trim();
+                return true;
+            }
+        }
+
+        alias = string.Empty;
+        return false;
+    }
+
+    internal void EvaluateLowBatteryNotifications(IReadOnlyList<BluetoothDeviceBatteryInfo> currentDevices)
+    {
+        var threshold = Settings.WirelessBatteryLowThreshold;
+        if (threshold is not (10 or 20 or 30))
+        {
+            _notifiedThresholdByDevice.Clear();
+            return;
+        }
+
+        if (!IsActive || Settings.FocusModeEnabled)
+            return;
+
+        foreach (var device in currentDevices)
+        {
+            var key = !string.IsNullOrWhiteSpace(device.Id) ? device.Id.Trim() : device.Name.Trim();
+            if (string.IsNullOrEmpty(key)) continue;
+
+            // Reset spam guard when device starts charging or recovers above threshold.
+            if (device.IsCharging || device.BatteryLevel > threshold)
+            {
+                _notifiedThresholdByDevice.Remove(key);
+                continue;
+            }
+
+            if (!device.IsConnected || device.IsStale || device.BatteryLevel < 0)
+                continue;
+
+            // Only notify once per threshold breach until the device charges or recovers above threshold.
+            if (_notifiedThresholdByDevice.TryGetValue(key, out var alreadyNotifiedThreshold)
+                && alreadyNotifiedThreshold == threshold)
+            {
+                continue;
+            }
+
+            _notifiedThresholdByDevice[key] = threshold;
+            var message = UiText.Format("WirelessBatteryLowToast", device.Name, device.BatteryLevel);
+            try
+            {
+                LowBatteryNotifier(message);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    internal void SetDeviceAlias(string deviceIdOrName, string? newAlias)
+    {
+        if (string.IsNullOrWhiteSpace(deviceIdOrName)) return;
+        var key = deviceIdOrName.Trim();
+
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (Settings.WirelessDeviceAliases is not null)
+        {
+            foreach (var (k, v) in Settings.WirelessDeviceAliases)
+            {
+                if (!string.IsNullOrWhiteSpace(k) && !string.IsNullOrWhiteSpace(v))
+                    dict[k.Trim()] = v.Trim();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(newAlias))
+        {
+            dict.Remove(key);
+        }
+        else
+        {
+            var trimmedAlias = newAlias.Trim();
+            if (trimmedAlias.Length > 120)
+                trimmedAlias = trimmedAlias[..120];
+            dict[key] = trimmedAlias;
+        }
+
+        var updated = Settings with
+        {
+            WirelessDeviceAliases = dict.Count > 0 ? dict : null
+        };
+        CommitUpdatedSettings(updated);
+    }
+
+    internal void HideDevice(string deviceIdOrName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceIdOrName)) return;
+        var key = deviceIdOrName.Trim();
+
+        var list = new List<string>();
+        if (Settings.IgnoredWirelessDevices is not null)
+        {
+            foreach (var item in Settings.IgnoredWirelessDevices)
+            {
+                if (!string.IsNullOrWhiteSpace(item) && !list.Contains(item.Trim(), StringComparer.OrdinalIgnoreCase))
+                    list.Add(item.Trim());
+            }
+        }
+
+        if (!list.Contains(key, StringComparer.OrdinalIgnoreCase))
+            list.Add(key);
+
+        var updated = Settings with
+        {
+            IgnoredWirelessDevices = list.Count > 0 ? list : null
+        };
+        CommitUpdatedSettings(updated);
+    }
+
+    internal void RestoreIgnoredDevices()
+    {
+        if (Settings.IgnoredWirelessDevices is null || Settings.IgnoredWirelessDevices.Count == 0)
+            return;
+
+        var updated = Settings with { IgnoredWirelessDevices = null };
+        CommitUpdatedSettings(updated);
+    }
+
+    internal void CyclePollInterval()
+    {
+        var current = Settings.WirelessBatteryPollSeconds;
+        var idx = Array.IndexOf(PollSecondPresets, current);
+        var next = PollSecondPresets[(idx + 1) % PollSecondPresets.Length];
+        CommitUpdatedSettings(Settings with { WirelessBatteryPollSeconds = next });
+    }
+
+    internal void CycleLowBatteryThreshold()
+    {
+        var current = Settings.WirelessBatteryLowThreshold;
+        var idx = Array.IndexOf(LowThresholdPresets, current);
+        var next = LowThresholdPresets[(idx + 1) % LowThresholdPresets.Length];
+        CommitUpdatedSettings(Settings with { WirelessBatteryLowThreshold = next });
+    }
+
+    internal string CopyDiagnosticsToClipboard()
+    {
+        var summary = DiagnosticsProvider();
+        try
+        {
+            ClipboardSetter(summary);
+        }
+        catch
+        {
+        }
+        return summary;
+    }
+
+    private void CommitUpdatedSettings(DockSettings updated)
+    {
+        if (UpdateSettings is not null)
+        {
+            UpdateSettings(updated);
+        }
+        else
+        {
+            ApplySettings(updated);
+        }
     }
 
     internal void UpdateDisplay()
@@ -199,32 +607,99 @@ public sealed class BluetoothBatteryWidget : DockWidget
         var connected = _devices.Where(device => device.IsConnected).ToList();
         if (connected.Count == 0)
         {
+            _lastRenderedTiles = [];
             _cardButton.Content = _emptyText;
             _emptyText.Text = _devices.Count > 0 ? "—" : UiText.Get("BluetoothNoDevicesAbbr");
             _cardButton.ToolTip = UiText.Get("WidgetBluetoothBatteryDescription");
             AutomationProperties.SetName(_cardButton, UiText.Get("WidgetBluetoothBattery"));
             _fullWidth = 78;
             _compactWidth = 46;
+            RaiseContentWidthChanged();
+            return;
+        }
+
+        var threshold = Settings.WirelessBatteryLowThreshold;
+        if (!MatchesRenderedSignature(connected, threshold))
+        {
+            _deviceTiles.Children.Clear();
+            var nextSignature = new RenderedTileState[connected.Count];
+            for (var i = 0; i < connected.Count; i++)
+            {
+                var dev = connected[i];
+                var isLow = IsLowBatteryWarning(dev.BatteryLevel, dev.IsCharging, threshold);
+                nextSignature[i] = new RenderedTileState(
+                    dev.Id,
+                    dev.Name,
+                    dev.Kind,
+                    dev.BatteryLevel,
+                    dev.IsCharging,
+                    dev.IsStale,
+                    dev.LevelOverrideText,
+                    dev.SecondaryBatteryLevel,
+                    isLow);
+                _deviceTiles.Children.Add(CreateDeviceTile(dev, isLast: i == connected.Count - 1));
+            }
+            _lastRenderedTiles = nextSignature;
+            _lastRenderedCompact = IsCompact;
+            _lastRenderedHoverExpanded = IsHoverExpanded;
+            TileRebuildCount++;
         }
         else
         {
-            _deviceTiles.Children.Clear();
-            for (var i = 0; i < connected.Count; i++)
+            // Keep per-tile tooltips fresh on language change without recreating any WPF elements.
+            for (var i = 0; i < connected.Count && i < _deviceTiles.Children.Count; i++)
             {
-                _deviceTiles.Children.Add(CreateDeviceTile(connected[i], isLast: i == connected.Count - 1));
+                if (_deviceTiles.Children[i] is Border tileBorder)
+                    tileBorder.ToolTip = FormatDeviceTooltip(connected[i]);
             }
-            _cardButton.Content = _deviceTiles;
-            _cardButton.ToolTip = string.Join("\n", connected.Select(FormatDeviceTooltip));
-            AutomationProperties.SetName(_cardButton,
-                $"{UiText.Get("WidgetBluetoothBattery")}: {string.Join(", ", connected.Select(device => device.Name))}");
-            _fullWidth = Math.Max(78, connected.Count * 62 + 12);
-            _compactWidth = Math.Max(46, connected.Count * 24 + 8);
         }
+
+        _cardButton.Content = _deviceTiles;
+        _cardButton.ToolTip = string.Join("\n", connected.Select(FormatDeviceTooltip));
+        AutomationProperties.SetName(_cardButton,
+            $"{UiText.Get("WidgetBluetoothBattery")}: {string.Join(", ", connected.Select(device => device.Name))}");
+        _fullWidth = Math.Max(78, connected.Count * 62 + 12);
+        _compactWidth = Math.Max(46, connected.Count * 24 + 8);
         RaiseContentWidthChanged();
     }
 
-    internal static bool IsLowBatteryWarning(int batteryLevel, bool isCharging) =>
-        batteryLevel >= 0 && (batteryLevel <= 15 || (!isCharging && batteryLevel <= 20));
+    private bool MatchesRenderedSignature(IReadOnlyList<BluetoothDeviceBatteryInfo> connected, int lowThreshold)
+    {
+        if (!ReferenceEquals(_cardButton.Content, _deviceTiles))
+            return false;
+        if (_lastRenderedTiles.Length != connected.Count || _deviceTiles.Children.Count != connected.Count)
+            return false;
+        if (_lastRenderedCompact != IsCompact || _lastRenderedHoverExpanded != IsHoverExpanded)
+            return false;
+
+        for (var i = 0; i < connected.Count; i++)
+        {
+            var dev = connected[i];
+            var prev = _lastRenderedTiles[i];
+            var isLow = IsLowBatteryWarning(dev.BatteryLevel, dev.IsCharging, lowThreshold);
+            if (!string.Equals(prev.Id, dev.Id, StringComparison.Ordinal)
+                || !string.Equals(prev.Name, dev.Name, StringComparison.Ordinal)
+                || prev.Kind != dev.Kind
+                || prev.BatteryLevel != dev.BatteryLevel
+                || prev.IsCharging != dev.IsCharging
+                || prev.IsStale != dev.IsStale
+                || !string.Equals(prev.LevelOverrideText, dev.LevelOverrideText, StringComparison.Ordinal)
+                || prev.SecondaryBatteryLevel != dev.SecondaryBatteryLevel
+                || prev.IsLowWarning != isLow)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    internal static bool IsLowBatteryWarning(int batteryLevel, bool isCharging, int configuredThreshold = 0)
+    {
+        if (batteryLevel < 0) return false;
+        var effectiveThreshold = configuredThreshold is 10 or 20 or 30 ? configuredThreshold : 20;
+        return batteryLevel <= 15 || (!isCharging && batteryLevel <= effectiveThreshold);
+    }
 
     internal static string FormatLevelText(BluetoothDeviceBatteryInfo device)
     {
@@ -251,7 +726,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
         var icon = CreateDeviceIcon(device.Kind);
         var compact = IsCompact && !IsHoverExpanded;
         var levelText = FormatLevelText(device);
-        var isLow = IsLowBatteryWarning(device.BatteryLevel, device.IsCharging);
+        var isLow = IsLowBatteryWarning(device.BatteryLevel, device.IsCharging, Settings.WirelessBatteryLowThreshold);
 
         var percent = new TextBlock
         {
@@ -331,7 +806,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
 
     public override UIElement? BuildHoverFlyoutContent()
     {
-        var panel = new StackPanel { Width = 264 };
+        var panel = new StackPanel { Width = 276 };
 
         var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -363,13 +838,16 @@ public sealed class BluetoothBatteryWidget : DockWidget
         if (_devices.Count == 0)
         {
             panel.Children.Add(DockFlyout.Caption(UiText.Get("BluetoothNoDevices")));
-            panel.Children.Add(BuildSettingsFooterButton());
+            AppendFlyoutFooterControls(panel);
             return panel;
         }
 
         var listPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
         foreach (var device in _devices)
         {
+            var capturedDevice = device;
+            var deviceKey = !string.IsNullOrWhiteSpace(capturedDevice.Id) ? capturedDevice.Id : capturedDevice.Name;
+
             var rowStack = new StackPanel
             {
                 Margin = new Thickness(4, 4, 4, 6),
@@ -395,7 +873,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
                 FontWeight = FontWeights.SemiBold,
                 Foreground = (Brush)FindResource("TextPrimary"),
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = 138,
+                MaxWidth = 120,
                 VerticalAlignment = VerticalAlignment.Center
             });
 
@@ -458,7 +936,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
             {
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0)
+                Margin = new Thickness(4, 0, 0, 0)
             };
 
             if (device.IsCharging)
@@ -477,7 +955,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
                 valueRow.Children.Add(bolt);
             }
 
-            var isLow = IsLowBatteryWarning(device.BatteryLevel, device.IsCharging);
+            var isLow = IsLowBatteryWarning(device.BatteryLevel, device.IsCharging, Settings.WirelessBatteryLowThreshold);
             var batteryText = new TextBlock
             {
                 Text = FormatLevelText(device),
@@ -490,13 +968,31 @@ public sealed class BluetoothBatteryWidget : DockWidget
             batteryText.SetResourceReference(ForegroundProperty, isLow ? "WidgetWarning" : "TextPrimary");
             valueRow.Children.Add(batteryText);
 
+            var renameTip = UiText.Get("WirelessBatteryRename");
+            var renameBtn = CreateRowActionButton("IconEdit", renameTip, (_, _) =>
+            {
+                var promptMsg = UiText.Format("WirelessBatteryRenamePrompt", capturedDevice.Name);
+                var answer = RenamePrompt(renameTip, promptMsg, capturedDevice.Name);
+                if (answer is not null)
+                {
+                    SetDeviceAlias(deviceKey, answer);
+                }
+            });
+            renameBtn.Margin = new Thickness(4, 0, 0, 0);
+            valueRow.Children.Add(renameBtn);
+
+            var hideTip = UiText.Get("WirelessBatteryHideDevice");
+            var hideBtn = CreateRowActionButton("IconEyeOff", hideTip, (_, _) => HideDevice(deviceKey));
+            hideBtn.Margin = new Thickness(2, 0, 0, 0);
+            valueRow.Children.Add(hideBtn);
+
             Grid.SetColumn(valueRow, 2);
             itemGrid.Children.Add(valueRow);
             rowStack.Children.Add(itemGrid);
 
             if (device.BatteryLevel >= 0)
             {
-                const double barTrackWidth = 248.0;
+                const double barTrackWidth = 260.0;
                 var clampedLevel = Math.Clamp(device.BatteryLevel, 0, 100);
                 var barFill = new Border
                 {
@@ -524,8 +1020,108 @@ public sealed class BluetoothBatteryWidget : DockWidget
         }
 
         panel.Children.Add(listPanel);
-        panel.Children.Add(BuildSettingsFooterButton());
+        AppendFlyoutFooterControls(panel);
         return panel;
+    }
+
+    private void AppendFlyoutFooterControls(StackPanel panel)
+    {
+        if (Settings.IgnoredWirelessDevices is { Count: > 0 } ignored)
+        {
+            var restoreLabel = UiText.Format("WirelessBatteryRestoreHidden", ignored.Count);
+            var restoreBtn = DockFlyout.FlatButton(
+                new TextBlock
+                {
+                    Text = restoreLabel,
+                    FontSize = 10.5,
+                    FontWeight = FontWeights.Medium,
+                    Foreground = (Brush)FindResource("WidgetAccent")
+                },
+                (_, _) => RestoreIgnoredDevices(),
+                restoreLabel);
+            restoreBtn.Margin = new Thickness(0, 2, 0, 2);
+            panel.Children.Add(restoreBtn);
+        }
+
+        var optionsGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+        optionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        optionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var pollLabel = UiText.Format("WirelessBatteryPollInterval", Math.Clamp(Settings.WirelessBatteryPollSeconds, 15, 300));
+        var pollBtn = DockFlyout.FlatButton(
+            new TextBlock
+            {
+                Text = pollLabel,
+                FontSize = 10,
+                FontWeight = FontWeights.Medium,
+                Foreground = (Brush)FindResource("TextSecondary")
+            },
+            (_, _) => CyclePollInterval(),
+            pollLabel);
+        pollBtn.Padding = new Thickness(6, 3, 6, 3);
+        Grid.SetColumn(pollBtn, 0);
+        optionsGrid.Children.Add(pollBtn);
+
+        var thresholdValueText = Settings.WirelessBatteryLowThreshold is 10 or 20 or 30
+            ? $"{Settings.WirelessBatteryLowThreshold}%"
+            : UiText.Get("WirelessBatteryAlertOff");
+        var thresholdLabel = UiText.Format("WirelessBatteryAlertThreshold", thresholdValueText);
+        var thresholdBtn = DockFlyout.FlatButton(
+            new TextBlock
+            {
+                Text = thresholdLabel,
+                FontSize = 10,
+                FontWeight = FontWeights.Medium,
+                Foreground = (Brush)FindResource("TextSecondary")
+            },
+            (_, _) => CycleLowBatteryThreshold(),
+            thresholdLabel);
+        thresholdBtn.Padding = new Thickness(6, 3, 6, 3);
+        Grid.SetColumn(thresholdBtn, 1);
+        optionsGrid.Children.Add(thresholdBtn);
+
+        panel.Children.Add(optionsGrid);
+
+        var diagLabel = UiText.Get("WirelessBatteryCopyDiagnostics");
+        var diagTextBlock = new TextBlock
+        {
+            Text = diagLabel,
+            FontSize = 10.5,
+            FontWeight = FontWeights.Medium,
+            Foreground = (Brush)FindResource("TextSecondary")
+        };
+        var diagBtn = DockFlyout.FlatButton(
+            diagTextBlock,
+            (_, _) =>
+            {
+                CopyDiagnosticsToClipboard();
+                diagTextBlock.Text = UiText.Get("WirelessBatteryDiagnosticsCopied");
+            },
+            diagLabel);
+        diagBtn.Margin = new Thickness(0, 1, 0, 0);
+        panel.Children.Add(diagBtn);
+
+        panel.Children.Add(BuildSettingsFooterButton());
+    }
+
+    private static Button CreateRowActionButton(string iconResourceKey, string toolTip, RoutedEventHandler onClick)
+    {
+        var glyph = new ContentControl
+        {
+            Content = Application.Current?.TryFindResource(iconResourceKey),
+            Width = 11,
+            Height = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        glyph.SetResourceReference(StyleProperty, "WidgetIcon");
+        glyph.SetResourceReference(ForegroundProperty, "TextSecondary");
+
+        var btn = DockFlyout.FlatButton(glyph, onClick, toolTip);
+        btn.Padding = new Thickness(4, 3, 4, 3);
+        btn.VerticalAlignment = VerticalAlignment.Center;
+        return btn;
     }
 
     private Button BuildSettingsFooterButton()
@@ -850,6 +1446,17 @@ public sealed class BluetoothBatteryWidget : DockWidget
         catch
         {
             return -1;
+        }
+    }
+
+    private static void DefaultSetClipboardText(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text ?? string.Empty);
+        }
+        catch
+        {
         }
     }
 

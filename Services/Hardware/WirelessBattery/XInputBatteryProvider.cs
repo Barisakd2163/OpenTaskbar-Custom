@@ -26,7 +26,9 @@ internal sealed class XInputBatteryProvider : IWirelessBatteryProvider
 
     public WirelessBatterySource Source => WirelessBatterySource.XInput;
 
-    public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(
+        IReadOnlyList<HidInterfaceDescriptor> hidInterfaces,
+        CancellationToken cancellationToken) =>
         Task.Run(() => ProbeControllers(cancellationToken), CancellationToken.None);
 
     internal static IReadOnlyList<WirelessDeviceReading> ProbeControllers(CancellationToken cancellationToken = default)

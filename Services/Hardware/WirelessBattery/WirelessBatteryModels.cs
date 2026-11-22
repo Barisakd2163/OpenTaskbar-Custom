@@ -11,7 +11,14 @@ public enum WirelessBatterySource
     LogitechHidPlusPlus,
     LogitechGHub,
     CompxAtkVxe,
-    RazerHid
+    RazerHid,
+    BluetoothGatt,
+    StandardHid,
+    HyperXHid,
+    CorsairHid,
+    AsusRogHid,
+    GamepadHid,
+    Keyboard24gHid
 }
 
 public sealed record WirelessDeviceReading(
@@ -37,6 +44,13 @@ public sealed record WirelessDeviceReading(
         WirelessBatterySource.LogitechHidPlusPlus or WirelessBatterySource.LogitechGHub => "HID++",
         WirelessBatterySource.RazerHid => "Razer",
         WirelessBatterySource.XInput => "XInput",
+        WirelessBatterySource.BluetoothGatt => "BLE GATT",
+        WirelessBatterySource.StandardHid => "HID",
+        WirelessBatterySource.HyperXHid => "HyperX",
+        WirelessBatterySource.CorsairHid => "Corsair",
+        WirelessBatterySource.AsusRogHid => "ROG",
+        WirelessBatterySource.GamepadHid => "Gamepad",
+        WirelessBatterySource.Keyboard24gHid => "2.4G",
         _ => "Bluetooth"
     };
 
@@ -57,5 +71,7 @@ public sealed record WirelessDeviceReading(
 internal interface IWirelessBatteryProvider
 {
     WirelessBatterySource Source { get; }
-    Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(
+        IReadOnlyList<HidInterfaceDescriptor> hidInterfaces,
+        CancellationToken cancellationToken);
 }

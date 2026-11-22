@@ -1,16 +1,21 @@
+using System.Text;
 using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar.Services;
 
 /// <summary>
 /// Orchestrates Bluetooth PnP and multi-protocol wireless battery providers concurrently
-/// with per-provider timeouts, failure isolation, wired-device filtering, deduplication,
+/// with a single-pass shared HID interface snapshot, per-provider timeouts, failure isolation,
+/// wired-device filtering, deduplication, 2-sample outlier spike protection,
 /// and a 30-minute smart idle/stale reading cache.
 /// </summary>
 internal sealed class WirelessBatteryAggregator
 {
     public const ushort WraithVendorId = 0x2E3C;
     public const ushort WraithW75ProductId = 0xC368;
+    public const int OutlierDropThresholdPercent = 25;
+    public const int OutlierProtectedFloorPercent = 25;
+
     public static readonly TimeSpan DefaultProviderTimeout = TimeSpan.FromMilliseconds(1200);
     public static readonly TimeSpan StaleExpirationWindow = TimeSpan.FromMinutes(30);
 
@@ -22,28 +27,40 @@ internal sealed class WirelessBatteryAggregator
             new CompxAtkVxeBatteryProvider(),
             new LogitechBatteryProvider(),
             new RazerBatteryProvider(),
+            new HyperXBatteryProvider(),
+            new CorsairBatteryProvider(),
+            new AsusRogBatteryProvider(),
+            new GamepadHidBatteryProvider(),
+            new WirelessKeyboard24gProvider(),
+            new StandardHidBatteryProvider(),
+            new BleGattBatteryProvider(),
             new XInputBatteryProvider()
         ],
         clock: () => DateTimeOffset.UtcNow,
-        providerTimeout: DefaultProviderTimeout);
+        providerTimeout: DefaultProviderTimeout,
+        hidEnumerator: () => Win32HidTransport.EnumerateInterfaces());
 
     private readonly Func<CancellationToken, Task<IReadOnlyList<WirelessDeviceReading>>> _bluetoothReader;
     private readonly IReadOnlyList<IWirelessBatteryProvider> _providers;
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _providerTimeout;
+    private readonly Func<IReadOnlyList<HidInterfaceDescriptor>> _hidEnumerator;
     private readonly object _cacheLock = new();
     private readonly Dictionary<string, WirelessDeviceReading> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _pendingOutliers = new(StringComparer.OrdinalIgnoreCase);
 
     internal WirelessBatteryAggregator(
         Func<CancellationToken, Task<IReadOnlyList<WirelessDeviceReading>>> bluetoothReader,
         IReadOnlyList<IWirelessBatteryProvider> providers,
         Func<DateTimeOffset>? clock = null,
-        TimeSpan? providerTimeout = null)
+        TimeSpan? providerTimeout = null,
+        Func<IReadOnlyList<HidInterfaceDescriptor>>? hidEnumerator = null)
     {
         _bluetoothReader = bluetoothReader;
         _providers = providers;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _providerTimeout = providerTimeout ?? DefaultProviderTimeout;
+        _hidEnumerator = hidEnumerator ?? (() => Win32HidTransport.EnumerateInterfaces());
     }
 
     public static async Task<IReadOnlyList<BluetoothDeviceBatteryInfo>> ReadAllAsync()
@@ -77,8 +94,61 @@ internal sealed class WirelessBatteryAggregator
         return false;
     }
 
+    /// <summary>
+    /// Builds a strictly privacy-safe diagnostic summary containing ONLY numeric hex VID, PID,
+    /// UsagePage, Usage, and report byte lengths. Never includes device paths, product names,
+    /// serial numbers, MAC addresses, or user identifiers.
+    /// </summary>
+    internal static string BuildPrivacySafeDiagnosticSummary(IReadOnlyList<HidInterfaceDescriptor> descriptors)
+    {
+        if (descriptors is null || descriptors.Count == 0)
+            return "HID Interfaces: 0";
+
+        var lines = descriptors
+            .Where(d => !IsIgnoredWiredDevice(d.VendorId, d.ProductId))
+            .Select(d =>
+                $"VID:{d.VendorId:X4} PID:{d.ProductId:X4} UsagePage:0x{d.UsagePage:X4} Usage:0x{d.Usage:X4} In:{d.InputReportLength} Out:{d.OutputReportLength} Feat:{d.FeatureReportLength}")
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(line => line, StringComparer.Ordinal)
+            .ToList();
+
+        if (lines.Count == 0)
+            return "HID Interfaces: 0";
+
+        var sb = new StringBuilder(lines.Count * 72);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (i > 0) sb.Append('\n');
+            sb.Append(lines[i]);
+        }
+        return sb.ToString();
+    }
+
+    internal static string BuildLivePrivacySafeDiagnosticSummary()
+    {
+        try
+        {
+            var interfaces = Win32HidTransport.EnumerateInterfaces();
+            return BuildPrivacySafeDiagnosticSummary(interfaces);
+        }
+        catch
+        {
+            return "HID Interfaces: 0";
+        }
+    }
+
     public async Task<IReadOnlyList<WirelessDeviceReading>> PollAsync(CancellationToken cancellationToken = default)
     {
+        IReadOnlyList<HidInterfaceDescriptor> hidSnapshot;
+        try
+        {
+            hidSnapshot = await Task.Run(() => _hidEnumerator() ?? [], CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            hidSnapshot = [];
+        }
+
         var tasks = new List<Task<IReadOnlyList<WirelessDeviceReading>>>(_providers.Count + 1)
         {
             RunIsolatedAsync(_bluetoothReader, cancellationToken)
@@ -86,7 +156,8 @@ internal sealed class WirelessBatteryAggregator
 
         foreach (var provider in _providers)
         {
-            tasks.Add(RunIsolatedAsync(provider.ProbeAsync, cancellationToken));
+            var currentProvider = provider;
+            tasks.Add(RunIsolatedAsync(token => currentProvider.ProbeAsync(hidSnapshot, token), cancellationToken));
         }
 
         var batches = await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -182,6 +253,39 @@ internal sealed class WirelessBatteryAggregator
                         IsStale = false,
                         SampledAt = reading.SampledAt == default ? now : reading.SampledAt
                     };
+
+                    // Outlier / spike guard: reject single-sample implausible drops (>= 25 percentage points
+                    // in one poll from a trusted > 25% reading) unless confirmed by 2 consecutive samples.
+                    if (string.IsNullOrWhiteSpace(live.LevelOverrideText)
+                        && _cache.TryGetValue(key, out var prevTrusted)
+                        && prevTrusted.BatteryLevel > OutlierProtectedFloorPercent
+                        && prevTrusted.BatteryLevel - live.BatteryLevel >= OutlierDropThresholdPercent)
+                    {
+                        if (_pendingOutliers.TryGetValue(key, out var pendingLevel)
+                            && prevTrusted.BatteryLevel - pendingLevel >= OutlierDropThresholdPercent)
+                        {
+                            // Confirmed by 2 consecutive samples: accept the new level.
+                            _pendingOutliers.Remove(key);
+                            _cache[key] = live;
+                            output.Add(live);
+                            continue;
+                        }
+
+                        _pendingOutliers[key] = live.BatteryLevel;
+                        var guarded = prevTrusted with
+                        {
+                            IsConnected = true,
+                            IsCharging = live.IsCharging,
+                            IsStale = false,
+                            SampledAt = live.SampledAt,
+                            SecondaryBatteryLevel = live.SecondaryBatteryLevel ?? prevTrusted.SecondaryBatteryLevel
+                        };
+                        _cache[key] = guarded;
+                        output.Add(guarded);
+                        continue;
+                    }
+
+                    _pendingOutliers.Remove(key);
                     _cache[key] = live;
                     output.Add(live);
                     continue;
@@ -227,7 +331,10 @@ internal sealed class WirelessBatteryAggregator
             }
 
             foreach (var key in expiredKeys)
+            {
                 _cache.Remove(key);
+                _pendingOutliers.Remove(key);
+            }
 
             return output
                 .OrderBy(r => r.IsStale ? 1 : 0)
@@ -284,10 +391,17 @@ internal sealed class WirelessBatteryAggregator
         WirelessBatterySource.CompxAtkVxe => 1,
         WirelessBatterySource.LogitechHidPlusPlus => 2,
         WirelessBatterySource.RazerHid => 3,
-        WirelessBatterySource.Bluetooth => 4,
-        WirelessBatterySource.XInput => 5,
-        WirelessBatterySource.SteelSeriesGg => 6,
-        WirelessBatterySource.LogitechGHub => 7,
+        WirelessBatterySource.HyperXHid => 3,
+        WirelessBatterySource.CorsairHid => 3,
+        WirelessBatterySource.AsusRogHid => 3,
+        WirelessBatterySource.Keyboard24gHid => 3,
+        WirelessBatterySource.GamepadHid => 3,
+        WirelessBatterySource.StandardHid => 4,
+        WirelessBatterySource.Bluetooth => 5,
+        WirelessBatterySource.BluetoothGatt => 6,
+        WirelessBatterySource.XInput => 7,
+        WirelessBatterySource.SteelSeriesGg => 8,
+        WirelessBatterySource.LogitechGHub => 9,
         _ => 10
     };
 }
