@@ -39,7 +39,6 @@ public sealed class NativeWindowTracker : IDisposable
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _locationTimer;
     private readonly WinEventDelegate _eventCallback;
-    private readonly EnumWindowsDelegate _enumCallback;
     // HWND + PID: a recycled handle must not inherit a previous window's notification badge.
     private readonly Dictionary<nint, uint> _notificationWindows = [];
 
@@ -53,9 +52,6 @@ public sealed class NativeWindowTracker : IDisposable
     private readonly HashSet<nint> _quietWindows = [];
     private readonly HashSet<nint> _snapshotHandles = [];
     private readonly Dictionary<nint, TrackedWindow> _previousByHandle = [];
-    private readonly List<TrackedWindow> _pendingWindows = [];
-    private readonly char[] _titleBuffer = new char[1024];
-    private readonly char[] _classBuffer = new char[256];
     private nint _windowHook;
     private nint _locationHook;
     private nint _nameChangeHook;
@@ -68,11 +64,26 @@ public sealed class NativeWindowTracker : IDisposable
     private int _refreshQueued;
     private int _urgentRefresh;
     private bool _disposed;
+    private int _scanGeneration;
+
+    /// <summary>Per-scan state: the background worker never touches the tracker's shared collections.</summary>
+    private sealed class ScanContext
+    {
+        public nint ExcludedWindow;
+        public Dictionary<nint, TrackedWindow> Previous = [];
+        public Dictionary<nint, uint> Notifications = [];
+        public HashSet<nint> QuietFound = [];
+        public List<TrackedWindow> Pending = [];
+        public readonly char[] TitleBuffer = new char[1024];
+        public readonly char[] ClassBuffer = new char[256];
+    }
 
     public NativeWindowTracker(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
-        _refreshTimer = new DispatcherTimer(DispatcherPriority.Input, dispatcher)
+        // Enumeration does ~10 interop calls per window and can take 50-128 ms. Running it at Input priority made
+        // clicks wait behind it; Background lets real input and rendering preempt the scan (#128 finding 6).
+        _refreshTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(60)
         };
@@ -83,7 +94,6 @@ public sealed class NativeWindowTracker : IDisposable
         };
         _locationTimer.Tick += LocationTimer_Tick;
         _eventCallback = OnWinEvent;
-        _enumCallback = CollectWindow;
     }
 
     public event EventHandler<IReadOnlyList<TrackedWindow>>? WindowsChanged;
@@ -254,7 +264,7 @@ public sealed class NativeWindowTracker : IDisposable
                     _refreshTimer.Start();
                 }
             }
-        }, DispatcherPriority.Input);
+        }, DispatcherPriority.Background);
     }
 
     private void RefreshTimer_Tick(object? sender, EventArgs e)
@@ -284,15 +294,39 @@ public sealed class NativeWindowTracker : IDisposable
 
     private void RefreshWindows()
     {
-        _pendingWindows.Clear();
-        _previousByHandle.Clear();
-        for (var i = 0; i < Snapshot.Count; i++)
+        if (_disposed) return;
+        // The 50-128 ms EnumWindows + per-window COM scan used to run on the UI dispatcher. Run it on the
+        // dedicated background STA worker instead and publish the result back here (#128 finding 6).
+        var generation = ++_scanGeneration;
+        var context = new ScanContext
         {
-            var item = Snapshot[i];
-            _previousByHandle[item.Handle] = item;
-        }
+            ExcludedWindow = _excludedWindow,
+            Previous = new Dictionary<nint, TrackedWindow>(_previousByHandle),
+            Notifications = new Dictionary<nint, uint>(_notificationWindows)
+        };
+        foreach (var item in Snapshot) context.Previous[item.Handle] = item;
 
-        EnumWindows(_enumCallback, 0);
+        _ = StaTask.RunScan(() =>
+        {
+            EnumWindows((handle, _) => CollectWindow(handle, context), 0);
+            return context;
+        }).ContinueWith(task =>
+        {
+            if (task.IsFaulted)
+            {
+                AppLog.Warning($"Window scan failed: {task.Exception?.GetBaseException().Message}");
+                return;
+            }
+            if (_disposed || generation != _scanGeneration) return; // discard stale scan
+            ApplyScan(task.Result);
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>Publishes a completed background scan on the UI thread.</summary>
+    private void ApplyScan(ScanContext context)
+    {
+        foreach (var handle in context.QuietFound) _quietWindows.Add(handle);
+        _quietWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
 
         foreach (var stale in _notificationWindows.Keys
             .Where(handle => !IsWindow(handle)
@@ -300,20 +334,17 @@ public sealed class NativeWindowTracker : IDisposable
         {
             _notificationWindows.Remove(stale);
         }
-        _quietWindows.RemoveWhere(windowHandle => !IsWindow(windowHandle));
 
-        if (Snapshot.SequenceEqual(_pendingWindows))
-        {
-            _pendingWindows.Clear();
-            return;
-        }
+        if (Snapshot.SequenceEqual(context.Pending)) return;
 
-        var next = _pendingWindows.ToArray();
-        _pendingWindows.Clear();
+        var next = context.Pending.ToArray();
+        _previousByHandle.Clear();
         _snapshotHandles.Clear();
         for (var i = 0; i < next.Length; i++)
         {
-            _snapshotHandles.Add(next[i].Handle);
+            var item = next[i];
+            _previousByHandle[item.Handle] = item;
+            _snapshotHandles.Add(item.Handle);
         }
 
         Snapshot = next;
@@ -321,11 +352,11 @@ public sealed class NativeWindowTracker : IDisposable
     }
 
     // EnumWindows invokes this delegate from native code; never let an exception cross that boundary.
-    private bool CollectWindow(nint windowHandle, nint state)
+    private bool CollectWindow(nint windowHandle, ScanContext context)
     {
         try
         {
-            return CollectWindowCore(windowHandle);
+            return CollectWindowCore(windowHandle, context);
         }
         catch (Exception ex)
         {
@@ -334,9 +365,9 @@ public sealed class NativeWindowTracker : IDisposable
         }
     }
 
-    private bool CollectWindowCore(nint windowHandle)
+    private bool CollectWindowCore(nint windowHandle, ScanContext context)
     {
-        if (windowHandle == _excludedWindow || !IsWindowVisible(windowHandle)) return true;
+        if (windowHandle == context.ExcludedWindow || !IsWindowVisible(windowHandle)) return true;
 
         GetWindowThreadProcessId(windowHandle, out var processId);
         if (processId == Environment.ProcessId) return true;
@@ -358,13 +389,13 @@ public sealed class NativeWindowTracker : IDisposable
             return true;
         }
 
-        var classLength = GetClassName(windowHandle, _classBuffer, _classBuffer.Length);
+        var classLength = GetClassName(windowHandle, context.ClassBuffer, context.ClassBuffer.Length);
         if (classLength > 0)
         {
-            ReadOnlySpan<char> cls = _classBuffer.AsSpan(0, classLength);
+            ReadOnlySpan<char> cls = context.ClassBuffer.AsSpan(0, classLength);
             if (TaskbarWindowRules.IsHiddenImmersiveFrame(cls, extendedStyle))
             {
-                _quietWindows.Add(windowHandle);
+                context.QuietFound.Add(windowHandle);
                 return true;
             }
         }
@@ -372,38 +403,38 @@ public sealed class NativeWindowTracker : IDisposable
         var titleLength = GetWindowTextLength(windowHandle);
         if (titleLength <= 0) return true;
 
-        var readCapacity = Math.Min(titleLength + 1, _titleBuffer.Length);
-        var actualLength = GetWindowText(windowHandle, _titleBuffer, readCapacity);
+        var readCapacity = Math.Min(titleLength + 1, context.TitleBuffer.Length);
+        var actualLength = GetWindowText(windowHandle, context.TitleBuffer, readCapacity);
         if (actualLength <= 0) return true;
 
-        ReadOnlySpan<char> trimmedSpan = _titleBuffer.AsSpan(0, actualLength).Trim();
+        ReadOnlySpan<char> trimmedSpan = context.TitleBuffer.AsSpan(0, actualLength).Trim();
         if (trimmedSpan.IsEmpty) return true;
 
-        _previousByHandle.TryGetValue(windowHandle, out var previous);
+        context.Previous.TryGetValue(windowHandle, out var previous);
         // A first lookup can fail for a just-starting process; retry it instead of hiding the app forever.
         var executablePath = previous?.ExecutablePath ?? GetExecutablePath(windowHandle);
-        if (IsWindowsSystemApp(executablePath) || IsExplorerShellWindow(executablePath, windowHandle))
+        if (IsWindowsSystemApp(executablePath) || IsExplorerShellWindow(executablePath, windowHandle, context.ClassBuffer))
         {
-            _quietWindows.Add(windowHandle);
+            context.QuietFound.Add(windowHandle);
             return true;
         }
 
-        var hasNotification = _notificationWindows.TryGetValue(windowHandle, out var notificationPid)
+        var hasNotification = context.Notifications.TryGetValue(windowHandle, out var notificationPid)
             && PidOf(windowHandle) == notificationPid;
         if (previous is not null)
         {
             var title = trimmedSpan.SequenceEqual(previous.Title) ? previous.Title : trimmedSpan.ToString();
-            _pendingWindows.Add(previous with { Title = title, HasNotification = hasNotification });
+            context.Pending.Add(previous with { Title = title, HasNotification = hasNotification });
         }
         else
         {
-            // Read the Shell AppUserModelId once per window (cached in _previousByHandle on later refreshes)
-            // so windows from different executables of the same app (e.g. FortiClient helpers) group together.
-            // A COM hiccup must never take down the whole tracker — fall back to path-only grouping.
+            // Read the Shell AppUserModelId once per window (cached on later refreshes) so windows from
+            // different executables of the same app group together. This runs on the background STA worker
+            // now; a COM hiccup must never take down the tracker — fall back to path-only grouping.
             string? appId = null;
             try { appId = NativeJumpListSession.ReadWindowAppId(windowHandle); }
             catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException) { }
-            _pendingWindows.Add(new TrackedWindow(windowHandle, trimmedSpan.ToString(), executablePath, hasNotification, appId));
+            context.Pending.Add(new TrackedWindow(windowHandle, trimmedSpan.ToString(), executablePath, hasNotification, appId));
         }
 
         return true;
@@ -582,7 +613,6 @@ public sealed class NativeWindowTracker : IDisposable
         _quietWindows.Clear();
         _snapshotHandles.Clear();
         _previousByHandle.Clear();
-        _pendingWindows.Clear();
         _excludedWindow = 0;
         _lastForegroundWindow = 0;
         _pendingLocationForeground = 0;
@@ -743,16 +773,16 @@ public sealed class NativeWindowTracker : IDisposable
             && executablePath.StartsWith(WindowsSystemAppsDirectory, StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool IsExplorerShellWindow(string? executablePath, nint windowHandle)
+    private bool IsExplorerShellWindow(string? executablePath, nint windowHandle, char[] classBuffer)
     {
         if (!string.Equals(Path.GetFileName(executablePath), "explorer.exe", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        var length = GetClassName(windowHandle, _classBuffer, _classBuffer.Length);
+        var length = GetClassName(windowHandle, classBuffer, classBuffer.Length);
         if (length <= 0) return true;
-        ReadOnlySpan<char> cls = _classBuffer.AsSpan(0, length);
+        ReadOnlySpan<char> cls = classBuffer.AsSpan(0, length);
         return !cls.SequenceEqual("CabinetWClass") && !cls.SequenceEqual("ExploreWClass");
     }
 

@@ -856,6 +856,13 @@ public static class ShellShortcuts
         }
     }
 
+    /// <summary>
+    /// Measures the real Start flyout on the background STA worker so the cross-process UIA tree walk never
+    /// blocks the UI dispatcher (issue #128 finding 1).
+    /// </summary>
+    private static Task<System.Windows.Rect?> MeasureStartFlyoutAsync(nint hwnd) =>
+        StaTask.Run(() => TryGetStartFlyoutBounds(hwnd, out var bounds) ? (System.Windows.Rect?)bounds : null);
+
     private static async Task RepositionStartMenuAsync(FrameworkElement anchor, nint hintHwnd, CancellationToken cancellation)
     {
         if (PresentationSource.FromVisual(anchor) is not HwndSource source || source.Handle == 0)
@@ -952,15 +959,21 @@ public static class ShellShortcuts
 
                 // When the real flyout panel can be measured, derive exact canvas offsets from the measured panel
                 // across all edges (Bottom, Left, Right) so the flyout never clips off screen or leaves a vertical gap.
-                if (isFullScreenCanvas && TryGetStartFlyoutBounds(mainHwnd, out var flyoutBounds))
+                // The UIA walk runs on the background STA worker; only the cheap SetWindowPos stays on this thread.
+                System.Windows.Rect? measuredFlyout = null;
+                if (isFullScreenCanvas)
                 {
-                    (targetX, targetY) = ComputeMeasuredStartMenuPosition(
-                        rect.Left, rect.Top,
-                        flyoutBounds.Left, flyoutBounds.Top, flyoutBounds.Width, flyoutBounds.Height,
-                        monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
-                        topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
-                        edge, dpiScale);
-                    AppLog.Info($"RepositionStartMenuAsync: measured flyout bounds [{flyoutBounds.Left:F0},{flyoutBounds.Top:F0} {flyoutBounds.Width:F0}x{flyoutBounds.Height:F0}], corrected ({targetX},{targetY})");
+                    measuredFlyout = await MeasureStartFlyoutAsync(mainHwnd);
+                    if (measuredFlyout is { } flyoutBounds)
+                    {
+                        (targetX, targetY) = ComputeMeasuredStartMenuPosition(
+                            rect.Left, rect.Top,
+                            flyoutBounds.Left, flyoutBounds.Top, flyoutBounds.Width, flyoutBounds.Height,
+                            monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
+                            topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
+                            edge, dpiScale);
+                        AppLog.Info($"RepositionStartMenuAsync: measured flyout bounds [{flyoutBounds.Left:F0},{flyoutBounds.Top:F0} {flyoutBounds.Width:F0}x{flyoutBounds.Height:F0}], corrected ({targetX},{targetY})");
+                    }
                 }
 
                 if (!CanMoveShellWindow(generation, cancellation)) return;
@@ -969,29 +982,33 @@ public static class ShellShortcuts
 
                 // Settle across extra frames to smoothly complete shell entrance transitions. Re-measure the real
                 // flyout and current canvas rect each frame so height changes or shell resets never leave a gap.
-                System.Windows.Rect lastSettled = default;
                 for (var frame = 0; frame < 6; frame++)
                 {
                     await Task.Delay(25, cancellation);
                     if (!CanMoveShellWindow(generation, cancellation)) return;
                     EnsureNativeTaskbarHidden();
-                    if (isFullScreenCanvas
-                        && GetWindowRect(mainHwnd, out var settledRect)
-                        && TryGetStartFlyoutBounds(mainHwnd, out var settled))
+                    // UIA measurement walks the whole SearchHost tree. It already ran once above on the STA
+                    // worker; retry only if that sample failed and the entrance animation has had time to settle
+                    // (#128 finding 1). Re-measuring every frame used to block the UI for ~0.5 s per Start open.
+                    if (measuredFlyout is null && isFullScreenCanvas && frame == 2
+                        && GetWindowRect(mainHwnd, out var settledRect))
                     {
-                        lastSettled = settled;
-                        (targetX, targetY) = ComputeMeasuredStartMenuPosition(
-                            settledRect.Left, settledRect.Top,
-                            settled.Left, settled.Top, settled.Width, settled.Height,
-                            monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
-                            topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
-                            edge, dpiScale);
+                        measuredFlyout = await MeasureStartFlyoutAsync(mainHwnd);
+                        if (measuredFlyout is { } settled)
+                        {
+                            (targetX, targetY) = ComputeMeasuredStartMenuPosition(
+                                settledRect.Left, settledRect.Top,
+                                settled.Left, settled.Top, settled.Width, settled.Height,
+                                monitorInfo.Work.Left, monitorInfo.Work.Top, monitorInfo.Work.Right, monitorInfo.Work.Bottom,
+                                topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y,
+                                edge, dpiScale);
+                        }
                     }
                     SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
                 }
-                if (!lastSettled.IsEmpty)
+                if (measuredFlyout is { } finalBounds)
                 {
-                    AppLog.Info($"RepositionStartMenuAsync: settled flyout [{lastSettled.Left:F0},{lastSettled.Top:F0} {lastSettled.Width:F0}x{lastSettled.Height:F0}] -> ({targetX},{targetY})");
+                    AppLog.Info($"RepositionStartMenuAsync: settled flyout [{finalBounds.Left:F0},{finalBounds.Top:F0} {finalBounds.Width:F0}x{finalBounds.Height:F0}] -> ({targetX},{targetY})");
                 }
                 break;
             }

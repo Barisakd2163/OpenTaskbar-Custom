@@ -225,6 +225,7 @@
                     BorderThickness="{DynamicResource DockBorderThickness}"
                     CornerRadius="{Binding CornerRadius, ElementName=DockFrame}"
                     Effect="{DynamicResource DockShadow}"
+                    CacheMode="BitmapCache"
                     IsHitTestVisible="False" />
             <Border x:Name="DockFrame" Padding="{StaticResource DockPadding}"
                     Background="Transparent" BorderBrush="Transparent"

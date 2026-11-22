@@ -179,7 +179,9 @@ public sealed class DockFlyout
             AllowsTransparency = true,
             StaysOpen = false,
             Child = _root,
-            PopupAnimation = PopupAnimation.Fade,
+            // The XAML entrance below already fades the content. A native Fade popup adds a ~200 ms layered
+            // window animation during which the first mouse message can be delayed (#128 finding 9).
+            PopupAnimation = PopupAnimation.None,
             Placement = PlacementMode.Custom,
             CustomPopupPlacementCallback = Place
         };
