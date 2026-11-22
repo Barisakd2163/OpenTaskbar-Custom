@@ -100,16 +100,15 @@ public sealed class AiUsageWidget : DockWidget
         public DualQuotaBars? Codex => Bars;
     }
 
-    private static bool UsesDualQuota(AiProviders provider) => provider is AiProviders.Codex or AiProviders.Claude;
+    private static bool UsesDualQuota(AiProviders provider) => provider is AiProviders.Codex or AiProviders.Claude or AiProviders.Cursor;
     private static bool UsesTripleQuota(AiProviders provider) => provider is AiProviders.OpenCode;
     private static bool UsesSimpleInline(AiProviders provider) => provider is AiProviders.Copilot or AiProviders.DeepSeek or AiProviders.OpenRouter;
-    private static bool HidesName(AiProviders provider) => provider is AiProviders.Codex or AiProviders.Claude or AiProviders.Antigravity;
+    private static bool HidesName(AiProviders provider) => provider is AiProviders.Codex or AiProviders.Claude or AiProviders.Antigravity or AiProviders.Cursor;
 
     private static readonly SolidColorBrush ClaudeBrandBrush = FreezeBrush(Color.FromRgb(0xD9, 0x77, 0x57));
     private static readonly SolidColorBrush CodexBrandBrush = FreezeBrush(Color.FromRgb(0x8D, 0x99, 0xFF));
     private static readonly SolidColorBrush DeepSeekBrandBrush = FreezeBrush(Color.FromRgb(0x4D, 0x6B, 0xFE));
     private static readonly SolidColorBrush CopilotBrandBrush = FreezeBrush(Color.FromRgb(0x9F, 0x9F, 0xF2));
-    private static readonly SolidColorBrush CursorBrandBrush = FreezeBrush(Color.FromRgb(0x0E, 0xA5, 0xE9));
     private static readonly Geometry CursorLogoGeometry = FreezeGeometry(
         "F1 M11.503 .131 1.891 5.678a .84 .84 0 0 0 -.42 .726v11.188c 0 .3 .162 .575 .42 .724l9.609 5.55a 1 1 0 0 0 .998 0l9.61 -5.55a .84 .84 0 0 0 .42 -.724V6.404a .84 .84 0 0 0 -.42 -.726L12.497 .131a 1.01 1.01 0 0 0 -.996 0M2.657 6.338h18.55c .263 0 .43 .287 .297 .515L12.23 22.918c -.062 .107 -.229 .064 -.229 -.06V12.335a .59 .59 0 0 0 -.295 -.51l-9.11 -5.257c -.109 -.063 -.064 -.23 .061 -.23");
 
@@ -149,7 +148,7 @@ public sealed class AiUsageWidget : DockWidget
     private static double CardWidth(AiProviders provider, bool compact) =>
         provider switch
         {
-            AiProviders.Codex or AiProviders.Claude =>
+            AiProviders.Codex or AiProviders.Claude or AiProviders.Cursor =>
                 CardPaddingAndBorder + LogoSize + Gap + 148,
             AiProviders.Antigravity =>
                 CardPaddingAndBorder + LogoSize + Gap + 236,
@@ -726,7 +725,6 @@ public sealed class AiUsageWidget : DockWidget
         _card.Name.SetResourceReference(TextBlock.ForegroundProperty, foreground);
         if (!stale && _provider == AiProviders.Claude) _card.Logo.Fill = ClaudeBrandBrush;
         else if (!stale && _provider == AiProviders.DeepSeek) _card.Logo.Fill = DeepSeekBrandBrush;
-        else if (!stale && _provider == AiProviders.Cursor) _card.Logo.Fill = CursorBrandBrush;
         else _card.Logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, foreground);
         _card.Button.ToolTip = toolTip;
         AutomationProperties.SetName(_card.Button, $"{UiText.Get("WidgetAiUsage")}: {toolTip}");
@@ -749,8 +747,8 @@ public sealed class AiUsageWidget : DockWidget
             var longWindow = _report?.Windows.FirstOrDefault(w => w.LabelKey is "AiUsageWeekly" or "AiUsageMonthly");
 
             // Adapt dynamically when an account switches between a single-window free plan (e.g. monthly Codex)
-            // and a dual-window paid plan (5h session + 7d weekly).
-            var showSession = session is not null || longWindow is null;
+            // and a dual-window paid plan (5h session + 7d weekly); Cursor always shows only its single long window row.
+            var showSession = session is not null || (_provider != AiProviders.Cursor && longWindow is null);
             var showLong = longWindow is not null || session is null;
             bars.SessionRow.Visibility = showSession ? Visibility.Visible : Visibility.Collapsed;
             bars.WeeklyRow.Visibility = showLong ? Visibility.Visible : Visibility.Collapsed;

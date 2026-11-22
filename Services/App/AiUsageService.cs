@@ -569,27 +569,30 @@ public static class AiUsageService
             {
                 if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 {
-                    if (refreshed || string.IsNullOrWhiteSpace(refresh))
+                    if (response.StatusCode == HttpStatusCode.Unauthorized && (refreshed || string.IsNullOrWhiteSpace(refresh)))
                     {
                         CursorAuthService.SignOut();
                         return new(null, "ErrorAiUsageSignIn");
                     }
 
-                    var refreshResult = await CursorAuthService.RefreshAsync(refresh, Client, timeout.Token).ConfigureAwait(false);
-                    if (refreshResult.SessionExpired)
-                        return new(null, "ErrorAiUsageSignIn");
-                    if (string.IsNullOrWhiteSpace(refreshResult.AccessToken))
-                        return new(null, "ErrorAiUsageLoad");
-
-                    access = refreshResult.AccessToken;
-                    refresh = refreshResult.RefreshToken;
-                    refreshed = true;
-                    response.Dispose();
-                    response = await SendCursorDashboardRequestAsync(access, "GetCurrentPeriodUsage", timeout.Token).ConfigureAwait(false);
-                    if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                    if (!refreshed && !string.IsNullOrWhiteSpace(refresh))
                     {
-                        CursorAuthService.SignOut();
-                        return new(null, "ErrorAiUsageSignIn");
+                        var refreshResult = await CursorAuthService.RefreshAsync(refresh, Client, timeout.Token).ConfigureAwait(false);
+                        if (refreshResult.SessionExpired)
+                            return new(null, "ErrorAiUsageSignIn");
+                        if (string.IsNullOrWhiteSpace(refreshResult.AccessToken))
+                            return new(null, "ErrorAiUsageLoad");
+
+                        access = refreshResult.AccessToken;
+                        refresh = refreshResult.RefreshToken;
+                        refreshed = true;
+                        response.Dispose();
+                        response = await SendCursorDashboardRequestAsync(access, "GetCurrentPeriodUsage", timeout.Token).ConfigureAwait(false);
+                        if (response.StatusCode == HttpStatusCode.Unauthorized)
+                        {
+                            CursorAuthService.SignOut();
+                            return new(null, "ErrorAiUsageSignIn");
+                        }
                     }
                 }
 

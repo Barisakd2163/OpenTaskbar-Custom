@@ -362,6 +362,22 @@ internal static class AiUsageChecks
                 Check(r4.SessionExpired && !CursorAuthService.HasSession,
                     "Cursor RefreshAsync must sign out cleanly on HTTP 401.");
             }
+
+            // Concurrent stale-token RefreshAsync must reuse the rotated session without clearing it.
+            CursorAuthService.SaveTokens("rotated-access", "rotated-refresh");
+            using (var unexpectedCallClient = new HttpClient(new StubHttpHandler(_ => throw new InvalidOperationException("Refresh lock should skip stale token HTTP exchange."))))
+            {
+                var rConcurrent = CursorAuthService.RefreshAsync("stale-refresh", unexpectedCallClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(!rConcurrent.SessionExpired && rConcurrent.AccessToken == "rotated-access"
+                    && rConcurrent.RefreshToken == "rotated-refresh" && CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must short-circuit when another caller already rotated the session.");
+            }
+
+            // Oversized (>64 KB) encrypted token files must fail closed without reading unbounded bytes.
+            Directory.CreateDirectory(Path.GetDirectoryName(tempCursorPath)!);
+            File.WriteAllBytes(tempCursorPath, new byte[(1 << 16) + 16]);
+            Check(CursorAuthService.LoadTokens() == (null, null),
+                "Cursor LoadTokens must ignore oversized token files safely.");
         }
         finally
         {
@@ -667,6 +683,59 @@ internal static class AiUsageChecks
 
             UiText.Current.SetLanguage(AppLanguage.Turkish);
             checks += 7;
+        }
+
+        // Cursor bar + theme layout checks: matches Codex/Claude horizontal bar theme (no ring, hides name, single weekly/monthly row, no hardcoded cyan logo fill)
+        {
+            using var cursorBarWidget = new AiUsageWidget(AiProviders.Cursor, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Plus",
+                [
+                    new("AiUsageWeekly", 0.35, DateTimeOffset.UtcNow.AddDays(3), 604800L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            cursorBarWidget.Activate();
+
+            var cardField = typeof(AiUsageWidget).GetField("_card", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            var cardObj = cardField.GetValue(cursorBarWidget)!;
+            var ringProp = cardObj.GetType().GetProperty("Ring")!;
+            if (ringProp.GetValue(cardObj) is not null)
+                throw new InvalidOperationException("Cursor must use the themed dual-bar card layout instead of a RingMeter.");
+
+            var logoProp = cardObj.GetType().GetProperty("Logo")!;
+            var logoPath = (System.Windows.Shapes.Path)logoProp.GetValue(cardObj)!;
+            if (logoPath.ReadLocalValue(System.Windows.Shapes.Shape.FillProperty) is System.Windows.Media.SolidColorBrush)
+                throw new InvalidOperationException("Cursor logo fill must follow the active theme resource rather than a hardcoded brand brush.");
+
+            var nameProp = cardObj.GetType().GetProperty("Name")!;
+            var nameBlock = (TextBlock)nameProp.GetValue(cardObj)!;
+            if (nameBlock.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("Cursor card must hide its provider name text to match Codex and Claude.");
+
+            var barsObj = cardObj.GetType().GetProperty("Codex")!.GetValue(cardObj)!;
+            var sessionRow = (StackPanel)barsObj.GetType().GetProperty("SessionRow")!.GetValue(barsObj)!;
+            var weeklyRow = (StackPanel)barsObj.GetType().GetProperty("WeeklyRow")!.GetValue(barsObj)!;
+            var weeklyLabel = (TextBlock)barsObj.GetType().GetProperty("WeeklyLabel")!.GetValue(barsObj)!;
+            var weeklyFill = (Border)barsObj.GetType().GetProperty("WeeklyFill")!.GetValue(barsObj)!;
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            cursorBarWidget.Tick(DateTime.Now.AddMinutes(1));
+            if (sessionRow.Visibility != System.Windows.Visibility.Collapsed
+                || weeklyRow.Visibility != System.Windows.Visibility.Visible
+                || weeklyLabel.Text != "7g"
+                || weeklyFill.Width <= 0)
+            {
+                throw new InvalidOperationException("Cursor card must show only its localized weekly/monthly progress bar row.");
+            }
+
+            UiText.Current.SetLanguage(AppLanguage.English);
+            cursorBarWidget.Tick(DateTime.Now.AddMinutes(2));
+            if (weeklyLabel.Text != "7d")
+                throw new InvalidOperationException($"Cursor weekly label must localize in English, got {weeklyLabel.Text}.");
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            checks += 6;
         }
 
         // Antigravity widget checks: dynamic columns with vertical dividers, headers on top, no empty quotas, no name, no ring, no flyout menu

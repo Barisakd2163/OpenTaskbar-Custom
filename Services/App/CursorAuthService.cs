@@ -19,8 +19,11 @@ public static class CursorAuthService
     private const string ClientId = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB";
     private const string ApiBase = "https://api2.cursor.sh";
     private const uint CryptProtectUiForbidden = 0x1;
+    private const int MaxTokenFileBytes = 1 << 16;
+    private static readonly byte[] EntropyBytes = "OpenTaskbar.CursorAuth.v1"u8.ToArray();
 
     private static readonly object Sync = new();
+    private static readonly SemaphoreSlim RefreshLock = new(1, 1);
     private static readonly HttpClient PollClient = CreateClient();
 
     internal static string TokenFilePath { get; set; } = Path.Combine(
@@ -67,6 +70,8 @@ public static class CursorAuthService
             lock (Sync)
             {
                 if (!File.Exists(TokenFilePath)) return (null, null);
+                var length = new FileInfo(TokenFilePath).Length;
+                if (length <= 0 || length > MaxTokenFileBytes) return (null, null);
                 encrypted = File.ReadAllBytes(TokenFilePath);
             }
         }
@@ -76,11 +81,19 @@ public static class CursorAuthService
             return (null, null);
         }
 
-        if (encrypted.Length == 0) return (null, null);
+        if (encrypted.Length is 0 or > MaxTokenFileBytes) return (null, null);
         var plain = UnprotectBytes(encrypted);
         if (plain is null || plain.Length == 0) return (null, null);
 
-        var raw = Encoding.UTF8.GetString(plain);
+        string raw;
+        try
+        {
+            raw = Encoding.UTF8.GetString(plain);
+        }
+        finally
+        {
+            Array.Clear(plain, 0, plain.Length);
+        }
         if (string.IsNullOrWhiteSpace(raw)) return (null, null);
         if (raw.TrimStart().StartsWith('{'))
         {
@@ -109,7 +122,15 @@ public static class CursorAuthService
             obj["refreshToken"] = refreshToken;
 
         var plain = Encoding.UTF8.GetBytes(obj.ToJsonString());
-        var encrypted = ProtectBytes(plain);
+        byte[]? encrypted;
+        try
+        {
+            encrypted = ProtectBytes(plain);
+        }
+        finally
+        {
+            Array.Clear(plain, 0, plain.Length);
+        }
         if (encrypted is null)
             throw new InvalidOperationException("Failed to encrypt Cursor credentials with Windows DPAPI.");
 
@@ -250,49 +271,65 @@ public static class CursorAuthService
         HttpClient client,
         CancellationToken ct)
     {
-        var payload = JsonSerializer.Serialize(new
+        await RefreshLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            grant_type = "refresh_token",
-            client_id = ClientId,
-            refresh_token = refreshToken
-        });
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/oauth/token")
-        {
-            Content = new StringContent(payload, Encoding.UTF8, "application/json")
-        };
+            var (currentAccess, currentRefresh) = LoadTokens();
+            if (!string.IsNullOrWhiteSpace(currentAccess)
+                && !IsExpiringSoon(currentAccess)
+                && !string.Equals(currentRefresh, refreshToken, StringComparison.Ordinal))
+            {
+                return (currentAccess, currentRefresh, false);
+            }
 
-        using var res = await client.SendAsync(req, ct).ConfigureAwait(false);
-        if (res.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-        {
-            SignOut();
-            return (null, null, true);
+            var payload = JsonSerializer.Serialize(new
+            {
+                grant_type = "refresh_token",
+                client_id = ClientId,
+                refresh_token = refreshToken
+            });
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/oauth/token")
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+
+            using var res = await client.SendAsync(req, ct).ConfigureAwait(false);
+            if (res.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                SignOut();
+                return (null, null, true);
+            }
+
+            if (!res.IsSuccessStatusCode)
+                return (null, refreshToken, false);
+
+            var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(body))
+                return (null, refreshToken, false);
+
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return (null, refreshToken, false);
+
+            var shouldLogout = root.TryGetProperty("shouldLogout", out var logoutProp)
+                && logoutProp.ValueKind == JsonValueKind.True;
+            var access = ReadString(root, "access_token");
+            if (shouldLogout || string.IsNullOrEmpty(access))
+            {
+                SignOut();
+                return (null, null, true);
+            }
+
+            var rotatedRefresh = ReadString(root, "refresh_token");
+            var nextRefresh = !string.IsNullOrEmpty(rotatedRefresh) ? rotatedRefresh : refreshToken;
+            SaveTokens(access, nextRefresh);
+            return (access, nextRefresh, false);
         }
-
-        if (!res.IsSuccessStatusCode)
-            return (null, refreshToken, false);
-
-        var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(body))
-            return (null, refreshToken, false);
-
-        using var doc = JsonDocument.Parse(body);
-        var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
-            return (null, refreshToken, false);
-
-        var shouldLogout = root.TryGetProperty("shouldLogout", out var logoutProp)
-            && logoutProp.ValueKind == JsonValueKind.True;
-        var access = ReadString(root, "access_token");
-        if (shouldLogout || string.IsNullOrEmpty(access))
+        finally
         {
-            SignOut();
-            return (null, null, true);
+            RefreshLock.Release();
         }
-
-        var rotatedRefresh = ReadString(root, "refresh_token");
-        var nextRefresh = !string.IsNullOrEmpty(rotatedRefresh) ? rotatedRefresh : refreshToken;
-        SaveTokens(access, nextRefresh);
-        return (access, nextRefresh, false);
     }
 
     private static byte[] DecodeBase64Url(string input)
@@ -332,6 +369,7 @@ public static class CursorAuthService
     {
         if (plainBytes.Length == 0) return [];
         var handle = GCHandle.Alloc(plainBytes, GCHandleType.Pinned);
+        var entropyHandle = GCHandle.Alloc(EntropyBytes, GCHandleType.Pinned);
         var outBlob = default(DATA_BLOB);
         try
         {
@@ -340,7 +378,12 @@ public static class CursorAuthService
                 cbData = plainBytes.Length,
                 pbData = handle.AddrOfPinnedObject()
             };
-            if (!CryptProtectData(ref inBlob, null, 0, 0, 0, CryptProtectUiForbidden, out outBlob)
+            var entropyBlob = new DATA_BLOB
+            {
+                cbData = EntropyBytes.Length,
+                pbData = entropyHandle.AddrOfPinnedObject()
+            };
+            if (!CryptProtectData(ref inBlob, null, ref entropyBlob, 0, 0, CryptProtectUiForbidden, out outBlob)
                 || outBlob.pbData == 0 || outBlob.cbData <= 0)
             {
                 return null;
@@ -352,7 +395,8 @@ public static class CursorAuthService
         }
         finally
         {
-            handle.Free();
+            if (handle.IsAllocated) handle.Free();
+            if (entropyHandle.IsAllocated) entropyHandle.Free();
             if (outBlob.pbData != 0) LocalFree(outBlob.pbData);
         }
     }
@@ -361,6 +405,7 @@ public static class CursorAuthService
     {
         if (protectedBytes.Length == 0) return [];
         var handle = GCHandle.Alloc(protectedBytes, GCHandleType.Pinned);
+        var entropyHandle = GCHandle.Alloc(EntropyBytes, GCHandleType.Pinned);
         var outBlob = default(DATA_BLOB);
         try
         {
@@ -369,8 +414,23 @@ public static class CursorAuthService
                 cbData = protectedBytes.Length,
                 pbData = handle.AddrOfPinnedObject()
             };
-            if (!CryptUnprotectData(ref inBlob, 0, 0, 0, 0, CryptProtectUiForbidden, out outBlob)
-                || outBlob.pbData == 0 || outBlob.cbData <= 0)
+            var entropyBlob = new DATA_BLOB
+            {
+                cbData = EntropyBytes.Length,
+                pbData = entropyHandle.AddrOfPinnedObject()
+            };
+            var ok = CryptUnprotectData(ref inBlob, 0, ref entropyBlob, 0, 0, CryptProtectUiForbidden, out outBlob);
+            if (!ok || outBlob.pbData == 0 || outBlob.cbData <= 0)
+            {
+                if (outBlob.pbData != 0)
+                {
+                    LocalFree(outBlob.pbData);
+                    outBlob = default;
+                }
+                ok = CryptUnprotectData(ref inBlob, 0, 0, 0, 0, CryptProtectUiForbidden, out outBlob);
+            }
+
+            if (!ok || outBlob.pbData == 0 || outBlob.cbData <= 0)
             {
                 return null;
             }
@@ -381,7 +441,8 @@ public static class CursorAuthService
         }
         finally
         {
-            handle.Free();
+            if (handle.IsAllocated) handle.Free();
+            if (entropyHandle.IsAllocated) entropyHandle.Free();
             if (outBlob.pbData != 0) LocalFree(outBlob.pbData);
         }
     }
@@ -398,7 +459,18 @@ public static class CursorAuthService
     private static extern bool CryptProtectData(
         ref DATA_BLOB pDataIn,
         string? szDataDescr,
-        nint pOptionalEntropy,
+        ref DATA_BLOB pOptionalEntropy,
+        nint pvReserved,
+        nint pPromptStruct,
+        uint dwFlags,
+        out DATA_BLOB pDataOut);
+
+    [DllImport("crypt32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CryptUnprotectData(
+        ref DATA_BLOB pDataIn,
+        nint ppszDataDescr,
+        ref DATA_BLOB pOptionalEntropy,
         nint pvReserved,
         nint pPromptStruct,
         uint dwFlags,
