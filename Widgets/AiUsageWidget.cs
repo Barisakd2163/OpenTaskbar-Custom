@@ -148,8 +148,10 @@ public sealed class AiUsageWidget : DockWidget
     private static double CardWidth(AiProviders provider, bool compact) =>
         provider switch
         {
-            AiProviders.Codex or AiProviders.Claude or AiProviders.Cursor =>
+            AiProviders.Codex or AiProviders.Claude =>
                 CardPaddingAndBorder + LogoSize + Gap + 148,
+            AiProviders.Cursor =>
+                CardPaddingAndBorder + LogoSize + Gap + (compact ? 66 : 148),
             AiProviders.Antigravity =>
                 CardPaddingAndBorder + LogoSize + Gap + 236,
             AiProviders.OpenCode =>
@@ -235,7 +237,13 @@ public sealed class AiUsageWidget : DockWidget
 
     protected override void OnSettingsChanged() => Render();
     protected override void OnLanguageChanged() => Refresh();
-    protected override void OnCompactChanged(bool compact) => Render();
+    protected override void OnCompactChanged(bool compact)
+    {
+        Render();
+        RaiseContentWidthChanged();
+    }
+
+    protected override void OnHoverExpandedChanged(bool expanded) => Render();
     // Use the shared hover flyout so every widget has the same hover background.
     public override UIElement? BuildHoverFlyoutContent() => BuildFlyout(_hoverCountdowns);
 
@@ -264,7 +272,8 @@ public sealed class AiUsageWidget : DockWidget
         }
         if (report.Windows.FirstOrDefault(w => w.LabelKey is "AiUsageWeekly" or "AiUsageMonthly")?.ResetsAt is { } wReset)
         {
-            bars.WeeklyReset.Text = When(wReset);
+            if (!(_provider == AiProviders.Cursor && IsCompact && !IsHoverExpanded))
+                bars.WeeklyReset.Text = When(wReset);
         }
     }
 
@@ -750,6 +759,7 @@ public sealed class AiUsageWidget : DockWidget
             // and a dual-window paid plan (5h session + 7d weekly); Cursor always shows only its single long window row.
             var showSession = session is not null || (_provider != AiProviders.Cursor && longWindow is null);
             var showLong = longWindow is not null || session is null;
+var compact = _provider == AiProviders.Cursor && IsCompact && !IsHoverExpanded;
             bars.SessionRow.Visibility = showSession ? Visibility.Visible : Visibility.Collapsed;
             bars.WeeklyRow.Visibility = showLong ? Visibility.Visible : Visibility.Collapsed;
             bars.SessionRow.Margin = showSession && showLong ? new Thickness(0, 0, 0, 2) : new Thickness(0);
@@ -775,10 +785,18 @@ public sealed class AiUsageWidget : DockWidget
             bars.SessionReset.SetResourceReference(TextBlock.ForegroundProperty, foreground);
 
             var wUsed = longWindow?.Used ?? 0;
-            bars.WeeklyFill.Width = Math.Max(0, Math.Min(38, 38 * wUsed));
+            var trackWidth = compact ? 26.0 : 38.0;
+            bars.WeeklyLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            bars.WeeklyTrack.Width = trackWidth;
+            if (bars.WeeklyTrack.Parent is Grid weeklyBar) weeklyBar.Width = trackWidth;
+            bars.WeeklyFill.Width = Math.Max(0, Math.Min(trackWidth, trackWidth * wUsed));
             bars.WeeklyFill.SetResourceReference(Border.BackgroundProperty, longWindow is null ? "TextMuted" : Accent(wUsed, longWindow.Severity));
 
-            if (longWindow?.ResetsAt is { } wReset)
+            if (compact)
+            {
+                bars.WeeklyReset.Text = longWindow is null ? "—" : Percent(wUsed);
+            }
+            else if (longWindow?.ResetsAt is { } wReset)
             {
                 bars.WeeklyReset.Text = When(wReset);
             }
