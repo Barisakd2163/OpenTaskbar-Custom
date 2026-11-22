@@ -3,7 +3,9 @@
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
               xmlns:local="clr-namespace:OpenTaskbar.Services">
+    <!-- Pure info widget: no flyout or click action, so keep the default arrow instead of the card style's Hand. -->
     <Button x:Name="StatsCardButton" Style="{StaticResource WidgetCardButton}" Padding="10,0"
+            Cursor="Arrow"
             AutomationProperties.Name="{local:Loc WidgetSystemStats}">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconCpu}"
