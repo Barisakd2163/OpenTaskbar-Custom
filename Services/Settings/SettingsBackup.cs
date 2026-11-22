@@ -13,12 +13,10 @@ public static class SettingsBackup
 
     public static string? Export(string path, DockSettings settings)
     {
-        var pins = WindowsTaskbarPinImporter.Import().Apps
-            .Select(app => new PinBackup(app.Name, app.ExecutablePath, app.LaunchArguments))
-            .ToList();
+        var json = Serialize(settings);
         try
         {
-            File.WriteAllText(path, JsonSerializer.Serialize(new BackupFile(1, settings, pins), DockSettingsStore.SerializerOptions));
+            File.WriteAllText(path, json);
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -32,14 +30,37 @@ public static class SettingsBackup
     {
         try
         {
-            var backup = JsonSerializer.Deserialize<BackupFile>(File.ReadAllText(path), DockSettingsStore.SerializerOptions);
+            return Parse(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Warning($"Settings import failed: {ex.Message}");
+            return (null, [], "ErrorSettingsFileInvalid");
+        }
+    }
+
+    internal static string Serialize(DockSettings settings, IReadOnlyList<PinBackup>? pinsOverride = null)
+    {
+        var pins = pinsOverride ?? WindowsTaskbarPinImporter.Import().Apps
+            .Select(app => new PinBackup(app.Name, app.ExecutablePath, app.LaunchArguments))
+            .ToList();
+        return JsonSerializer.Serialize(new BackupFile(1, settings, pins), DockSettingsStore.SerializerOptions);
+    }
+
+    internal static (DockSettings? Settings, IReadOnlyList<PinBackup> Pins, string? Error) Parse(string json)
+    {
+        try
+        {
+            var backup = JsonSerializer.Deserialize<BackupFile>(json, DockSettingsStore.SerializerOptions);
             if (backup?.Settings is null) return (null, [], "ErrorSettingsFileInvalid");
-            var settings = DockSettingsStore.MigrateLegacyAiUsage(backup.Settings);
+            var settings = DockSettingsStore.MigrateRemovedWidgets(backup.Settings);
+            settings = DockSettingsStore.MigrateLegacyAiUsage(settings);
+            settings = DockProfileService.EnsureDefaultProfile(settings);
             if (!DockSettingsStore.Validate(settings)) return (null, [], "ErrorSettingsFileInvalid");
             var pins = (backup.Pins ?? []).Where(pin => !string.IsNullOrWhiteSpace(pin.ExecutablePath)).ToList();
             return (settings, pins, null);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             AppLog.Warning($"Settings import failed: {ex.Message}");
             return (null, [], "ErrorSettingsFileInvalid");

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added combined `.otbackup` archives for exporting and importing settings, pinned apps, and the active custom theme, with backup validation and optional theme restoration.
 - Added full dock profiles for switching, creating, renaming, and deleting profiles, with widgets, order, width, theme, hotkeys, and auto-hide saved per profile.
 - Settings UI consistency pass: unified input metrics (34 DIP controls, one border/radius vocabulary), removed per-row padding overrides, replaced the auto-hide radio list and the side-by-side backup/theme-pack button rows with dropdowns, and gave the sidebar a deliberate header/nav hierarchy. Scrollbars are now thin rounded pills. Widget catalog hover paints only the outer card surface (inner preview no longer changes color or carries top corner radii).
 

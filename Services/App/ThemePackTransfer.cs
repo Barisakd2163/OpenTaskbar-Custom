@@ -12,9 +12,9 @@ namespace OpenTaskbar.Services;
 internal static class ThemePackTransfer
 {
     internal const string ExportExtension = ".ottheme";
-    private const int MaxFileCount = 512;
-    private const long MaxUncompressedBytes = 64L * 1024 * 1024;
-    private const long MaxFileBytes = 16L * 1024 * 1024;
+    internal const int MaxFileCount = 512;
+    internal const long MaxUncompressedBytes = 64L * 1024 * 1024;
+    internal const long MaxFileBytes = 16L * 1024 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -225,7 +225,7 @@ internal static class ThemePackTransfer
             if (total > MaxUncompressedBytes || entry.Length > MaxFileBytes) throw new InvalidDataException("Theme is too large.");
 
             var extension = Path.GetExtension(entry.Name);
-            if (!AllowedExtensions.Contains(extension)) throw new InvalidDataException($"File type '{extension}' is not allowed.");
+            if (!IsAllowedExtension(extension)) throw new InvalidDataException($"File type '{extension}' is not allowed.");
 
             var relative = entry.FullName.Replace('\\', '/');
             if (Path.IsPathRooted(relative) || relative.Split('/').Any(part => part is ".." or "."))
@@ -240,7 +240,9 @@ internal static class ThemePackTransfer
         }
     }
 
-    private static string UniqueId(string root, string? name)
+    internal static bool IsAllowedExtension(string extension) => AllowedExtensions.Contains(extension);
+
+    internal static string UniqueId(string root, string? name)
     {
         var baseName = Sanitize(name) ?? "theme";
         var id = baseName;
@@ -257,14 +259,14 @@ internal static class ThemePackTransfer
         return string.IsNullOrEmpty(cleaned) ? null : cleaned;
     }
 
-    private static bool IsSafeId(string id) =>
+    internal static bool IsSafeId(string id) =>
         !string.IsNullOrWhiteSpace(id)
         && id.Length <= 120
         && id.All(c => char.IsLetterOrDigit(c) || c is '-' or '_')
         && !Path.IsPathRooted(id)
         && !id.Contains("..", StringComparison.Ordinal);
 
-    private static void CopyDirectory(string source, string destination)
+    internal static void CopyDirectory(string source, string destination)
     {
         foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
         {
