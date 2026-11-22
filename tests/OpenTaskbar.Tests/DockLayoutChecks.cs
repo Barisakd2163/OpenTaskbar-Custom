@@ -311,6 +311,17 @@ internal static class DockLayoutChecks
                 Layout();
                 Check(viewer.HorizontalOffset == 0, "Backward scrolling must stop at the content start.");
 
+                // A deferred resize after scrolling must be able to reset the strip without leaving
+                // an in-flight smooth-scroll target that would pull it back to the old offset.
+                viewer.ScrollToHorizontalOffset(cellWidth);
+                Layout();
+                viewer.ScrollToHorizontalOffset(cellWidth);
+                Layout();
+                viewer.ResetHorizontalScroll();
+                Layout();
+                Check(viewer.HorizontalOffset == 0,
+                    "ResetHorizontalScroll must return a scrolled strip to the start.");
+
                 // External edge overlays (mounted in DockSurface beside the resize thumbs) must take over
                 // indicator visibility and stay bounded inside the shelf border without HoverHeadroom offset.
                 var extPrev = new Button { Style = (Style)app.FindResource("DockScrollIndicatorButton") };
