@@ -1062,7 +1062,7 @@ public partial class MainWindow : Window
 
     private void DockSurface_MouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
     {
-        if (e.Handled || !_preferences.Current.WheelVolume) return;
+        if (e.Handled || !_preferences.Current.WheelVolumeEnabled) return;
         e.Handled = true;
         try
         {

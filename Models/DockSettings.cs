@@ -159,7 +159,9 @@ public sealed record DockSettings(
     StartButtonAction StartAction = StartButtonAction.WindowsStart,
     StartButtonPlacement StartPlacement = StartButtonPlacement.Start,
     int StartWidgetIndex = 0,
-    bool WheelVolume = true,
+    // Wheel-driven volume is off by default. Renamed from WheelVolume so legacy settings.json files
+    // carrying "WheelVolume": true are ignored and existing users get the new off default too.
+    bool WheelVolumeEnabled = false,
     bool CheckUpdates = true,
     bool ShowWeather = false,
     string WeatherCity = "",

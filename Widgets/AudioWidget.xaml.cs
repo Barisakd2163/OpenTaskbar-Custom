@@ -802,11 +802,4 @@ public partial class AudioWidget : DockWidget
         _flyout.Toggle(ComboButton, BuildFlyoutContent, animate: true, focusable: false);
     }
 
-    private void Card_MouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (_monitor?.HasDevice != true) return;
-        if (_monitor.SetVolume(Math.Clamp(_monitor.Volume + Math.Sign(e.Delta) * 0.02f, 0f, 1f))) Render();
-        else Report(UiText.Get("ErrorVolumeChange"));
-        e.Handled = true;
-    }
 }

@@ -4,7 +4,7 @@
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
               xmlns:local="clr-namespace:OpenTaskbar.Services">
     <Button x:Name="ComboButton" Style="{StaticResource WidgetCardButton}" Padding="10,0"
-            Click="ComboButton_Click" MouseWheel="Card_MouseWheel"
+            Click="ComboButton_Click"
             AutomationProperties.Name="{local:Loc WidgetAudio}">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <ContentControl x:Name="OutputIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconVolume}"

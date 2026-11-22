@@ -517,7 +517,7 @@ public partial class SettingsWindow : Window
             StartPlacement = Enum.TryParse<StartButtonPlacement>(Choice(StartPlacementBox), out var placement)
                 ? placement : _preferences.Current.StartPlacement,
             StartWidgetIndex = _preferences.Current.StartWidgetIndex,
-            WheelVolume = WheelVolumeToggle.IsChecked == true,
+            WheelVolumeEnabled = WheelVolumeToggle.IsChecked == true,
             Clock24Hour = Choice(ClockFormatBox) != "12",
             ClockShowSeconds = ClockSecondsToggle.IsChecked == true,
             DateStyle = Enum.TryParse<ClockDateStyle>(Choice(DateStyleBox), out var dateStyle) ? dateStyle : ClockDateStyle.DayAndShortDate,
@@ -1464,7 +1464,7 @@ public partial class SettingsWindow : Window
         _launcherCustomHotkey = settings.CustomLauncherHotkey;
         UpdateHotkeyControls();
         SelectChoice(StartPlacementBox, settings.StartPlacement.ToString());
-        WheelVolumeToggle.IsChecked = settings.WheelVolume;
+        WheelVolumeToggle.IsChecked = settings.WheelVolumeEnabled;
         _ = InitializeWeatherLocationsAsync(settings.WeatherCity);
     }
 
