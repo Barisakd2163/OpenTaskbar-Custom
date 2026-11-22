@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -600,8 +601,14 @@ public partial class MainWindow : Window
     {
         if (_taskbarCreatedMessage != 0 && unchecked((uint)message) == _taskbarCreatedMessage)
         {
-            // Our own tray host broadcasts TaskbarCreated to collect icons; only an Explorer restart needs handling.
-            if (!TrayHost.IsBroadcasting) _replacementSession?.HandleTaskbarCreated();
+            // The tray host broadcasts TaskbarCreated to collect icons. The message also reaches us, but
+            // it is tagged with a correlation sequence in lParam — distinguishing our own ping by a
+            // transient bool was racy (SendNotifyMessage is async and the flag was cleared immediately).
+            var isOwn = unchecked((nuint)wParam.ToInt64()) == TrayHost.SelfBroadcastWParam
+                && TrayHost.IsOwnBroadcast(lParam);
+            ShellTelemetry.Event("TaskbarCreated",
+                ("wParam", wParam.ToInt64()), ("seq", lParam.ToInt64()), ("own", isOwn));
+            if (!isOwn) _replacementSession?.HandleTaskbarCreated();
             handled = true;
             return IntPtr.Zero;
         }
@@ -1375,10 +1382,40 @@ public partial class MainWindow : Window
         }
 
         var appIcon = hoveredButton.DataContext is DockApp app ? app.Icon : null;
+        BuildThumbnailOverrides(executablePath, matchingWindows, out var iconOverrides, out var labelOverrides);
         _thumbnailPreview.ExtraGapDips = _preferences.Current.MagnificationEnabled
             ? DockFisheyeLayout.ComputePreviewClearance(Profile.Icon, CurrentMagnificationMaxScale)
             : 0;
-        _thumbnailPreview.ShowForWindows(matchingWindows, hoveredButton, appIcon);
+        _thumbnailPreview.ShowForWindows(matchingWindows, hoveredButton, appIcon,
+            iconOverrides: iconOverrides, labelOverrides: labelOverrides);
+    }
+
+    /// <summary>
+    /// Gives each Explorer thumbnail its own icon/label. Without this every card in a group reuses the hovered
+    /// dock button's icon, so a Recycle Bin window and a normal folder window look identical (#124).
+    /// </summary>
+    private static void BuildThumbnailOverrides(string executablePath, IReadOnlyList<TrackedWindow> windows,
+        out IReadOnlyDictionary<nint, BitmapSource>? iconOverrides, out IReadOnlyDictionary<nint, string>? labelOverrides)
+    {
+        iconOverrides = null;
+        labelOverrides = null;
+        if (windows.Count < 2 || !string.Equals(Path.GetFileName(executablePath), "explorer.exe", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var recycleName = ShellShortcuts.GetRecycleBinDisplayName();
+        if (string.IsNullOrWhiteSpace(recycleName)) return;
+
+        var recycleIcon = RecycleBin.FullIcon ?? RecycleBin.EmptyIcon;
+        var icons = new Dictionary<nint, BitmapSource>();
+        var labels = new Dictionary<nint, string>();
+        foreach (var window in windows)
+        {
+            if (window.Title.IndexOf(recycleName, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            if (recycleIcon is not null) icons[window.Handle] = recycleIcon;
+            labels[window.Handle] = recycleName;
+        }
+        if (icons.Count > 0) iconOverrides = icons;
+        if (labels.Count > 0) labelOverrides = labels;
     }
 
     private void DockApp_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)

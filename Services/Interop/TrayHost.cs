@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Input;
 using ManagedShell.Interop;
 using ManagedShell.WindowsTray;
@@ -37,10 +38,24 @@ internal sealed class TrayHost : IDisposable
     public static TrayHost? Current { get; private set; }
 
     /// <summary>
-    /// True while this process broadcasts <c>TaskbarCreated</c> itself (on start and shutdown). The broadcast also
-    /// reaches the dock window synchronously; it must not be mistaken for an Explorer restart.
+    /// True while this process broadcasts <c>TaskbarCreated</c> itself (on start and shutdown). Kept for
+    /// diagnostics; the dock now distinguishes its own broadcast by the correlation sequence in lParam.
     /// </summary>
     public static bool IsBroadcasting { get; private set; }
+
+    /// <summary>wParam marker: broadcast originated from this process (must not trigger Explorer-restart handling).</summary>
+    public static readonly nuint SelfBroadcastWParam = 1;
+    /// <summary>wParam marker: broadcast came from the watchdog/--restore path (must be handled).</summary>
+    public static readonly nuint RestoreBroadcastWParam = 2;
+
+    private static long _lastSelfBroadcastSequence;
+
+    /// <summary>True when the message carries the sequence of our most recent self-broadcast.</summary>
+    public static bool IsOwnBroadcast(IntPtr lParam)
+    {
+        var sequence = lParam.ToInt64();
+        return sequence != 0 && sequence == Interlocked.Read(ref _lastSelfBroadcastSequence);
+    }
 
     public bool IsRunning => _area is { IsFailed: false };
 
@@ -225,10 +240,23 @@ internal sealed class TrayHost : IDisposable
     /// Asks every running app to register its tray icons again with whichever <c>Shell_TrayWnd</c> is current.
     /// Used after an unclean exit, when icons were left registered with this process's destroyed tray window.
     /// </summary>
-    public static void BroadcastTaskbarCreated()
+    public static void BroadcastTaskbarCreated(string source = "self")
     {
         var message = RegisterWindowMessage("TaskbarCreated");
-        if (message != 0) SendNotifyMessage(new nint(0xFFFF), message, 0, 0);
+        if (message == 0)
+        {
+            ShellTelemetry.Result("TaskbarBroadcast", source, success: false, verified: false, ("reason", "RegisterWindowMessage failed"));
+            return;
+        }
+
+        var sequence = ShellTelemetry.NextSequence();
+        var isSelf = string.Equals(source, "self", StringComparison.OrdinalIgnoreCase);
+        if (isSelf) Interlocked.Exchange(ref _lastSelfBroadcastSequence, sequence);
+        var wParam = isSelf ? SelfBroadcastWParam : RestoreBroadcastWParam;
+        ShellTelemetry.Event("TaskbarBroadcast", ("source", source), ("seq", sequence));
+        // lParam carries the correlation sequence; other apps ignore it. SendNotifyMessage is asymmetric
+        // (fire-and-forget) because Explorer must not be able to block our shutdown path.
+        SendNotifyMessage(new nint(0xFFFF), message, wParam, new nint(sequence));
     }
 
     [StructLayout(LayoutKind.Sequential)]

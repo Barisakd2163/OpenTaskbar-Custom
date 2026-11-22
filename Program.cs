@@ -11,6 +11,10 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Watchdog and --restore paths log before App.OnStartup; initialize first so their
+        // diagnostics are not silently dropped (shell recovery was previously invisible in log.txt).
+        AppLog.Initialize();
+
         // Must be set before App or any WPF visual tree initializes. Hardware rendering is the default;
         // --software-render and the persisted preference trade frame rate for ~100 MB less private memory.
         if (args.Contains("--software-render", StringComparer.OrdinalIgnoreCase) || RenderModePreference.IsSoftware())

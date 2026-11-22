@@ -27,6 +27,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Idempotent: Program.Main already initialized it for the watchdog/--restore paths.
+        AppLog.Initialize();
+
         if (TaskbarRecoveryWatchdog.IsWatchdogInvocation(e.Args))
         {
             TaskbarRecoveryWatchdog.Run(e.Args);
@@ -39,7 +42,7 @@ public partial class App : Application
             var restoreError = TaskbarReplacementSession.ForceRestoreNativeTaskbar();
             if (restoreError is not null) AppLog.Error(restoreError);
             // A crashed tray host leaves icons registered with its destroyed window; ask apps to re-add them to Explorer.
-            OpenTaskbar.Services.TrayHost.BroadcastTaskbarCreated();
+            OpenTaskbar.Services.TrayHost.BroadcastTaskbarCreated("restore");
             Shutdown(restoreError is null ? 0 : 1);
             return;
         }

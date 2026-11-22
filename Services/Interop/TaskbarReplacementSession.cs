@@ -250,7 +250,8 @@ public sealed class TaskbarReplacementSession : IDisposable
         // The managed recovery paths (--restore, startup heal, fallback watchdog) have no in-memory registry.
         ShellShortcuts.RestoreFlyoutPositionsFromJournal();
         // A killed tray host leaves icons registered with its destroyed window; ask apps to re-add them.
-        TrayHost.BroadcastTaskbarCreated();
+        // Tagged as a restore broadcast so the live dock does not mistake it for its own icon-collection ping.
+        TrayHost.BroadcastTaskbarCreated("restore");
         return DeleteJournal();
     }
 
