@@ -266,7 +266,7 @@ public static class ThemePacks
         MetricOriginals.Clear();
     }
 
-    private static ResourceDictionary? FindOwner(ResourceDictionary dictionary, string key)
+    internal static ResourceDictionary? FindOwner(ResourceDictionary dictionary, string key)
     {
         for (var i = dictionary.MergedDictionaries.Count - 1; i >= 0; i--)
         {

@@ -1090,7 +1090,22 @@ internal static class FeatureAndMemoryChecks
         const string sourceThemeId = "midnight-source";
         PinBackup[] pins = [new PinBackup("App", @"C:\App\app.exe", null)];
         var settings = new DockSettings(Theme: AppTheme.Dark, DockOpacity: 0.75, Widgets: ["Clock"], InstalledWidgets: ["Clock"],
-            ThemePack: sourceThemeId, Profiles: [new DockProfile("Backup", [])], ActiveProfile: "Backup");
+            ThemePack: sourceThemeId,
+            Profiles: [
+                new DockProfile("Backup", [], ThemePack: sourceThemeId),
+                new DockProfile("Work", [], ThemePack: sourceThemeId.ToUpperInvariant()),
+                new DockProfile("NordProfile", [], ThemePack: "nord")
+            ],
+            ActiveProfile: "Backup");
+        DockSettings WithRemappedTheme(string? newThemeId) => settings with
+        {
+            ThemePack = newThemeId,
+            Profiles = [
+                new DockProfile("Backup", [], ThemePack: newThemeId),
+                new DockProfile("Work", [], ThemePack: newThemeId),
+                new DockProfile("NordProfile", [], ThemePack: "nord")
+            ]
+        };
         var tempPath = Path.GetTempPath();
         var stagingBefore = Directory.EnumerateDirectories(tempPath, "OpenTaskbar-backup-*")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1125,7 +1140,7 @@ internal static class FeatureAndMemoryChecks
             CheckStagingCleanup("Importing the custom-theme backup");
             Check(importError is null && !string.IsNullOrWhiteSpace(importedThemeId) && imported?.ThemePack == importedThemeId,
                 "Importing the custom-theme backup must activate the installed theme ID.");
-            CheckPayload(imported, importedPins, settings with { ThemePack = importedThemeId }, "Importing the custom-theme backup");
+            CheckPayload(imported, importedPins, WithRemappedTheme(importedThemeId), "Importing the custom-theme backup");
             var installedThemeDir = Path.Combine(targetThemesRoot, importedThemeId!);
             CheckThemeFiles(installedThemeDir, iconBytes);
 
@@ -1136,7 +1151,7 @@ internal static class FeatureAndMemoryChecks
             CheckStagingCleanup("Reimporting the custom-theme backup");
             Check(duplicateError is null && duplicateId == importedThemeId + "-2" && reimported?.ThemePack == duplicateId,
                 "Reimporting the custom-theme backup must activate a unique theme ID ending in -2.");
-            CheckPayload(reimported, reimportedPins, settings with { ThemePack = duplicateId }, "Reimporting the custom-theme backup");
+            CheckPayload(reimported, reimportedPins, WithRemappedTheme(duplicateId), "Reimporting the custom-theme backup");
             CheckThemeFiles(Path.Combine(targetThemesRoot, duplicateId!), iconBytes);
             CheckThemeFiles(installedThemeDir, editedIcon);
 
