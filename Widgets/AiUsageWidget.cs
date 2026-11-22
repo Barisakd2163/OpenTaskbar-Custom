@@ -541,7 +541,7 @@ public sealed class AiUsageWidget : DockWidget
         if (UsesDualQuota(_provider))
         {
             label.Visibility = Visibility.Collapsed;
-            var sessionLabel = Text(UiText.Get("AiUsageSessionShort"), 9.5, "TextSecondary");
+            var sessionLabel = Text(UiText.Get("AiUsageSessionShort"), 9.5, "TextSecondary", lineHeight: 12);
             sessionLabel.FontWeight = FontWeights.SemiBold;
             sessionLabel.Width = 18;
             sessionLabel.VerticalAlignment = VerticalAlignment.Center;
@@ -558,16 +558,16 @@ public sealed class AiUsageWidget : DockWidget
             sessionBar.Children.Add(sessionTrack);
             sessionBar.Children.Add(sessionFill);
 
-            var sessionReset = Text("—", 9, "TextPrimary");
+            var sessionReset = Text("—", 9, "TextPrimary", lineHeight: 12);
             sessionReset.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(sessionReset, FontNumeralAlignment.Tabular);
 
-            var sessionRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
+            var sessionRow = new StackPanel { Orientation = Orientation.Horizontal, Height = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
             sessionRow.Children.Add(sessionLabel);
             sessionRow.Children.Add(sessionBar);
             sessionRow.Children.Add(sessionReset);
 
-            var weeklyLabel = Text(UiText.Get("AiUsageWeeklyShort"), 9.5, "TextSecondary");
+            var weeklyLabel = Text(UiText.Get("AiUsageWeeklyShort"), 9.5, "TextSecondary", lineHeight: 12);
             weeklyLabel.FontWeight = FontWeights.SemiBold;
             weeklyLabel.Width = 22;
             weeklyLabel.VerticalAlignment = VerticalAlignment.Center;
@@ -584,11 +584,11 @@ public sealed class AiUsageWidget : DockWidget
             weeklyBar.Children.Add(weeklyTrack);
             weeklyBar.Children.Add(weeklyFill);
 
-            var weeklyReset = Text("—", 9, "TextPrimary");
+            var weeklyReset = Text("—", 9, "TextPrimary", lineHeight: 12);
             weeklyReset.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(weeklyReset, FontNumeralAlignment.Tabular);
 
-            var weeklyRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var weeklyRow = new StackPanel { Orientation = Orientation.Horizontal, Height = 12, VerticalAlignment = VerticalAlignment.Center };
             weeklyRow.Children.Add(weeklyLabel);
             weeklyRow.Children.Add(weeklyBar);
             weeklyRow.Children.Add(weeklyReset);
@@ -631,7 +631,7 @@ public sealed class AiUsageWidget : DockWidget
             sep.Height = 20;
             sep.Margin = new Thickness(2, 0, 8, 0);
 
-            var valText = Text("—", 12, "TextPrimary");
+            var valText = Text("—", 12, "TextPrimary", lineHeight: 14);
             valText.FontWeight = FontWeights.SemiBold;
             Typography.SetNumeralAlignment(valText, FontNumeralAlignment.Tabular);
 
@@ -641,7 +641,7 @@ public sealed class AiUsageWidget : DockWidget
                 AiProviders.OpenRouter => "AiUsageCreditsLabel",
                 _ => "AiUsageMonthly"
             };
-            var metaText = Text(UiText.Get(metaKey), 9.5, "TextSecondary");
+            var metaText = Text(UiText.Get(metaKey), 9.5, "TextSecondary", lineHeight: 11);
             var valStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { valText, metaText } };
 
             Border? miniTrack = null;
@@ -673,22 +673,22 @@ public sealed class AiUsageWidget : DockWidget
     private static (StackPanel Column, TextBlock Label, TextBlock Percent, Border Fill, TextBlock Reset) CreateInlineQuotaColumn(string shortLabel)
     {
         var head = new DockPanel();
-        var pct = Text("—", 10.5, "TextPrimary");
+        var pct = Text("—", 10.5, "TextPrimary", lineHeight: 12);
         pct.FontWeight = FontWeights.SemiBold;
         Typography.SetNumeralAlignment(pct, FontNumeralAlignment.Tabular);
         DockPanel.SetDock(pct, Dock.Right);
         head.Children.Add(pct);
 
-        var lbl = Text(shortLabel, 9.5, "TextSecondary");
+        var lbl = Text(shortLabel, 9.5, "TextSecondary", lineHeight: 12);
         head.Children.Add(lbl);
 
-        var track = new Border { Width = 54, Height = 3, CornerRadius = new CornerRadius(1.5), Margin = new Thickness(0, 2, 0, 1) };
+        var track = new Border { Width = 54, Height = 3, CornerRadius = new CornerRadius(1.5), Margin = new Thickness(0, 1.5, 0, 1) };
         track.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
         var fill = new Border { Height = 3, CornerRadius = new CornerRadius(1.5), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
         fill.SetResourceReference(Border.BackgroundProperty, "WidgetGreen");
         track.Child = fill;
 
-        var reset = Text("—", 8.5, "TextSecondary");
+        var reset = Text("—", 8.5, "TextSecondary", lineHeight: 10);
         Typography.SetNumeralAlignment(reset, FontNumeralAlignment.Tabular);
 
         var col = new StackPanel { Width = 54, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -1142,10 +1142,9 @@ public sealed class AiUsageWidget : DockWidget
             slots.Add(wSlot);
         }
 
-        var header = Text(label, 9.5, foreground);
+        var header = Text(label, 9, foreground, new Thickness(0, 0, 0, 1), lineHeight: 10);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
-        header.Margin = new Thickness(0, 0, 0, 1.5);
         Typography.SetNumeralAlignment(header, FontNumeralAlignment.Tabular);
 
         var colPanel = new StackPanel
@@ -1162,7 +1161,7 @@ public sealed class AiUsageWidget : DockWidget
     private (StackPanel Row, AntigravityQuotaSlot Slot) CreateAntigravityBarRow(
         string label, AiUsageWindow? window, bool isWeekly, string foreground, string secondary, bool hasBottomMargin, bool compact)
     {
-        var lbl = Text(label, 9, secondary);
+        var lbl = Text(label, 8.5, secondary, lineHeight: 10);
         lbl.FontWeight = FontWeights.SemiBold;
         lbl.Width = 16;
         lbl.VerticalAlignment = VerticalAlignment.Center;
@@ -1172,8 +1171,8 @@ public sealed class AiUsageWidget : DockWidget
         var track = new Border
         {
             Width = barWidth,
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
+            Height = 3.5,
+            CornerRadius = new CornerRadius(1.75),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
             Opacity = 0.35
@@ -1183,8 +1182,8 @@ public sealed class AiUsageWidget : DockWidget
         var used = window?.Used ?? 0;
         var fill = new Border
         {
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
+            Height = 3.5,
+            CornerRadius = new CornerRadius(1.75),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
             Width = Math.Max(0, Math.Min(barWidth, barWidth * used))
@@ -1194,7 +1193,7 @@ public sealed class AiUsageWidget : DockWidget
         var bar = new Grid
         {
             Width = barWidth,
-            Height = 6,
+            Height = 5,
             Margin = new Thickness(2, 0, 4, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -1218,15 +1217,16 @@ public sealed class AiUsageWidget : DockWidget
             resetStr = "—";
         }
 
-        var resetText = Text(resetStr, 8.5, foreground);
+        var resetText = Text(resetStr, 8.5, foreground, lineHeight: 10);
         resetText.VerticalAlignment = VerticalAlignment.Center;
         Typography.SetNumeralAlignment(resetText, FontNumeralAlignment.Tabular);
 
         var row = new StackPanel
         {
             Orientation = Orientation.Horizontal,
+            Height = 10,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, hasBottomMargin ? 1.5 : 0)
+            Margin = new Thickness(0, 0, 0, hasBottomMargin ? 1 : 0)
         };
         row.Children.Add(lbl);
         row.Children.Add(bar);
@@ -1289,10 +1289,9 @@ public sealed class AiUsageWidget : DockWidget
             slots.Add(slot);
         }
 
-        var header = Text(AntigravityGroupHeader(group), 9.5, foreground);
+        var header = Text(AntigravityGroupHeader(group), 9, foreground, new Thickness(0, 0, 0, 1), lineHeight: 10);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
-        header.Margin = new Thickness(0, 0, 0, 1.5);
         Typography.SetNumeralAlignment(header, FontNumeralAlignment.Tabular);
 
         var colPanel = new StackPanel
@@ -1317,10 +1316,9 @@ public sealed class AiUsageWidget : DockWidget
         };
 
         var label = AntigravityPoolHeader(window.LabelKey);
-        var header = Text(label, 9.5, foreground);
+        var header = Text(label, 9, foreground, new Thickness(0, 0, 0, 1), lineHeight: 10);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
-        header.Margin = new Thickness(0, 0, 0, 1.5);
         Typography.SetNumeralAlignment(header, FontNumeralAlignment.Tabular);
         colPanel.Children.Add(header);
 
@@ -1328,8 +1326,8 @@ public sealed class AiUsageWidget : DockWidget
         var track = new Border
         {
             Width = barWidth,
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
+            Height = 3.5,
+            CornerRadius = new CornerRadius(1.75),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
             Opacity = 0.35
@@ -1339,8 +1337,8 @@ public sealed class AiUsageWidget : DockWidget
         var used = window.Used;
         var fill = new Border
         {
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
+            Height = 3.5,
+            CornerRadius = new CornerRadius(1.75),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
             Width = Math.Max(0, Math.Min(barWidth, barWidth * used))
@@ -1350,7 +1348,7 @@ public sealed class AiUsageWidget : DockWidget
         var bar = new Grid
         {
             Width = barWidth,
-            Height = 6,
+            Height = 5,
             Margin = new Thickness(0, 0, 4, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -1375,13 +1373,14 @@ public sealed class AiUsageWidget : DockWidget
             resetStr = "—";
         }
 
-        var resetText = Text(resetStr, 8.5, foreground);
+        var resetText = Text(resetStr, 8.5, foreground, lineHeight: 10);
         resetText.VerticalAlignment = VerticalAlignment.Center;
         Typography.SetNumeralAlignment(resetText, FontNumeralAlignment.Tabular);
 
         var row = new StackPanel
         {
             Orientation = Orientation.Horizontal,
+            Height = 10,
             VerticalAlignment = VerticalAlignment.Center
         };
         row.Children.Add(bar);
@@ -1613,9 +1612,14 @@ public sealed class AiUsageWidget : DockWidget
         return divider;
     }
 
-    private static TextBlock Text(string text, double size, string brush, Thickness margin = default)
+    private static TextBlock Text(string text, double size, string brush, Thickness margin = default, double? lineHeight = null)
     {
         var block = new TextBlock { Text = text, FontSize = size, Margin = margin, VerticalAlignment = VerticalAlignment.Center };
+        if (lineHeight is { } lh)
+        {
+            block.LineHeight = lh;
+            block.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+        }
         block.SetResourceReference(TextBlock.ForegroundProperty, brush);
         return block;
     }

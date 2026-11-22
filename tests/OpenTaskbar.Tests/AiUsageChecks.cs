@@ -412,10 +412,13 @@ internal static class AiUsageChecks
         {
             try { checks += EmptyRenderChecks(); }
             catch (Exception ex) { renderFailure = ex; }
+            finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         thread.Join();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
         if (renderFailure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(renderFailure).Throw();
         return checks;
     }
@@ -480,6 +483,8 @@ internal static class AiUsageChecks
             var sessionLabel = (TextBlock)sessionLabelProp.GetValue(codexBars)!;
             var weeklyLabelProp = codexBars.GetType().GetProperty("WeeklyLabel")!;
             var weeklyLabel = (TextBlock)weeklyLabelProp.GetValue(codexBars)!;
+            var sessionRowProp = codexBars.GetType().GetProperty("SessionRow")!;
+            var dualSessionRow = (StackPanel)sessionRowProp.GetValue(codexBars)!;
             var sessionResetProp = codexBars.GetType().GetProperty("SessionReset")!;
             var sessionReset = (TextBlock)sessionResetProp.GetValue(codexBars)!;
             var weeklyResetProp = codexBars.GetType().GetProperty("WeeklyReset")!;
@@ -497,6 +502,11 @@ internal static class AiUsageChecks
             if (sessionFill.Width <= 0 || weeklyFill.Width <= 0)
                 throw new InvalidOperationException($"{dualProvider} progress bars must reflect loaded quota.");
 
+            var dualBarsPanel = (StackPanel)dualSessionRow.Parent;
+            dualBarsPanel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (dualBarsPanel.DesiredSize.Height <= 0 || dualBarsPanel.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"{dualProvider} DualQuotaBars StackPanel height must fit inside 34 DIP card (<= 33), got {dualBarsPanel.DesiredSize.Height:F2}.");
+
             // English test
             UiText.Current.SetLanguage(AppLanguage.English);
             dualWidget.Tick(DateTime.Now.AddMinutes(2));
@@ -510,7 +520,7 @@ internal static class AiUsageChecks
                 throw new InvalidOperationException($"{dualProvider} card must hide its provider name text.");
 
             UiText.Current.SetLanguage(AppLanguage.Turkish);
-            checks += 7;
+            checks += 8;
         }
 
         // Antigravity widget checks: dynamic columns with vertical dividers, headers on top, no empty quotas, no name, no ring, no flyout menu
@@ -566,6 +576,18 @@ internal static class AiUsageChecks
         var col1Panel = (StackPanel)col1ElemProp.GetValue(col1)!;
         if (col1Panel.Orientation != Orientation.Vertical || ((TextBlock)col1Panel.Children[0]).Text != "Gemini")
             throw new InvalidOperationException("Gemini column must be vertical StackPanel with 'Gemini' header on top.");
+        if (col1Panel.VerticalAlignment != System.Windows.VerticalAlignment.Center || container.VerticalAlignment != System.Windows.VerticalAlignment.Center)
+            throw new InvalidOperationException("Antigravity column and container must be vertically centered.");
+        var agyButton = (Button)agyCardObj.GetType().GetProperty("Button")!.GetValue(agyCardObj)!;
+        var agyRow = (StackPanel)agyButton.Content;
+        if (agyRow.VerticalAlignment != System.Windows.VerticalAlignment.Center)
+            throw new InvalidOperationException("Antigravity card row must be vertically centered.");
+        col1Panel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (col1Panel.DesiredSize.Height <= 0 || col1Panel.DesiredSize.Height > 33)
+            throw new InvalidOperationException($"Antigravity Full Gemini column (header + 5s + 7g) must measure <= 33 DIP to avoid vertical clipping in 34 DIP cards, got {col1Panel.DesiredSize.Height:F2}.");
+        agyRow.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (agyRow.DesiredSize.Height <= 0 || agyRow.DesiredSize.Height > 33)
+            throw new InvalidOperationException($"Antigravity Full card row must measure <= 33 DIP, got {agyRow.DesiredSize.Height:F2}.");
 
         // Column 2 (Claude) has only 1 slot (weekly only, no missing 5h slot) and header "Claude" on top
         var col2 = columnsList[1]!;
@@ -577,6 +599,18 @@ internal static class AiUsageChecks
         var col2Panel = (StackPanel)col2ElemProp.GetValue(col2)!;
         if (col2Panel.Orientation != Orientation.Vertical || ((TextBlock)col2Panel.Children[0]).Text != "Claude")
             throw new InvalidOperationException("Claude column must be vertical StackPanel with 'Claude' header on top.");
+
+        // Placeholder Antigravity widget (no report yet) must also measure <= 33 DIP for 2-row Gemini column
+        using (var agyPlaceholderWidget = new AiUsageWidget(AiProviders.Antigravity, loaders[0]))
+        {
+            var phCardObj = agyCardField.GetValue(agyPlaceholderWidget)!;
+            var phCard = agyProp.GetValue(phCardObj)!;
+            var phCols = (System.Collections.IList)columnsProp.GetValue(phCard)!;
+            var phGeminiCol = (StackPanel)col1ElemProp.GetValue(phCols[0]!)!;
+            phGeminiCol.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (phGeminiCol.DesiredSize.Height <= 0 || phGeminiCol.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Full Gemini placeholder column must measure <= 33 DIP, got {phGeminiCol.DesiredSize.Height:F2}.");
+        }
 
         // Now test 3 pools format
         using var agyPoolWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
@@ -596,8 +630,13 @@ internal static class AiUsageChecks
         // 3 pools separated by 2 dividers = 5 children
         if (poolContainer.Children.Count != 5)
             throw new InvalidOperationException($"Antigravity pool container must have 5 children (3 columns + 2 dividers), got {poolContainer.Children.Count}");
+        var poolColumnsList = (System.Collections.IList)columnsProp.GetValue(agyPoolCard)!;
+        var poolCol0 = (StackPanel)col1ElemProp.GetValue(poolColumnsList[0]!)!;
+        poolCol0.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (poolCol0.DesiredSize.Height <= 0 || poolCol0.DesiredSize.Height > 33)
+            throw new InvalidOperationException($"Antigravity Pool column must measure <= 33 DIP to avoid vertical clipping, got {poolCol0.DesiredSize.Height:F2}.");
 
-        checks += 8;
+        checks += 13;
 
         // Width estimate checks: CompactWidthEstimate must be strictly smaller than FullWidthEstimate for every AI provider
         foreach (var provider in new[]
@@ -698,12 +737,19 @@ internal static class AiUsageChecks
             var argonColPanel = (StackPanel)col1ElemProp.GetValue(cols[0]!)!;
             if (((TextBlock)argonColPanel.Children[0]).Text != "Argon")
                 throw new InvalidOperationException("Antigravity missing Argon fallback must show 'Argon' header.");
+            argonColPanel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (argonColPanel.DesiredSize.Height <= 0 || argonColPanel.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Placeholder column must measure <= 33 DIP, got {argonColPanel.DesiredSize.Height:F2}.");
 
             // Compact + All => 2 matched columns, each with 1 slot, 22px bar width, and concise percentage text preserved across Tick
             agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.All, AiUsageRing: AiUsageRing.Highest));
             agyFilterWidget.SetCompactState(true);
             if (cols.Count != 2)
                 throw new InvalidOperationException($"Antigravity Compact+All with Gemini & Claude data must have 2 columns, got {cols.Count}.");
+            var compactCol0 = (StackPanel)col1ElemProp.GetValue(cols[0]!)!;
+            compactCol0.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (compactCol0.DesiredSize.Height <= 0 || compactCol0.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Compact column must measure <= 33 DIP, got {compactCol0.DesiredSize.Height:F2}.");
             var compactSlots0 = (System.Collections.IList)col1SlotsProp.GetValue(cols[0]!)!;
             var compactSlots1 = (System.Collections.IList)col1SlotsProp.GetValue(cols[1]!)!;
             if (compactSlots0.Count != 1 || compactSlots1.Count != 1)
@@ -714,7 +760,7 @@ internal static class AiUsageChecks
             agyFilterWidget.Tick(DateTime.Now.AddMinutes(4));
             if (slot0Reset.Text != "55%")
                 throw new InvalidOperationException($"Antigravity Compact percentage text must survive OnTick, got '{slot0Reset.Text}'.");
-            checks += 5;
+            checks += 7;
         }
 
         // OpenCode and Copilot/DeepSeek compact mode checks
@@ -736,6 +782,10 @@ internal static class AiUsageChecks
             var weekCol = (StackPanel)ocBars.GetType().GetProperty("WeekCol")!.GetValue(ocBars)!;
             var monthCol = (StackPanel)ocBars.GetType().GetProperty("MonthCol")!.GetValue(ocBars)!;
             var weekReset = (TextBlock)ocBars.GetType().GetProperty("WeekReset")!.GetValue(ocBars)!;
+
+            hourCol.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (hourCol.DesiredSize.Height <= 0 || hourCol.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"OpenCode Full column height must fit inside 34 DIP card (<= 33), got {hourCol.DesiredSize.Height:F2}.");
 
             ocWidget.ApplySettings(new DockSettings(AiUsageRing: AiUsageRing.Session));
             if (hourCol.Visibility != System.Windows.Visibility.Visible || weekCol.Visibility != System.Windows.Visibility.Collapsed || monthCol.Visibility != System.Windows.Visibility.Collapsed)
@@ -762,6 +812,11 @@ internal static class AiUsageChecks
             var cpMeta = (TextBlock)cpSimple.GetType().GetProperty("MetaText")!.GetValue(cpSimple)!;
             var cpMiniTrack = (Border)cpSimple.GetType().GetProperty("MiniBarTrack")!.GetValue(cpSimple)!;
 
+            var cpValStack = (StackPanel)cpMeta.Parent;
+            cpValStack.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (cpValStack.DesiredSize.Height <= 0 || cpValStack.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Copilot Full value stack height must fit inside 34 DIP card (<= 33), got {cpValStack.DesiredSize.Height:F2}.");
+
             copilotWidget.SetCompactState(true);
             if (cpName.Visibility != System.Windows.Visibility.Collapsed
                 || cpSep.Visibility != System.Windows.Visibility.Collapsed
@@ -775,7 +830,7 @@ internal static class AiUsageChecks
                 || cpMeta.Visibility != System.Windows.Visibility.Visible
                 || cpMiniTrack.Visibility != System.Windows.Visibility.Visible)
                 throw new InvalidOperationException("Copilot Full mode must restore Name, Separator, MetaText, and MiniBarTrack.");
-            checks += 4;
+            checks += 6;
         }
 
         UiText.Current.SetLanguage(AppLanguage.Turkish);
