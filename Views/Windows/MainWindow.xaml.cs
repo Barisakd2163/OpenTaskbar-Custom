@@ -1285,16 +1285,19 @@ public partial class MainWindow : Window
     {
         var executablePath = app.ExecutablePath;
         var arguments = app.LaunchArguments ?? string.Empty;
-        // A pin created from a running window can hold a helper executable (e.g. Steam's steamwebhelper.exe)
-        // instead of the app's launcher. Map it back to the real launcher and drop helper-only arguments.
-        var resolved = LaunchTargetResolver.Resolve(executablePath);
-        executablePath = resolved.Path;
-        if (resolved.DropArguments) arguments = string.Empty;
-        // Pins imported from .lnk shortcuts do not carry an AUMID, so a packaged Store app would be launched by
-        // its WindowsApps executable directly and fail. Resolve it from AppxManifest.xml as a fallback — the same
-        // path the icon provider already uses.
+        // Resolve the real launch target the way Windows does: the matching Start Menu shortcut (or a packaged
+        // AUMID), never the running window's helper executable. This covers Steam/Bitwarden/CEF/Electron apps
+        // without hardcoded patterns.
         var appUserModelId = app.AppUserModelId
             ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath);
+        var spec = AppShortcutResolver.Resolve(executablePath, appUserModelId, app.Name);
+        executablePath = spec.Target;
+        // A .lnk carries its own target, arguments and working directory; shell:AppsFolder carries the AUMID.
+        // Only a raw executable needs the pin's arguments passed through.
+        var isShortcut = executablePath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
+        var isPackaged = executablePath.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase);
+        arguments = isShortcut || isPackaged ? string.Empty : arguments;
+        if (isPackaged) appUserModelId = executablePath["shell:AppsFolder\\".Length..];
         // ShellExecuteEx loads shell extensions and can take from 100 ms to over a second. On the UI thread it froze
         // the dock, launch bounce included, until Windows had taken the app. Start it from the thread pool instead;
         // Process.Start runs ShellExecuteEx on its own STA thread when called from an MTA thread.
