@@ -101,6 +101,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
     private readonly Button _cardButton;
     private IReadOnlyList<BluetoothDeviceBatteryInfo> _devices = [];
     private int _refreshing;
+    private volatile bool _disposed;
     private long _lastRefreshTickMs;
     private double _fullWidth = 78;
     private double _compactWidth = 46;
@@ -127,6 +128,8 @@ public sealed class BluetoothBatteryWidget : DockWidget
         RefreshBatteries();
     }
 
+    protected override void OnDisposed() => _disposed = true;
+
     protected override void OnTick(DateTime now)
     {
         if (Environment.TickCount64 - _lastRefreshTickMs >= RefreshIntervalMs) RefreshBatteries();
@@ -151,23 +154,24 @@ public sealed class BluetoothBatteryWidget : DockWidget
         }
     }
 
-    internal async Task RefreshBatteriesAsync()
+    internal async Task RefreshBatteriesAsync(bool requireActive = false)
     {
         try
         {
             var list = await BatteryReader().ConfigureAwait(false);
-            if (!IsActive) return;
+            if (_disposed || (requireActive && !IsActive)) return;
             if (Dispatcher.CheckAccess())
             {
-                if (!IsActive) return;
+                if (_disposed || (requireActive && !IsActive)) return;
                 _devices = list;
                 UpdateDisplay();
             }
             else
             {
+                if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    if (!IsActive) return;
+                    if (_disposed || (requireActive && !IsActive)) return;
                     _devices = list;
                     UpdateDisplay();
                 });
@@ -180,11 +184,11 @@ public sealed class BluetoothBatteryWidget : DockWidget
 
     internal void RefreshBatteries()
     {
-        if (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
+        if (_disposed || Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
         _lastRefreshTickMs = Environment.TickCount64;
         _ = Task.Run(async () =>
         {
-            try { await RefreshBatteriesAsync().ConfigureAwait(false); }
+            try { await RefreshBatteriesAsync(requireActive: true).ConfigureAwait(false); }
             finally { Interlocked.Exchange(ref _refreshing, 0); }
         });
     }
