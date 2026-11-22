@@ -347,6 +347,19 @@ public sealed class DockScrollViewer : ScrollViewer
     public void ScrollStepBack() => ScrollStep(forward: false);
     public void ScrollStepForward() => ScrollStep(forward: true);
 
+    /// <summary>
+    /// Returns the apps strip to its start after the content stopped overflowing. Also clears any
+    /// in-flight smooth-scroll target and offset animation, otherwise the render loop would drag
+    /// the strip back toward the old offset after this reset.
+    /// </summary>
+    public void ResetHorizontalScroll()
+    {
+        StopSmoothScroll();
+        BeginAnimation(CurrentHorizontalOffsetProperty, null);
+        _targetHorizontalOffset = 0;
+        ScrollToHorizontalOffset(0);
+    }
+
     private void ScrollStep(bool forward)
     {
         var cellSize = TryFindResource("DockCellSize") as double? ?? 52d;
