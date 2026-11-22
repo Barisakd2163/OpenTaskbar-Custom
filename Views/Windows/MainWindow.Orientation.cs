@@ -168,6 +168,7 @@ public partial class MainWindow
         DockContents.Orientation = orientation;
         DockContents.HorizontalAlignment = vertical ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         DockContents.VerticalAlignment = vertical ? VerticalAlignment.Top : VerticalAlignment.Center;
+        PinnedTrayStrip.SetOrientation(orientation);
         var panel = new ItemsPanelTemplate(new FrameworkElementFactory(typeof(StackPanel)));
         panel.VisualTree.SetValue(StackPanel.OrientationProperty, orientation);
         PinnedApps.ItemsPanel = panel;
@@ -222,7 +223,8 @@ public partial class MainWindow
         var shellCount = (StartButtonShown ? 1 : 0)
             + (_preferences.Current.ShowSearchButton ? 1 : 0)
             + (_preferences.Current.ShowTaskViewButton ? 1 : 0)
-            + (_preferences.Current.ShowTrayButton ? 1 : 0);
+            + (_preferences.Current.ShowTrayButton ? 1 : 0)
+            + (PinnedTrayStrip.VisibleCount > 0 ? (int)Math.Ceiling(PinnedTrayStrip.VisibleCount * 0.7) : 0);
         var count = Math.Max(1, shellCount + VisiblePinnedCount + _runningApps.Count + ExtraButtonCount);
 
         DockSurface.BeginAnimation(WidthProperty, null);

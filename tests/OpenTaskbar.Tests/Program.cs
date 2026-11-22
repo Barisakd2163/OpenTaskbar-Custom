@@ -21,6 +21,7 @@ DockIconPixelChecks();
 StartMenuAndOverlayChecks();
 AppLaunchChecks();
 TrayListChecks();
+checks += PinnedTrayChecks.RunHeadless();
 ShellTokenChecks();
 DockGroupsProfilesAndPinsChecks();
 checks += RunningAppChecks.Run();

@@ -275,6 +275,8 @@
   "DesktopState": "Desktop {0} di {1}",
   "TrayApps": "App in background",
   "TrayEmpty": "Nessuna app in esecuzione ha un’icona nell’area di notifica.",
+  "PinTrayIcon": "Aggiungi al dock",
+  "UnpinTrayIcon": "Rimuovi dal dock",
   "TraySettings": "Impostazioni notifiche di Windows",
   "TrayNote": "Fai clic su un’app per aprirla. Il pulsante a destra termina i suoi processi dopo la conferma. Fai clic con il pulsante destro per chiuderla normalmente.",
   "Shortcuts": "Tasti di scelta rapida",

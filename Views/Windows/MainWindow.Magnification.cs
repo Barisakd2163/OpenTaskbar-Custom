@@ -168,6 +168,7 @@ public partial class MainWindow
         {
             if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)) AddNonMagnifiedSpan(element);
         }
+        AddNonMagnifiedSpan(PinnedTrayStrip);
         AddNonMagnifiedSpan(WidgetIsland);
     }
 
@@ -415,6 +416,7 @@ public partial class MainWindow
         while (current is not null && !ReferenceEquals(current, DockSurface))
         {
             if (ReferenceEquals(current, WidgetIsland)
+                || ReferenceEquals(current, PinnedTrayStrip)
                 || ReferenceEquals(current, LeftResizeThumb)
                 || ReferenceEquals(current, RightResizeThumb)
                 || ReferenceEquals(current, ScrollPrevOverlay)

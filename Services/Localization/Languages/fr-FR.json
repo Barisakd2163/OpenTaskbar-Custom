@@ -275,6 +275,8 @@
   "DesktopState": "Bureau {0} sur {1}",
   "TrayApps": "Applications en arrière-plan",
   "TrayEmpty": "Aucune application en cours d’exécution n’a d’icône dans la zone de notification.",
+  "PinTrayIcon": "Épingler au dock",
+  "UnpinTrayIcon": "Détacher du dock",
   "TraySettings": "Paramètres de notification Windows",
   "TrayNote": "Cliquez sur une application pour l’ouvrir. Le bouton de droite arrête ses processus après confirmation. Faites un clic droit pour la fermer normalement.",
   "Shortcuts": "Raccourcis",

@@ -296,6 +296,7 @@
                                                     Foreground="{DynamicResource TextPrimary}" />
                                 </Grid>
                             </Button>
+                            <shell:PinnedTrayStrip x:Name="PinnedTrayStrip" Visibility="Collapsed" />
                             <shell:TrayShellButton x:Name="TrayButton" Style="{StaticResource ShellDockButton}"
                                                    PreviewMouseLeftButtonDown="ShellButton_PreviewMouseLeftButtonDown"
                                                    PreviewMouseMove="ShellButton_PreviewMouseMove"

@@ -98,6 +98,7 @@ public partial class MainWindow
             ? Visibility.Visible : Visibility.Collapsed;
         TrayButton.Visibility = _preferences.Current.ShowTrayButton
             ? Visibility.Visible : Visibility.Collapsed;
+        PinnedTrayStrip.IsStripEnabled = _preferences.Current.ShowTrayButton;
         ShowDesktopButton.Visibility = _preferences.Current.ShowDesktopButton
             ? Visibility.Visible : Visibility.Collapsed;
     }

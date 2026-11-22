@@ -375,7 +375,13 @@ public sealed class DockSettingsStore
             .Distinct(StringComparer.OrdinalIgnoreCase).Count()
             == settings.AppGroups?.Sum(group => (group.ExecutablePaths ?? []).Count)
         && (settings.DockCornerRadius is null || settings.DockCornerRadius is >= 0 and <= 48)
+        && IsValidPinnedTrayIcons(settings.PinnedTrayIcons)
         && !HotkeysConflict(settings);
+
+    private static bool IsValidPinnedTrayIcons(IReadOnlyList<string>? pinned) =>
+        pinned is null
+        || (pinned.Count <= TrayPinIdentity.MaxPinnedIcons
+            && !pinned.Any(entry => string.IsNullOrWhiteSpace(entry) || entry.Length > TrayPinIdentity.MaxKeyLength));
 
     /// <summary>Launcher and dock bindings must not resolve to the same combination, or dock focus hotkey dies.</summary>
     private static bool HotkeysConflict(DockSettings settings)
