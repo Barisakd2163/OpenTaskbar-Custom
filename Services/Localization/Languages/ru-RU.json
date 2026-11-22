@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "Низкий",
   "WirelessBatteryLevelMedium": "Средний",
   "WirelessBatteryLevelFull": "Полный",
-  "AiUsageAntigravityGroupsLabel": "Отображаемые группы моделей"
+  "AiUsageAntigravityGroupsLabel": "Отображаемые группы моделей",
+  "AiUsageAccountLabel": "Аккаунт",
+  "AiUsageAccountConnected": "Подключено",
+  "AiUsageAccountSignInRequired": "Требуется вход",
+  "AiUsageCliSignInLabel": "Вход через CLI",
+  "AiUsageApiKeyLabel": "API-ключ",
+  "AiUsageApiKeyPlaceholder": "Зашифрован локально (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Сохранен (••••••••)",
+  "AiUsageApiKeySave": "Сохранить",
+  "AiUsageApiKeyClear": "Очистить"
 }

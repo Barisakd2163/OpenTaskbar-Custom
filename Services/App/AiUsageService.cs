@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -38,6 +39,215 @@ public static class AiUsageService
     private const string ClaudeOAuthClientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
     internal sealed record LoadResult(AiUsageReport? Report, string? Error, TimeSpan? RetryAfter = null);
     private sealed record Credential(string Token, string? Account = null, string? Plan = null, string? RefreshToken = null, string? FilePath = null);
+
+    public static event Action<AiProviders>? CredentialsChanged;
+
+    public static void NotifyCredentialsChanged(AiProviders provider) => CredentialsChanged?.Invoke(provider);
+
+    public static bool IsApiKeyProvider(AiProviders provider) =>
+        provider is AiProviders.DeepSeek or AiProviders.OpenRouter or AiProviders.OpenCode;
+
+    public static bool IsCliSignInProvider(AiProviders provider) =>
+        provider is AiProviders.Claude or AiProviders.Codex or AiProviders.Copilot or AiProviders.OpenCode or AiProviders.Antigravity;
+
+    internal static string SecretKey(AiProviders provider) => provider switch
+    {
+        AiProviders.DeepSeek => "api-key:deepseek",
+        AiProviders.OpenRouter => "api-key:openrouter",
+        AiProviders.OpenCode => "api-key:opencode",
+        _ => $"api-key:{provider.ToString().ToLowerInvariant()}"
+    };
+
+    public static bool HasCredential(AiProviders provider) =>
+        ReadCredential(provider, allowCliProbe: false) is not null
+        || (provider == AiProviders.OpenCode && HasOpenCodeDatabase());
+
+    private static bool HasOpenCodeDatabase()
+    {
+        try
+        {
+            var dbPath = Path.Combine(Path.GetDirectoryName(CredentialPath(AiProviders.OpenCode)) ?? string.Empty, "opencode.db");
+            return File.Exists(dbPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or NotSupportedException or SecurityException)
+        {
+            return false;
+        }
+    }
+
+    public static bool HasSavedSecret(AiProviders provider) =>
+        IsApiKeyProvider(provider) && AiSecretStore.HasSecret(SecretKey(provider));
+
+    public static void SaveApiKey(AiProviders provider, string? key)
+    {
+        if (!IsApiKeyProvider(provider)) return;
+        AiSecretStore.Set(SecretKey(provider), key);
+        NotifyCredentialsChanged(provider);
+    }
+
+    public static string? CliSignInCommand(AiProviders provider) => provider switch
+    {
+        AiProviders.Claude => "claude auth login",
+        AiProviders.Codex => "codex login",
+        AiProviders.Copilot => "gh auth login",
+        AiProviders.OpenCode => "opencode auth login",
+        AiProviders.Antigravity => "agy",
+        _ => null
+    };
+
+    private static string? CliExecutableName(AiProviders provider) => provider switch
+    {
+        AiProviders.Claude => "claude",
+        AiProviders.Codex => "codex",
+        AiProviders.Copilot => "gh",
+        AiProviders.OpenCode => "opencode",
+        AiProviders.Antigravity => "agy",
+        _ => null
+    };
+
+    private static string[]? CliSignInArguments(AiProviders provider) => provider switch
+    {
+        AiProviders.Claude => ["claude", "auth", "login"],
+        AiProviders.Codex => ["codex", "login"],
+        AiProviders.Copilot => ["gh", "auth", "login"],
+        AiProviders.OpenCode => ["opencode", "auth", "login"],
+        AiProviders.Antigravity => ["agy"],
+        _ => null
+    };
+
+    private static readonly ConcurrentDictionary<AiProviders, CancellationTokenSource> SignInWatchers = new();
+
+    internal static ProcessStartInfo? BuildSignInStartInfo(AiProviders provider) =>
+        BuildSignInStartInfo(provider, FindExecutableOnPath("wt"));
+
+    internal static ProcessStartInfo? BuildSignInStartInfo(AiProviders provider, string? windowsTerminalPath)
+    {
+        if (CliSignInArguments(provider) is not { } args || CliSignInCommand(provider) is not { } command)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
+        {
+            var wtInfo = new ProcessStartInfo(windowsTerminalPath)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Normal
+            };
+            wtInfo.ArgumentList.Add("-w");
+            wtInfo.ArgumentList.Add("new");
+            wtInfo.ArgumentList.Add("--");
+            wtInfo.ArgumentList.Add("cmd.exe");
+            wtInfo.ArgumentList.Add("/c");
+            foreach (var arg in args) wtInfo.ArgumentList.Add(arg);
+            return wtInfo;
+        }
+
+        return new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Normal,
+            Arguments = $"/c {command}"
+        };
+    }
+
+    internal static Func<ProcessStartInfo, bool>? ProcessLauncherOverride { get; set; }
+
+    internal static string? FindExecutableOnPath(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return null;
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathEnv)) return null;
+        string[] extensions = [".exe", ".cmd", ".bat", ""];
+        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                foreach (var ext in extensions)
+                {
+                    var candidate = Path.Combine(dir, command + ext);
+                    if (File.Exists(candidate)) return candidate;
+                }
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException) { }
+        }
+        return null;
+    }
+
+    public static string? TryLaunchSignIn(AiProviders provider)
+    {
+        if (BuildSignInStartInfo(provider) is not { } startInfo || CliExecutableName(provider) is not { } exeName)
+            return "ErrorAiUsageSignIn";
+
+        if (ProcessLauncherOverride is { } launcher)
+        {
+            try
+            {
+                return launcher(startInfo) ? null : "ErrorAiUsageSignIn";
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+            {
+                return "ErrorAiUsageSignIn";
+            }
+        }
+
+        if (FindExecutableOnPath(exeName) is null)
+            return "ErrorAiUsageSignIn";
+
+        var initialStamp = CredentialStamp(provider);
+        var initiallyConnected = HasCredential(provider);
+
+        try
+        {
+            var process = Process.Start(startInfo);
+            if (process is null) return "ErrorAiUsageSignIn";
+            _ = process.WaitForExitAsync().ContinueWith(task =>
+            {
+                _ = task.Exception;
+                process.Dispose();
+                NotifyCredentialsChanged(provider);
+            }, TaskScheduler.Default);
+            StartSignInWatcher(provider, initialStamp, initiallyConnected);
+            return null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        {
+            return "ErrorAiUsageSignIn";
+        }
+    }
+
+    private static void StartSignInWatcher(AiProviders provider, DateTime initialStamp, bool initiallyConnected)
+    {
+        var next = new CancellationTokenSource();
+        next.CancelAfter(TimeSpan.FromMinutes(3));
+        SignInWatchers.AddOrUpdate(provider, next, (_, existing) =>
+        {
+            try { existing.Cancel(); } catch (ObjectDisposedException) { }
+            return next;
+        });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+                while (await timer.WaitForNextTickAsync(next.Token).ConfigureAwait(false))
+                {
+                    if (CredentialStamp(provider) != initialStamp || (!initiallyConnected && HasCredential(provider)))
+                    {
+                        NotifyCredentialsChanged(provider);
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (next.IsCancellationRequested) { }
+            finally
+            {
+                SignInWatchers.TryRemove(new KeyValuePair<AiProviders, CancellationTokenSource>(provider, next));
+                next.Dispose();
+            }
+        });
+    }
 
     // Keep background quota queries non-interactive and out of the foreground.
     // CreateNoWindow applies to a console executable; Hidden also requests that
@@ -158,6 +368,11 @@ public static class AiUsageService
     internal static DateTime CredentialStamp(AiProviders provider)
     {
         var stamp = DateTime.MinValue;
+        if (IsApiKeyProvider(provider))
+        {
+            var secretStamp = AiSecretStore.GetLastWriteTimeUtc(SecretKey(provider));
+            if (secretStamp > stamp) stamp = secretStamp;
+        }
         if (provider == AiProviders.Antigravity && ReadKeyringCredential("gemini:antigravity", out var keyringStamp) is not null)
             stamp = keyringStamp;
         else if (provider == AiProviders.Claude && ReadKeyringCredential("Claude Code-credentials", out var claudeKeyringStamp) is not null)
@@ -174,9 +389,11 @@ public static class AiUsageService
             }
             if (provider == AiProviders.Copilot)
             {
-                var fallbackPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "github-copilot", "apps.json");
-                var fallbackStamp = File.GetLastWriteTimeUtc(fallbackPath);
+                var fallbackStamp = File.GetLastWriteTimeUtc(CopilotConfigAppsPath());
                 if (fallbackStamp > stamp) stamp = fallbackStamp;
+                // `gh auth login` writes hosts.yml and the Credential Manager entries, never apps.json.
+                var ghStamp = GitHubCliStamp(out _);
+                if (ghStamp > stamp) stamp = ghStamp;
             }
             return stamp;
         }
@@ -224,8 +441,10 @@ public static class AiUsageService
         return await Client.SendAsync(request, cancellation).ConfigureAwait(false);
     }
 
-    private static Credential? ReadCredential(AiProviders provider, string? path = null)
+    private static Credential? ReadCredential(AiProviders provider, string? path = null, bool allowCliProbe = true)
     {
+        if (path is null && IsApiKeyProvider(provider) && AiSecretStore.Get(SecretKey(provider)) is { Length: > 0 } savedSecret)
+            return new(savedSecret);
         if (provider == AiProviders.Antigravity && path is null
             && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GEMINI_CONFIG_DIR"))
             && ReadKeyringCredential("gemini:antigravity", out var unusedLastWritten) is { } keyringJson
@@ -265,12 +484,13 @@ public static class AiUsageService
             {
                 var legacyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".opencode", "auth.json");
                 if (File.Exists(legacyPath)) targetPath = legacyPath;
-                else if (TryReadOpenCodeCliCredential() is { } cliCred) return cliCred;
+                else if (allowCliProbe && TryReadOpenCodeCliCredential() is { } cliCred) return cliCred;
             }
-            if (provider == AiProviders.Copilot && path is null && !File.Exists(targetPath))
+            if (provider == AiProviders.Copilot && path is null)
             {
-                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "github-copilot", "apps.json");
-                if (File.Exists(configPath)) targetPath = configPath;
+                foreach (var appsPath in new[] { targetPath, CopilotConfigAppsPath() })
+                    if (TryReadCopilotApps(appsPath) is { } appsCred) return appsCred;
+                return TryReadGitHubCliCredential(allowCliProbe, out _) is { } ghToken ? new(ghToken) : null;
             }
             using var stream = new FileStream(targetPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var document = JsonDocument.Parse(stream);
@@ -538,6 +758,207 @@ public static class AiUsageService
             }
         }
         return null;
+    }
+
+    private const string GhKeyringBase64Prefix = "go-keyring-base64:";
+    private const string GhKeyringTargetPrefix = "gh:github.com:";
+
+    /// <summary>Test hook: replaces %APPDATA%\GitHub CLI\hosts.yml.</summary>
+    internal static string? GhHostsPathOverride { get; set; }
+    /// <summary>Test hook: replaces Credential Manager reads for gh targets.</summary>
+    internal static Func<string, (string? Value, DateTime LastWrittenUtc)>? GhKeyringReaderOverride { get; set; }
+    /// <summary>Test hook: replaces the `gh auth token` subprocess.</summary>
+    internal static Func<string?>? GhCliTokenProbeOverride { get; set; }
+
+    private static string CopilotConfigAppsPath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "github-copilot", "apps.json");
+
+    private static Credential? TryReadCopilotApps(string appsPath)
+    {
+        try
+        {
+            if (!File.Exists(appsPath)) return null;
+            using var stream = new FileStream(appsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (stream.Length == 0) return null;
+            using var document = JsonDocument.Parse(stream);
+            return ParseCopilotCredential(document.RootElement);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+            or ArgumentException or NotSupportedException or SecurityException) { return null; }
+    }
+
+    internal static string GhHostsPath()
+    {
+        if (GhHostsPathOverride is { } overridePath) return overridePath;
+        var configDir = Environment.GetEnvironmentVariable("GH_CONFIG_DIR");
+        if (string.IsNullOrWhiteSpace(configDir))
+            configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GitHub CLI");
+        return Path.Combine(configDir, "hosts.yml");
+    }
+
+    /// <summary>Extracts `user:` and an insecure-storage `oauth_token:` from the github.com block of gh's hosts.yml.</summary>
+    internal static (string? User, string? PlainToken) ParseGhHostsYaml(string yaml)
+    {
+        string? user = null, directToken = null, nestedToken = null;
+        var inGitHub = false;
+        var childIndent = -1;
+        foreach (var rawLine in yaml.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            var content = line.TrimStart();
+            if (content.Length == 0 || content.StartsWith('#')) continue;
+            var indent = line.Length - content.Length;
+            if (indent == 0)
+            {
+                inGitHub = string.Equals(YamlKey(content), "github.com", StringComparison.OrdinalIgnoreCase);
+                childIndent = -1;
+                continue;
+            }
+            if (!inGitHub) continue;
+            if (childIndent < 0 || indent < childIndent) childIndent = indent;
+            var key = YamlKey(content);
+            if (key is null) continue;
+            var value = YamlValue(content);
+            if (indent == childIndent)
+            {
+                if (key == "user" && value is not null) user = value;
+                else if (key == "oauth_token" && value is not null) directToken = value;
+            }
+            else if (key == "oauth_token" && value is not null) nestedToken ??= value;
+        }
+        return (user, directToken ?? nestedToken);
+    }
+
+    private static string? YamlKey(string content)
+    {
+        var colon = content.IndexOf(':');
+        if (colon <= 0) return null;
+        return content[..colon].Trim().Trim('"', '\'');
+    }
+
+    private static string? YamlValue(string content)
+    {
+        var colon = content.IndexOf(':');
+        var value = content[(colon + 1)..].Trim();
+        if (value.Length >= 2 && value[0] is '"' or '\'')
+        {
+            var close = value.IndexOf(value[0], 1);
+            value = close > 0 ? value[1..close] : string.Empty;
+        }
+        else
+        {
+            var comment = value.IndexOf(" #", StringComparison.Ordinal);
+            if (comment >= 0) value = value[..comment].TrimEnd();
+        }
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    /// <summary>
+    /// Decodes a gh Credential Manager blob. go-keyring stores the token as UTF-8 bytes, optionally as
+    /// "go-keyring-base64:" + Base64(UTF-8). NUL padding (or a UTF-16 blob read as UTF-8) is stripped.
+    /// </summary>
+    internal static string? DecodeGhKeyringToken(string? raw)
+    {
+        if (raw is null) return null;
+        var value = raw.Replace("\0", string.Empty, StringComparison.Ordinal).Trim();
+        if (value.StartsWith(GhKeyringBase64Prefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                value = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(value[GhKeyringBase64Prefix.Length..].Trim()))
+                    .Replace("\0", string.Empty, StringComparison.Ordinal).Trim();
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException) { return null; }
+        }
+        return value.Length == 0 ? null : value;
+    }
+
+    private static (string? Value, DateTime LastWrittenUtc) ReadGhKeyring(string target)
+    {
+        if (GhKeyringReaderOverride is { } reader) return reader(target);
+        var value = ReadKeyringCredential(target, out var written);
+        return (value, written);
+    }
+
+    private static (string? User, string? PlainToken, DateTime Stamp) ReadGhHosts()
+    {
+        try
+        {
+            var hostsPath = GhHostsPath();
+            if (!File.Exists(hostsPath)) return (null, null, DateTime.MinValue);
+            var stamp = File.GetLastWriteTimeUtc(hostsPath);
+            using var stream = new FileStream(hostsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (stream.Length > 1 << 20) return (null, null, stamp);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var (user, plainToken) = ParseGhHostsYaml(reader.ReadToEnd());
+            return (user, plainToken, stamp);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+            or NotSupportedException or SecurityException) { return (null, null, DateTime.MinValue); }
+    }
+
+    private static string[] GhKeyringTargets(string? user) =>
+        string.IsNullOrWhiteSpace(user) ? [GhKeyringTargetPrefix] : [GhKeyringTargetPrefix, GhKeyringTargetPrefix + user];
+
+    /// <summary>Latest write time across hosts.yml and gh's Credential Manager entries; no subprocess.</summary>
+    private static DateTime GitHubCliStamp(out string? user)
+    {
+        var (hostsUser, _, stamp) = ReadGhHosts();
+        user = hostsUser;
+        foreach (var target in GhKeyringTargets(hostsUser))
+        {
+            var (_, written) = ReadGhKeyring(target);
+            if (written > stamp) stamp = written;
+        }
+        return stamp;
+    }
+
+    /// <summary>
+    /// Reads the token `gh auth login` stored: Credential Manager first, then a plaintext hosts.yml token,
+    /// then (only when allowed, never on the UI thread) `gh auth token`. Never logs the token.
+    /// </summary>
+    internal static string? TryReadGitHubCliCredential(bool allowCliProbe, out DateTime stamp)
+    {
+        var (user, plainToken, hostsStamp) = ReadGhHosts();
+        stamp = hostsStamp;
+        string? token = null;
+        foreach (var target in GhKeyringTargets(user))
+        {
+            var (raw, written) = ReadGhKeyring(target);
+            if (written > stamp) stamp = written;
+            token ??= DecodeGhKeyringToken(raw);
+        }
+        if (token is null && !string.IsNullOrWhiteSpace(plainToken)) token = plainToken.Trim();
+        if (token is null && allowCliProbe) token = GhCliTokenProbeOverride is { } probe ? probe() : RunGhAuthToken();
+        return string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+    }
+
+    private static string? RunGhAuthToken()
+    {
+        try
+        {
+            using var process = new Process { StartInfo = HiddenCliStartInfo("gh", "auth", "token") };
+            if (!process.Start()) return null;
+            process.StandardInput.Close();
+            AppLog.Info($"AI usage CLI started: GitHub CLI pid={process.Id}");
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                return null;
+            }
+            if (!stdoutTask.Wait(1000)) return null;
+            _ = stderrTask.Wait(1000);
+            if (process.ExitCode != 0) return null;
+            var stdout = stdoutTask.Result.Trim();
+            return stdout.Length == 0 ? null : stdout;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException
+            or AggregateException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private static Credential? ParseDeepSeekCredential(JsonElement root)

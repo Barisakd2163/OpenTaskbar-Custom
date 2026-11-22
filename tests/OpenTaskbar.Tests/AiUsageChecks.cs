@@ -4,7 +4,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Threading;
+using OpenTaskbar;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 using OpenTaskbar.Widgets;
@@ -396,7 +400,10 @@ internal static class AiUsageChecks
             "AiUsageRingHighest", "AiUsageRingSession", "AiUsageLimitReached", "AiUsageStatusOk", "AiUsageStatusSignIn",
             "AiUsageStatusStale", "AiUsageStatusNearLimit", "AiUsageStatusHigh", "AiUsageStatusUnavailable", "AiUsageStatusLoading", "AiUsagePaceIn", "AiUsagePaceAt", "AiUsagePaceMarker", "HoursMinutesFormat",
             "AiUsageExtra", "AiUsageBreakdown", "AiUsageCredits", "AiUsageCreditsUnlimited", "AiUsageResetCredits",
-            "ErrorAiUsageSignIn", "ErrorAiUsageLoad", "ErrorAiUsageRateLimited"];
+            "ErrorAiUsageSignIn", "ErrorAiUsageLoad", "ErrorAiUsageRateLimited",
+            "AiUsageAccountLabel", "AiUsageAccountConnected", "AiUsageAccountSignInRequired",
+            "AiUsageCliSignInLabel", "AiUsageApiKeyLabel", "AiUsageApiKeyPlaceholder",
+            "AiUsageApiKeySaved", "AiUsageApiKeySave", "AiUsageApiKeyClear"];
         var assembly = typeof(LanguageCatalog).Assembly;
         foreach (var resource in assembly.GetManifestResourceNames().Where(name => name.StartsWith("OpenTaskbar.Localization.Languages.", StringComparison.Ordinal)))
         {
@@ -404,6 +411,206 @@ internal static class AiUsageChecks
             using var document = JsonDocument.Parse(stream);
             Check(keys.All(key => document.RootElement.TryGetProperty(key, out var value) && !string.IsNullOrWhiteSpace(value.GetString())),
                 $"Every AI usage key must be translated in {resource}.");
+        }
+
+        // DPAPI secret store and AiUsageService API key management checks in an isolated temp root.
+        var previousRoot = AiSecretStore.Root;
+        var tempSecretRoot = Path.Combine(Path.GetTempPath(), $"ot-ai-secrets-{Guid.NewGuid():N}");
+        try
+        {
+            AiSecretStore.Root = tempSecretRoot;
+            Check(!AiSecretStore.HasSecret("api-key:deepseek") && AiSecretStore.Get("api-key:deepseek") is null,
+                "Missing secret files must return null and report no saved secret.");
+
+            AiSecretStore.Set("api-key:deepseek", "  sk-deepseek-roundtrip-secret  ");
+            var secretFile = AiSecretStore.SecretPath("api-key:deepseek");
+            Check(File.Exists(secretFile) && AiSecretStore.HasSecret("api-key:deepseek"),
+                "Saving a non-empty secret must create an encrypted .bin file.");
+            var rawText = File.ReadAllText(secretFile);
+            Check(!rawText.Contains("sk-deepseek-roundtrip-secret", StringComparison.Ordinal),
+                "DPAPI secret blob on disk must not contain plaintext secret material.");
+            Check(AiSecretStore.Get("api-key:deepseek") == "sk-deepseek-roundtrip-secret",
+                "AiSecretStore must round-trip and trim UTF-8 secrets via Windows DPAPI.");
+
+            AiSecretStore.Set("api-key:deepseek", "   ");
+            Check(!File.Exists(secretFile) && !AiSecretStore.HasSecret("api-key:deepseek") && AiSecretStore.Get("api-key:deepseek") is null,
+                "Setting a null or whitespace secret must delete the secret file.");
+
+            var changedProviders = new List<AiProviders>();
+            void OnChanged(AiProviders p) => changedProviders.Add(p);
+            AiUsageService.CredentialsChanged += OnChanged;
+            try
+            {
+                foreach (var (provider, sampleKey) in new[]
+                         {
+                             (AiProviders.DeepSeek, "ds-secret-key-1"),
+                             (AiProviders.OpenRouter, "or-secret-key-2"),
+                             (AiProviders.OpenCode, "oc-secret-key-3")
+                         })
+                {
+                    Check(!AiUsageService.HasSavedSecret(provider), $"{provider} must start without a saved DPAPI secret.");
+                    AiUsageService.SaveApiKey(provider, sampleKey);
+                    Check(AiUsageService.HasSavedSecret(provider) && AiUsageService.HasCredential(provider),
+                        $"{provider} must report a saved secret and valid credential after SaveApiKey.");
+                    var readBack = provider switch
+                    {
+                        AiProviders.DeepSeek => AiUsageService.ReadDeepSeekToken(),
+                        AiProviders.OpenRouter => AiUsageService.ReadOpenRouterToken(),
+                        _ => AiUsageService.ReadOpenCodeToken()
+                    };
+                    Check(readBack == sampleKey, $"{provider} must read its DPAPI secret before environment/file fallbacks.");
+
+                    AiUsageService.SaveApiKey(provider, null);
+                    Check(!AiUsageService.HasSavedSecret(provider), $"{provider} must clear its DPAPI secret when SaveApiKey is passed null.");
+                }
+                Check(changedProviders.Count == 6
+                    && changedProviders[0] == AiProviders.DeepSeek
+                    && changedProviders[2] == AiProviders.OpenRouter
+                    && changedProviders[4] == AiProviders.OpenCode,
+                    "SaveApiKey must fire CredentialsChanged on save and clear.");
+            }
+            finally
+            {
+                AiUsageService.CredentialsChanged -= OnChanged;
+            }
+
+            foreach (var cliProvider in new[] { AiProviders.Claude, AiProviders.Codex, AiProviders.Copilot, AiProviders.OpenCode, AiProviders.Antigravity })
+            {
+                var signInInfo = AiUsageService.BuildSignInStartInfo(cliProvider);
+                Check(signInInfo is not null && !signInInfo.CreateNoWindow && signInInfo.WindowStyle != ProcessWindowStyle.Hidden,
+                    $"{cliProvider} interactive sign-in must use a visible window rather than HiddenCliStartInfo.");
+            }
+
+            // Windows Terminal ConPTY path and cmd.exe fallback for CLI Sign-In (so paste works in Claude TUI).
+            var wtInfo = AiUsageService.BuildSignInStartInfo(AiProviders.Claude, @"C:\fake\wt.exe");
+            Check(wtInfo is not null && wtInfo.FileName == @"C:\fake\wt.exe"
+                && !wtInfo.CreateNoWindow && !wtInfo.UseShellExecute
+                && wtInfo.ArgumentList.SequenceEqual(["-w", "new", "--", "cmd.exe", "/c", "claude", "auth", "login"]),
+                "Claude CLI sign-in must launch inside Windows Terminal when wt.exe is available so bracketed paste works.");
+
+            var cmdFallback = AiUsageService.BuildSignInStartInfo(AiProviders.Claude, "");
+            Check(cmdFallback is not null && cmdFallback.FileName == "cmd.exe"
+                && cmdFallback.UseShellExecute && cmdFallback.Arguments == "/c claude auth login",
+                "CLI sign-in must fall back to UseShellExecute cmd.exe when Windows Terminal is absent.");
+
+            // Secret store path hardening & oversized secret guard.
+            var sanitizedPath = AiSecretStore.SecretPath("../../evil");
+            var fullRoot = Path.GetFullPath(AiSecretStore.Root);
+            if (!fullRoot.EndsWith(Path.DirectorySeparatorChar)) fullRoot += Path.DirectorySeparatorChar;
+            Check(sanitizedPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(sanitizedPath).Contains("..", StringComparison.Ordinal),
+                "AiSecretStore.SecretPath must neutralize traversal characters and stay within Root.");
+
+            var oversizedPath = AiSecretStore.SecretPath("api-key:oversized");
+            Directory.CreateDirectory(Path.GetDirectoryName(oversizedPath)!);
+            File.WriteAllBytes(oversizedPath, new byte[(1 << 16) + 16]);
+            Check(AiSecretStore.Get("api-key:oversized") is null,
+                "AiSecretStore.Get must reject oversized (>64 KB) secret files cleanly.");
+        }
+        finally
+        {
+            AiSecretStore.Root = previousRoot;
+            if (Directory.Exists(tempSecretRoot))
+            {
+                try { Directory.Delete(tempSecretRoot, recursive: true); } catch (IOException) { }
+            }
+        }
+
+        // GitHub CLI (`gh auth login`) fallback for Copilot, isolated from the real hosts.yml and keyring.
+        var hosts = AiUsageService.ParseGhHostsYaml("""
+            enterprise.example.com:
+                user: enterprise-user
+                oauth_token: fixture-enterprise-token
+            github.com:
+                users:
+                    fixture-user:
+                        oauth_token: fixture-nested-token
+                git_protocol: https
+                user: fixture-user
+            """);
+        Check(hosts == ("fixture-user", "fixture-nested-token"),
+            "hosts.yml parsing must read the github.com user and its token while ignoring other hosts.");
+        var directHosts = AiUsageService.ParseGhHostsYaml("github.com:\r\n  oauth_token: \"fixture-direct\"  \r\n  user: 'quoted-user' # comment\r\nother.host:\r\n  user: nope\r\n");
+        Check(directHosts == ("quoted-user", "fixture-direct"), "hosts.yml parsing must handle quotes, comments and CRLF.");
+        Check(AiUsageService.ParseGhHostsYaml("other.host:\n  user: nope\n  oauth_token: nope\n") == (null, null)
+            && AiUsageService.ParseGhHostsYaml("") == (null, null), "hosts.yml without github.com must yield nothing.");
+
+        var fixtureGho = "gho_" + new string('x', 36);
+        var encodedGho = "go-keyring-base64:" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(fixtureGho));
+        Check(AiUsageService.DecodeGhKeyringToken(fixtureGho) == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(encodedGho) == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken("  " + encodedGho + "\0\0\n") == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(fixtureGho + "\0 \r\n") == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(string.Join("\0", fixtureGho.ToCharArray()) + "\0") == fixtureGho,
+            "gh keyring tokens must decode plain, base64-prefixed, padded and UTF-16-as-UTF-8 blobs.");
+        Check(AiUsageService.DecodeGhKeyringToken("go-keyring-base64:!!not-base64!!") is null
+            && AiUsageService.DecodeGhKeyringToken("go-keyring-base64:") is null
+            && AiUsageService.DecodeGhKeyringToken(null) is null && AiUsageService.DecodeGhKeyringToken(" \0 ") is null,
+            "Invalid or empty gh keyring blobs must fail closed.");
+
+        var previousHostsOverride = AiUsageService.GhHostsPathOverride;
+        var previousKeyringOverride = AiUsageService.GhKeyringReaderOverride;
+        var previousProbeOverride = AiUsageService.GhCliTokenProbeOverride;
+        var ghHostsPath = Path.Combine(Path.GetTempPath(), $"opentaskbar-gh-hosts-{Guid.NewGuid():N}.yml");
+        try
+        {
+            var keyringReads = new List<string>();
+            var keyring = new Dictionary<string, (string? Value, DateTime LastWrittenUtc)>();
+            var probeCalls = 0;
+            AiUsageService.GhHostsPathOverride = ghHostsPath;
+            AiUsageService.GhKeyringReaderOverride = target =>
+            {
+                keyringReads.Add(target);
+                return keyring.TryGetValue(target, out var entry) ? entry : (null, DateTime.MinValue);
+            };
+            AiUsageService.GhCliTokenProbeOverride = () => { probeCalls++; return "fixture-cli-token"; };
+
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out var emptyStamp) is null && emptyStamp == DateTime.MinValue
+                && keyringReads.SequenceEqual(["gh:github.com:"]) && probeCalls == 0,
+                "Without hosts.yml only the default gh keyring target is read and no CLI probe runs.");
+
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n    git_protocol: https\n");
+            var userWritten = new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+            keyring["gh:github.com:fixture-user"] = (encodedGho, userWritten);
+            keyringReads.Clear();
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out var userStamp) == fixtureGho && userStamp == userWritten
+                && keyringReads.SequenceEqual(["gh:github.com:", "gh:github.com:fixture-user"]) && probeCalls == 0,
+                "The per-user gh keyring target must be read after the default one and decoded.");
+
+            keyring["gh:github.com:"] = (fixtureGho + "-default", DateTime.MinValue);
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out _) == fixtureGho + "-default",
+                "The default gh keyring target must win over the per-user one.");
+
+            keyring.Clear();
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n    oauth_token: fixture-plain-token\n");
+            Check(AiUsageService.TryReadGitHubCliCredential(true, out var plainStamp) == "fixture-plain-token"
+                && plainStamp == File.GetLastWriteTimeUtc(ghHostsPath) && probeCalls == 0,
+                "A plaintext hosts.yml token must be used when the keyring has none, before any CLI probe.");
+
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n");
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out _) is null && probeCalls == 0,
+                "allowCliProbe:false must never run `gh auth token`.");
+            Check(AiUsageService.TryReadGitHubCliCredential(true, out _) == "fixture-cli-token" && probeCalls == 1,
+                "allowCliProbe:true must fall back to `gh auth token`.");
+
+            _ = AiUsageService.HasCredential(AiProviders.Copilot);
+            _ = AiUsageService.CredentialStamp(AiProviders.Copilot);
+            Check(probeCalls == 1, "HasCredential/CredentialStamp for Copilot must not invoke any CLI subprocess.");
+
+            var stampBefore = AiUsageService.CredentialStamp(AiProviders.Copilot);
+            keyring["gh:github.com:fixture-user"] = (encodedGho, DateTime.UtcNow.AddYears(5));
+            Check(AiUsageService.CredentialStamp(AiProviders.Copilot) > stampBefore,
+                "CredentialStamp(Copilot) must change when `gh auth login` writes the keyring.");
+
+            var ghStartInfo = AiUsageService.HiddenCliStartInfo("gh", "auth", "token");
+            Check(ghStartInfo.ArgumentList.SequenceEqual(["auth", "token"]) && ghStartInfo.CreateNoWindow && ghStartInfo.RedirectStandardInput,
+                "`gh auth token` must run hidden with redirected stdin.");
+        }
+        finally
+        {
+            AiUsageService.GhHostsPathOverride = previousHostsOverride;
+            AiUsageService.GhKeyringReaderOverride = previousKeyringOverride;
+            AiUsageService.GhCliTokenProbeOverride = previousProbeOverride;
+            File.Delete(ghHostsPath);
         }
 
         // Widgets need an STA thread; this also runs headless, without application resources.
@@ -863,5 +1070,203 @@ internal static class AiUsageChecks
         UiText.Current.SetLanguage(AppLanguage.Turkish);
         pending.SetCanceled();
         return checks;
+    }
+
+    public static int RunUiChecks(Application application)
+    {
+        var checks = 0;
+        void Check(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException(message);
+            checks++;
+        }
+
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"ot-ai-settings-ui-{Guid.NewGuid():N}.json");
+        var secretRoot = Path.Combine(Path.GetTempPath(), $"ot-ai-secrets-ui-{Guid.NewGuid():N}");
+        var previousRoot = AiSecretStore.Root;
+        var previousLauncher = AiUsageService.ProcessLauncherOverride;
+        AiSecretStore.Root = secretRoot;
+        try
+        {
+            var store = new DockSettingsStore(settingsPath);
+            Check(store.Save(new DockSettings(Language: AppLanguage.English)) is null,
+                "Initial AI UI test settings must save cleanly.");
+            var preferences = new ApplicationPreferences(store);
+            var changeCount = 0;
+            preferences.Changed += (_, _) => changeCount++;
+
+            // Verify AiUsageWidget immediately re-polls on CredentialsChanged without waiting for the 15-minute cooldown.
+            var loadCalls = 0;
+            using (var liveWidget = new AiUsageWidget(AiProviders.DeepSeek, (_, _) =>
+                   {
+                       loadCalls++;
+                       return Task.FromResult<(AiUsageReport?, string?)>((null, "ErrorAiUsageSignIn"));
+                   }))
+            {
+                liveWidget.Activate();
+                PumpDispatcher(application.Dispatcher, 60);
+                var initialCalls = loadCalls;
+                Check(initialCalls >= 1, "Activated AiUsageWidget must perform initial load.");
+                AiUsageService.NotifyCredentialsChanged(AiProviders.DeepSeek);
+                PumpDispatcher(application.Dispatcher, 60);
+                Check(loadCalls > initialCalls,
+                    "CredentialsChanged must bypass the sign-in cooldown and trigger an immediate reload.");
+            }
+
+            var sw = new SettingsWindow(preferences)
+            {
+                Left = -20000,
+                Top = -20000,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+            try
+            {
+                sw.Show();
+                PumpDispatcher(application.Dispatcher, 120);
+
+                var optionsField = typeof(SettingsWindow).GetField("_widgetOptions",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var options = ((System.Collections.IEnumerable)optionsField.GetValue(sw)!).Cast<DockWidgetOption>().ToList();
+
+                foreach (var def in DockWidgetService.AiUsageWidgets)
+                {
+                    var option = options.Single(o => o.Id == def.Id);
+                    Check(option.SettingsView is Panel, $"{def.Id} must expose a SettingsView panel.");
+                    var view = option.SettingsView!;
+
+                    var section = FindTagged<FrameworkElement>(view, $"AiAccountSection:{def.Id}");
+                    var statusText = FindTagged<TextBlock>(view, $"AiAccountStatus:{def.Provider}");
+                    var refreshBtn = FindTagged<Button>(view, $"AiAccountRefresh:{def.Provider}");
+                    Check(section is not null && statusText is not null && refreshBtn is not null,
+                        $"{def.Id} settings panel must expose account status and refresh controls.");
+
+                    if (AiUsageService.IsCliSignInProvider(def.Provider))
+                    {
+                        var signInBtn = FindTagged<Button>(view, $"AiAccountSignIn:{def.Provider}");
+                        var cliHint = FindTagged<TextBlock>(view, $"AiAccountCliHint:{def.Provider}");
+                        Check(signInBtn is not null && cliHint is not null && !string.IsNullOrWhiteSpace(cliHint.Text),
+                            $"{def.Id} must expose CLI sign-in button and command hint.");
+                    }
+
+                    if (AiUsageService.IsApiKeyProvider(def.Provider))
+                    {
+                        var keyBox = FindTagged<PasswordBox>(view, $"AiAccountKeyBox:{def.Provider}");
+                        var saveBtn = FindTagged<Button>(view, $"AiAccountKeySave:{def.Provider}");
+                        var clearBtn = FindTagged<Button>(view, $"AiAccountKeyClear:{def.Provider}");
+                        Check(keyBox is not null && saveBtn is not null && clearBtn is not null,
+                            $"{def.Id} must expose PasswordBox, Save, and Clear controls.");
+                    }
+                }
+
+                // Exercise DeepSeek API key Save & Clear via UI controls without mutating settings.json.
+                var deepSeekView = options.Single(o => o.Id == "AiUsageDeepSeek").SettingsView!;
+                var dsKeyBox = FindTagged<PasswordBox>(deepSeekView, $"AiAccountKeyBox:{AiProviders.DeepSeek}")!;
+                var dsSaveBtn = FindTagged<Button>(deepSeekView, $"AiAccountKeySave:{AiProviders.DeepSeek}")!;
+                var dsClearBtn = FindTagged<Button>(deepSeekView, $"AiAccountKeyClear:{AiProviders.DeepSeek}")!;
+                var dsStatus = FindTagged<TextBlock>(deepSeekView, $"AiAccountStatus:{AiProviders.DeepSeek}")!;
+
+                dsKeyBox.Password = "sk-ui-deepseek-secret";
+                dsSaveBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                PumpDispatcher(application.Dispatcher, 60);
+
+                Check(string.IsNullOrEmpty(dsKeyBox.Password), "Saving API key must clear the PasswordBox.");
+                Check(AiUsageService.HasSavedSecret(AiProviders.DeepSeek) && AiUsageService.ReadDeepSeekToken() == "sk-ui-deepseek-secret",
+                    "Saving API key from SettingsWindow must persist the DPAPI secret.");
+                Check(dsStatus.Text == UiText.Get("AiUsageAccountConnected"),
+                    "Account status must switch to Connected after saving an API key.");
+                Check(!File.ReadAllText(settingsPath).Contains("sk-ui-deepseek-secret", StringComparison.Ordinal),
+                    "API keys must never be written into settings.json.");
+                Check(changeCount == 0,
+                    "Saving an API key must not fire spurious preference edits.");
+
+                dsClearBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                PumpDispatcher(application.Dispatcher, 60);
+                Check(!AiUsageService.HasSavedSecret(AiProviders.DeepSeek),
+                    "Clicking Clear must remove the saved DPAPI secret.");
+                Check(changeCount == 0,
+                    "Clearing an API key must not fire spurious preference edits.");
+
+                // Exercise CLI Sign-In button safely via ProcessLauncherOverride.
+                ProcessStartInfo? capturedSignIn = null;
+                AiUsageService.ProcessLauncherOverride = psi => { capturedSignIn = psi; return true; };
+                var claudeView = options.Single(o => o.Id == "AiUsageClaude").SettingsView!;
+                var claudeSignInBtn = FindTagged<Button>(claudeView, $"AiAccountSignIn:{AiProviders.Claude}")!;
+                claudeSignInBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                PumpDispatcher(application.Dispatcher, 40);
+                var launchedCommandOk = capturedSignIn is not null
+                    && !capturedSignIn.CreateNoWindow
+                    && capturedSignIn.WindowStyle == ProcessWindowStyle.Normal
+                    && (capturedSignIn.ArgumentList.SequenceEqual(["-w", "new", "--", "cmd.exe", "/c", "claude", "auth", "login"])
+                        || (capturedSignIn.UseShellExecute && capturedSignIn.Arguments == "/c claude auth login"));
+                Check(launchedCommandOk,
+                    "Claude Sign-in button must launch an interactive visible CLI login command.");
+                Check(changeCount == 0, "Clicking CLI Sign-in must not trigger preference saves.");
+            }
+            finally
+            {
+                sw.Close();
+                PumpDispatcher(application.Dispatcher, 220);
+            }
+
+            // Firing CredentialsChanged after SettingsWindow closes must be a safe no-op (clean unsubscribe).
+            AiUsageService.NotifyCredentialsChanged(AiProviders.Claude);
+            PumpDispatcher(application.Dispatcher, 40);
+            Check(changeCount == 0, "Closing SettingsWindow after AI panel checks must not mutate preferences.");
+        }
+        finally
+        {
+            AiUsageService.ProcessLauncherOverride = previousLauncher;
+            AiSecretStore.Root = previousRoot;
+            if (File.Exists(settingsPath)) File.Delete(settingsPath);
+            if (File.Exists(settingsPath + ".tmp")) File.Delete(settingsPath + ".tmp");
+            if (Directory.Exists(secretRoot))
+            {
+                try { Directory.Delete(secretRoot, recursive: true); } catch (IOException) { }
+            }
+        }
+
+        return checks;
+    }
+
+    private static T? FindTagged<T>(DependencyObject root, string tag) where T : FrameworkElement
+    {
+        if (root is T match && Equals(match.Tag, tag)) return match;
+        if (root is Panel panel)
+        {
+            foreach (var child in panel.Children)
+            {
+                if (child is DependencyObject dep && FindTagged<T>(dep, tag) is { } found) return found;
+            }
+        }
+        else if (root is Border { Child: DependencyObject borderChild } && FindTagged<T>(borderChild, tag) is { } foundBorder)
+        {
+            return foundBorder;
+        }
+        else if (root is ContentControl { Content: DependencyObject contentChild } && FindTagged<T>(contentChild, tag) is { } foundContent)
+        {
+            return foundContent;
+        }
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (FindTagged<T>(VisualTreeHelper.GetChild(root, i), tag) is { } foundVisual) return foundVisual;
+        }
+        return null;
+    }
+
+    private static void PumpDispatcher(Dispatcher dispatcher, int milliseconds)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(milliseconds)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            frame.Continue = false;
+        };
+        timer.Start();
+        Dispatcher.PushFrame(frame);
     }
 }

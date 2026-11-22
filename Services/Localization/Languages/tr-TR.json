@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "Düşük",
   "WirelessBatteryLevelMedium": "Orta",
   "WirelessBatteryLevelFull": "Dolu",
-  "AiUsageAntigravityGroupsLabel": "Gösterilen model grupları"
+  "AiUsageAntigravityGroupsLabel": "Gösterilen model grupları",
+  "AiUsageAccountLabel": "Hesap",
+  "AiUsageAccountConnected": "Bağlı",
+  "AiUsageAccountSignInRequired": "Giriş gerekli",
+  "AiUsageCliSignInLabel": "CLI ile giriş",
+  "AiUsageApiKeyLabel": "API anahtarı",
+  "AiUsageApiKeyPlaceholder": "Yerel olarak şifrelenir (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Kaydedildi (••••••••)",
+  "AiUsageApiKeySave": "Kaydet",
+  "AiUsageApiKeyClear": "Temizle"
 }

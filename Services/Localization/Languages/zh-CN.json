@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "低",
   "WirelessBatteryLevelMedium": "中",
   "WirelessBatteryLevelFull": "满",
-  "AiUsageAntigravityGroupsLabel": "显示的模型分组"
+  "AiUsageAntigravityGroupsLabel": "显示的模型分组",
+  "AiUsageAccountLabel": "账户",
+  "AiUsageAccountConnected": "已连接",
+  "AiUsageAccountSignInRequired": "需要登录",
+  "AiUsageCliSignInLabel": "CLI 登录",
+  "AiUsageApiKeyLabel": "API 密钥",
+  "AiUsageApiKeyPlaceholder": "本地加密存储 (Windows DPAPI)",
+  "AiUsageApiKeySaved": "已保存 (••••••••)",
+  "AiUsageApiKeySave": "保存",
+  "AiUsageApiKeyClear": "清除"
 }

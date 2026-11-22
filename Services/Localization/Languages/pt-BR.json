@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "Baixa",
   "WirelessBatteryLevelMedium": "Média",
   "WirelessBatteryLevelFull": "Cheia",
-  "AiUsageAntigravityGroupsLabel": "Grupos de modelos visíveis"
+  "AiUsageAntigravityGroupsLabel": "Grupos de modelos visíveis",
+  "AiUsageAccountLabel": "Conta",
+  "AiUsageAccountConnected": "Conectado",
+  "AiUsageAccountSignInRequired": "Login necessário",
+  "AiUsageCliSignInLabel": "Login via CLI",
+  "AiUsageApiKeyLabel": "Chave de API",
+  "AiUsageApiKeyPlaceholder": "Criptografada localmente (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Salva (••••••••)",
+  "AiUsageApiKeySave": "Salvar",
+  "AiUsageApiKeyClear": "Limpar"
 }

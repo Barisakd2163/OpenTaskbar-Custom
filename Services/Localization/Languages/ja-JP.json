@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "低",
   "WirelessBatteryLevelMedium": "中",
   "WirelessBatteryLevelFull": "満",
-  "AiUsageAntigravityGroupsLabel": "表示するモデルグループ"
+  "AiUsageAntigravityGroupsLabel": "表示するモデルグループ",
+  "AiUsageAccountLabel": "アカウント",
+  "AiUsageAccountConnected": "接続済み",
+  "AiUsageAccountSignInRequired": "サインインが必要",
+  "AiUsageCliSignInLabel": "CLI サインイン",
+  "AiUsageApiKeyLabel": "API キー",
+  "AiUsageApiKeyPlaceholder": "ローカルで暗号化 (Windows DPAPI)",
+  "AiUsageApiKeySaved": "保存済み (••••••••)",
+  "AiUsageApiKeySave": "保存",
+  "AiUsageApiKeyClear": "クリア"
 }

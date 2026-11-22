@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "Низький",
   "WirelessBatteryLevelMedium": "Середній",
   "WirelessBatteryLevelFull": "Повний",
-  "AiUsageAntigravityGroupsLabel": "Відображувані групи моделей"
+  "AiUsageAntigravityGroupsLabel": "Відображувані групи моделей",
+  "AiUsageAccountLabel": "Обліковий запис",
+  "AiUsageAccountConnected": "Підключено",
+  "AiUsageAccountSignInRequired": "Потрібен вхід",
+  "AiUsageCliSignInLabel": "Вхід через CLI",
+  "AiUsageApiKeyLabel": "API-ключ",
+  "AiUsageApiKeyPlaceholder": "Зашифровано локально (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Збережено (••••••••)",
+  "AiUsageApiKeySave": "Зберегти",
+  "AiUsageApiKeyClear": "Очистити"
 }

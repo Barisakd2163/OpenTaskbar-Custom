@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "Laag",
   "WirelessBatteryLevelMedium": "Gemiddeld",
   "WirelessBatteryLevelFull": "Vol",
-  "AiUsageAntigravityGroupsLabel": "Zichtbare modelgroepen"
+  "AiUsageAntigravityGroupsLabel": "Zichtbare modelgroepen",
+  "AiUsageAccountLabel": "Account",
+  "AiUsageAccountConnected": "Verbonden",
+  "AiUsageAccountSignInRequired": "Aanmelden vereist",
+  "AiUsageCliSignInLabel": "CLI-aanmelding",
+  "AiUsageApiKeyLabel": "API-sleutel",
+  "AiUsageApiKeyPlaceholder": "Lokaal versleuteld (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Opgeslagen (••••••••)",
+  "AiUsageApiKeySave": "Opslaan",
+  "AiUsageApiKeyClear": "Wissen"
 }

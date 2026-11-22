@@ -863,5 +863,14 @@
   "WirelessBatteryLevelLow": "낮음",
   "WirelessBatteryLevelMedium": "보통",
   "WirelessBatteryLevelFull": "가득 참",
-  "AiUsageAntigravityGroupsLabel": "표시할 모델 그룹"
+  "AiUsageAntigravityGroupsLabel": "표시할 모델 그룹",
+  "AiUsageAccountLabel": "계정",
+  "AiUsageAccountConnected": "연결됨",
+  "AiUsageAccountSignInRequired": "로그인 필요",
+  "AiUsageCliSignInLabel": "CLI 로그인",
+  "AiUsageApiKeyLabel": "API 키",
+  "AiUsageApiKeyPlaceholder": "로컬 암호화 저장 (Windows DPAPI)",
+  "AiUsageApiKeySaved": "저장됨 (••••••••)",
+  "AiUsageApiKeySave": "저장",
+  "AiUsageApiKeyClear": "지우기"
 }

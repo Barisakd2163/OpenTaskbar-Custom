@@ -192,14 +192,53 @@ public sealed class AiUsageWidget : DockWidget
 
     protected override void OnActivated()
     {
+        AiUsageService.CredentialsChanged -= OnCredentialsChanged;
+        AiUsageService.CredentialsChanged += OnCredentialsChanged;
         Render();
         _ = LoadAsync();
     }
 
     protected override void OnDeactivated()
     {
+        AiUsageService.CredentialsChanged -= OnCredentialsChanged;
         Clear();
         _flyout.Close();
+    }
+
+    protected override void OnDisposed()
+    {
+        AiUsageService.CredentialsChanged -= OnCredentialsChanged;
+    }
+
+    private void OnCredentialsChanged(AiProviders provider)
+    {
+        if (provider != _provider) return;
+        if (Dispatcher.CheckAccess())
+        {
+            TriggerLoad(force: true);
+        }
+        else
+        {
+            _ = Dispatcher.InvokeAsync(() => TriggerLoad(force: true));
+        }
+    }
+
+    internal void TriggerLoad(bool force = false)
+    {
+        if (force)
+        {
+            _loading?.Cancel();
+            _loading = null;
+            _signInStamp = null;
+            _nextLoadAt = null;
+            _failures = 0;
+        }
+        if (!IsActive)
+        {
+            Render();
+            return;
+        }
+        _ = LoadAsync();
     }
 
     private void Clear()
