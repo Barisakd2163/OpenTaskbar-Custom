@@ -436,7 +436,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PositionDock()
+    private void PositionDock(bool useWorkArea = false)
     {
         if (_replacementSession?.IsActive == true)
         {
@@ -444,17 +444,28 @@ public partial class MainWindow : Window
         }
 
         var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
-        var workArea = targetDisplay.WorkArea;
+        // Before taskbar replacement takes over, WorkArea still excludes the native Windows taskbar (~48 DIP),
+        // which would paint the dock slightly above the screen edge and then jump down when StartReplacementMode
+        // runs. Align to monitor Bounds by default and reserve WorkArea for fallback when replacement fails.
+        var area = useWorkArea ? targetDisplay.WorkArea : targetDisplay.Bounds;
         ResizeDockToContent();
         ApplyDockAlignment();
+        if (IsVertical)
+        {
+            Left = Edge == DockEdge.Left ? area.Left : Math.Max(area.Left, area.Right - Width);
+            Top = area.Top;
+            Height = area.Height;
+            return;
+        }
+
         Left = _dockPosition switch
         {
-            DockPosition.Left => workArea.Left,
-            DockPosition.Center => workArea.Left + (workArea.Width - Width) / 2,
-            DockPosition.Right => workArea.Right - Width,
-            _ => workArea.Left
+            DockPosition.Left => area.Left,
+            DockPosition.Center => area.Left + (area.Width - Width) / 2,
+            DockPosition.Right => area.Right - Width,
+            _ => area.Left
         };
-        Top = Math.Max(workArea.Top, workArea.Bottom - Height);
+        Top = Math.Max(area.Top, area.Bottom - Height);
     }
 
     private void StartReplacementMode()
@@ -488,7 +499,7 @@ public partial class MainWindow : Window
         {
             session.Dispose();
             if (!session.IsActive) _replacementSession = null;
-            PositionDock();
+            PositionDock(useWorkArea: true);
             ReportError(ex.Message);
         }
     }
@@ -2635,7 +2646,8 @@ public partial class MainWindow : Window
         DockSizeProfile profile, bool isVertical, double borderThickness, double externalBottomGap, double externalTopGap)
     {
         var border = Math.Max(0.0, borderThickness) * 2.0;
-        var requiredSurface = profile.Cell + profile.VerticalPadding * 2 + border;
+        // Use the padding-free cell height: horizontal icon spacing must never grow the reserved taskbar strip.
+        var requiredSurface = profile.EffectiveCellHeight + profile.VerticalPadding * 2 + border;
         var topGap = Math.Max(0.0, externalTopGap);
         var bottomGap = Math.Max(0.0, externalBottomGap);
         if (isVertical)
