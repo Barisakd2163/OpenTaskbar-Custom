@@ -2705,29 +2705,49 @@ public partial class MainWindow : Window
         {
             if (IsFullWidth)
             {
-                // Full-width bar: size the apps column to the actual measured content width. An
-                // ItemsControl reports 0 as its desired width, so plain Auto collapsed the column
-                // and the grid's desired width was wrong — Center then could not truly center.
-                var appsWidth = Math.Max(0, DockScrollViewer.MeasureContentWidth(DockContents));
+                // The ScrollViewer reserves DockScrollContentInset (6+6 DIP) as left/right margin,
+                // so the apps column must include it or ExtentWidth > ViewportWidth and phantom
+                // scroll arrows appear even when nothing actually overflows.
+                var inset = DockScrollViewer.ContentInset;
+                var appsWidth = Math.Max(0, DockScrollViewer.MeasureContentWidth(DockContents) + inset.Left + inset.Right);
                 AppsColumn.Width = new GridLength(appsWidth);
                 WidgetColumn.Width = GridLength.Auto;
                 WidgetIsland.HorizontalAlignment = HorizontalAlignment.Left;
-                // Explicit total width: a Grid with all-Auto columns can still report a stretched
-                // desired width through its scroll viewer, which shifts Center off by a few pixels.
-                DockLayoutRoot.Width = DockScrollViewer.MeasureContentWidth(DockLeadControls)
+
+                // Center the whole content group inside the full-width bar by giving the Grid its
+                // exact measured width. FitDockToContent keeps MinWidth at 0 in full-width mode so
+                // the width actually applies (it previously forced MinWidth = full bar width, which
+                // silently clamped the Grid back to the bar and defeated every centering attempt).
+                var totalWidth = DockScrollViewer.MeasureContentWidth(DockLeadControls)
                     + appsWidth
                     + DockScrollViewer.MeasureContentWidth(DockTrailControls)
                     + (WidgetIsland.Visibility == Visibility.Visible
                         ? DockScrollViewer.MeasureContentWidth(WidgetIsland) : 0);
-                // The full-width bar already has all the screen width; leftover sub-pixel scroll range
-                // must not surface prev/next arrows when nothing actually overflows.
-                DockScrollViewer.SuppressOverflowIndicators = true;
-                DockLayoutRoot.HorizontalAlignment = _preferences.Current.ContentAlignment switch
+                var barWidth = DockFrameRoot.ActualWidth > 0 ? DockFrameRoot.ActualWidth : Math.Max(1, _dockArea.Width - DockHorizontalChrome);
+                DockLayoutRoot.MinWidth = 0;
+                DockLayoutRoot.Margin = new Thickness(0);
+                if (totalWidth <= barWidth)
                 {
-                    DockContentAlignment.Left => HorizontalAlignment.Left,
-                    DockContentAlignment.Right => HorizontalAlignment.Right,
-                    _ => HorizontalAlignment.Center
-                };
+                    // Enough room: give the Grid its exact content width so Center/Left/Right align the
+                    // whole group inside the full-width bar.
+                    DockLayoutRoot.Width = totalWidth;
+                    DockLayoutRoot.HorizontalAlignment = _preferences.Current.ContentAlignment switch
+                    {
+                        DockContentAlignment.Left => HorizontalAlignment.Left,
+                        DockContentAlignment.Right => HorizontalAlignment.Right,
+                        _ => HorizontalAlignment.Center
+                    };
+                }
+                else
+                {
+                    // Content genuinely overflows the bar: stretch and let DockScrollViewer scroll the
+                    // apps; a fixed centered width would push the Start button off-screen.
+                    DockLayoutRoot.Width = double.NaN;
+                    DockLayoutRoot.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    AppsColumn.Width = new GridLength(1, GridUnitType.Star);
+                }
+                // No real overflow in a full-width bar; suppress any sub-pixel scroll range.
+                DockScrollViewer.SuppressOverflowIndicators = true;
             }
             else
             {
@@ -3155,7 +3175,10 @@ public partial class MainWindow : Window
 
         if (IsFullWidth)
         {
-            DockLayoutRoot.MinWidth = Math.Max(0, maximumSurfaceWidth - DockHorizontalChrome);
+            // Do not force the layout Grid to the full bar width here — that MinWidth silently
+            // clamped DockLayoutRoot.Width and prevented content centering. The bar background is
+            // drawn by DockFrame/DockSurface, which stay stretched; only the content group is sized.
+            DockLayoutRoot.MinWidth = 0;
             DockSurface.Width = double.NaN;
             if (_dockArea.Width <= 0) Width = Math.Max(16, availableWidth);
             return;
