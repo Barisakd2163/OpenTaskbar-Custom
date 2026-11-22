@@ -2370,12 +2370,14 @@ public partial class SettingsWindow : Window
     {
         if (_initializing) return;
         var unit = GapUnit(DockTopGapUnitBox);
-        var current = _preferences.Current;
+        // Read pending UI values, not the last saved snapshot: a slider drag inside the auto-save
+        // debounce window would otherwise be lost when the unit is switched.
+        var pending = ReadSelection();
         var wasInitializing = _initializing;
         _initializing = true;
         try
         {
-            ConfigureGapSlider(DockTopGapSlider, unit, current.DockTopGapPixels, current.DockTopGapPercent);
+            ConfigureGapSlider(DockTopGapSlider, unit, pending.DockTopGapPixels, pending.DockTopGapPercent);
         }
         finally
         {
@@ -2389,12 +2391,12 @@ public partial class SettingsWindow : Window
     {
         if (_initializing) return;
         var unit = GapUnit(DockBottomGapUnitBox);
-        var current = _preferences.Current;
+        var pending = ReadSelection();
         var wasInitializing = _initializing;
         _initializing = true;
         try
         {
-            ConfigureGapSlider(DockBottomGapSlider, unit, current.DockBottomGapPixels, current.DockBottomGapPercent);
+            ConfigureGapSlider(DockBottomGapSlider, unit, pending.DockBottomGapPixels, pending.DockBottomGapPercent);
         }
         finally
         {
