@@ -67,7 +67,7 @@ public static class AiUsageService
 
     internal static async Task<LoadResult> LoadWithPolicyAsync(AiProviders provider, CancellationToken cancellation)
     {
-        if (provider is not (AiProviders.Claude or AiProviders.Codex or AiProviders.Antigravity or AiProviders.OpenCode or AiProviders.Copilot or AiProviders.DeepSeek or AiProviders.OpenRouter))
+        if (provider is not (AiProviders.Claude or AiProviders.Codex or AiProviders.Antigravity or AiProviders.OpenCode or AiProviders.Copilot or AiProviders.DeepSeek or AiProviders.OpenRouter or AiProviders.Cursor))
             return new(null, "ErrorAiUsageLoad");
         int? status = null;
         try
@@ -75,6 +75,8 @@ public static class AiUsageService
             cancellation.ThrowIfCancellationRequested();
             if (!await Task.Run(NetworkInterface.GetIsNetworkAvailable, cancellation).ConfigureAwait(false))
                 return new(null, "ErrorAiUsageLoad");
+            if (provider == AiProviders.Cursor)
+                return await LoadCursorWithPolicyAsync(cancellation).ConfigureAwait(false);
             var credential = await Task.Run(() => ReadCredential(provider), cancellation).ConfigureAwait(false);
             if (credential is null) return new(null, "ErrorAiUsageSignIn");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -157,6 +159,8 @@ public static class AiUsageService
 
     internal static DateTime CredentialStamp(AiProviders provider)
     {
+        if (provider == AiProviders.Cursor)
+            return CursorAuthService.TokenStamp();
         var stamp = DateTime.MinValue;
         if (provider == AiProviders.Antigravity && ReadKeyringCredential("gemini:antigravity", out var keyringStamp) is not null)
             stamp = keyringStamp;
@@ -525,6 +529,210 @@ public static class AiUsageService
     internal static (AiUsageReport? Report, string? Error) ParseCopilot(string json, string? plan = null) => Parse(json, AiProviders.Copilot, plan);
     internal static (AiUsageReport? Report, string? Error) ParseDeepSeek(string json, string? plan = null) => Parse(json, AiProviders.DeepSeek, plan);
     internal static (AiUsageReport? Report, string? Error) ParseOpenRouter(string json, string? plan = null) => Parse(json, AiProviders.OpenRouter, plan);
+
+    private static async Task<LoadResult> LoadCursorWithPolicyAsync(CancellationToken cancellation)
+    {
+        int? status = null;
+        try
+        {
+            var (access, refresh) = await Task.Run(CursorAuthService.LoadTokens, cancellation).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(access) && string.IsNullOrWhiteSpace(refresh))
+                return new(null, "ErrorAiUsageSignIn");
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+
+            var refreshed = false;
+            if ((string.IsNullOrWhiteSpace(access) || CursorAuthService.IsExpiringSoon(access))
+                && !string.IsNullOrWhiteSpace(refresh))
+            {
+                var refreshResult = await CursorAuthService.RefreshAsync(refresh, Client, timeout.Token).ConfigureAwait(false);
+                if (refreshResult.SessionExpired)
+                    return new(null, "ErrorAiUsageSignIn");
+                if (!string.IsNullOrWhiteSpace(refreshResult.AccessToken))
+                {
+                    access = refreshResult.AccessToken;
+                    refresh = refreshResult.RefreshToken;
+                    refreshed = true;
+                }
+                else if (string.IsNullOrWhiteSpace(access))
+                {
+                    return new(null, "ErrorAiUsageLoad");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(access))
+                return new(null, "ErrorAiUsageSignIn");
+
+            var response = await SendCursorDashboardRequestAsync(access, "GetCurrentPeriodUsage", timeout.Token).ConfigureAwait(false);
+            try
+            {
+                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                {
+                    if (refreshed || string.IsNullOrWhiteSpace(refresh))
+                    {
+                        CursorAuthService.SignOut();
+                        return new(null, "ErrorAiUsageSignIn");
+                    }
+
+                    var refreshResult = await CursorAuthService.RefreshAsync(refresh, Client, timeout.Token).ConfigureAwait(false);
+                    if (refreshResult.SessionExpired)
+                        return new(null, "ErrorAiUsageSignIn");
+                    if (string.IsNullOrWhiteSpace(refreshResult.AccessToken))
+                        return new(null, "ErrorAiUsageLoad");
+
+                    access = refreshResult.AccessToken;
+                    refresh = refreshResult.RefreshToken;
+                    refreshed = true;
+                    response.Dispose();
+                    response = await SendCursorDashboardRequestAsync(access, "GetCurrentPeriodUsage", timeout.Token).ConfigureAwait(false);
+                    if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                    {
+                        CursorAuthService.SignOut();
+                        return new(null, "ErrorAiUsageSignIn");
+                    }
+                }
+
+                status = (int)response.StatusCode;
+                if (!response.IsSuccessStatusCode)
+                {
+                    AppLog.Info($"AI usage (Cursor) unavailable: {status}");
+                    return HttpFailure(response.StatusCode, response.Headers.RetryAfter);
+                }
+
+                var usageJson = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                string? planJson = null;
+                try
+                {
+                    using var planResponse = await SendCursorDashboardRequestAsync(access, "GetPlanInfo", timeout.Token).ConfigureAwait(false);
+                    if (planResponse.IsSuccessStatusCode)
+                        planJson = await planResponse.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                }
+                catch (Exception) when (!cancellation.IsCancellationRequested)
+                {
+                    // Best-effort secondary endpoint: keep usage even if plan info fails.
+                }
+
+                var (report, error) = ParseCursor(usageJson, planJson);
+                return new(report, error);
+            }
+            finally { response.Dispose(); }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or TimeoutException
+            or IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException
+            or InvalidOperationException or ArgumentException or FormatException or NotSupportedException or SecurityException)
+        {
+            AppLog.Info($"AI usage (Cursor) unavailable: {status} {ex.GetType().Name}");
+            return new(null, "ErrorAiUsageLoad");
+        }
+    }
+
+    private static async Task<HttpResponseMessage> SendCursorDashboardRequestAsync(string accessToken, string method, CancellationToken cancellation)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"https://api2.cursor.sh/aiserver.v1.DashboardService/{method}")
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.TryAddWithoutValidation("Connect-Protocol-Version", "1");
+        return await Client.SendAsync(request, cancellation).ConfigureAwait(false);
+    }
+
+    internal static (AiUsageReport? Report, string? Error) ParseCursor(string usageJson, string? planJson = null)
+    {
+        if (string.IsNullOrWhiteSpace(usageJson))
+            return (null, "ErrorAiUsageLoad");
+
+        try
+        {
+            using var usageDoc = JsonDocument.Parse(usageJson);
+            var root = usageDoc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || Property(root, "planUsage") is not { ValueKind: JsonValueKind.Object } planUsage
+                || Property(planUsage, "totalPercentUsed") is not { } totalElem
+                || Number(totalElem) is not { } totalRaw
+                || !double.IsFinite(totalRaw))
+            {
+                return (null, "ErrorAiUsageLoad");
+            }
+
+            string? planName = null;
+            string? periodHint = null;
+            long? planResetMs = null;
+            if (!string.IsNullOrWhiteSpace(planJson))
+            {
+                try
+                {
+                    using var planDoc = JsonDocument.Parse(planJson);
+                    var pi = Property(planDoc.RootElement, "planInfo") ?? planDoc.RootElement;
+                    if (pi.ValueKind == JsonValueKind.Object)
+                    {
+                        planName = Text(pi, "planName");
+                        periodHint = Text(pi, "includedUsagePeriod");
+                        planResetMs = ParseMilliseconds(pi, "includedUsageResetsAt") ?? ParseMilliseconds(pi, "billingCycleEnd");
+                    }
+                }
+                catch (JsonException) { /* optional secondary payload */ }
+            }
+
+            var startMs = ParseMilliseconds(root, "billingCycleStart");
+            var endMs = ParseMilliseconds(root, "billingCycleEnd") ?? planResetMs;
+            long? windowSecs = startMs is { } sMs && endMs is { } eMs && eMs > sMs ? (eMs - sMs) / 1000 : null;
+
+            var isWeekly = periodHint == "INCLUDED_USAGE_PERIOD_WEEKLY"
+                || (periodHint != "INCLUDED_USAGE_PERIOD_MONTHLY" && windowSecs is >= 5 * 86400 and <= 9 * 86400);
+            var labelKey = isWeekly ? "AiUsageWeekly" : "AiUsageMonthly";
+            if (windowSecs is null && isWeekly) windowSecs = 7 * 86400L;
+
+            var resetsAt = endMs is { } resetMs ? DateTimeOffset.FromUnixTimeMilliseconds(resetMs) : (DateTimeOffset?)null;
+            var totalUsed = Math.Clamp(totalRaw / 100.0, 0.0, 1.0);
+
+            var breakdown = new List<AiUsageShare>();
+            var autoUsed = Property(planUsage, "autoPercentUsed") is { } autoElem && Number(autoElem) is { } auVal && double.IsFinite(auVal)
+                ? (double?)auVal : null;
+            var apiUsed = Property(planUsage, "apiPercentUsed") is { } apiElem && Number(apiElem) is { } apiVal && double.IsFinite(apiVal)
+                ? (double?)apiVal : null;
+            if (apiUsed is > 0.05 || (autoUsed is { } au && Math.Abs(au - totalRaw) >= 0.5))
+            {
+                if (autoUsed is { } a) breakdown.Add(new("Auto", Math.Clamp(a / 100.0, 0.0, 1.0)));
+                if (apiUsed is > 0) breakdown.Add(new("API", Math.Clamp(apiUsed.Value / 100.0, 0.0, 1.0)));
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var report = new AiUsageReport(
+                AiProviders.Cursor,
+                PlanLabel(planName),
+                [new AiUsageWindow(labelKey, totalUsed, resetsAt, windowSecs)],
+                now)
+            {
+                LimitReached = totalUsed >= 1.0,
+                Breakdown = breakdown
+            };
+            return (report, null);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException
+            or FormatException or ArgumentException or OverflowException)
+        {
+            return (null, "ErrorAiUsageLoad");
+        }
+    }
+
+    private static long? ParseMilliseconds(JsonElement element, string name)
+    {
+        if (Property(element, name) is not { } value) return null;
+        const long maxUnixMs = 253402300799999L;
+        if (value.ValueKind == JsonValueKind.Number)
+        {
+            if (value.TryGetInt64(out var l)) return l is > 0 and <= maxUnixMs ? l : null;
+            if (value.TryGetDouble(out var d) && double.IsFinite(d) && d is > 0 and <= maxUnixMs) return (long)d;
+        }
+        else if (value.ValueKind == JsonValueKind.String && value.GetString() is { } s)
+        {
+            if (long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)) return l is > 0 and <= maxUnixMs ? l : null;
+            if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) && double.IsFinite(d) && d is > 0 and <= maxUnixMs) return (long)d;
+        }
+        return null;
+    }
 
     private static Credential? ParseCopilotCredential(JsonElement root)
     {

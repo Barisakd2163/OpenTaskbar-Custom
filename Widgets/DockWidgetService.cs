@@ -39,7 +39,8 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new("AiUsageOpenCode", AiProviders.OpenCode, "WidgetAiUsageOpenCode"),
         new("AiUsageCopilot", AiProviders.Copilot, "WidgetAiUsageCopilot"),
         new("AiUsageDeepSeek", AiProviders.DeepSeek, "WidgetAiUsageDeepSeek"),
-        new("AiUsageOpenRouter", AiProviders.OpenRouter, "WidgetAiUsageOpenRouter")
+        new("AiUsageOpenRouter", AiProviders.OpenRouter, "WidgetAiUsageOpenRouter"),
+        new("AiUsageCursor", AiProviders.Cursor, "WidgetAiUsageCursor")
     ];
 
     private static readonly WidgetDefinition[] Definitions =

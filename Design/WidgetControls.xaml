@@ -314,6 +314,9 @@
                                 <DataTrigger Binding="{Binding Id}" Value="AiUsageOpenRouter">
                                     <Setter Property="Data" Value="{StaticResource LogoOpenRouter}" />
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding Id}" Value="AiUsageCursor">
+                                    <Setter Property="Data" Value="{StaticResource LogoCursor}" />
+                                </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Path.Style>
@@ -341,6 +344,9 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Id}" Value="AiUsageOpenRouter">
                                     <Setter Property="Text" Value="OpenRouter" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Id}" Value="AiUsageCursor">
+                                    <Setter Property="Text" Value="Cursor" />
                                 </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -439,6 +445,10 @@
                 <Setter TargetName="AiUsagePreview" Property="Visibility" Value="Visible" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Id}" Value="AiUsageOpenRouter">
+                <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="AiUsagePreview" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Id}" Value="AiUsageCursor">
                 <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="AiUsagePreview" Property="Visibility" Value="Visible" />
             </DataTrigger>

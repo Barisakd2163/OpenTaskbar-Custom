@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Controls;
 using OpenTaskbar.Models;
@@ -214,7 +216,163 @@ internal static class AiUsageChecks
             Check(AiUsageService.ParseCodex(json).Error == "ErrorAiUsageLoad", "Invalid Codex responses must return a localization key.");
             Check(AiUsageService.ParseAntigravity(json).Error == "ErrorAiUsageLoad", "Invalid Antigravity responses must return a localization key.");
             Check(AiUsageService.ParseOpenCode(json).Error == "ErrorAiUsageLoad", "Invalid OpenCode responses must return a localization key.");
+            Check(AiUsageService.ParseCursor(json).Error == "ErrorAiUsageLoad", "Invalid Cursor responses must return a localization key.");
         }
+
+        // Cursor parser checks
+        const string cursorLiveUsage = """
+            {"billingCycleStart":"1794571743688","billingCycleEnd":"1795176543688",
+             "planUsage":{"remainingBonus":false,"autoPercentUsed":39.61538461538461,"totalPercentUsed":39.61538461538461},
+             "enabled":true}
+            """;
+        const string cursorLivePlan = """
+            {"planInfo":{"planName":"Plus","billingCycleEnd":"1796082954937","includedUsagePeriod":"INCLUDED_USAGE_PERIOD_WEEKLY","includedUsageResetsAt":"1795176543688"}}
+            """;
+        var (cursorReport, cursorErr) = AiUsageService.ParseCursor(cursorLiveUsage, cursorLivePlan);
+        Check(cursorErr is null && cursorReport is { Provider: AiProviders.Cursor, Plan: "Plus", LimitReached: false }
+            && cursorReport.Windows is [{ LabelKey: "AiUsageWeekly", WindowSeconds: 7 * 86400L }]
+            && Math.Abs(cursorReport.Windows[0].Used - 0.396153846) < 1e-4
+            && cursorReport.Windows[0].ResetsAt?.ToUnixTimeMilliseconds() == 1795176543688L
+            && cursorReport.Breakdown.Count == 0,
+            "Cursor must parse weekly usage, plan name, reset timestamp, and omit breakdown when API is absent and Auto matches total.");
+
+        var (cursorWithApi, cursorWithApiErr) = AiUsageService.ParseCursor("""
+            {"billingCycleStart":1794571743688,"billingCycleEnd":1795176543688,
+             "planUsage":{"autoPercentUsed":25.0,"apiPercentUsed":14.5,"totalPercentUsed":39.5}}
+            """);
+        Check(cursorWithApiErr is null && cursorWithApi is not null
+            && cursorWithApi.Windows[0] is { LabelKey: "AiUsageWeekly", WindowSeconds: 7 * 86400L }
+            && cursorWithApi.Windows[0].ResetsAt?.ToUnixTimeMilliseconds() == 1795176543688L
+            && cursorWithApi.Breakdown.Count == 2
+            && cursorWithApi.Breakdown[0] == new AiUsageShare("Auto", 0.25)
+            && cursorWithApi.Breakdown[1] == new AiUsageShare("API", 0.145),
+            "Cursor must accept numeric timestamps and expose Auto/API breakdown when apiPercentUsed > 0.05.");
+
+        var (cursorMonthly, cursorMonthlyErr) = AiUsageService.ParseCursor("""
+            {"billingCycleStart":1794571743688,"billingCycleEnd":1797163743688,"planUsage":{"totalPercentUsed":50}}
+            """);
+        Check(cursorMonthlyErr is null && cursorMonthly is not null
+            && cursorMonthly.Windows is [{ LabelKey: "AiUsageMonthly", Used: 0.5, WindowSeconds: 30 * 86400L }],
+            "Cursor 30-day cycle must classify as AiUsageMonthly.");
+
+        var (cursorForcedMonthly, _) = AiUsageService.ParseCursor(cursorLiveUsage, """
+            {"planInfo":{"planName":"Pro","includedUsagePeriod":"INCLUDED_USAGE_PERIOD_MONTHLY"}}
+            """);
+        Check(cursorForcedMonthly is { Plan: "Pro" } && cursorForcedMonthly.Windows[0].LabelKey == "AiUsageMonthly",
+            "Cursor INCLUDED_USAGE_PERIOD_MONTHLY hint must override window length heuristic.");
+
+        var (cursorBadPlan, cursorBadPlanErr) = AiUsageService.ParseCursor(cursorLiveUsage, "{not valid json");
+        Check(cursorBadPlanErr is null && cursorBadPlan is { Plan: null }
+            && cursorBadPlan.Windows is [{ LabelKey: "AiUsageWeekly", WindowSeconds: 7 * 86400L }],
+            "Cursor must ignore malformed secondary GetPlanInfo JSON and keep parsed usage.");
+
+        var (cursorPlanResetFallback, _) = AiUsageService.ParseCursor("""
+            {"planUsage":{"totalPercentUsed":100}}
+            """, cursorLivePlan);
+        Check(cursorPlanResetFallback is { LimitReached: true }
+            && cursorPlanResetFallback.Windows is [{ LabelKey: "AiUsageWeekly", Used: 1.0, WindowSeconds: 7 * 86400L }]
+            && cursorPlanResetFallback.Windows[0].ResetsAt?.ToUnixTimeMilliseconds() == 1795176543688L,
+            "Cursor must fall back to GetPlanInfo includedUsageResetsAt and 7-day weekly window length when usage timestamps are omitted.");
+
+        foreach (var badCursor in new[] { """{"planUsage":{}}""", """{"planUsage":{"autoPercentUsed":10}}""", """{"planUsage":{"totalPercentUsed":"NaN"}}""" })
+        {
+            var (badRep, badErr) = AiUsageService.ParseCursor(badCursor);
+            Check(badRep is null && badErr == "ErrorAiUsageLoad",
+                "Cursor responses missing a finite planUsage.totalPercentUsed must fail with ErrorAiUsageLoad.");
+        }
+
+        // Cursor PKCE RFC 7636 vector and StartLogin checks
+        const string pkceVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        const string pkceExpected = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        Check(CursorAuthService.PkceChallenge(pkceVerifier) == pkceExpected,
+            "Cursor PKCE challenge must match RFC 7636 test vector.");
+        var (v, c, uuid, loginUrl) = CursorAuthService.StartLogin();
+        Check(v.Length == 43 && !v.Contains('=') && CursorAuthService.PkceChallenge(v) == c
+            && Guid.TryParseExact(uuid, "D", out _) && uuid == uuid.ToLowerInvariant()
+            && loginUrl == $"https://cursor.com/loginDeepControl?challenge={c}&uuid={uuid}&mode=login",
+            "Cursor StartLogin must generate a valid Base64Url verifier, matching challenge, lowercase UUID, and loginDeepControl URL.");
+
+        // Cursor JWT expiry check
+        static string FakeJwt(long expUnix) =>
+            $"{CursorAuthService.Base64Url("{\"alg\":\"HS256\"}"u8)}.{CursorAuthService.Base64Url(System.Text.Encoding.UTF8.GetBytes($"{{\"exp\":{expUnix}}}"))}.sig";
+        Check(CursorAuthService.IsExpiringSoon(FakeJwt(DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeSeconds()))
+            && !CursorAuthService.IsExpiringSoon(FakeJwt(DateTimeOffset.UtcNow.AddMinutes(20).ToUnixTimeSeconds()))
+            && !CursorAuthService.IsExpiringSoon("not-a-jwt"),
+            "Cursor IsExpiringSoon must detect JWTs expiring within 5 minutes and safely ignore non-JWT tokens.");
+
+        // Cursor DPAPI save / load / sign-out roundtrip using isolated temp TokenFilePath
+        var previousCursorPath = CursorAuthService.TokenFilePath;
+        var tempCursorPath = Path.Combine(Path.GetTempPath(), $"ot-cursor-dpapi-{Guid.NewGuid():N}", "cursor-auth.bin");
+        CursorAuthService.TokenFilePath = tempCursorPath;
+        var sessionEvents = 0;
+        Action onSessionChanged = () => sessionEvents++;
+        CursorAuthService.SessionChanged += onSessionChanged;
+        try
+        {
+            Check(!CursorAuthService.HasSession && CursorAuthService.LoadTokens() == (null, null),
+                "Missing Cursor token file must report no session.");
+            CursorAuthService.SaveTokens("cursor-access-123", "cursor-refresh-456");
+            Check(File.Exists(tempCursorPath)
+                && !System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(tempCursorPath)).Contains("cursor-access-123", StringComparison.Ordinal),
+                "Cursor token file must be DPAPI-encrypted on disk, never plaintext.");
+            Check(CursorAuthService.HasSession
+                && CursorAuthService.LoadTokens() == ("cursor-access-123", "cursor-refresh-456")
+                && AiUsageService.CredentialStamp(AiProviders.Cursor) > DateTime.MinValue
+                && sessionEvents == 1,
+                "Cursor DPAPI SaveTokens/LoadTokens must round-trip access and refresh tokens and notify SessionChanged.");
+            CursorAuthService.SignOut();
+            Check(!CursorAuthService.HasSession && !File.Exists(tempCursorPath)
+                && CursorAuthService.LoadTokens() == (null, null) && sessionEvents == 2,
+                "Cursor SignOut must delete the token file and notify SessionChanged.");
+
+            // RefreshAsync: rotation, transient 5xx preservation, shouldLogout, and 401 sign-out
+            CursorAuthService.SaveTokens("old-access", "old-refresh");
+            using (var rotateClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"access_token":"new-access","refresh_token":"rotated-refresh"}""", Encoding.UTF8, "application/json")
+            })))
+            {
+                var r1 = CursorAuthService.RefreshAsync("old-refresh", rotateClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(!r1.SessionExpired && r1.AccessToken == "new-access" && r1.RefreshToken == "rotated-refresh"
+                    && CursorAuthService.LoadTokens() == ("new-access", "rotated-refresh"),
+                    "Cursor RefreshAsync must persist rotated refresh_token when returned.");
+            }
+
+            using (var transientClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))))
+            {
+                var r2 = CursorAuthService.RefreshAsync("rotated-refresh", transientClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(!r2.SessionExpired && r2.AccessToken is null && CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must preserve the existing session on transient 5xx errors.");
+            }
+
+            using (var logoutClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"shouldLogout":true}""", Encoding.UTF8, "application/json")
+            })))
+            {
+                var r3 = CursorAuthService.RefreshAsync("rotated-refresh", logoutClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(r3.SessionExpired && !CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must sign out cleanly when shouldLogout is true.");
+            }
+
+            CursorAuthService.SaveTokens("temp-access", "temp-refresh");
+            using (var unauthorizedClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized))))
+            {
+                var r4 = CursorAuthService.RefreshAsync("temp-refresh", unauthorizedClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(r4.SessionExpired && !CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must sign out cleanly on HTTP 401.");
+            }
+        }
+        finally
+        {
+            CursorAuthService.SessionChanged -= onSessionChanged;
+            CursorAuthService.TokenFilePath = previousCursorPath;
+            var dir = Path.GetDirectoryName(tempCursorPath);
+            if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+
+        Check(DockWidgetService.AiUsageWidgets.Any(w => w.Id == "AiUsageCursor" && w.Provider == AiProviders.Cursor && w.LabelKey == "WidgetAiUsageCursor"),
+            "AiUsageCursor must be registered in DockWidgetService.AiUsageWidgets.");
 
         var openCode = AiUsageService.ParseOpenCode("""
             {"rolling5h":{"usageDollars":2.34,"limitDollars":12,"usagePercent":19.5,"resetInSec":7200},
@@ -347,7 +505,7 @@ internal static class AiUsageChecks
                 "Malformed credential files must fail closed.");
             var settings = new DockSettings(AiUsageProviders: AiProviders.All);
             var store = new DockSettingsStore(path);
-            Check(!DockSettingsStore.Validate(settings with { AiUsageProviders = (AiProviders)128 }), "Unknown AI provider flags must be rejected.");
+            Check(!DockSettingsStore.Validate(settings with { AiUsageProviders = (AiProviders)256 }), "Unknown AI provider flags must be rejected.");
             Check(store.Save(settings) is null && store.Load().Settings.AiUsageProviders == AiProviders.None,
                 "Legacy provider flags must be consumed by the per-provider widget migration.");
             File.WriteAllText(path, "{}");
@@ -391,7 +549,10 @@ internal static class AiUsageChecks
             "AiUsageRingHighest", "AiUsageRingSession", "AiUsageLimitReached", "AiUsageStatusOk", "AiUsageStatusSignIn",
             "AiUsageStatusStale", "AiUsageStatusNearLimit", "AiUsageStatusHigh", "AiUsageStatusUnavailable", "AiUsageStatusLoading", "AiUsagePaceIn", "AiUsagePaceAt", "AiUsagePaceMarker", "HoursMinutesFormat",
             "AiUsageExtra", "AiUsageBreakdown", "AiUsageCredits", "AiUsageCreditsUnlimited", "AiUsageResetCredits",
-            "ErrorAiUsageSignIn", "ErrorAiUsageLoad", "ErrorAiUsageRateLimited"];
+            "ErrorAiUsageSignIn", "ErrorAiUsageLoad", "ErrorAiUsageRateLimited",
+            "WidgetAiUsageCursor", "WidgetAiUsageCursorDescription", "AiUsageCursorAccountLabel",
+            "AiUsageCursorConnected", "AiUsageCursorSignInRequired", "AiUsageCursorSignIn",
+            "AiUsageCursorSignOut", "AiUsageCursorWaiting", "AiUsageCursorSignInTimedOut", "ErrorAiUsageCursorSignIn"];
         var assembly = typeof(LanguageCatalog).Assembly;
         foreach (var resource in assembly.GetManifestResourceNames().Where(name => name.StartsWith("OpenTaskbar.Localization.Languages.", StringComparison.Ordinal)))
         {
@@ -431,7 +592,7 @@ internal static class AiUsageChecks
             throw new InvalidOperationException("An AI usage widget must require exactly one provider.");
         }
         foreach (var loader in loaders)
-            foreach (var provider in new[] { AiProviders.OpenCode, AiProviders.Copilot, AiProviders.DeepSeek, AiProviders.OpenRouter })
+            foreach (var provider in new[] { AiProviders.OpenCode, AiProviders.Copilot, AiProviders.DeepSeek, AiProviders.OpenRouter, AiProviders.Cursor })
                 foreach (var compact in new[] { false, true })
                 {
                     using var widget = new AiUsageWidget(provider, loader);
@@ -594,7 +755,46 @@ internal static class AiUsageChecks
 
         checks += 8;
 
+        // Cursor live-refresh on SessionChanged check (without touching user DPAPI store)
+        var cursorLoads = 0;
+        using (var cursorWidget = new AiUsageWidget(AiProviders.Cursor, (provider, _) =>
+        {
+            cursorLoads++;
+            if (cursorLoads == 1)
+                return Task.FromResult<(AiUsageReport?, string?)>((null, "ErrorAiUsageSignIn"));
+            var report = new AiUsageReport(provider, "Plus",
+                [new("AiUsageWeekly", 0.4, DateTimeOffset.UtcNow.AddDays(4), 604800L)], DateTimeOffset.UtcNow);
+            return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+        }))
+        {
+            var prevPath = CursorAuthService.TokenFilePath;
+            var tmpPath = Path.Combine(Path.GetTempPath(), $"ot-cursor-widget-{Guid.NewGuid():N}", "cursor-auth.bin");
+            CursorAuthService.TokenFilePath = tmpPath;
+            try
+            {
+                cursorWidget.Activate();
+                if (cursorLoads != 1)
+                    throw new InvalidOperationException("Cursor widget must perform an initial load on Activate.");
+                CursorAuthService.SaveTokens("live-access", "live-refresh");
+                if (cursorLoads != 2)
+                    throw new InvalidOperationException("Cursor widget must reset sign-in backoff and reload immediately on SessionChanged.");
+                checks += 2;
+            }
+            finally
+            {
+                CursorAuthService.TokenFilePath = prevPath;
+                var dir = Path.GetDirectoryName(tmpPath);
+                if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            }
+        }
+
         pending.SetCanceled();
         return checks;
+    }
+
+    private sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(responder(request));
     }
 }

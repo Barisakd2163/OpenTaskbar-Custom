@@ -109,12 +109,22 @@ public sealed class AiUsageWidget : DockWidget
     private static readonly SolidColorBrush CodexBrandBrush = FreezeBrush(Color.FromRgb(0x8D, 0x99, 0xFF));
     private static readonly SolidColorBrush DeepSeekBrandBrush = FreezeBrush(Color.FromRgb(0x4D, 0x6B, 0xFE));
     private static readonly SolidColorBrush CopilotBrandBrush = FreezeBrush(Color.FromRgb(0x9F, 0x9F, 0xF2));
+    private static readonly SolidColorBrush CursorBrandBrush = FreezeBrush(Color.FromRgb(0x0E, 0xA5, 0xE9));
+    private static readonly Geometry CursorLogoGeometry = FreezeGeometry(
+        "F1 M11.503 .131 1.891 5.678a .84 .84 0 0 0 -.42 .726v11.188c 0 .3 .162 .575 .42 .724l9.609 5.55a 1 1 0 0 0 .998 0l9.61 -5.55a .84 .84 0 0 0 .42 -.724V6.404a .84 .84 0 0 0 -.42 -.726L12.497 .131a 1.01 1.01 0 0 0 -.996 0M2.657 6.338h18.55c .263 0 .43 .287 .297 .515L12.23 22.918c -.062 .107 -.229 .064 -.229 -.06V12.335a .59 .59 0 0 0 -.295 -.51l-9.11 -5.257c -.109 -.063 -.064 -.23 .061 -.23");
 
     private static SolidColorBrush FreezeBrush(Color color)
     {
         var b = new SolidColorBrush(color);
         b.Freeze();
         return b;
+    }
+
+    private static Geometry FreezeGeometry(string pathData)
+    {
+        var g = Geometry.Parse(pathData);
+        g.Freeze();
+        return g;
     }
 
     public AiUsageWidget(AiProviders provider, Func<AiProviders, CancellationToken, Task<(AiUsageReport?, string?)>>? loader = null)
@@ -156,14 +166,60 @@ public sealed class AiUsageWidget : DockWidget
 
     protected override void OnActivated()
     {
+        if (_provider == AiProviders.Cursor)
+        {
+            CursorAuthService.SessionChanged += CursorAuthService_SessionChanged;
+            CursorAuthService.RefreshRequested += CursorAuthService_RefreshRequested;
+        }
         Render();
         _ = LoadAsync();
     }
 
     protected override void OnDeactivated()
     {
+        if (_provider == AiProviders.Cursor)
+        {
+            CursorAuthService.SessionChanged -= CursorAuthService_SessionChanged;
+            CursorAuthService.RefreshRequested -= CursorAuthService_RefreshRequested;
+        }
         Clear();
         _flyout.Close();
+    }
+
+    private void CursorAuthService_SessionChanged()
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        void Handle()
+        {
+            if (!IsActive) return;
+            _signInStamp = null;
+            _nextLoadAt = null;
+            if (_loader is null && !CursorAuthService.HasSession)
+            {
+                _loading?.Cancel();
+                _loading = null;
+                _report = null;
+                _error = "ErrorAiUsageSignIn";
+                Refresh();
+            }
+            if (_loading is null) _ = LoadAsync();
+        }
+        if (Dispatcher.CheckAccess()) Handle();
+        else _ = Dispatcher.BeginInvoke(Handle);
+    }
+
+    private void CursorAuthService_RefreshRequested()
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        void Handle()
+        {
+            if (!IsActive) return;
+            _signInStamp = null;
+            _nextLoadAt = null;
+            if (_loading is null) _ = LoadAsync();
+        }
+        if (Dispatcher.CheckAccess()) Handle();
+        else _ = Dispatcher.BeginInvoke(Handle);
     }
 
     private void Clear()
@@ -310,19 +366,23 @@ public sealed class AiUsageWidget : DockWidget
         AiProviders.Copilot => "GitHub Copilot",
         AiProviders.DeepSeek => "DeepSeek",
         AiProviders.OpenRouter => "OpenRouter",
+        AiProviders.Cursor => "Cursor",
         _ => "Antigravity"
     };
     private string ErrorText(AiProviders provider, string key) => key == "ErrorAiUsageSignIn"
-        ? UiText.Format(key, provider switch
-        {
-            AiProviders.Claude => "claude auth login",
-            AiProviders.Codex => "codex login",
-            AiProviders.OpenCode => "opencode auth login",
-            AiProviders.Copilot => "gh auth login",
-            AiProviders.DeepSeek => "DEEPSEEK_API_KEY",
-            AiProviders.OpenRouter => "OPENROUTER_API_KEY",
-            _ => "agy"
-        }) : UiText.Get(key);
+        ? provider == AiProviders.Cursor
+            ? UiText.Get("ErrorAiUsageCursorSignIn")
+            : UiText.Format(key, provider switch
+            {
+                AiProviders.Claude => "claude auth login",
+                AiProviders.Codex => "codex login",
+                AiProviders.OpenCode => "opencode auth login",
+                AiProviders.Copilot => "gh auth login",
+                AiProviders.DeepSeek => "DEEPSEEK_API_KEY",
+                AiProviders.OpenRouter => "OPENROUTER_API_KEY",
+                _ => "agy"
+            })
+        : UiText.Get(key);
     private CultureInfo Culture => Settings.Language.Culture;
     private static bool IsModel(AiUsageWindow window) => window.LabelKey.StartsWith("AiUsageWeeklyModel:", StringComparison.Ordinal);
     private static bool IsPool(AiUsageWindow window) => window.LabelKey.StartsWith("AiUsagePool:", StringComparison.Ordinal);
@@ -458,21 +518,17 @@ public sealed class AiUsageWidget : DockWidget
         AiProviders.Copilot => "LogoCopilot",
         AiProviders.DeepSeek => "LogoDeepSeek",
         AiProviders.OpenRouter => "LogoOpenRouter",
+        AiProviders.Cursor => "LogoCursor",
         _ => "LogoAntigravity"
     };
 
     private Card AddCard()
     {
-        var logo = new System.Windows.Shapes.Path
-        {
-            Width = LogoSize,
-            Height = LogoSize,
-            Stretch = Stretch.Uniform,
-            Margin = new Thickness(0, 0, Gap, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            IsHitTestVisible = false,
-            Data = (Geometry)TryFindResource(LogoKey(_provider))
-        };
+        var logoGeometry = TryFindResource(LogoKey(_provider)) as Geometry
+            ?? (_provider == AiProviders.Cursor ? CursorLogoGeometry : null);
+        var logo = new System.Windows.Shapes.Path { Width = LogoSize, Height = LogoSize, Stretch = Stretch.Uniform,
+            Margin = new Thickness(0, 0, Gap, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
+            Data = logoGeometry };
         logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "TextPrimary");
         var label = Text(ShortName(_provider), 12, "TextPrimary");
         label.FontWeight = FontWeights.SemiBold;
@@ -670,6 +726,7 @@ public sealed class AiUsageWidget : DockWidget
         _card.Name.SetResourceReference(TextBlock.ForegroundProperty, foreground);
         if (!stale && _provider == AiProviders.Claude) _card.Logo.Fill = ClaudeBrandBrush;
         else if (!stale && _provider == AiProviders.DeepSeek) _card.Logo.Fill = DeepSeekBrandBrush;
+        else if (!stale && _provider == AiProviders.Cursor) _card.Logo.Fill = CursorBrandBrush;
         else _card.Logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, foreground);
         _card.Button.ToolTip = toolTip;
         AutomationProperties.SetName(_card.Button, $"{UiText.Get("WidgetAiUsage")}: {toolTip}");
@@ -1403,6 +1460,7 @@ public sealed class AiUsageWidget : DockWidget
                 AiProviders.Copilot => "https://github.com/settings/copilot",
                 AiProviders.DeepSeek => "https://platform.deepseek.com/usage",
                 AiProviders.OpenRouter => "https://openrouter.ai/settings/credits",
+                AiProviders.Cursor => "https://cursor.com/dashboard?tab=usage",
                 _ => "https://antigravity.google/docs"
             };
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
