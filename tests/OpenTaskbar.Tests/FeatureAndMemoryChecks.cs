@@ -897,7 +897,7 @@ internal static class FeatureAndMemoryChecks
             Directory.Delete(fixtureRoot, recursive: true);
         }
 
-        CheckLocalization([
+        CheckLocalization("full backup localization", [
             "FullBackup", "FullBackupDescription", "FullBackupExport", "FullBackupImport", "FullBackupFileFilter",
             "FullBackupExportDone", "FullBackupImportDone", "FullBackupRestoreThemePrompt", "ErrorFullBackupInvalid", "ErrorFullBackupWrite"
         ], Check);

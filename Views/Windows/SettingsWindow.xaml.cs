@@ -39,6 +39,7 @@ public partial class SettingsWindow : Window
     private string? _selectedThemePackId;
     private bool _closingApplication;
     private bool _initializing = true;
+    private bool _isSaving;
     private AiUsageRing _aiUsageRing;
     private bool _closed;
     private bool _sourceReady;
@@ -276,6 +277,10 @@ public partial class SettingsWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        // A save we initiated itself raises Changed; ignore it so the debounced auto-save
+        // does not re-save the same values and re-enter this handler.
+        if (_isSaving) return;
+
         // Reflect external Focus Mode changes (e.g. the dock context-menu toggle) without
         // rewriting the saved settings or the user's widget/animation choices. Suppress the
         // toggle's Checked/Unchecked event so this sync does not raise a second save.

@@ -156,7 +156,7 @@ internal static class WidgetViewChecks
             // BatteryWidget must opt its outer Border out of WidgetCardFeedback and render both hover and press overlays.
             var batteryWidget = new OpenTaskbar.Widgets.BatteryWidget
             {
-                BatteryReader = () => new BatteryStatus(true, 72, false)
+                BatteryReader = () => new BatteryStatus(true, 72, false, false)
             };
             Layout(batteryWidget);
             var batteryCard = (Border)batteryWidget.Content;
