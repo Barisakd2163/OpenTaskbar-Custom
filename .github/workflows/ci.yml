@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload Windows preview build
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: OpenTaskbar-redesign-preview
           path: release/
