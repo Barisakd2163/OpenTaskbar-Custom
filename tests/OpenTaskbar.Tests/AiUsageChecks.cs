@@ -614,10 +614,13 @@ internal static class AiUsageChecks
         {
             try { checks += EmptyRenderChecks(); }
             catch (Exception ex) { renderFailure = ex; }
+            finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         thread.Join();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
         if (renderFailure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(renderFailure).Throw();
         return checks;
     }
