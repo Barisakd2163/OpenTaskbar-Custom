@@ -171,8 +171,8 @@ internal sealed class WirelessBatteryAggregator
                 var key = GetCanonicalDeviceKey(reading);
                 activeKeys.Add(key);
 
-                var hasValidFreshBattery = reading.BatteryLevel > 0
-                                           || (reading.BatteryLevel == 0 && reading.IsCharging)
+                // -1 is the only "unknown" level; a genuine 0% non-charging device is valid data.
+                var hasValidFreshBattery = reading.BatteryLevel >= 0
                                            || !string.IsNullOrWhiteSpace(reading.LevelOverrideText);
 
                 if (reading.IsConnected && hasValidFreshBattery)
@@ -239,6 +239,9 @@ internal sealed class WirelessBatteryAggregator
 
     internal static string GetCanonicalDeviceKey(WirelessDeviceReading reading)
     {
+        // Name is the only identity shared across providers (e.g. SteelSeries HID and its GG
+        // fallback report different IDs for the same physical headset), so it must be the
+        // primary dedup key. Fall back to the provider ID for nameless devices.
         var normalizedName = NormalizeDeviceName(reading.Name);
         if (!string.IsNullOrWhiteSpace(normalizedName))
             return $"name:{normalizedName}";
@@ -257,8 +260,8 @@ internal sealed class WirelessBatteryAggregator
         if (existing.IsConnected != candidate.IsConnected)
             return candidate.IsConnected;
 
-        var existingHasValid = existing.BatteryLevel > 0 || !string.IsNullOrWhiteSpace(existing.LevelOverrideText);
-        var candidateHasValid = candidate.BatteryLevel > 0 || !string.IsNullOrWhiteSpace(candidate.LevelOverrideText);
+        var existingHasValid = existing.BatteryLevel >= 0 || !string.IsNullOrWhiteSpace(existing.LevelOverrideText);
+        var candidateHasValid = candidate.BatteryLevel >= 0 || !string.IsNullOrWhiteSpace(candidate.LevelOverrideText);
         if (existingHasValid != candidateHasValid)
             return candidateHasValid;
 

@@ -589,18 +589,56 @@ internal static class WidgetViewChecks
 
                     // Categories are section labels with their widgets underneath, not tabs/filters.
                     Layout(settings);
-                    Check(selections.Length == 21, "All 21 widgets must be listed.");
+                    Check(selections.Length == 22, "All 22 widgets must be listed.");
                     Check(selections.Select(option => option.CategoryEnum).Distinct().OrderBy(c => c).SequenceEqual(
                             Enum.GetValues<DockWidgetCategory>().OrderBy(c => c)),
                         "All five widget categories must be represented.");
-                    Check(selections.Count(option => option.CategoryEnum == DockWidgetCategory.AiQuotas) == 7,
-                        "The AI category must contain all 7 AI widgets.");
+                    Check(selections.Count(option => option.CategoryEnum == DockWidgetCategory.AiQuotas) == 8,
+                        "The AI category must contain all 8 AI widgets.");
                     Check(selections.Count(option => option.CategoryEnum == DockWidgetCategory.SystemAndHardware) == 5,
                         "The system category must contain all 5 system widgets.");
                     var allCards = Descendants<WidgetCatalogItem>(list).ToArray();
-                    Check(allCards.Length == 21, "All 21 widgets must be visible at once without any category filter.");
+                    Check(allCards.Length == 22, "All 22 widgets must be visible at once without any category filter.");
                     Check(settings.FindName("WidgetCategoryAiRadio") is null,
                         "Widget categories must be labels, not a segmented tab filter.");
+
+                    // Verify Cursor widget settings panel exposes account status, sign-in, refresh, and sign-out controls.
+                    var prevCursorPath = CursorAuthService.TokenFilePath;
+                    var cursorTokenPath = Path.Combine(directory, $"cursor-auth-{theme}.bin");
+                    CursorAuthService.TokenFilePath = cursorTokenPath;
+                    try
+                    {
+                        var cursorCard = Descendants<WidgetCatalogItem>(list)
+                            .Single(card => ((DockWidgetOption)card.DataContext).Id == "AiUsageCursor");
+                        var cursorOption = (DockWidgetOption)cursorCard.DataContext;
+                        RequiredName<Button>(cursorCard, "PreviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Layout(settings);
+                        Check(cursorOption.IsSettingsExpanded && cursorOption.SettingsView is FrameworkElement,
+                            "Cursor widget row must expand its settings panel.");
+                        var cursorPanel = (FrameworkElement)cursorOption.SettingsView!;
+                        var statusBlock = Descendants<TextBlock>(cursorPanel).Single(t => t.Name == "CursorAccountStatusText");
+                        var signInBtn = Descendants<Button>(cursorPanel).Single(b => b.Name == "CursorSignInButton");
+                        var refreshBtn = Descendants<Button>(cursorPanel).Single(b => b.Name == "CursorRefreshButton");
+                        var signOutBtn = Descendants<Button>(cursorPanel).Single(b => b.Name == "CursorSignOutButton");
+                        Check(signInBtn.IsEnabled, "Cursor sign-in button must be enabled initially.");
+                        CursorAuthService.SignOut();
+                        Check(!refreshBtn.IsEnabled && !signOutBtn.IsEnabled
+                            && statusBlock.Text == UiText.Get("AiUsageCursorSignInRequired"),
+                            "Signed-out Cursor panel must show sign-in required and disable refresh/sign-out.");
+                        CursorAuthService.SaveTokens("cursor-settings-test-access", "cursor-settings-test-refresh");
+                        Check(refreshBtn.IsEnabled && signOutBtn.IsEnabled
+                            && statusBlock.Text == UiText.Get("AiUsageCursorConnected"),
+                            "Signing in must live-update Cursor settings status and enable refresh/sign-out.");
+                        signOutBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Check(!CursorAuthService.HasSession && !signOutBtn.IsEnabled
+                            && statusBlock.Text == UiText.Get("AiUsageCursorSignInRequired"),
+                            "Clicking Sign out must clear the Cursor session and update UI immediately.");
+                    }
+                    finally
+                    {
+                        if (File.Exists(cursorTokenPath)) File.Delete(cursorTokenPath);
+                        CursorAuthService.TokenFilePath = prevCursorPath;
+                    }
                 }
                 finally
                 {

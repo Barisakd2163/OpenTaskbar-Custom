@@ -67,6 +67,14 @@ public partial class SettingsWindow : Window
     private readonly Dictionary<SurfaceKind, Slider> _surfaceSliders = [];
     private readonly Dictionary<SurfaceKind, TextBlock> _surfaceValues = [];
     private readonly Dictionary<SurfaceKind, ComboBox> _surfaceBoxes = [];
+    private CancellationTokenSource? _cursorLoginCts;
+    private TextBlock? _cursorAccountLabel;
+    private TextBlock? _cursorStatusText;
+    private Button? _cursorSignInButton;
+    private Button? _cursorRefreshButton;
+    private Button? _cursorSignOutButton;
+    private bool _cursorSignInTimedOut;
+    private bool _cursorAuthSubscribed;
 
     internal bool IsClosingOrClosed => _isClosing || _closed;
     internal int LivePreviewWidgetCount => _livePreviewWidgets.Count;
@@ -115,6 +123,17 @@ public partial class SettingsWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            CancelCursorLogin();
+            if (_cursorAuthSubscribed)
+            {
+                CursorAuthService.SessionChanged -= CursorAuthService_SessionChanged;
+                _cursorAuthSubscribed = false;
+            }
+            _cursorAccountLabel = null;
+            _cursorStatusText = null;
+            _cursorSignInButton = null;
+            _cursorRefreshButton = null;
+            _cursorSignOutButton = null;
             ClearSearchHighlight();
             RemoveHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
             RemoveHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
@@ -355,6 +374,7 @@ public partial class SettingsWindow : Window
             foreach (var group in _widgetGroups) group.RefreshLabel();
             foreach (var refresh in _aiAccountRefreshers) refresh();
             UpdateHotkeyControls();
+            UpdateCursorAuthUi();
             RefreshSettingsSearchIfActive();
         }
         var themeGalleryDirty = _applied.Theme != _preferences.Current.Theme
@@ -1219,11 +1239,6 @@ public partial class SettingsWindow : Window
                 var widget = WidgetCoordinator.CreateWidget(option.Id);
                 widget.ReportError = message => AppLog.Warning($"Widget preview '{option.Id}': {message}");
                 widget.ApplySettings(currentSettings);
-                var mode = currentSettings.WidgetDensityOverrides is not null
-                    && currentSettings.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
-                        ? overrideMode
-                        : currentSettings.GlobalWidgetDensity;
-                widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
                 widget.Activate();
                 var mode = ResolveDensityMode(currentSettings, option.Id);
                 widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
@@ -1642,7 +1657,14 @@ public partial class SettingsWindow : Window
             if (aiUsageById.TryGetValue(option.Id, out var provider))
             {
                 AttachAiRingRow(panel);
-                AttachAiAccountSection(option.Id, provider, panel);
+                if (provider == AiProviders.Cursor)
+                {
+                    AttachCursorAuthSection(panel);
+                }
+                else
+                {
+                    AttachAiAccountSection(option.Id, provider, panel);
+                }
             }
             if (option.Id == "AiUsageAntigravity")
             {
@@ -1944,6 +1966,219 @@ public partial class SettingsWindow : Window
         panel.Children.Add(section);
     }
 
+    private void AttachCursorAuthSection(Panel panel)
+    {
+        var section = new StackPanel
+        {
+            Name = "CursorAuthSection",
+            Tag = "AiAccountSection:AiUsageCursor",
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+
+        var statusRow = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var accountLabel = new TextBlock
+        {
+            Text = UiText.Get("AiUsageCursorAccountLabel"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        accountLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        Grid.SetColumn(accountLabel, 0);
+        statusRow.Children.Add(accountLabel);
+
+        var statusText = new TextBlock
+        {
+            Name = "CursorAccountStatusText",
+            Tag = "AiAccountStatus:Cursor",
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(statusText, 1);
+        statusRow.Children.Add(statusText);
+        section.Children.Add(statusRow);
+
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal };
+
+        var signInButton = new Button
+        {
+            Name = "CursorSignInButton",
+            Padding = new Thickness(10, 5, 10, 5),
+            FontSize = 11.5,
+            Margin = new Thickness(0, 0, 6, 4)
+        };
+        signInButton.SetResourceReference(StyleProperty, "SettingsPrimaryButton");
+        signInButton.Click += CursorSignInButton_Click;
+
+        var refreshButton = new Button
+        {
+            Name = "CursorRefreshButton",
+            Tag = "AiAccountRefresh:Cursor",
+            Padding = new Thickness(10, 5, 10, 5),
+            FontSize = 11.5,
+            Margin = new Thickness(0, 0, 6, 4)
+        };
+        refreshButton.SetResourceReference(StyleProperty, "SettingsGhostButton");
+        refreshButton.Click += (_, _) =>
+        {
+            _cursorSignInTimedOut = false;
+            CursorAuthService.RequestRefresh();
+            UpdateCursorAuthUi();
+        };
+
+        var signOutButton = new Button
+        {
+            Name = "CursorSignOutButton",
+            Padding = new Thickness(10, 5, 10, 5),
+            FontSize = 11.5,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        signOutButton.SetResourceReference(StyleProperty, "SettingsGhostButton");
+        signOutButton.Click += (_, _) =>
+        {
+            CancelCursorLogin();
+            _cursorSignInTimedOut = false;
+            CursorAuthService.SignOut();
+            UpdateCursorAuthUi();
+        };
+
+        actions.Children.Add(signInButton);
+        actions.Children.Add(refreshButton);
+        actions.Children.Add(signOutButton);
+        section.Children.Add(actions);
+
+        _cursorAccountLabel = accountLabel;
+        _cursorStatusText = statusText;
+        _cursorSignInButton = signInButton;
+        _cursorRefreshButton = refreshButton;
+        _cursorSignOutButton = signOutButton;
+
+        if (!_cursorAuthSubscribed)
+        {
+            CursorAuthService.SessionChanged += CursorAuthService_SessionChanged;
+            _cursorAuthSubscribed = true;
+        }
+
+        UpdateCursorAuthUi();
+        panel.Children.Add(section);
+    }
+
+    private async void CursorSignInButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_closed) return;
+        if (_cursorLoginCts is not null)
+        {
+            CancelCursorLogin();
+            _cursorSignInTimedOut = false;
+            UpdateCursorAuthUi();
+            return;
+        }
+
+        _cursorSignInTimedOut = false;
+        var (verifier, _, uuid, loginUrl) = CursorAuthService.StartLogin();
+        try
+        {
+            Process.Start(new ProcessStartInfo(loginUrl) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            AppLog.Info($"Cursor sign-in browser unavailable: {ex.GetType().Name}");
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _cursorLoginCts = cts;
+        UpdateCursorAuthUi();
+
+        var completed = false;
+        var canceled = false;
+        try
+        {
+            completed = await CursorAuthService.PollLoginAsync(uuid, verifier, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            canceled = true;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Info($"Cursor sign-in failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_cursorLoginCts, cts))
+                _cursorLoginCts = null;
+            cts.Dispose();
+        }
+
+        if (_closed) return;
+        if (!completed && !canceled)
+            _cursorSignInTimedOut = true;
+        UpdateCursorAuthUi();
+    }
+
+    private void CancelCursorLogin()
+    {
+        var cts = _cursorLoginCts;
+        _cursorLoginCts = null;
+        if (cts is null) return;
+        try { cts.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    private void CursorAuthService_SessionChanged()
+    {
+        if (_closed || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        void Handle()
+        {
+            if (_closed) return;
+            if (CursorAuthService.HasSession) _cursorSignInTimedOut = false;
+            UpdateCursorAuthUi();
+        }
+        if (Dispatcher.CheckAccess()) Handle();
+        else _ = Dispatcher.BeginInvoke(Handle);
+    }
+
+    private void UpdateCursorAuthUi()
+    {
+        if (_closed || _cursorAccountLabel is null || _cursorStatusText is null
+            || _cursorSignInButton is null || _cursorRefreshButton is null || _cursorSignOutButton is null)
+            return;
+
+        var isPolling = _cursorLoginCts is not null;
+        var hasSession = CursorAuthService.HasSession;
+
+        _cursorAccountLabel.Text = UiText.Get("AiUsageCursorAccountLabel");
+        if (isPolling)
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorWaiting");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        }
+        else if (hasSession)
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorConnected");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "WidgetAccent");
+        }
+        else if (_cursorSignInTimedOut)
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorSignInTimedOut");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "WidgetWarning");
+        }
+        else
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorSignInRequired");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "WidgetWarning");
+        }
+
+        _cursorSignInButton.Content = UiText.Get(isPolling ? "Cancel" : "AiUsageCursorSignIn");
+        _cursorRefreshButton.Content = UiText.Get("AiUsageRefresh");
+        _cursorRefreshButton.IsEnabled = hasSession && !isPolling;
+        _cursorSignOutButton.Content = UiText.Get("AiUsageCursorSignOut");
+        _cursorSignOutButton.IsEnabled = hasSession && !isPolling;
+    }
     private void AttachAiRingRow(Panel panel)
     {
         var row = new Grid { Margin = new Thickness(0, 0, 0, panel.Children.Count > 0 ? 8 : 0) };

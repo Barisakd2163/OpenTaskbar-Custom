@@ -222,7 +222,10 @@ internal static class Win32HidTransport
                         else
                         {
                             CancelIoEx(_handle, ref overlapped);
-                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: true);
+                            // Never wait without a bound here: a stuck HID driver may never complete the
+                            // cancelled IRP, which would pin a thread-pool worker forever.
+                            WaitForSingleObject(hEvent, 250);
+                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: false);
                             win32Error = ERROR_TIMEOUT;
                             return false;
                         }
@@ -280,7 +283,10 @@ internal static class Win32HidTransport
                         else
                         {
                             CancelIoEx(_handle, ref overlapped);
-                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: true);
+                            // Never wait without a bound here: a stuck HID driver may never complete the
+                            // cancelled IRP, which would pin a thread-pool worker forever.
+                            WaitForSingleObject(hEvent, 250);
+                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: false);
                             win32Error = ERROR_TIMEOUT;
                             return false;
                         }

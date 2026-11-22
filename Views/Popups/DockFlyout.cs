@@ -114,7 +114,11 @@ public sealed class DockFlyout
         CleanRegistry();
         for (var i = 0; i < FlyoutRegistry.Count; i++)
         {
-            if (FlyoutRegistry[i].TryGetTarget(out var flyout) && flyout._popup.IsOpen && (force || !flyout._popup.StaysOpen))
+            // FlyoutRegistry is static and holds weak references to flyouts created on other
+            // dispatchers (tests create several STA threads). Touching IsOpen across threads
+            // throws; skip those entries just like IsAnyOpen does.
+            if (FlyoutRegistry[i].TryGetTarget(out var flyout) && flyout._popup.Dispatcher.CheckAccess()
+                && flyout._popup.IsOpen && (force || !flyout._popup.StaysOpen))
                 flyout.Close(restoreFocus);
         }
     }

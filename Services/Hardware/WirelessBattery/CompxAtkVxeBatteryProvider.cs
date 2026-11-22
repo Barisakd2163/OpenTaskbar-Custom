@@ -114,6 +114,10 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
         if (reply.Length < 10) return false;
         if (reply[0] != ReportId || reply[1] != BatteryQueryCommand)
             return false;
+        // The device sends a 17-byte report whose final byte is the packet checksum.
+        // Without this check a corrupted or spoofed report becomes a valid battery reading.
+        if (reply.Length >= ReportByteLength && ComputeChecksum(reply) != reply[ReportByteLength - 1])
+            return false;
 
         var batteryPercent = (int)reply[6];
         if (batteryPercent is < 0 or > 100)

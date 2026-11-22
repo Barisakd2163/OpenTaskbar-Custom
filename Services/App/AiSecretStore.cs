@@ -141,6 +141,13 @@ internal static class AiSecretStore
                 }
             }
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception or SecurityException)
+        {
+            // DPAPI can fail on a damaged/unloaded user profile. Never let a failed
+            // "Save API key" click take down Settings; the caller re-reads state.
+            AppLog.Warning($"Could not persist API secret: {ex.Message}");
+        }
         finally
         {
             Array.Clear(plainBytes, 0, plainBytes.Length);
