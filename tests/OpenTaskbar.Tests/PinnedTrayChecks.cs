@@ -456,7 +456,32 @@ internal static class PinnedTrayChecks
             && ReferenceEquals(forwarded[1].Icon, iconC) && forwarded[1].Button == MouseButton.Right,
             "Live pinned tray buttons must forward clicks to the exact matching NotifyIcon.");
 
+        // Path-based pins open the executable instead of relying on synthetic tray messages,
+        // which some apps only answer on double-click (Steam, etc.).
+        var opened = new List<TrayApp>();
+        strip.OpenAppHandler = (app, _) => opened.Add(app);
+        strip.ClickHandler = (_, _) => throw new InvalidOperationException(
+            "A path-based pin must not forward its left-click to the tray icon.");
+        var pathIcon = CreateTestNotifyIcon(Guid.Empty, @"C:\Apps\PathApp.exe", 7, "Path App");
+        strip.UpdateFromIcons([pathIcon], [@"path:c:\apps\pathapp.exe|7"]);
+        strip.Children.OfType<Button>().Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(opened.Count == 1 && opened[0].ExecutablePath == @"C:\Apps\PathApp.exe",
+            "Left-clicking a path-based pinned tray button must open the app by executable path.");
+
+        // A pin created from the background-apps flyout still gets a dock button when Windows
+        // has no visible NotifyIcon for it (Discord hiding its icon while running, etc.).
+        var hiddenApp = new TrayApp("Hidden App", @"C:\Apps\Hidden.exe", null);
+        strip.AppsProvider = () => [hiddenApp];
+        strip.UpdateFromIcons([], [@"path:c:\apps\hidden.exe"], [hiddenApp]);
+        var fallbackButton = strip.Children.OfType<Button>().Single();
+        check(AutomationProperties.GetName(fallbackButton) == "Hidden App",
+            "A path-based pin must render from the registry app list when no live tray icon matches.");
+        fallbackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(opened.Count == 2 && opened[1].ExecutablePath == @"C:\Apps\Hidden.exe",
+            "Clicking a registry-backed pinned tray button must open that app by path.");
+
         // Clearing running icons collapses the strip.
+        strip.ClickHandler = (_, _) => { };
         strip.UpdateFromIcons([], ["guid:22222222-2222-2222-2222-222222222222"]);
         check(strip.Visibility == Visibility.Collapsed && strip.VisibleCount == 0,
             "PinnedTrayStrip must collapse when no pinned tray icons are running.");

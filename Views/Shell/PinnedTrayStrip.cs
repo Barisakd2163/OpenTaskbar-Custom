@@ -1,10 +1,12 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ManagedShell.WindowsTray;
 using OpenTaskbar.Services;
@@ -36,8 +38,21 @@ public sealed class PinnedTrayStrip : StackPanel
     /// <summary>Supplies the persisted pinned tray icon keys in user order.</summary>
     public Func<IReadOnlyList<string>?>? PinnedKeysProvider { get; set; }
 
-    /// <summary>Seam for tests: forwards left- and right-clicks for live tray icons.</summary>
+    /// <summary>Seam for tests: forwards context-menu clicks for live tray icons.</summary>
     internal Action<NotifyIcon, MouseButton> ClickHandler { get; set; } = TrayHost.Click;
+
+    /// <summary>Seam for tests: opens a background app by executable path (activate window or launch).</summary>
+    internal Action<TrayApp, MouseButton> OpenAppHandler { get; set; } = static (app, _) =>
+    {
+        var error = TrayIcons.Open(app);
+        if (error is not null) AppLog.Warning($"Cannot open pinned tray app {app.Name}: {error}");
+    };
+
+    /// <summary>Seam for tests: supplies registry-fallback apps for path-based pins with no live icon.</summary>
+    internal Func<IReadOnlyList<TrayApp>> AppsProvider { get; set; } = TrayIcons.RunningApps;
+
+    private IReadOnlyList<TrayApp> _fallbackApps = [];
+    private Task<IReadOnlyList<TrayApp>>? _fallbackRefresh;
 
     /// <summary>Raised whenever the visible pinned count, visibility, or item sizing changes.</summary>
     public event Action? LayoutChanged;
@@ -75,6 +90,7 @@ public sealed class PinnedTrayStrip : StackPanel
     {
         if (ReferenceEquals(_attachedHost, host))
         {
+            RefreshFallbackApps();
             Refresh();
             return;
         }
@@ -89,6 +105,7 @@ public sealed class PinnedTrayStrip : StackPanel
         _attachedHost = host;
         _attachedHost.Icons.CollectionChanged += HostIcons_CollectionChanged;
         SyncIconPropertySubscriptions();
+        RefreshFallbackApps();
         Refresh();
     }
 
@@ -160,34 +177,115 @@ public sealed class PinnedTrayStrip : StackPanel
             return;
         }
 
-        UpdateFromIcons(host.AppIcons(), PinnedKeysProvider?.Invoke());
+        UpdateFromIcons(host.AppIcons(), PinnedKeysProvider?.Invoke(), _fallbackApps);
     }
 
-    internal void UpdateFromIcons(IReadOnlyList<NotifyIcon> runningIcons, IReadOnlyList<string>? pinnedKeys)
+    /// <summary>
+    /// Loads the registry/process fallback list off the UI thread. Path-based pins (created from the
+    /// background-apps flyout) can match these even when Windows has no visible NotifyIcon — e.g. an
+    /// app that hides its icon while running — so the pin still gets a dock button.
+    /// </summary>
+    private async void RefreshFallbackApps()
     {
-        var selected = SelectPinnedItems(
-            pinnedKeys,
-            runningIcons,
-            static icon => (icon.GUID, icon.Path, icon.UID));
+        if (_fallbackRefresh is { IsCompleted: false }) return;
+        var provider = AppsProvider;
+        var refresh = _fallbackRefresh = Task.Run(provider);
+        try
+        {
+            _fallbackApps = await refresh.ConfigureAwait(true);
+            if (_attachedHost is not null) Refresh();
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            AppLog.Warning($"Pinned tray app enumeration failed: {ex.Message}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_fallbackRefresh, refresh)) _fallbackRefresh = null;
+        }
+    }
 
-        if (selected.Count == 0)
+    internal void UpdateFromIcons(
+        IReadOnlyList<NotifyIcon> runningIcons,
+        IReadOnlyList<string>? pinnedKeys,
+        IReadOnlyList<TrayApp>? fallbackApps = null)
+    {
+        var fallbackTitle = UiText.Get("TrayApps");
+        var candidates = new List<(int PinIndex, int SourceIndex, PinnedTrayItem Item)>();
+        var livePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < runningIcons.Count; i++)
+        {
+            var icon = runningIcons[i];
+            var pinIndex = TrayPinIdentity.FindPinIndex(pinnedKeys, icon.GUID, icon.Path, icon.UID);
+            if (pinIndex < 0) continue;
+            if (!string.IsNullOrWhiteSpace(icon.Path)) livePaths.Add(icon.Path.Trim());
+
+            var captured = icon;
+            var key = TrayPinIdentity.KeyFor(captured.GUID, captured.Path, captured.UID);
+            var title = TrayPinIdentity.CleanTitle(captured.Title, captured.Path, fallbackTitle);
+            candidates.Add((pinIndex, i, new PinnedTrayItem(key, title, captured.Icon, button =>
+            {
+                // GUID pins are system/virtual icons whose own tray message handler is the only
+                // reliable way to open them. Path pins belong to real executables: activating the
+                // existing window (or launching the exe) is far more reliable than synthetic tray
+                // clicks, which some apps (Steam, etc.) only answer on double-click.
+                if (button == MouseButton.Right || key.StartsWith("guid:", StringComparison.OrdinalIgnoreCase)
+                    || !CanOpenByPath(captured.Path))
+                {
+                    ClickHandler(captured, button);
+                    return;
+                }
+                OpenAppHandler(new TrayApp(title, captured.Path.Trim(), captured.Icon as BitmapSource), button);
+            })));
+        }
+
+        if (fallbackApps is not null && pinnedKeys is { Count: > 0 })
+        {
+            for (var i = 0; i < fallbackApps.Count; i++)
+            {
+                var app = fallbackApps[i];
+                if (string.IsNullOrWhiteSpace(app.ExecutablePath)
+                    || livePaths.Contains(app.ExecutablePath.Trim())) continue;
+                var matchedKey = TrayPinIdentity.FindMatchingPathKey(pinnedKeys, app.ExecutablePath);
+                if (matchedKey is null) continue;
+                var pinIndex = -1;
+                for (var p = 0; p < pinnedKeys.Count; p++)
+                {
+                    if (string.Equals(pinnedKeys[p], matchedKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        pinIndex = p;
+                        break;
+                    }
+                }
+                if (pinIndex < 0) continue;
+
+                var captured = app;
+                candidates.Add((pinIndex, runningIcons.Count + i, new PinnedTrayItem(
+                    matchedKey, captured.Name, captured.Icon,
+                    button => OpenAppHandler(captured, button))));
+            }
+        }
+
+        if (candidates.Count == 0)
         {
             UpdateItems([]);
             return;
         }
 
-        var fallbackTitle = UiText.Get("TrayApps");
-        var items = new List<PinnedTrayItem>(selected.Count);
-        foreach (var icon in selected)
+        candidates.Sort(static (a, b) =>
         {
-            var captured = icon;
-            var key = TrayPinIdentity.KeyFor(captured.GUID, captured.Path, captured.UID);
-            var title = TrayPinIdentity.CleanTitle(captured.Title, captured.Path, fallbackTitle);
-            items.Add(new PinnedTrayItem(key, title, captured.Icon, button => ClickHandler(captured, button)));
-        }
-
-        UpdateItems(items);
+            var byPin = a.PinIndex.CompareTo(b.PinIndex);
+            return byPin != 0 ? byPin : a.SourceIndex.CompareTo(b.SourceIndex);
+        });
+        UpdateItems(candidates.Select(static c => c.Item).ToArray());
     }
+
+    private static bool CanOpenByPath(string? path) =>
+        !string.IsNullOrWhiteSpace(path)
+        && Path.IsPathRooted(path)
+        && path!.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
 
     internal void UpdateItems(IReadOnlyList<PinnedTrayItem> items)
     {
