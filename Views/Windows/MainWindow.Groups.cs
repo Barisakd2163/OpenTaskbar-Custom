@@ -330,6 +330,7 @@ public partial class MainWindow
         }
         finally
         {
+            CancelLiveDrag();
             ResetDisplacements();
         }
     }

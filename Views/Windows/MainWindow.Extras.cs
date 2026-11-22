@@ -347,7 +347,7 @@ public partial class MainWindow
     {
         if (TryGetDockItemToken(e, out var droppedToken))
         {
-            MoveDockItem(droppedToken, GetDockInsertionIndex(e));
+            DropDockItem(droppedToken, e);
             e.Handled = true;
             return;
         }
@@ -597,6 +597,7 @@ public partial class MainWindow
         }
         finally
         {
+            CancelLiveDrag();
             button.Opacity = 1.0;
             ResetDisplacements();
             if (scale is not null && translate is not null)
@@ -675,7 +676,7 @@ public partial class MainWindow
     {
         if (TryGetDockItemToken(e, out var droppedToken))
         {
-            MoveDockItem(droppedToken, GetDockInsertionIndex(e));
+            DropDockItem(droppedToken, e);
             e.Handled = true;
             return;
         }

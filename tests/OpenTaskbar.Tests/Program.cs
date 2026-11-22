@@ -24,6 +24,7 @@ AppLaunchChecks();
 TrayListChecks();
 checks += PinnedTrayChecks.RunHeadless();
 ShellTokenChecks();
+LiveDragMathChecks();
 DockGroupsProfilesAndPinsChecks();
 checks += RunningAppChecks.Run();
 checks += TaskbarWindowChecks.Run();
@@ -96,6 +97,35 @@ void ShellTokenChecks()
         new DockSettings(ShowSearchButton: false, ShowTaskViewButton: false, ShowTrayButton: false, ShowRecycleBin: false));
     Check(hiddenPinned.SequenceEqual(["start", "app:a"], StringComparer.OrdinalIgnoreCase),
         "Hidden pinned buttons must be omitted rather than leave gaps between the groups.");
+}
+
+// Live reordering (#130): pure insertion-index and neighbour-slide math.
+void LiveDragMathChecks()
+{
+    var slots = new (double Start, double Size)[]
+    {
+        (0, 40), (40, 40), (80, 40), (120, 40), (160, 40)
+    };
+    Check(DockItemOrdering.InsertionIndex(slots, 10) == 0, "Pointer in the first half of item 0 inserts before it.");
+    Check(DockItemOrdering.InsertionIndex(slots, 60) == 1, "Pointer past item 1's center inserts after it.");
+    Check(DockItemOrdering.InsertionIndex(slots, 200) == 5, "Pointer past the last center appends at the end.");
+
+    // Dragging item 1 to insertion index 4 opens the gap by shifting items 2 and 3 left.
+    Check(DockItemOrdering.SlideFor(1, 1, 4, 40) == 0, "The dragged item never slides itself.");
+    Check(DockItemOrdering.SlideFor(2, 1, 4, 40) == -40, "Items between old and new position shift back by one slot.");
+    Check(DockItemOrdering.SlideFor(3, 1, 4, 40) == -40, "Every crossed neighbour shifts by the dragged slot size.");
+    Check(DockItemOrdering.SlideFor(4, 1, 4, 40) == 0, "Items past the insertion point stay put.");
+
+    // Dragging item 3 back to index 1 opens the gap by shifting items 1 and 2 right.
+    Check(DockItemOrdering.SlideFor(2, 3, 1, 40) == 40, "Backward drags shift crossed neighbours forward.");
+    Check(DockItemOrdering.SlideFor(1, 3, 1, 40) == 40, "The destination neighbour shifts even on equal index.");
+    Check(DockItemOrdering.SlideFor(4, 3, 1, 40) == 0, "Items after the dragged one are unaffected on backward drags.");
+
+    // The insertion index and the saved-order move must agree: item 1 dropping at index 4 lands at index 3.
+    var visible = new[] { "app:a", "app:b", "app:c", "app:d", "app:e" };
+    var moved = DockItemOrdering.MoveVisibleItem(visible, visible, "app:b", 4);
+    Check(moved.SequenceEqual(["app:a", "app:c", "app:d", "app:b", "app:e"], StringComparer.OrdinalIgnoreCase),
+        "Live gap position must match the order saved on drop.");
 }
 
 void DockGroupsProfilesAndPinsChecks()

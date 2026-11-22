@@ -68,6 +68,8 @@ public sealed class WidgetCoordinator : IDisposable
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
     public event Action? WidgetsPlaced;
     public event Action<string>? WidgetRemoveRequested;
+    /// <summary>Raised when a widget drag ends, so the host can clean up any live-reorder state.</summary>
+    public event Action? DragEnded;
 
     /// <summary>Lets the host wire its context-menu open/close handlers so auto-hide stays locked while the menu is up.</summary>
     public Action<ContextMenu>? ConfigureWidgetMenu { get; set; }
@@ -292,6 +294,7 @@ public sealed class WidgetCoordinator : IDisposable
         }
         finally
         {
+            DragEnded?.Invoke();
             ResetWidgetDisplacements();
         }
     }
@@ -545,10 +548,7 @@ public sealed class WidgetCoordinator : IDisposable
         foreach (var slot in _widgets.Where(slot => slot.Widget is { Visibility: Visibility.Visible }))
         {
             var widget = slot.Widget!;
-            var mode = settings.WidgetDensityOverrides is not null
-                && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
-                    ? overrideMode
-                    : settings.GlobalWidgetDensity;
+            var mode = settings.GlobalWidgetDensity;
 
             if (!widget.SupportsCompactMode) continue;
 
@@ -586,10 +586,7 @@ public sealed class WidgetCoordinator : IDisposable
         foreach (var slot in _widgets.Where(slot => slot.Widget is { Visibility: Visibility.Visible }))
         {
             var widget = slot.Widget!;
-            var mode = settings.WidgetDensityOverrides is not null
-                && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
-                    ? overrideMode
-                    : settings.GlobalWidgetDensity;
+            var mode = settings.GlobalWidgetDensity;
 
             var shouldCompact = widget.SupportsCompactMode
                 && (mode == WidgetDensityMode.Compact

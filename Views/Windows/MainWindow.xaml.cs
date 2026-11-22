@@ -131,6 +131,7 @@ public partial class MainWindow : Window
         var startup = StartupStopwatch.Start("MainWindow constructor");
         InitializeComponent();
         StartupStopwatch.Mark("XAML inflated");
+        InitializeLiveDrag();
         // LayoutUpdated fires on every Arrange (including fisheye's per-frame slot writes). Rebuilding
         // rest geometry from it created a feedback loop; subscribe to the concrete geometry changes instead.
         DockContents.SizeChanged += (_, _) =>
@@ -199,6 +200,7 @@ public partial class MainWindow : Window
             OrderChanged = OnWidgetOrderChanged
         };
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
+        _widgetCoordinator.DragEnded += CancelLiveDrag;
         TrayButton.Initialize(ReportError, CloseApplication, TerminateApplication);
         TrayButton.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
         TrayButton.PinToggled += OnTrayIconPinToggled;
@@ -2355,11 +2357,7 @@ public partial class MainWindow : Window
             .ToArray();
         foreach (var widget in _widgetService.CreateWidgets(filtered))
         {
-            var mode = _preferences.Current.WidgetDensityOverrides is not null
-                && _preferences.Current.WidgetDensityOverrides.TryGetValue(widget.Id, out var overrideMode)
-                    ? overrideMode
-                    : _preferences.Current.GlobalWidgetDensity;
-            widget.IsCompact = mode == WidgetDensityMode.Compact;
+            widget.IsCompact = _preferences.Current.GlobalWidgetDensity == WidgetDensityMode.Compact;
             _widgets.Add(widget);
         }
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;

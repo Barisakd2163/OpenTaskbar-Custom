@@ -20,6 +20,31 @@ internal static class DockItemOrdering
         PinnedTokens.Contains(token, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Insertion index for a pointer position along the dock: the number of visible slots (dragged item included)
+    /// whose center lies before the pointer. This is the index <see cref="MoveVisibleItem"/> expects.
+    /// </summary>
+    internal static int InsertionIndex(IReadOnlyList<(double Start, double Size)> slots, double pointer)
+    {
+        var index = 0;
+        foreach (var (start, size) in slots)
+        {
+            if (pointer > start + size / 2) index++;
+            else break;
+        }
+        return index;
+    }
+
+    /// <summary>How far an item slides aside while another is dragged, opening the landing slot.</summary>
+    internal static double SlideFor(int item, int dragged, int insertionIndex, double draggedSize)
+    {
+        if (item == dragged) return 0;
+        var destination = insertionIndex > dragged ? insertionIndex - 1 : insertionIndex;
+        if (item > dragged && item <= destination) return -draggedSize;
+        if (item < dragged && item >= destination) return draggedSize;
+        return 0;
+    }
+
+    /// <summary>
     /// Rewrites a persisted order so the pinned shell groups always lead and trail the strip. Hidden buttons are
     /// omitted; every other item keeps its saved position between the two groups.
     /// </summary>
