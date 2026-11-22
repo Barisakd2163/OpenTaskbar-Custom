@@ -9,16 +9,28 @@ namespace OpenTaskbar.Services;
 
 internal static class SettingsBackdrop
 {
+    internal const uint DwmwaUseImmersiveDarkMode = 20;
+    internal const uint DwmwaWindowCornerPreference = 33;
+    internal const uint DwmwaBorderColor = 34;
+    internal const uint DwmwaSystemBackdropType = 38;
+    internal const int DwmwcpRound = 2;
+    internal const int DwmwaColorNone = unchecked((int)0xFFFFFFFE);
+    internal const int DwmsbtNone = 1;
+    internal const int DwmsbtTransientWindow = 3;
+    internal const double NativeCornerRadius = 8;
+
+    internal static bool SupportsNativeRoundedCorners => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+
     public static bool TryEnable(Window window, AppTheme theme)
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0 || !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621) || SystemParameters.HighContrast)
             return false;
         var dark = theme == AppTheme.Dark ? 1 : 0;
-        var backdrop = 3; // DWMSBT_TRANSIENTWINDOW: Desktop Acrylic on supported Windows 11 builds.
-        var corners = 2;
-        var darkResult = DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
-        var backdropResult = DwmSetWindowAttribute(handle, 38, ref backdrop, sizeof(int));
+        var backdrop = DwmsbtTransientWindow; // Desktop Acrylic on supported Windows 11 builds.
+        var corners = DwmwcpRound;
+        var darkResult = DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
+        var backdropResult = DwmSetWindowAttribute(handle, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
         var margins = new Margins(-1);
         var frameResult = DwmExtendFrameIntoClientArea(handle, ref margins);
         if (darkResult < 0 || backdropResult < 0 || frameResult < 0)
@@ -26,8 +38,9 @@ internal static class SettingsBackdrop
             Trace.TraceWarning("Settings backdrop unavailable: theme=0x{0:X8}, backdrop=0x{1:X8}, frame=0x{2:X8}", darkResult, backdropResult, frameResult);
             return false;
         }
-        var cornerResult = DwmSetWindowAttribute(handle, 33, ref corners, sizeof(int));
+        var cornerResult = DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
         if (cornerResult < 0) Trace.TraceWarning("Settings window corners unavailable: 0x{0:X8}", cornerResult);
+        SuppressNativeBorder(handle);
         if (HwndSource.FromHwnd(handle)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
         return true;
     }
@@ -41,11 +54,12 @@ internal static class SettingsBackdrop
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0 || SystemParameters.HighContrast) return false;
         var dark = theme == AppTheme.Dark ? 1 : 0;
-        var backdrop = 1; // DWMSBT_NONE (0 is DWMSBT_AUTO)
-        var corners = 2;
-        DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
-        DwmSetWindowAttribute(handle, 38, ref backdrop, sizeof(int));
-        DwmSetWindowAttribute(handle, 33, ref corners, sizeof(int));
+        var backdrop = DwmsbtNone;
+        var corners = DwmwcpRound;
+        DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
+        DwmSetWindowAttribute(handle, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
+        DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
+        SuppressNativeBorder(handle);
         var margins = new Margins(-1);
         var frameResult = DwmExtendFrameIntoClientArea(handle, ref margins);
         if (frameResult < 0) return false;
@@ -54,14 +68,31 @@ internal static class SettingsBackdrop
     }
 
     /// <summary>Removes the native acrylic and extended frame for an opaque fallback surface.</summary>
-    public static void Disable(Window window)
+    public static void Disable(Window window, AppTheme theme)
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0) return;
-        var backdrop = 1; // DWMSBT_NONE
-        DwmSetWindowAttribute(handle, 38, ref backdrop, sizeof(int));
+        var dark = theme == AppTheme.Dark ? 1 : 0;
+        var backdrop = DwmsbtNone;
+        DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
+        DwmSetWindowAttribute(handle, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
+        if (SupportsNativeRoundedCorners)
+        {
+            var corners = DwmwcpRound;
+            DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
+            SuppressNativeBorder(handle);
+        }
         var margins = new Margins(0);
         DwmExtendFrameIntoClientArea(handle, ref margins);
+    }
+
+    private static void SuppressNativeBorder(nint handle)
+    {
+        if (!SupportsNativeRoundedCorners) return;
+        // Clear the native Windows 11 1px perimeter border so the WPF SettingsBorderOverlay owns the outer rim.
+        var noBorder = DwmwaColorNone;
+        var result = DwmSetWindowAttribute(handle, DwmwaBorderColor, ref noBorder, sizeof(int));
+        if (result < 0) Trace.TraceWarning("Settings window border suppression unavailable: 0x{0:X8}", result);
     }
 
     [StructLayout(LayoutKind.Sequential)]
