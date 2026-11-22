@@ -241,22 +241,11 @@
             </Viewbox>
 
             <!-- Audio widget taskbar preview -->
-            <Border x:Name="AudioPreview" Style="{StaticResource WidgetCardBorder}" Width="178" Padding="6,0,12,0" Visibility="Collapsed">
-                <Grid VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <ContentControl Grid.RowSpan="2" VerticalAlignment="Center" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconVolume}" Width="16" Height="16" Margin="4,0" Foreground="{DynamicResource TextPrimary}" />
-                    <TextBlock Grid.Column="1" Text="{Binding Label}" Style="{StaticResource WidgetText}" Margin="4,0,6,0" FontSize="11.5" />
-                    <TextBlock Grid.Column="2" Text="{Binding Value}" Style="{StaticResource WidgetCaption}" />
-                    <Slider Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource WidgetSlider}" Value="80" Margin="4,3,0,0" />
-                </Grid>
+            <Border x:Name="AudioPreview" Style="{StaticResource WidgetCardBorder}" Padding="10,0" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <ContentControl VerticalAlignment="Center" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconVolume}" Width="16" Height="16" Margin="0,0,7,0" Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{Binding Value}" Style="{StaticResource WidgetText}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                </StackPanel>
             </Border>
 
             <!-- QuickSettings widget taskbar preview -->

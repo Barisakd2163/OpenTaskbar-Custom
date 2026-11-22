@@ -181,8 +181,12 @@ internal static class WidgetViewChecks
 
             var audioWidget = new OpenTaskbar.Widgets.AudioWidget { Visibility = Visibility.Visible };
             Layout(audioWidget);
-            Check(Math.Abs(RequiredName<ContentControl>(audioWidget, "ChevronIcon").Opacity - 1.0) < 0.001,
-                "AudioWidget ChevronIcon must not dim below full TextSecondary opacity.");
+            Check(audioWidget.FullWidthEstimate <= 80
+                  && RequiredName<ContentControl>(audioWidget, "OutputIcon").Opacity >= 1.0
+                  && RequiredName<TextBlock>(audioWidget, "VolumeText").Opacity >= 1.0
+                  && audioWidget.FindName("InputDeviceText") is null
+                  && audioWidget.FindName("ChevronIcon") is null,
+                "AudioWidget must render the minimal speaker-icon and volume-only card (~70 DIP) without device names or chevron.");
 
             var interfaceFont = (FontFamily)app.FindResource("InterfaceFont");
             Check(interfaceFont.Source.Contains("#Inter", StringComparison.OrdinalIgnoreCase),

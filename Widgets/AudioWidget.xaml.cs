@@ -12,8 +12,8 @@ using OpenTaskbar.Services;
 namespace OpenTaskbar.Widgets;
 
 /// <summary>
-/// V19 combined Audio widget: one dock trigger showing output + input devices and chevron;
-/// clicking opens the 3-section vertical mixer flyout (Output, Input, Applications).
+/// Minimal Audio widget: dock card shows speaker icon and output volume percentage;
+/// clicking or hovering opens the 3-section vertical mixer flyout (Output, Input, Applications).
 /// </summary>
 public partial class AudioWidget : DockWidget
 {
@@ -25,15 +25,8 @@ public partial class AudioWidget : DockWidget
     private int _lastLevel = -1;
     private bool _lastMuted;
     private string? _lastDeviceName;
-    private string? _lastMicDeviceName;
-    private bool _lastMicMuted;
     private string? _lastOutputIconKey;
-    private string? _lastInputIconKey;
     private AppLanguage _lastLanguage;
-
-    // Which half of the card the cursor is over: null = none, true = output (left), false = input (right).
-    private bool? _hoveredSide;
-    private const int MaxDeviceNameChars = 14;
 
     private Border? _flyoutContainer;
     private Slider? _flyoutSlider;
@@ -57,14 +50,13 @@ public partial class AudioWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 18;
-    public override double FullWidthEstimate => 210;
-    public override double CompactWidthEstimate => 112;
+    public override double FullWidthEstimate => 76;
+    public override double CompactWidthEstimate => 42;
 
     public AudioWidget()
     {
         InitializeComponent();
-        OutputDeviceText.Text = UiText.Get("AudioOutput");
-        InputDeviceText.Text = UiText.Get("AudioInput");
+        ApplyCardForeground(mutedOrUnavailable: false);
     }
 
     protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
@@ -73,12 +65,16 @@ public partial class AudioWidget : DockWidget
     private void ApplyDensityLayout()
     {
         var compact = IsCompact && !IsHoverExpanded;
-        ComboButton.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(11, 0, 11, 0);
-        DeviceSeparator.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        InputIcon.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        InputDeviceText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        _hoveredSide = null;
+        VolumeText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        OutputIcon.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 7, 0);
         UpdateDeviceTooltip();
+    }
+
+    private void ApplyCardForeground(bool mutedOrUnavailable)
+    {
+        var key = mutedOrUnavailable ? "TextSecondary" : "TextPrimary";
+        OutputIcon.SetResourceReference(ForegroundProperty, key);
+        VolumeText.SetResourceReference(TextBlock.ForegroundProperty, key);
     }
 
     public override UIElement? BuildHoverFlyoutContent() => BuildFlyoutContent();
@@ -621,98 +617,11 @@ public partial class AudioWidget : DockWidget
         || name.Contains("buds", StringComparison.OrdinalIgnoreCase)
         || name.Contains("airpod", StringComparison.OrdinalIgnoreCase));
 
-    private static readonly string[] GenericDevicePrefixes =
-    [
-        "microphone", "headphones", "headphone", "headset", "speakers", "speaker",
-        "kulaklık", "kulaklik", "mikrofon", "hoparlör", "hoparlor"
-    ];
-
-    private static string ShortDeviceLabel(string? fullName, string fallback)
-    {
-        if (string.IsNullOrWhiteSpace(fullName)) return fallback;
-
-        var name = fullName.Trim();
-        var open = name.IndexOf('(');
-        var close = name.LastIndexOf(')');
-
-        // WASAPI friendly names look like "Microphone (2- Razer Seiren V3 Chroma)".
-        // Prefer the descriptive part inside the parentheses instead of the generic prefix.
-        if (open >= 0 && close > open)
-        {
-            var inner = name[(open + 1)..close].Trim();
-            inner = StripIndexPrefix(inner);
-            if (inner.Length > 0 && !IsGenericName(inner)) return inner;
-            // Parentheses held only a generic label (e.g. "Microphone (Microphone)") — fall through
-            // to the prefix so we don't lose the only descriptive text.
-        }
-
-        var beforeParen = (open > 0 ? name[..open] : name).Trim();
-        var cleaned = StripIndexPrefix(beforeParen);
-        return cleaned.Length > 0 ? cleaned : name;
-    }
-
-    private static string StripIndexPrefix(string name)
-    {
-        // Remove leading "2- ", "1 - ", "3-" etc. added by Windows for duplicate endpoints.
-        var index = 0;
-        while (index < name.Length && char.IsDigit(name[index])) index++;
-        if (index > 0 && index < name.Length)
-        {
-            var rest = name[index..].TrimStart();
-            if (rest.StartsWith('-')) return rest[1..].Trim();
-        }
-        return name.Trim();
-    }
-
-    private static bool IsGenericName(string name) => GenericDevicePrefixes.Any(prefix =>
-        string.Equals(name, prefix, StringComparison.OrdinalIgnoreCase));
-
-    // Card labels show a bounded device name so long names never dominate the widget.
-    private static string LimitedDeviceLabel(string? fullName, string fallback)
-    {
-        var label = ShortDeviceLabel(fullName, fallback);
-        return label.Length <= MaxDeviceNameChars
-            ? label
-            : string.Concat(label.AsSpan(0, MaxDeviceNameChars - 1), "…");
-    }
-
     private void UpdateDeviceTooltip()
     {
-        var outputName = _monitor?.HasDevice == true
+        ComboButton.ToolTip = _monitor?.HasDevice == true
             ? _monitor.DeviceName ?? UiText.Get("AudioOutput")
             : UiText.Get("NoAudioDevice");
-        var inputName = _monitor?.HasMicDevice == true
-            ? _monitor.MicDeviceName ?? UiText.Get("Microphone")
-            : UiText.Get("NoMicDevice");
-
-        // In compact mode the input side is hidden, so always show the output name.
-        var compact = IsCompact && !IsHoverExpanded;
-        if (!compact && _hoveredSide == false)
-        {
-            ComboButton.ToolTip = inputName;
-            return;
-        }
-
-        ComboButton.ToolTip = outputName;
-    }
-
-    private void ComboButton_MouseMove(object sender, MouseEventArgs e)
-    {
-        var x = e.GetPosition(ComboButton).X;
-        var mid = ComboButton.ActualWidth / 2;
-        var side = x < mid; // true = output (left), false = input (right)
-
-        if (_hoveredSide == side) return;
-        _hoveredSide = side;
-        if (IsCompact && !IsHoverExpanded) return; // compact keeps the output name
-        UpdateDeviceTooltip();
-    }
-
-    private void ComboButton_MouseLeave(object sender, MouseEventArgs e)
-    {
-        if (_hoveredSide is null) return;
-        _hoveredSide = null;
-        UpdateDeviceTooltip();
     }
 
     protected override void OnActivated()
@@ -769,9 +678,7 @@ public partial class AudioWidget : DockWidget
         _lastHasDevice = null;
         _lastLevel = -1;
         _lastOutputIconKey = null;
-        _lastInputIconKey = null;
         _lastDeviceName = null;
-        _lastMicDeviceName = null;
     }
 
     private void Monitor_VolumeChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
@@ -805,28 +712,11 @@ public partial class AudioWidget : DockWidget
 
     private void RenderMic()
     {
+        if (_flyoutMicSlider is null || _flyoutMicLevelText is null || _flyoutMicMuteIcon is null) return;
         var hasMic = _monitor?.HasMicDevice == true;
-        var micName = hasMic
-            ? LimitedDeviceLabel(_monitor!.MicDeviceName, UiText.Get("Microphone"))
-            : UiText.Get("NoMicDevice");
         var micMuted = _monitor?.MicMuted == true;
         var micLevel = hasMic ? (int)Math.Round(_monitor!.MicVolume * 100) : 0;
 
-        if (_lastMicDeviceName != micName || _lastMicMuted != micMuted)
-        {
-            _lastMicDeviceName = micName;
-            _lastMicMuted = micMuted;
-            InputDeviceText.Text = micName;
-            UpdateDeviceTooltip();
-            var inKey = micMuted ? "IconMicMute" : "IconMic";
-            if (_lastInputIconKey != inKey)
-            {
-                _lastInputIconKey = inKey;
-                InputIcon.Content = FindResource(inKey);
-            }
-        }
-
-        if (_flyoutMicSlider is null || _flyoutMicLevelText is null || _flyoutMicMuteIcon is null) return;
         _updatingMic = true;
         _flyoutMicSlider.Value = micMuted ? 0 : micLevel;
         _flyoutMicLevelText.Text = hasMic ? (micMuted ? "0%" : UiText.Format("Percent", micLevel)) : "—";
@@ -845,7 +735,8 @@ public partial class AudioWidget : DockWidget
             _lastHasDevice = false;
             _lastLanguage = lang;
             _lastLevel = -1;
-            OutputDeviceText.Text = UiText.Get("NoAudioDevice");
+            VolumeText.Text = "—";
+            ApplyCardForeground(mutedOrUnavailable: true);
             UpdateDeviceTooltip();
             SetOutputIcon("IconVolumeMute");
             if (_flyoutSlider is not null) _flyoutSlider.IsEnabled = false;
@@ -869,18 +760,12 @@ public partial class AudioWidget : DockWidget
         _lastDeviceName = deviceName;
         _lastLanguage = lang;
 
-        OutputDeviceText.Text = LimitedDeviceLabel(deviceName, UiText.Get("AudioOutput"));
-        var micLabel = _monitor.HasMicDevice
-            ? LimitedDeviceLabel(_monitor.MicDeviceName, UiText.Get("Microphone"))
-            : UiText.Get("NoMicDevice");
-        InputDeviceText.Text = micLabel;
+        var isSilent = muted || level == 0;
+        VolumeText.Text = muted ? "0%" : UiText.Format("Percent", level);
+        ApplyCardForeground(mutedOrUnavailable: isSilent);
         UpdateDeviceTooltip();
 
-        var iconKey = muted || level == 0
-            ? "IconVolumeMute"
-            : IsHeadphoneDevice(deviceName)
-                ? "IconHeadphones"
-                : level < 50 ? "IconVolumeLow" : "IconVolume";
+        var iconKey = isSilent ? "IconVolumeMute" : level < 50 ? "IconVolumeLow" : "IconVolume";
         SetOutputIcon(iconKey);
 
         _updating = true;
@@ -892,8 +777,7 @@ public partial class AudioWidget : DockWidget
         if (_flyoutLevelText is not null) _flyoutLevelText.Text = muted ? "0%" : UiText.Format("Percent", level);
         if (_flyoutMuteIcon is not null)
         {
-            var flyoutIconKey = muted || level == 0 ? "IconVolumeMute" : level < 50 ? "IconVolumeLow" : "IconVolume";
-            _flyoutMuteIcon.Content = FindResource(flyoutIconKey);
+            _flyoutMuteIcon.Content = FindResource(iconKey);
         }
         if (_flyoutMuteButton is not null) ApplyMuteButtonVisual(_flyoutMuteButton, muted);
         _updating = false;

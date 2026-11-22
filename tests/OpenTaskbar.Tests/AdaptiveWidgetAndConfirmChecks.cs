@@ -136,20 +136,21 @@ internal static class AdaptiveWidgetAndConfirmChecks
         check(autoCandidates.All(widget => !widget.IsCompact),
             "Auto widgets must stay full when there is enough room.");
 
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, settings);
+        var saving = autoCandidates[0].FullWidthEstimate - autoCandidates[0].CompactWidthEstimate;
+        var singleOverflowWidth = 650 + Math.Max(1, Math.Floor(saving * 0.7));
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: singleOverflowWidth, settings);
         check(autoCandidates[0].IsCompact,
             "Auto density must compact the highest-priority eligible widget when space runs out.");
         check(autoCandidates.Skip(1).All(widget => !widget.IsCompact),
             "Auto density must leave other widgets full when one compaction is enough.");
 
-        var saving = autoCandidates[0].FullWidthEstimate - autoCandidates[0].CompactWidthEstimate;
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720 - saving, settings);
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: singleOverflowWidth - saving, settings);
         check(autoCandidates[0].IsCompact,
             "Auto density must not oscillate after measuring compact widgets.");
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 730, appsContentWidth: 720 - saving, settings);
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: singleOverflowWidth + 10, appsContentWidth: singleOverflowWidth - saving, settings);
         check(autoCandidates[0].IsCompact,
             "Hysteresis must prevent immediate expansion near the width limit.");
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 800, appsContentWidth: 720 - saving, settings);
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: singleOverflowWidth + 80, appsContentWidth: singleOverflowWidth - saving, settings);
         check(autoCandidates.All(widget => !widget.IsCompact),
             "Auto density must expand widgets when enough space returns.");
 
