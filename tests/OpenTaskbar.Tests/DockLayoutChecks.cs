@@ -490,6 +490,64 @@ internal static class DockLayoutChecks
                 Check(button.ActualWidth == profile.Cell && button.ActualHeight == profile.Cell,
                     $"DockButton must dynamically resize to {profile.Cell} DIP for {size}@{scale}.");
             }
+        // Crisp compact widgets: cards are laid out at their real height (34–46 DIP) via the dynamic WidgetHeight
+        // resource, and the default 100% profiles never get a fractional (blurry) LayoutTransform.
+        foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
+        {
+            var profile = DockMetrics.For(size, 1.0);
+            Check(profile.WidgetLayoutScale == 1.0,
+                $"{size}@100% widgets must render unscaled (WidgetLayoutScale=1.0), got {profile.WidgetLayoutScale}.");
+            Check(profile.WidgetCardHeight >= DockMetrics.WidgetMinCardHeight && profile.WidgetCardHeight <= DockMetrics.WidgetDesignHeight
+                    && profile.WidgetCardHeight + 2 <= profile.EffectiveCellHeight,
+                $"{size}@100% widget card height {profile.WidgetCardHeight} must fit the cell at its real size.");
+        }
+        var compact80 = DockMetrics.For(DockSize.Compact, 0.8);
+        Check(compact80.WidgetCardHeight == DockMetrics.WidgetMinCardHeight,
+            $"Compact@80% widget card height must be {DockMetrics.WidgetMinCardHeight}, got {compact80.WidgetCardHeight}.");
+        Check(compact80.WidgetLayoutScale > 0.80,
+            $"Compact@80% widget residual scale must stay above 0.80 (was 0.61 from 46 DIP), got {compact80.WidgetLayoutScale:0.####}.");
+        foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
+        foreach (var scale in new[] { 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5 })
+        {
+            var profile = DockMetrics.For(size, scale);
+            Check(Math.Round(profile.WidgetCardHeight * profile.WidgetLayoutScale) + 2 <= profile.EffectiveCellHeight,
+                $"Scaled widget card for {size}@{scale} ({profile.WidgetCardHeight}×{profile.WidgetLayoutScale:0.###}) must fit the {profile.EffectiveCellHeight} DIP cell.");
+        }
+        var originalWidgetHeight = app.Resources["WidgetHeight"];
+        var widgetHostWindow = new Window();
+        try
+        {
+            app.Resources["WidgetHeight"] = 34.0;
+            var card = new Border { Style = (Style)app.FindResource("WidgetCardBorder") };
+            var cardButton = new Button { Style = (Style)app.FindResource("WidgetCardButton") };
+            var hostPanel = new StackPanel();
+            hostPanel.Children.Add(card);
+            hostPanel.Children.Add(cardButton);
+            widgetHostWindow.Content = hostPanel;
+            Check(card.Height == 34.0 && cardButton.Height == 34.0,
+                $"WidgetCardBorder/WidgetCardButton must follow dynamic WidgetHeight=34 (got {card.Height}/{cardButton.Height}).");
+            app.Resources["WidgetHeight"] = DockMetrics.WidgetDesignHeight;
+            Check(card.Height == DockMetrics.WidgetDesignHeight && cardButton.Height == DockMetrics.WidgetDesignHeight,
+                $"WidgetCardBorder/WidgetCardButton must update live when WidgetHeight changes back to 46 (got {card.Height}/{cardButton.Height}).");
+        }
+        finally
+        {
+            widgetHostWindow.Content = null;
+            widgetHostWindow.Close();
+            app.Resources["WidgetHeight"] = originalWidgetHeight ?? DockMetrics.WidgetDesignHeight;
+        }
+        var unscaledHost = new StackPanel();
+        MainWindow.ApplyWidgetScale(unscaledHost, 1.0);
+        Check(unscaledHost.LayoutTransform == Transform.Identity
+                && TextOptions.GetTextFormattingMode(unscaledHost) == TextFormattingMode.Display,
+            "Unscaled widget strip must use no transform and pixel-snapped Display text.");
+        var scaledHost = new StackPanel();
+        MainWindow.ApplyWidgetScale(scaledHost, compact80.WidgetLayoutScale);
+        Check(scaledHost.LayoutTransform is ScaleTransform { ScaleX: var sx } && Math.Abs(sx - compact80.WidgetLayoutScale) < 0.0001
+                && TextOptions.GetTextFormattingMode(scaledHost) == TextFormattingMode.Ideal
+                && TextOptions.GetTextRenderingMode(scaledHost) == TextRenderingMode.Grayscale
+                && RenderOptions.GetBitmapScalingMode(scaledHost) == BitmapScalingMode.HighQuality,
+            "Scaled widget strip must switch to Ideal/Grayscale vector text with high-quality bitmap scaling.");
         // The scale slider must change the height Windows reserves for the taskbar, including the default
         // Compact size where smaller scales produce a shelf below Explorer's native 48 DIP strip.
         var compactReservations = new[] { 0.75, 0.9, 1.0, 1.25, 1.5 }

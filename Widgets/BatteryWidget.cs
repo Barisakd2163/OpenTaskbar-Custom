@@ -47,6 +47,8 @@ public sealed class BatteryWidget : DockWidget
     private BatteryStatus _status;
     private bool _hasSample;
     private bool _isAnimatingCharging;
+    private double _animatedWaveHeight;
+    private double _animatedWaveEdgeX;
     private bool _isPressed;
     private long _lastPollMs;
     private int _renderedPercent = -1;
@@ -424,7 +426,11 @@ public sealed class BatteryWidget : DockWidget
 
         var fallbackWidth = IsCompact && !IsHoverExpanded ? CompactCardWidth : MinCardWidth;
         var width = _surface.ActualWidth > 1 ? _surface.ActualWidth : fallbackWidth;
-        var height = _surface.ActualHeight > 1 ? _surface.ActualHeight : WaveHeight;
+        // Before the first layout pass fall back to the live WidgetHeight (34-46 DIP), not the 46 DIP design
+        // height, so the liquid clip never overshoots a compact card.
+        var height = _surface.ActualHeight > 1
+            ? _surface.ActualHeight
+            : TryFindResource("WidgetHeight") is double widgetHeight && widgetHeight > 1 ? widgetHeight : WaveHeight;
         var radius = _card.CornerRadius.TopLeft > 0 ? _card.CornerRadius.TopLeft : 10;
         _surface.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
 
@@ -443,7 +449,9 @@ public sealed class BatteryWidget : DockWidget
             return;
         }
 
-        if (_isAnimatingCharging && !forceAnimationRestart) return;
+        var geometryChanged = Math.Abs(height - _animatedWaveHeight) > 0.5
+            || Math.Abs(edgeX - _animatedWaveEdgeX) > 0.5;
+        if (_isAnimatingCharging && !forceAnimationRestart && !geometryChanged) return;
 
         StartChargingAnimation(edgeX, height, animateWave: _renderedPercent < 100);
     }
@@ -512,6 +520,8 @@ public sealed class BatteryWidget : DockWidget
     {
         StopChargingAnimation();
         _isAnimatingCharging = true;
+        _animatedWaveHeight = height;
+        _animatedWaveEdgeX = edgeX;
 
         if (animateWave)
         {
@@ -560,6 +570,8 @@ public sealed class BatteryWidget : DockWidget
     {
         if (!_isAnimatingCharging) return;
         _isAnimatingCharging = false;
+        _animatedWaveHeight = 0;
+        _animatedWaveEdgeX = 0;
         _waveTransform.BeginAnimation(TranslateTransform.YProperty, null);
         _waveTransform.Y = 0;
         _sheenTransform.BeginAnimation(TranslateTransform.XProperty, null);

@@ -3006,10 +3006,12 @@ public partial class MainWindow : Window
         var bevelV = -profile.VerticalPadding + 1;
         DockInnerBevel.Margin = IsVertical ? new Thickness(bevelV, bevelH, bevelV, bevelH) : new Thickness(bevelH, bevelV, bevelH, bevelV);
         if (IsVertical) DockFrame.Padding = new Thickness(profile.VerticalPadding + 4, 10, profile.VerticalPadding + 4, 10);
-        var scale = profile.WidgetScale;
-        var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;
-        WidgetStrip.LayoutTransform = widgetTransform;
-        DockWidgets.LayoutTransform = widgetTransform;
+        // Widget cards are laid out at their real height (34–46 DIP) through the dynamic WidgetHeight resource.
+        // Only when the cell is outside that band is a residual scale applied; a fractional LayoutTransform on
+        // Display-formatted text is what made compact-dock widgets look blurry.
+        Application.Current.Resources["WidgetHeight"] = profile.WidgetCardHeight;
+        ApplyWidgetScale(WidgetStrip, profile.WidgetLayoutScale);
+        ApplyWidgetScale(DockWidgets, profile.WidgetLayoutScale);
         // The external bottom gap is subtracted from the shelf by DockSurface.Margin, so the frame's inner
         // height must still fit the full DockCellHeight. Otherwise WPF gives every DockButton a LayoutClip
         // (e.g. 0,0,38,36) and magnified icons get cut at the top edge of the dock. Grow the shelf instead.
@@ -3041,6 +3043,34 @@ public partial class MainWindow : Window
         StartDivider.Margin = new Thickness(3 + padding, 0, 4 + padding, 0);
         TrayGroupDivider.Margin = new Thickness(6 + padding, 0, 4 + padding, 0);
         WidgetDivider.Margin = new Thickness(6 + padding, 0, 6 + padding, 0);
+    }
+
+    /// <summary>
+    /// Applies the residual widget scale. At 1.0 the strip uses no transform and pixel-snapped Display text; any
+    /// other scale switches to Ideal/Grayscale vector text with fixed hinting and high-quality bitmap scaling so
+    /// glyphs are rasterized at the final size instead of being resampled from Display-mode bitmaps.
+    /// </summary>
+    internal static void ApplyWidgetScale(FrameworkElement host, double scale)
+    {
+        if (!double.IsFinite(scale) || Math.Abs(scale - 1.0) <= 0.001)
+        {
+            host.LayoutTransform = Transform.Identity;
+            TextOptions.SetTextFormattingMode(host, TextFormattingMode.Display);
+            TextOptions.SetTextRenderingMode(host, TextRenderingMode.Auto);
+            host.ClearValue(TextOptions.TextHintingModeProperty);
+            host.ClearValue(RenderOptions.BitmapScalingModeProperty);
+        }
+        else
+        {
+            var transform = new ScaleTransform(scale, scale);
+            transform.Freeze();
+            host.LayoutTransform = transform;
+            TextOptions.SetTextFormattingMode(host, TextFormattingMode.Ideal);
+            TextOptions.SetTextRenderingMode(host, TextRenderingMode.Grayscale);
+            TextOptions.SetTextHintingMode(host, TextHintingMode.Fixed);
+            RenderOptions.SetBitmapScalingMode(host, BitmapScalingMode.HighQuality);
+        }
+        host.InvalidateMeasure();
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -3264,7 +3294,7 @@ public partial class MainWindow : Window
         var densityBudget = _dockWidthOverride is not null
             ? Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome)
             : maxLayoutWidth;
-        if (_widgetCoordinator.UpdateAdaptiveDensity(densityBudget, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale))
+        if (_widgetCoordinator.UpdateAdaptiveDensity(densityBudget, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetLayoutScale))
             _resizePending = true; // Measure again after the widget templates switch to compact mode.
 
         DockScrollViewer.MaxWidth = maxAppsWidth;
