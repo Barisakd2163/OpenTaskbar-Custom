@@ -211,6 +211,10 @@ public static class ThemeManager
         {
             case SurfaceKind.Dock:
                 Materials["DockMaterial"] = Fill(MaterialSource("DockMaterial"), style);
+                // When the DWM acrylic plate is active the WPF fill becomes only a light tint on top of
+                // the real glass. Kept as a separate resource so Solid/None modes and existing tests keep
+                // the exact DockMaterial brush.
+                Materials["DockAcrylicMaterial"] = WithScaledAlpha((Brush)Materials["DockMaterial"], 0.35);
                 Materials["DockBorderMaterial"] = Stroke(ResolveBrush("DockBorderMaterial"), style);
                 Materials["DockShadow"] = Shadow("ShadowDock", style);
                 break;

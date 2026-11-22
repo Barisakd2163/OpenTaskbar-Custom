@@ -188,9 +188,9 @@ public partial class MainWindow
         WidgetIsland.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
         DockSheen.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
         LeftResizeThumb.Visibility = RightResizeThumb.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
-        foreach (var button in GetAllDockButtons())
+        foreach (var icon in GetAllDockButtons().Select(GetButtonIcon).OfType<FrameworkElement>())
         {
-            if (GetButtonIcon(button) is { } icon) icon.RenderTransformOrigin = IconScaleOrigin;
+            icon.RenderTransformOrigin = IconScaleOrigin;
         }
 
         RebuildDockOrder();

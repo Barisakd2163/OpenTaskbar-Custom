@@ -249,13 +249,13 @@ public partial class MainWindow
 
     private IEnumerable<Button> GetExtraDockButtons()
     {
-        foreach (var stack in _stacks)
+        foreach (var button in _stacks
+            .Select(stack => StackItems.ItemContainerGenerator.ContainerFromItem(stack) is DependencyObject container
+                ? FindVisualChild<Button>(container)
+                : null)
+            .OfType<Button>())
         {
-            if (StackItems.ItemContainerGenerator.ContainerFromItem(stack) is DependencyObject container
-                && FindVisualChild<Button>(container) is { } button)
-            {
-                yield return button;
-            }
+            yield return button;
         }
 
         if (RecycleBinButton.Visibility == Visibility.Visible) yield return RecycleBinButton;

@@ -57,6 +57,8 @@ public partial class MainWindow : Window
     private NativeWindowTracker? _windowTracker;
     private TaskbarReplacementSession? _replacementSession;
     private HwndSource? _source;
+    private DockGlassHost? _glassHost;
+    private bool _glassRenderingHooked;
     private nint _foregroundWindow;
     private readonly DispatcherTimer _foregroundPollTimer;
     private readonly List<FrameworkElement> _magnifiedIcons = [];
@@ -292,6 +294,7 @@ public partial class MainWindow : Window
             ReportError("ErrorAltTabExclude");
         }
         WindowThumbnailPreview.ExcludeFromPeek(source.Handle);
+        InitializeDockGlass(source.Handle);
 
         _windowTracker = new NativeWindowTracker(Dispatcher);
         _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
@@ -344,6 +347,62 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => OpenSettings_Click(this, new RoutedEventArgs()));
         }
 #endif
+    }
+
+    /// <summary>
+    /// Creates the native acrylic plate behind the layered dock. Inspection runs skip it so automated
+    /// tests never introduce an extra shell window.
+    /// </summary>
+    private void InitializeDockGlass(nint handle)
+    {
+        if (_isInspection) return;
+        _glassHost = new DockGlassHost();
+        _glassHost.Attach(handle);
+        _glassHost.Show();
+        ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
+        RefreshDockGlass();
+    }
+
+    private void ThemeManager_ThemeChanged(object? sender, EventArgs e) => RefreshDockGlass();
+
+    private void RefreshDockGlass()
+    {
+        var host = _glassHost;
+        if (host is null) return;
+        host.Refresh(ThemeManager.GetSurface(SurfaceKind.Dock));
+        DockShadowLayer.SetResourceReference(Border.BackgroundProperty,
+            host.IsAcrylicEnabled ? "DockAcrylicMaterial" : "DockMaterial");
+
+        // Fisheye scale and auto-hide slide are render transforms, so they never raise LayoutUpdated.
+        // Follow them per frame, but only while the plate exists; other modes pay no per-frame cost.
+        if (host.IsAcrylicEnabled && !_glassRenderingHooked)
+        {
+            CompositionTarget.Rendering += OnGlassRendering;
+            _glassRenderingHooked = true;
+        }
+        else if (!host.IsAcrylicEnabled && _glassRenderingHooked)
+        {
+            CompositionTarget.Rendering -= OnGlassRendering;
+            _glassRenderingHooked = false;
+        }
+        UpdateDockGlassBounds();
+    }
+
+    private void OnGlassRendering(object? sender, EventArgs e) => UpdateDockGlassBounds();
+
+    private void UpdateDockGlassBounds()
+    {
+        var host = _glassHost;
+        if (host is null || !host.IsAcrylicEnabled || DockShadowLayer.ActualWidth <= 0 || DockShadowLayer.ActualHeight <= 0) return;
+        var transform = DockShadowLayer.TransformToVisual(this);
+        var topLeft = PointToScreen(transform.Transform(new Point(0, 0)));
+        var bottomRight = PointToScreen(transform.Transform(new Point(DockShadowLayer.ActualWidth, DockShadowLayer.ActualHeight)));
+        host.SetBounds(
+            Math.Min(topLeft.X, bottomRight.X),
+            Math.Min(topLeft.Y, bottomRight.Y),
+            Math.Abs(bottomRight.X - topLeft.X),
+            Math.Abs(bottomRight.Y - topLeft.Y),
+            EffectiveCornerRadius);
     }
 
     private bool _startupFinalized;
@@ -1539,9 +1598,12 @@ public partial class MainWindow : Window
         {
             unpinMenuItem.CommandParameter = pinnedApp;
         }
-        foreach (var tag in new[] { "HideInProfile", "NewInstance", "RunAsAdmin" })
+        foreach (var item in new[] { "HideInProfile", "NewInstance", "RunAsAdmin" }
+            .Select(tag => FindMenuItem(contextMenu, tag))
+            .Where(item => item is not null)
+            .Select(item => item!))
         {
-            if (FindMenuItem(contextMenu, tag) is { } item) item.CommandParameter = pinnedApp;
+            item.CommandParameter = pinnedApp;
         }
         FocusContextMenu(contextMenu);
         await LoadJumpListAsync(contextMenu, targetWindow?.Handle ?? 0, pinnedApp.ShortcutPath);
@@ -2085,6 +2147,7 @@ public partial class MainWindow : Window
             _replacementSession.EnsureReservationSynced();
         }
         _appliedDockGeometry = geometry;
+        RefreshDockGlass();
     }
 
     /// <summary>Subtle settle animation when a new size/scale profile is committed.</summary>
@@ -2204,22 +2267,15 @@ public partial class MainWindow : Window
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var pins = (settings.PinOrder ?? _pinnedApps.Select(a => a.ExecutablePath).Where(p => p is not null).ToArray())
             .Where(p => p is not null).ToArray();
-        foreach (var path in pins)
-        {
-            if (!groupedPaths.Contains(path)) tokens.Add("app:" + path);
-        }
-        foreach (var app in _runningApps)
-        {
-            if (!pins.Contains(app.ExecutablePath, StringComparer.OrdinalIgnoreCase) && !groupedPaths.Contains(app.ExecutablePath))
-                tokens.Add("app:" + app.ExecutablePath);
-        }
+        foreach (var path in pins.Where(path => !groupedPaths.Contains(path))) tokens.Add("app:" + path);
+        foreach (var app in _runningApps
+            .Where(app => !pins.Contains(app.ExecutablePath, StringComparer.OrdinalIgnoreCase) && !groupedPaths.Contains(app.ExecutablePath)))
+            tokens.Add("app:" + app.ExecutablePath);
         foreach (var group in settings.AppGroups ?? []) tokens.Add("group:" + group.Id);
         foreach (var stack in _stacks) tokens.Add("stack:" + stack.Path);
         if (settings.ShowRecycleBin) tokens.Add("bin");
-        foreach (var id in _widgetCoordinator.CurrentOrder)
-        {
-            if (_widgetCoordinator.ActiveWidgets.ContainsKey(id)) tokens.Add("widget:" + id);
-        }
+        foreach (var id in _widgetCoordinator.CurrentOrder.Where(id => _widgetCoordinator.ActiveWidgets.ContainsKey(id)))
+            tokens.Add("widget:" + id);
         foreach (var legacy in _widgets)
         {
             var token = "widget:" + legacy.Id;
@@ -2366,46 +2422,43 @@ public partial class MainWindow : Window
     {
         var settings = _preferences.Current;
         var tokens = (settings.DockItemOrder ?? DefaultDockOrder(settings)).ToList();
-        foreach (var token in DefaultDockOrder(settings))
+        foreach (var token in DefaultDockOrder(settings).Where(token => !tokens.Contains(token, StringComparer.OrdinalIgnoreCase)))
         {
-            if (!tokens.Contains(token, StringComparer.OrdinalIgnoreCase))
+            if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
             {
-                if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
-                {
-                    var lastAppIndex = tokens.FindLastIndex(t =>
-                        t.StartsWith("app:", StringComparison.OrdinalIgnoreCase)
-                        && FindDockApp(t[4..]) is not null);
+                var lastAppIndex = tokens.FindLastIndex(t =>
+                    t.StartsWith("app:", StringComparison.OrdinalIgnoreCase)
+                    && FindDockApp(t[4..]) is not null);
 
-                    if (lastAppIndex >= 0)
-                    {
-                        tokens.Insert(lastAppIndex + 1, token);
-                    }
-                    else
-                    {
-                        var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
-                        if (startIndex >= 0)
-                        {
-                            tokens.Insert(startIndex + 1, token);
-                        }
-                        else
-                        {
-                            tokens.Insert(0, token);
-                        }
-                    }
-                }
-                else if (string.Equals(token, "peek", StringComparison.OrdinalIgnoreCase))
+                if (lastAppIndex >= 0)
                 {
-                    // Orders saved before Show Desktop existed keep it beside Start instead of appending it.
-                    var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
-                    var searchIndex = tokens.FindIndex(t => string.Equals(t, "search", StringComparison.OrdinalIgnoreCase));
-                    var insertAt = startIndex >= 0 ? startIndex + 1 : 0;
-                    if (searchIndex >= 0) insertAt = searchIndex + 1;
-                    tokens.Insert(Math.Min(insertAt, tokens.Count), token);
+                    tokens.Insert(lastAppIndex + 1, token);
                 }
                 else
                 {
-                    tokens.Add(token);
+                    var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
+                    if (startIndex >= 0)
+                    {
+                        tokens.Insert(startIndex + 1, token);
+                    }
+                    else
+                    {
+                        tokens.Insert(0, token);
+                    }
                 }
+            }
+            else if (string.Equals(token, "peek", StringComparison.OrdinalIgnoreCase))
+            {
+                // Orders saved before Show Desktop existed keep it beside Start instead of appending it.
+                var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
+                var searchIndex = tokens.FindIndex(t => string.Equals(t, "search", StringComparison.OrdinalIgnoreCase));
+                var insertAt = startIndex >= 0 ? startIndex + 1 : 0;
+                if (searchIndex >= 0) insertAt = searchIndex + 1;
+                tokens.Insert(Math.Min(insertAt, tokens.Count), token);
+            }
+            else
+            {
+                tokens.Add(token);
             }
         }
 
@@ -2423,10 +2476,10 @@ public partial class MainWindow : Window
         {
             var tokens = BuildEffectiveDockOrder();
             var pairs = new List<(string Token, FrameworkElement Element)>();
-            foreach (var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase))
+            // Horizontal widgets are hidden on narrow vertical side docks so they never widen or clip the strip.
+            foreach (var token in tokens.Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(token => !((IsVertical || _preferences.Current.FocusModeEnabled) && token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase))))
             {
-                // Horizontal widgets are hidden on narrow vertical side docks so they never widen or clip the strip.
-                if ((IsVertical || _preferences.Current.FocusModeEnabled) && token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase)) continue;
                 if (CreateDockItemElement(token) is { } element) pairs.Add((token, element));
             }
 
@@ -3208,6 +3261,17 @@ public partial class MainWindow : Window
         _restingIcons.Clear();
         _source?.RemoveHook(WindowProc);
         _source = null;
+        ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
+        if (_glassRenderingHooked)
+        {
+            CompositionTarget.Rendering -= OnGlassRendering;
+            _glassRenderingHooked = false;
+        }
+        if (_glassHost is not null)
+        {
+            _glassHost.Close();
+            _glassHost = null;
+        }
 
         if (_windowTracker is not null)
         {

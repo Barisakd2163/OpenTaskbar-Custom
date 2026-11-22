@@ -1017,9 +1017,9 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         // Secondary-monitor taskbars are best effort; the primary one decides success.
-        foreach (var secondary in FindSecondaryTaskbars())
+        foreach (var secondary in FindSecondaryTaskbars().Where(s => IsWindowVisible(s)))
         {
-            if (IsWindowVisible(secondary)) ShowWindow(secondary, SwHide);
+            ShowWindow(secondary, SwHide);
         }
 
         return !IsWindowVisible(taskbarHandle);

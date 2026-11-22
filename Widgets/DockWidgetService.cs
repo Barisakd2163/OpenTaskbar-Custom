@@ -102,16 +102,14 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     public static void Refresh(IEnumerable<DockWidgetItem> widgets, AppLanguage language)
     {
         var culture = language.Culture;
-        foreach (var widget in widgets)
+        foreach (var widget in widgets.Where(widget => DefinitionsById.ContainsKey(widget.Id)))
         {
-            if (DefinitionsById.TryGetValue(widget.Id, out var definition))
-            {
-                widget.Label = UiText.Get(definition.LabelKey);
-                if (widget is ITimedDockWidget timed)
-                    timed.Refresh();
-                else if (definition.Read is not null)
-                    widget.Value = definition.Read(culture);
-            }
+            var definition = DefinitionsById[widget.Id];
+            widget.Label = UiText.Get(definition.LabelKey);
+            if (widget is ITimedDockWidget timed)
+                timed.Refresh();
+            else if (definition.Read is not null)
+                widget.Value = definition.Read(culture);
         }
     }
 

@@ -48,9 +48,9 @@ public static class TrayIcons
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var candidate in candidates
             .OrderByDescending(c => c.IsPromoted)
-            .ThenBy(c => IsDriverStorePath(c.Path)))
+            .ThenBy(c => IsDriverStorePath(c.Path))
+            .Where(c => running.Contains(c.Path)))
         {
-            if (!running.Contains(candidate.Path)) continue;
             var name = string.IsNullOrWhiteSpace(candidate.Tooltip)
                 ? DescribeExecutable(candidate.Path)
                 : candidate.Tooltip;

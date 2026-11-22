@@ -160,9 +160,9 @@ public partial class MainWindow
             }
         }
 
-        foreach (var button in GetAllDockButtons())
+        foreach (var button in GetAllDockButtons().Where(IsNativeShellButton))
         {
-            if (IsNativeShellButton(button)) AddNonMagnifiedSpan(button);
+            AddNonMagnifiedSpan(button);
         }
         foreach (var (token, element) in _dockItemElements)
         {
@@ -388,22 +388,22 @@ public partial class MainWindow
         yield return StartButton;
 
         // Profiles filter the pinned view, so look containers up by item rather than by index.
-        foreach (var app in _pinnedApps)
+        foreach (var button in _pinnedApps
+            .Select(app => PinnedApps.ItemContainerGenerator.ContainerFromItem(app) is DependencyObject container
+                ? FindVisualChild<Button>(container)
+                : null)
+            .OfType<Button>())
         {
-            if (PinnedApps.ItemContainerGenerator.ContainerFromItem(app) is DependencyObject container
-                && FindVisualChild<Button>(container) is { } button)
-            {
-                yield return button;
-            }
+            yield return button;
         }
 
-        foreach (var app in _runningApps)
+        foreach (var button in _runningApps
+            .Select(app => RunningApps.ItemContainerGenerator.ContainerFromItem(app) is DependencyObject container
+                ? FindVisualChild<Button>(container)
+                : null)
+            .OfType<Button>())
         {
-            if (RunningApps.ItemContainerGenerator.ContainerFromItem(app) is DependencyObject container
-                && FindVisualChild<Button>(container) is { } button)
-            {
-                yield return button;
-            }
+            yield return button;
         }
 
         foreach (var button in GetExtraDockButtons()) yield return button;

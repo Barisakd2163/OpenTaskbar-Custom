@@ -115,8 +115,10 @@ public partial class SettingsWindow : Window
             Deactivated -= Settings_Deactivated;
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             WidgetOptionsList.ItemsSource = null;
-            foreach (var option in _widgetOptions)
-                if (option.NativePreview is OpenTaskbar.Widgets.DockWidget preview) preview.Dispose();
+            foreach (var preview in _widgetOptions
+                .Where(o => o.NativePreview is OpenTaskbar.Widgets.DockWidget)
+                .Select(o => (OpenTaskbar.Widgets.DockWidget)o.NativePreview!))
+                preview.Dispose();
             _widgetOptions.Clear();
             _widgetGroups.Clear();
             _widgetDensityBoxes.Clear();
@@ -331,14 +333,13 @@ public partial class SettingsWindow : Window
         ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
         LoadSurfaceStyles(_preferences.Current);
         ApplySettingsToLivePreviews(_preferences.Current);
-        foreach (var option in _widgetOptions)
+        foreach (var native in _widgetOptions
+            .Where(o => o.NativePreview is OpenTaskbar.Widgets.DockWidget d
+                        && !_livePreviewWidgets.Contains(d))
+            .Select(o => (OpenTaskbar.Widgets.DockWidget)o.NativePreview!))
         {
-            if (option.NativePreview is OpenTaskbar.Widgets.DockWidget native
-                && !_livePreviewWidgets.Contains(native))
-            {
-                native.ApplySettings(_preferences.Current);
-                native.Visibility = Visibility.Visible;
-            }
+            native.ApplySettings(_preferences.Current);
+            native.Visibility = Visibility.Visible;
         }
         CustomThemeEditor.LoadTheme(_selectedThemePackId, ThemeManager.EffectiveTheme);
         BuildThemeGallery(_selectedThemePackId);
@@ -1125,9 +1126,8 @@ public partial class SettingsWindow : Window
     private void AttachLiveWidgetPreviews()
     {
         StopAndDisposeLivePreviews();
-        foreach (var option in _widgetOptions)
+        foreach (var option in _widgetOptions.Where(o => WidgetCoordinator.HandlesWidget(o.Id)))
         {
-            if (!WidgetCoordinator.HandlesWidget(option.Id)) continue;
             try
             {
                 var widget = WidgetCoordinator.CreateWidget(option.Id);
@@ -1172,9 +1172,9 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void ApplySettingsToLivePreviews(DockSettings settings)
     {
-        foreach (var option in _widgetOptions)
+        foreach (var option in _widgetOptions.Where(o => o.LivePreview is OpenTaskbar.Widgets.DockWidget))
         {
-            if (option.LivePreview is not OpenTaskbar.Widgets.DockWidget widget) continue;
+            var widget = (OpenTaskbar.Widgets.DockWidget)option.LivePreview!;
             widget.ApplySettings(settings);
             // Some widgets hide themselves when their data source is inactive (e.g. media with no
             // session). A preview must stay visible so the card never collapses to an empty tile.
@@ -1498,9 +1498,8 @@ public partial class SettingsWindow : Window
             stats.SettingsView = StatsOptions;
         }
         var aiUsageIds = new HashSet<string>(DockWidgetService.AiUsageWidgets.Select(w => w.Id), StringComparer.Ordinal);
-        foreach (var option in _widgetOptions)
+        foreach (var option in _widgetOptions.Where(o => o.SettingsView is null))
         {
-            if (option.SettingsView is not null) continue;
             var panel = new StackPanel();
             AttachDensityRow(option.Id, panel);
             if (aiUsageIds.Contains(option.Id))

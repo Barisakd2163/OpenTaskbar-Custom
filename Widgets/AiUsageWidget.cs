@@ -218,15 +218,14 @@ public sealed class AiUsageWidget : DockWidget
         if (_card.Antigravity is not { } agy) return;
         foreach (var col in agy.Columns)
         {
-            foreach (var slot in col.Slots)
+            foreach (var (slot, reset) in col.Slots
+                .Where(slot => slot.ResetsAt.HasValue)
+                .Select(slot => (Slot: slot, Reset: slot.ResetsAt.GetValueOrDefault())))
             {
-                if (slot.ResetsAt is { } reset)
-                {
-                    var rem = reset - DateTimeOffset.UtcNow;
-                    slot.Reset.Text = !slot.IsWeekly && rem < RelativeLimit
-                        ? (rem > TimeSpan.Zero ? Duration(rem) : Duration(TimeSpan.Zero))
-                        : When(reset);
-                }
+                var rem = reset - DateTimeOffset.UtcNow;
+                slot.Reset.Text = !slot.IsWeekly && rem < RelativeLimit
+                    ? (rem > TimeSpan.Zero ? Duration(rem) : Duration(TimeSpan.Zero))
+                    : When(reset);
             }
         }
     }

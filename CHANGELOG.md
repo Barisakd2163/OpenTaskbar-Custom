@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a native DWM Desktop Acrylic plate behind the dock in Glass mode. A click-through, non-activated host window is clipped to the dock's rounded region with `SetWindowRgn` and follows magnification, auto-hide and geometry changes, so the dock now shows real blurred glass instead of only a translucent gradient. Solid/None modes and unsupported Windows builds keep the original fill.
+- Enabled hardware rendering by default for fluid magnification and flyout animations. `--software-render` remains available as an opt-in fallback for GPU-constrained machines.
+
 - Added Aero Peek when hovering over window previews (respecting Windows' Enable Peek setting) and middle-click on preview cards to close windows.
 - Added a one-click Focus Mode toggle in the dock/tray context menu and Preferences that hides notification badges and widgets, pauses widget polling, and disables animations without overwriting saved settings.
 - Added combined `.otbackup` archives for exporting and importing settings, pinned apps, and the active custom theme, with backup validation and optional theme restoration.

@@ -545,9 +545,9 @@ public sealed class WidgetCoordinator : IDisposable
         }
 
         _strip.Children.Clear();
-        foreach (var item in _widgets)
+        foreach (var widget in _widgets.Where(item => item.Widget is not null).Select(item => item.Widget!))
         {
-            if (item.Widget is { } widget) _strip.Children.Add(widget);
+            _strip.Children.Add(widget);
         }
         WidgetsPlaced?.Invoke();
     }
@@ -588,9 +588,9 @@ public sealed class WidgetCoordinator : IDisposable
         var anyAutoCompact = false;
         var changed = false;
 
-        foreach (var slot in _widgets)
+        foreach (var slot in _widgets.Where(slot => slot.Widget is { Visibility: Visibility.Visible }))
         {
-            if (slot.Widget is not { Visibility: Visibility.Visible } widget) continue;
+            var widget = slot.Widget!;
             var mode = settings.WidgetDensityOverrides is not null
                 && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
                     ? overrideMode
@@ -629,9 +629,9 @@ public sealed class WidgetCoordinator : IDisposable
             overflow -= saving;
         }
 
-        foreach (var slot in _widgets)
+        foreach (var slot in _widgets.Where(slot => slot.Widget is { Visibility: Visibility.Visible }))
         {
-            if (slot.Widget is not { Visibility: Visibility.Visible } widget) continue;
+            var widget = slot.Widget!;
             var mode = settings.WidgetDensityOverrides is not null
                 && settings.WidgetDensityOverrides.TryGetValue(slot.Id, out var overrideMode)
                     ? overrideMode
@@ -659,9 +659,8 @@ public sealed class WidgetCoordinator : IDisposable
         _hoverCoordinator.Dispose();
         _timer.Stop();
         _timer.Tick -= Timer_Tick;
-        foreach (var item in _widgets)
+        foreach (var widget in _widgets.Where(item => item.Widget is not null).Select(item => item.Widget!))
         {
-            if (item.Widget is not { } widget) continue;
             widget.PreviewMouseLeftButtonDown -= Widget_PreviewMouseLeftButtonDown;
             widget.PreviewMouseLeftButtonUp -= Widget_PreviewMouseLeftButtonUp;
             widget.PreviewMouseMove -= Widget_PreviewMouseMove;

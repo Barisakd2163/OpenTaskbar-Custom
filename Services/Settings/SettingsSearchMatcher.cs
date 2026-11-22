@@ -20,12 +20,9 @@ public static class SettingsSearchMatcher
         if (terms.Length == 0) return [];
 
         var results = new List<SettingsSearchEntry>();
-        foreach (var entry in entries)
+        foreach (var entry in entries.Where(e => MatchesAllTerms(e, terms)))
         {
-            if (MatchesAllTerms(entry, terms))
-            {
-                results.Add(entry);
-            }
+            results.Add(entry);
         }
 
         return results;

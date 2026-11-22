@@ -1029,13 +1029,10 @@ public sealed class NetSpeedWidget : DockWidget
         try
         {
             var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            foreach (var ni in interfaces)
+            foreach (var ni in interfaces.Where(ni =>
+                ni.OperationalStatus == OperationalStatus.Up
+                && ni.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)))
             {
-                if (ni.OperationalStatus != OperationalStatus.Up)
-                    continue;
-                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
-                    continue;
-
                 var stats = ni.GetIPStatistics();
                 totalReceived += stats.BytesReceived;
                 totalSent += stats.BytesSent;

@@ -242,9 +242,9 @@ public static class FullBackupArchive
         long totalBytes = 0;
         var buffer = new byte[81920];
 
-        foreach (var entry in archive.Entries)
+        // Directory markers are excluded here (equivalent to the original continue); file-entry validation and order are unchanged.
+        foreach (var entry in archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)))
         {
-            if (string.IsNullOrEmpty(entry.Name)) continue; // directory marker
             if (++count > ThemePackTransfer.MaxFileCount)
                 throw new InvalidDataException("Too many files in backup archive.");
 

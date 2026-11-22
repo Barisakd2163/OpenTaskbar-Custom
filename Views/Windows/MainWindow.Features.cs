@@ -553,9 +553,8 @@ public partial class MainWindow
     {
         if (_secondaryDocks.Count == 0) return;
         var shelf = EffectiveShelfHeight;
-        foreach (var dock in _secondaryDocks)
+        foreach (var dock in _secondaryDocks.Where(dock => Math.Abs(dock.ShelfHeight - shelf) >= 0.01))
         {
-            if (Math.Abs(dock.ShelfHeight - shelf) < 0.01) continue;
             dock.ApplyShelfHeight(shelf);
             dock.PositionOnMonitor();
         }
