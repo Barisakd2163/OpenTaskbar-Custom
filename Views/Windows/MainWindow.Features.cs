@@ -257,11 +257,18 @@ public partial class MainWindow
 
     // ---- Profiles (#14) ----
 
-    private DockProfile? ActiveProfile => _preferences.Current.Profiles?.FirstOrDefault(profile =>
-        string.Equals(profile.Name, _preferences.Current.ActiveProfile, StringComparison.CurrentCultureIgnoreCase));
+    private static DockProfile? GetActiveProfile(DockSettings settings) =>
+        settings.Profiles?.FirstOrDefault(profile =>
+            string.Equals(profile.Name, settings.ActiveProfile, StringComparison.CurrentCultureIgnoreCase));
+
+    private DockProfile? ActiveProfile => GetActiveProfile(_preferences.Current);
+
+    internal static bool IsHiddenByProfile(DockSettings settings, string? executablePath) =>
+        !string.IsNullOrWhiteSpace(executablePath)
+        && GetActiveProfile(settings)?.HiddenApps.Contains(executablePath, StringComparer.OrdinalIgnoreCase) == true;
 
     private bool IsHiddenByProfile(DockApp app) =>
-        ActiveProfile?.HiddenApps.Contains(app.ExecutablePath, StringComparer.OrdinalIgnoreCase) == true;
+        IsHiddenByProfile(_preferences.Current, app.ExecutablePath);
 
     private int VisiblePinnedCount => _pinnedApps.Count(app => !IsHiddenByProfile(app));
 
@@ -277,6 +284,7 @@ public partial class MainWindow
         var view = CollectionViewSource.GetDefaultView(_pinnedApps);
         view.Filter = signature is null ? null : item => item is DockApp app && !IsHiddenByProfile(app);
         if (_windowTracker is not null) RefreshRunningApps();
+        RebuildDockOrder();
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }

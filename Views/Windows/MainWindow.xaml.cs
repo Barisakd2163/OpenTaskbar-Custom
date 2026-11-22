@@ -2206,8 +2206,7 @@ public partial class MainWindow : Window
 
         var groupedPaths = (settings.AppGroups ?? []).SelectMany(g => g.ExecutablePaths)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var pins = (settings.PinOrder ?? _pinnedApps.Select(a => a.ExecutablePath).Where(p => p is not null).ToArray())
-            .Where(p => p is not null).ToArray();
+        var pins = GetVisiblePinnedPaths(_pinnedApps, settings);
         foreach (var path in pins.Where(path => !groupedPaths.Contains(path))) tokens.Add("app:" + path);
         foreach (var app in _runningApps
             .Where(app => !pins.Contains(app.ExecutablePath, StringComparer.OrdinalIgnoreCase) && !groupedPaths.Contains(app.ExecutablePath)))
@@ -2230,8 +2229,53 @@ public partial class MainWindow : Window
         return tokens;
     }
 
-    private DockApp? FindDockApp(string path) => _pinnedApps.Concat(_runningApps)
-        .FirstOrDefault(app => string.Equals(app.ExecutablePath, path, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Resolves visible pinned executable paths in <see cref="DockSettings.PinOrder"/> sequence while appending any
+    /// <paramref name="pinnedApps"/> entries missing from <see cref="DockSettings.PinOrder"/> (e.g. pinned outside
+    /// OpenTaskbar or imported via <see cref="ImportPins"/>) and filtering out apps hidden by the active profile.
+    /// </summary>
+    internal static IReadOnlyList<string> GetVisiblePinnedPaths(
+        IEnumerable<DockApp> pinnedApps,
+        DockSettings settings)
+    {
+        var visibleApps = pinnedApps
+            .Where(app => !string.IsNullOrWhiteSpace(app.ExecutablePath) && !IsHiddenByProfile(settings, app.ExecutablePath))
+            .Select(app => app.ExecutablePath)
+            .ToList();
+        if (settings.PinOrder is not { Count: > 0 })
+            return visibleApps;
+
+        var visibleSet = visibleApps.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<string>(visibleApps.Count);
+        var added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in settings.PinOrder)
+        {
+            if (path is not null && visibleSet.Contains(path) && added.Add(path))
+            {
+                ordered.Add(path);
+            }
+        }
+        foreach (var path in visibleApps)
+        {
+            if (added.Add(path))
+            {
+                ordered.Add(path);
+            }
+        }
+        return ordered;
+    }
+
+    internal static DockApp? FindVisibleDockApp(
+        IEnumerable<DockApp> pinnedApps,
+        IEnumerable<DockApp> runningApps,
+        DockSettings settings,
+        string path) =>
+        pinnedApps.Where(app => !IsHiddenByProfile(settings, app.ExecutablePath))
+            .Concat(runningApps)
+            .FirstOrDefault(app => string.Equals(app.ExecutablePath, path, StringComparison.OrdinalIgnoreCase));
+
+    private DockApp? FindDockApp(string path) =>
+        FindVisibleDockApp(_pinnedApps, _runningApps, _preferences.Current, path);
 
     private FrameworkElement? CreateDockItemElement(string token)
     {

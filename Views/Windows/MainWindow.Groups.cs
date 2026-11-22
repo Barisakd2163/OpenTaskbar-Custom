@@ -152,9 +152,9 @@ public partial class MainWindow
         }
         else
         {
-            RemoveAppFromItsGroup(app.ExecutablePath, save: false);
+            RemoveAppFromItsGroup(app.ExecutablePath, save: false, preserveGroupId: group.Id);
             var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
-                ? g with { ExecutablePaths = g.ExecutablePaths.Append(app.ExecutablePath).ToList() }
+                ? g with { ExecutablePaths = g.ExecutablePaths.Append(app.ExecutablePath).Distinct(StringComparer.OrdinalIgnoreCase).ToList() }
                 : g).ToList();
             SaveGroups(groups);
             return;
@@ -162,12 +162,37 @@ public partial class MainWindow
         SaveGroups(AppGroups.ToList());
     }
 
-    private void RemoveAppFromItsGroup(string executablePath, bool save = true)
+    /// <summary>
+    /// Removes <paramref name="executablePath"/> from whichever group contains it, dropping that group only if
+    /// removing the app made it empty. Pre-existing empty groups (e.g. a newly created group awaiting its first app)
+    /// are preserved.
+    /// </summary>
+    internal static List<DockAppGroup> RemoveAppFromGroups(
+        IReadOnlyList<DockAppGroup> groups,
+        string executablePath,
+        string? preserveGroupId = null)
     {
-        var groups = AppGroups.Select(g => g.ExecutablePaths.Contains(executablePath, StringComparer.OrdinalIgnoreCase)
-            ? g with { ExecutablePaths = g.ExecutablePaths
-                .Where(p => !SamePath(p, executablePath)).ToList() }
-            : g).Where(g => g.ExecutablePaths.Count > 0).ToList();
+        var result = new List<DockAppGroup>(groups.Count);
+        foreach (var group in groups)
+        {
+            if (!group.ExecutablePaths.Contains(executablePath, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(group);
+                continue;
+            }
+
+            var remaining = group.ExecutablePaths.Where(p => !SamePath(p, executablePath)).ToList();
+            if (remaining.Count > 0 || (preserveGroupId is not null && SamePath(group.Id, preserveGroupId)))
+            {
+                result.Add(group with { ExecutablePaths = remaining });
+            }
+        }
+        return result;
+    }
+
+    private void RemoveAppFromItsGroup(string executablePath, bool save = true, string? preserveGroupId = null)
+    {
+        var groups = RemoveAppFromGroups(AppGroups, executablePath, preserveGroupId);
         if (save) SaveGroups(groups);
         else PersistGroupsWithoutRebuild(groups);
     }
@@ -185,7 +210,7 @@ public partial class MainWindow
     {
         var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
             ? g with { ExecutablePaths = g.ExecutablePaths.Where(p => !SamePath(p, executablePath)).ToList() }
-            : g).Where(g => g.ExecutablePaths.Count > 0).ToList();
+            : g).Where(g => !SamePath(g.Id, group.Id) || g.ExecutablePaths.Count > 0).ToList();
         // Empty groups are removed automatically.
         SaveGroups(groups);
     }
@@ -332,7 +357,7 @@ public partial class MainWindow
         if (e.Data.GetData(typeof(DockApp)) is DockApp app)
         {
             // Dropping an app onto a group icon adds it (removing it from any previous group).
-            RemoveAppFromItsGroup(app.ExecutablePath, save: false);
+            RemoveAppFromItsGroup(app.ExecutablePath, save: false, preserveGroupId: group.Id);
             var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
                 ? g with { ExecutablePaths = g.ExecutablePaths.Append(app.ExecutablePath).Distinct(StringComparer.OrdinalIgnoreCase).ToList() }
                 : g).ToList();
