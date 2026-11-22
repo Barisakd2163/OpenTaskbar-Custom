@@ -38,6 +38,13 @@ checks += TaskbarRecoveryChecks.Run();
 checks += SecondaryDockAndInteropChecks.Run();
 checks += ApplicationJumpListChecks.Run();
 checks += WirelessBatteryChecks.Run(headless);
+checks += ShellRecoveryChecks.Run();
+checks += TraySourceChecks.RunHeadless();
+if (!headless)
+{
+    checks += StaCheckRunner.Run(TraySourceChecks.RunUi);
+    checks += StaCheckRunner.Run(DockGestureChecks.RunUi);
+}
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)

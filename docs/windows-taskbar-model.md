@@ -320,3 +320,50 @@ doğrulanmış asenkron** disiplininin eksikliği. Tekil yamalarla değil, mimar
 - https://github.com/ChocolateyMilk/chocobar (1 sn reconciliation)
 - https://github.com/cairoshell/ManagedShell/wiki/AppBar
 - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registershellhookwindow
+
+---
+
+## Bölüm 6 — Doğrulama ve uyumluluk
+
+P3 kontrolleri, §4'teki sağlamlaştırma değişikliklerini **canlı kabuğu değiştirmeden** doğrular. Testler explorer'ı
+kapatıp açmaz, `TaskbarCreated` yayınlamaz, `SHAppBarMessage` göndermez ve HKCU'ya yazmaz; OS olayları inject edilmiş
+dizi/değerlerle simüle edilir.
+
+### Komutlar
+
+```powershell
+# 0 uyarı garantisi (Release)
+dotnet build OpenTaskbar.csproj -c Release --warnaserror
+
+# Tüm davranış kontrolleri (headless + UI); çıkışta "N behavior checks passed." görünmelidir
+dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj --configuration Release
+
+# Salt-okunur kabuk uyumluluk smoke testi (yükseltme yetkisi gerekmez)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-shell-compat.ps1
+```
+
+### Yeni kontroller
+
+| Dosya | Ne simüle eder |
+|---|---|
+| `tests/OpenTaskbar.Tests/ShellRecoveryChecks.cs` | `ShellTelemetry.NextSequence()` ile üretilen sequence'i `TrayHost._lastSelfBroadcastSequence` alanına enjekte edip `IsOwnBroadcast` + wParam marker birleşimini sınar; restore-etiketli yayının kendi yayınımız sayılmadığını doğrular. `RestoreCoordinator` tek-giriş kapısını (`SemaphoreSlim(1,1)`) ve eşzamanlı çağrıların `RestoreBusy` dönüp telemetri yazdığını doğrular (gerçek restore yolu çalıştırılmaz). `HwndLease`/`NativeTaskbarWindow` üzerinden Explorer HWND'si yoksa bozulmanın kendi pencemize yazmadığını kontrol eder. |
+| `tests/OpenTaskbar.Tests/TraySourceChecks.cs` | `guid:`, `path:`, `path:\|uid`, `path:\|*`, yapılandırılmış JSON ve bozuk girdiler için `TrayIconRef.TryParse`/migrasyonu; `(path, guid, uid)` comparer kimliği; `TrayIconSource.Merge` üzerinde bellek içi anlık görüntü birleştirme (aynı exe + farklı GUID/UID ayrı kalır, aynı tooltip farklı exe'leri birleştirmez, eşleşmeyen fallback görünür). UI bölümü `PinnedTrayStrip` seam'leriyle, GUID'li canlı ikon `path:` pin'e eşleşse bile tıklamanın **saklı anahtarın** stratejisini kullandığını (`PinClickTelemetry`) doğrular. |
+| `tests/OpenTaskbar.Tests/DockGestureChecks.cs` | `DockScrollViewer` üzerinde `ScrollChanged → ResetMagnification → ertelenmiş resize → Reset` zincirini `BeginGesture` / `SetContentOverflow(false)` / `SuppressScrollReset` / `ResetHorizontalScroll` / `EndGesture` çağrılarıyla simüle eder; gesture boyunca `HorizontalOffset` ve `DesiredHorizontalOffset` korunur, gesture bitince gerçek reset çalışır. |
+| `scripts/check-shell-compat.ps1` | OS/build, explorer.exe varlığı/sürümü, `TaskbarCreated` mesaj kimliği ve canlı `Shell_TrayWnd` pencereleri, DPI ölçeği, monitör sayısı ve işlem integrity düzeyini **salt okunur** raporlar; Windows güncellemesi sonrası el kontrol listesini hatırlatır. |
+
+### Eksik seam'ler (üretim kodu değiştirilmedi)
+
+Aşağıdaki noktalar için testler reflection ile durum enjekte ediyor veya yalnızca kapı davranışını doğruluyor;
+gelecekte seam eklenirse testler bunlara taşınmalı:
+
+- `TrayHost._lastSelfBroadcastSequence` özel alanı için injectable sequence sağlayıcısı yok. Aday:
+  `internal static bool IsOwnBroadcast(nuint wParam, IntPtr lParam)` saf yardımcı metodu ya da `internal` sequence özelliği.
+- `RestoreCoordinator`, gerçek restore yolunu (`TaskbarReplacementSession.ForceRestoreNativeTaskbar()`) doğrudan
+  çağırıyor; "iki eşzamanlı çağrı → birebir gerçek restore" ve "Explorer HWND yoksa degrade" senaryolarının OS'a
+  dokunmadan test edilmesi için `internal static Func<string?, string?>? RestoreOverride` benzeri bir seam gerekir.
+- `TrayIconSource.Merge` private static; testler reflection ile çağırıyor. `internal static` olması yeterli.
+- `MainWindow.BeginScrollGestureScope` / `EndScrollGestureScope` ve `MagnificationLayoutPhase` özel/örnek
+  üyeleri; zincir simülasyonu `DockScrollViewer` seviyesinde yapılıyor.
+
+> Windows sürüm yükseltmesinden sonra §1.1–1.9'daki dokümante edilmemiş davranışları yukarıdaki üç komutla yeniden
+> doğrulayın; smoke testi yalnızca gerçekleri raporlar, doğrulamayı kullanıcı yapar.
