@@ -1,10 +1,16 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Threading;
+using OpenTaskbar;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 using OpenTaskbar.Widgets;
@@ -214,7 +220,179 @@ internal static class AiUsageChecks
             Check(AiUsageService.ParseCodex(json).Error == "ErrorAiUsageLoad", "Invalid Codex responses must return a localization key.");
             Check(AiUsageService.ParseAntigravity(json).Error == "ErrorAiUsageLoad", "Invalid Antigravity responses must return a localization key.");
             Check(AiUsageService.ParseOpenCode(json).Error == "ErrorAiUsageLoad", "Invalid OpenCode responses must return a localization key.");
+            Check(AiUsageService.ParseCursor(json).Error == "ErrorAiUsageLoad", "Invalid Cursor responses must return a localization key.");
         }
+
+        // Cursor parser checks
+        const string cursorLiveUsage = """
+            {"billingCycleStart":"1794571743688","billingCycleEnd":"1795176543688",
+             "planUsage":{"remainingBonus":false,"autoPercentUsed":39.61538461538461,"totalPercentUsed":39.61538461538461},
+             "enabled":true}
+            """;
+        const string cursorLivePlan = """
+            {"planInfo":{"planName":"Plus","billingCycleEnd":"1796082954937","includedUsagePeriod":"INCLUDED_USAGE_PERIOD_WEEKLY","includedUsageResetsAt":"1795176543688"}}
+            """;
+        var (cursorReport, cursorErr) = AiUsageService.ParseCursor(cursorLiveUsage, cursorLivePlan);
+        Check(cursorErr is null && cursorReport is { Provider: AiProviders.Cursor, Plan: "Plus", LimitReached: false }
+            && cursorReport.Windows is [{ LabelKey: "AiUsageWeekly", WindowSeconds: 7 * 86400L }]
+            && Math.Abs(cursorReport.Windows[0].Used - 0.396153846) < 1e-4
+            && cursorReport.Windows[0].ResetsAt?.ToUnixTimeMilliseconds() == 1795176543688L
+            && cursorReport.Breakdown.Count == 0,
+            "Cursor must parse weekly usage, plan name, reset timestamp, and omit breakdown when API is absent and Auto matches total.");
+
+        var (cursorWithApi, cursorWithApiErr) = AiUsageService.ParseCursor("""
+            {"billingCycleStart":1794571743688,"billingCycleEnd":1795176543688,
+             "planUsage":{"autoPercentUsed":25.0,"apiPercentUsed":14.5,"totalPercentUsed":39.5}}
+            """);
+        Check(cursorWithApiErr is null && cursorWithApi is not null
+            && cursorWithApi.Windows[0] is { LabelKey: "AiUsageWeekly", WindowSeconds: 7 * 86400L }
+            && cursorWithApi.Windows[0].ResetsAt?.ToUnixTimeMilliseconds() == 1795176543688L
+            && cursorWithApi.Breakdown.Count == 2
+            && cursorWithApi.Breakdown[0] == new AiUsageShare("Auto", 0.25)
+            && cursorWithApi.Breakdown[1] == new AiUsageShare("API", 0.145),
+            "Cursor must accept numeric timestamps and expose Auto/API breakdown when apiPercentUsed > 0.05.");
+
+        var (cursorMonthly, cursorMonthlyErr) = AiUsageService.ParseCursor("""
+            {"billingCycleStart":1794571743688,"billingCycleEnd":1797163743688,"planUsage":{"totalPercentUsed":50}}
+            """);
+        Check(cursorMonthlyErr is null && cursorMonthly is not null
+            && cursorMonthly.Windows is [{ LabelKey: "AiUsageMonthly", Used: 0.5, WindowSeconds: 30 * 86400L }],
+            "Cursor 30-day cycle must classify as AiUsageMonthly.");
+
+        var (cursorForcedMonthly, _) = AiUsageService.ParseCursor(cursorLiveUsage, """
+            {"planInfo":{"planName":"Pro","includedUsagePeriod":"INCLUDED_USAGE_PERIOD_MONTHLY"}}
+            """);
+        Check(cursorForcedMonthly is { Plan: "Pro" } && cursorForcedMonthly.Windows[0].LabelKey == "AiUsageMonthly",
+            "Cursor INCLUDED_USAGE_PERIOD_MONTHLY hint must override window length heuristic.");
+
+        var (cursorBadPlan, cursorBadPlanErr) = AiUsageService.ParseCursor(cursorLiveUsage, "{not valid json");
+        Check(cursorBadPlanErr is null && cursorBadPlan is { Plan: null }
+            && cursorBadPlan.Windows is [{ LabelKey: "AiUsageWeekly", WindowSeconds: 7 * 86400L }],
+            "Cursor must ignore malformed secondary GetPlanInfo JSON and keep parsed usage.");
+
+        var (cursorPlanResetFallback, _) = AiUsageService.ParseCursor("""
+            {"planUsage":{"totalPercentUsed":100}}
+            """, cursorLivePlan);
+        Check(cursorPlanResetFallback is { LimitReached: true }
+            && cursorPlanResetFallback.Windows is [{ LabelKey: "AiUsageWeekly", Used: 1.0, WindowSeconds: 7 * 86400L }]
+            && cursorPlanResetFallback.Windows[0].ResetsAt?.ToUnixTimeMilliseconds() == 1795176543688L,
+            "Cursor must fall back to GetPlanInfo includedUsageResetsAt and 7-day weekly window length when usage timestamps are omitted.");
+
+        foreach (var badCursor in new[] { """{"planUsage":{}}""", """{"planUsage":{"autoPercentUsed":10}}""", """{"planUsage":{"totalPercentUsed":"NaN"}}""" })
+        {
+            var (badRep, badErr) = AiUsageService.ParseCursor(badCursor);
+            Check(badRep is null && badErr == "ErrorAiUsageLoad",
+                "Cursor responses missing a finite planUsage.totalPercentUsed must fail with ErrorAiUsageLoad.");
+        }
+
+        // Cursor PKCE RFC 7636 vector and StartLogin checks
+        const string pkceVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        const string pkceExpected = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        Check(CursorAuthService.PkceChallenge(pkceVerifier) == pkceExpected,
+            "Cursor PKCE challenge must match RFC 7636 test vector.");
+        var (v, c, uuid, loginUrl) = CursorAuthService.StartLogin();
+        Check(v.Length == 43 && !v.Contains('=') && CursorAuthService.PkceChallenge(v) == c
+            && Guid.TryParseExact(uuid, "D", out _) && uuid == uuid.ToLowerInvariant()
+            && loginUrl == $"https://cursor.com/loginDeepControl?challenge={c}&uuid={uuid}&mode=login",
+            "Cursor StartLogin must generate a valid Base64Url verifier, matching challenge, lowercase UUID, and loginDeepControl URL.");
+
+        // Cursor JWT expiry check
+        static string FakeJwt(long expUnix) =>
+            $"{CursorAuthService.Base64Url("{\"alg\":\"HS256\"}"u8)}.{CursorAuthService.Base64Url(System.Text.Encoding.UTF8.GetBytes($"{{\"exp\":{expUnix}}}"))}.sig";
+        Check(CursorAuthService.IsExpiringSoon(FakeJwt(DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeSeconds()))
+            && !CursorAuthService.IsExpiringSoon(FakeJwt(DateTimeOffset.UtcNow.AddMinutes(20).ToUnixTimeSeconds()))
+            && !CursorAuthService.IsExpiringSoon("not-a-jwt"),
+            "Cursor IsExpiringSoon must detect JWTs expiring within 5 minutes and safely ignore non-JWT tokens.");
+
+        // Cursor DPAPI save / load / sign-out roundtrip using isolated temp TokenFilePath
+        var previousCursorPath = CursorAuthService.TokenFilePath;
+        var tempCursorPath = Path.Combine(Path.GetTempPath(), $"ot-cursor-dpapi-{Guid.NewGuid():N}", "cursor-auth.bin");
+        CursorAuthService.TokenFilePath = tempCursorPath;
+        var sessionEvents = 0;
+        Action onSessionChanged = () => sessionEvents++;
+        CursorAuthService.SessionChanged += onSessionChanged;
+        try
+        {
+            Check(!CursorAuthService.HasSession && CursorAuthService.LoadTokens() == (null, null),
+                "Missing Cursor token file must report no session.");
+            CursorAuthService.SaveTokens("cursor-access-123", "cursor-refresh-456");
+            Check(File.Exists(tempCursorPath)
+                && !System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(tempCursorPath)).Contains("cursor-access-123", StringComparison.Ordinal),
+                "Cursor token file must be DPAPI-encrypted on disk, never plaintext.");
+            Check(CursorAuthService.HasSession
+                && CursorAuthService.LoadTokens() == ("cursor-access-123", "cursor-refresh-456")
+                && AiUsageService.CredentialStamp(AiProviders.Cursor) > DateTime.MinValue
+                && sessionEvents == 1,
+                "Cursor DPAPI SaveTokens/LoadTokens must round-trip access and refresh tokens and notify SessionChanged.");
+            CursorAuthService.SignOut();
+            Check(!CursorAuthService.HasSession && !File.Exists(tempCursorPath)
+                && CursorAuthService.LoadTokens() == (null, null) && sessionEvents == 2,
+                "Cursor SignOut must delete the token file and notify SessionChanged.");
+
+            // RefreshAsync: rotation, transient 5xx preservation, shouldLogout, and 401 sign-out
+            CursorAuthService.SaveTokens("old-access", "old-refresh");
+            using (var rotateClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"access_token":"new-access","refresh_token":"rotated-refresh"}""", Encoding.UTF8, "application/json")
+            })))
+            {
+                var r1 = CursorAuthService.RefreshAsync("old-refresh", rotateClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(!r1.SessionExpired && r1.AccessToken == "new-access" && r1.RefreshToken == "rotated-refresh"
+                    && CursorAuthService.LoadTokens() == ("new-access", "rotated-refresh"),
+                    "Cursor RefreshAsync must persist rotated refresh_token when returned.");
+            }
+
+            using (var transientClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))))
+            {
+                var r2 = CursorAuthService.RefreshAsync("rotated-refresh", transientClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(!r2.SessionExpired && r2.AccessToken is null && CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must preserve the existing session on transient 5xx errors.");
+            }
+
+            using (var logoutClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"shouldLogout":true}""", Encoding.UTF8, "application/json")
+            })))
+            {
+                var r3 = CursorAuthService.RefreshAsync("rotated-refresh", logoutClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(r3.SessionExpired && !CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must sign out cleanly when shouldLogout is true.");
+            }
+
+            CursorAuthService.SaveTokens("temp-access", "temp-refresh");
+            using (var unauthorizedClient = new HttpClient(new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized))))
+            {
+                var r4 = CursorAuthService.RefreshAsync("temp-refresh", unauthorizedClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(r4.SessionExpired && !CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must sign out cleanly on HTTP 401.");
+            }
+
+            // Concurrent stale-token RefreshAsync must reuse the rotated session without clearing it.
+            CursorAuthService.SaveTokens("rotated-access", "rotated-refresh");
+            using (var unexpectedCallClient = new HttpClient(new StubHttpHandler(_ => throw new InvalidOperationException("Refresh lock should skip stale token HTTP exchange."))))
+            {
+                var rConcurrent = CursorAuthService.RefreshAsync("stale-refresh", unexpectedCallClient, CancellationToken.None).GetAwaiter().GetResult();
+                Check(!rConcurrent.SessionExpired && rConcurrent.AccessToken == "rotated-access"
+                    && rConcurrent.RefreshToken == "rotated-refresh" && CursorAuthService.HasSession,
+                    "Cursor RefreshAsync must short-circuit when another caller already rotated the session.");
+            }
+
+            // Oversized (>64 KB) encrypted token files must fail closed without reading unbounded bytes.
+            Directory.CreateDirectory(Path.GetDirectoryName(tempCursorPath)!);
+            File.WriteAllBytes(tempCursorPath, new byte[(1 << 16) + 16]);
+            Check(CursorAuthService.LoadTokens() == (null, null),
+                "Cursor LoadTokens must ignore oversized token files safely.");
+        }
+        finally
+        {
+            CursorAuthService.SessionChanged -= onSessionChanged;
+            CursorAuthService.TokenFilePath = previousCursorPath;
+            var dir = Path.GetDirectoryName(tempCursorPath);
+            if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+
+        Check(DockWidgetService.AiUsageWidgets.Any(w => w.Id == "AiUsageCursor" && w.Provider == AiProviders.Cursor && w.LabelKey == "WidgetAiUsageCursor"),
+            "AiUsageCursor must be registered in DockWidgetService.AiUsageWidgets.");
 
         var openCode = AiUsageService.ParseOpenCode("""
             {"rolling5h":{"usageDollars":2.34,"limitDollars":12,"usagePercent":19.5,"resetInSec":7200},
@@ -347,16 +525,21 @@ internal static class AiUsageChecks
                 "Malformed credential files must fail closed.");
             var settings = new DockSettings(AiUsageProviders: AiProviders.All);
             var store = new DockSettingsStore(path);
-            Check(!DockSettingsStore.Validate(settings with { AiUsageProviders = (AiProviders)128 }), "Unknown AI provider flags must be rejected.");
+            Check(!DockSettingsStore.Validate(settings with { AiUsageProviders = (AiProviders)256 }), "Unknown AI provider flags must be rejected.");
             Check(store.Save(settings) is null && store.Load().Settings.AiUsageProviders == AiProviders.None,
                 "Legacy provider flags must be consumed by the per-provider widget migration.");
             File.WriteAllText(path, "{}");
-            Check(store.Load().Settings is { AiUsageProviders: AiProviders.None, AiUsageRing: AiUsageRing.Highest },
-                "Legacy settings must leave providers disabled and the ring on the highest window.");
+            Check(store.Load().Settings is { AiUsageProviders: AiProviders.None, AiUsageRing: AiUsageRing.Highest, AntigravityGroups: AntigravityGroups.All },
+                "Legacy settings must leave providers disabled, the ring on the highest window, and Antigravity groups on All.");
             Check(!DockSettingsStore.Validate(settings with { AiUsageRing = (AiUsageRing)7 }), "Unknown ring windows must be rejected.");
-            Check(store.Save(settings with { AiUsageRing = AiUsageRing.Weekly }) is null && store.Load().Settings.AiUsageRing == AiUsageRing.Weekly
+            Check(!DockSettingsStore.Validate(settings with { AntigravityGroups = AntigravityGroups.None })
+                && !DockSettingsStore.Validate(settings with { AntigravityGroups = (AntigravityGroups)99 })
+                && DockSettingsStore.Validate(settings with { AntigravityGroups = AntigravityGroups.Gemini | AntigravityGroups.Argon }),
+                "AntigravityGroups must require at least one valid group flag and reject unknown bits.");
+            Check(store.Save(settings with { AiUsageRing = AiUsageRing.Weekly, AntigravityGroups = AntigravityGroups.Gemini | AntigravityGroups.Argon }) is null
+                && store.Load().Settings is { AiUsageRing: AiUsageRing.Weekly, AntigravityGroups: AntigravityGroups.Gemini | AntigravityGroups.Argon }
                 && File.ReadAllText(path).Contains("\"AiUsageRing\": \"Weekly\"", StringComparison.Ordinal),
-                "The ring window must round-trip through settings by name.");
+                "The ring window and Antigravity groups must round-trip through settings.");
             Check(SettingsBackup.Export(path, settings) is null, "AI preferences must support settings export.");
             using var backup = JsonDocument.Parse(File.ReadAllText(path));
             var exported = backup.RootElement.GetProperty("Settings");
@@ -386,12 +569,18 @@ internal static class AiUsageChecks
         Check(AiUsageWidget.RetryDelay(null, 0, null).TotalSeconds is >= 300 and <= 330, "Successful loads must refresh after five minutes plus jitter.");
 
         string[] keys = ["WidgetAiUsage", "WidgetAiUsageDescription", "AiUsageSettingsHeading", "AiUsageProviderHint",
-            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageSessionShort", "AiUsageWeeklyShort", "AiUsageMonthly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageResetsIn", "AiUsageResetsAt",
+            "AiUsageUnofficialNote", "AiUsageSession", "AiUsageWeekly", "AiUsageSessionShort", "AiUsageWeeklyShort", "AiUsageMonthly", "AiUsageWeeklyModel", "AiUsageGroupGemini", "AiUsageGroupClaudeGpt", "AiUsageAntigravityGroupsLabel", "AiUsageResetsIn", "AiUsageResetsAt",
             "AiUsageUpdated", "AiUsageRefresh", "AiUsageOpenDashboard", "AiUsageNoProviders", "AiUsageRingLabel",
             "AiUsageRingHighest", "AiUsageRingSession", "AiUsageLimitReached", "AiUsageStatusOk", "AiUsageStatusSignIn",
             "AiUsageStatusStale", "AiUsageStatusNearLimit", "AiUsageStatusHigh", "AiUsageStatusUnavailable", "AiUsageStatusLoading", "AiUsagePaceIn", "AiUsagePaceAt", "AiUsagePaceMarker", "HoursMinutesFormat",
             "AiUsageExtra", "AiUsageBreakdown", "AiUsageCredits", "AiUsageCreditsUnlimited", "AiUsageResetCredits",
-            "ErrorAiUsageSignIn", "ErrorAiUsageLoad", "ErrorAiUsageRateLimited"];
+            "ErrorAiUsageSignIn", "ErrorAiUsageLoad", "ErrorAiUsageRateLimited",
+            "AiUsageAccountLabel", "AiUsageAccountConnected", "AiUsageAccountSignInRequired",
+            "AiUsageCliSignInLabel", "AiUsageApiKeyLabel", "AiUsageApiKeyPlaceholder",
+            "AiUsageApiKeySaved", "AiUsageApiKeySave", "AiUsageApiKeyClear",
+            "WidgetAiUsageCursor", "WidgetAiUsageCursorDescription", "AiUsageCursorAccountLabel",
+            "AiUsageCursorConnected", "AiUsageCursorSignInRequired", "AiUsageCursorSignIn",
+            "AiUsageCursorSignOut", "AiUsageCursorWaiting", "AiUsageCursorSignInTimedOut", "ErrorAiUsageCursorSignIn"];
         var assembly = typeof(LanguageCatalog).Assembly;
         foreach (var resource in assembly.GetManifestResourceNames().Where(name => name.StartsWith("OpenTaskbar.Localization.Languages.", StringComparison.Ordinal)))
         {
@@ -401,16 +590,219 @@ internal static class AiUsageChecks
                 $"Every AI usage key must be translated in {resource}.");
         }
 
+        // DPAPI secret store and AiUsageService API key management checks in an isolated temp root.
+        var previousRoot = AiSecretStore.Root;
+        var tempSecretRoot = Path.Combine(Path.GetTempPath(), $"ot-ai-secrets-{Guid.NewGuid():N}");
+        try
+        {
+            AiSecretStore.Root = tempSecretRoot;
+            Check(!AiSecretStore.HasSecret("api-key:deepseek") && AiSecretStore.Get("api-key:deepseek") is null,
+                "Missing secret files must return null and report no saved secret.");
+
+            AiSecretStore.Set("api-key:deepseek", "  sk-deepseek-roundtrip-secret  ");
+            var secretFile = AiSecretStore.SecretPath("api-key:deepseek");
+            Check(File.Exists(secretFile) && AiSecretStore.HasSecret("api-key:deepseek"),
+                "Saving a non-empty secret must create an encrypted .bin file.");
+            var rawText = File.ReadAllText(secretFile);
+            Check(!rawText.Contains("sk-deepseek-roundtrip-secret", StringComparison.Ordinal),
+                "DPAPI secret blob on disk must not contain plaintext secret material.");
+            Check(AiSecretStore.Get("api-key:deepseek") == "sk-deepseek-roundtrip-secret",
+                "AiSecretStore must round-trip and trim UTF-8 secrets via Windows DPAPI.");
+
+            AiSecretStore.Set("api-key:deepseek", "   ");
+            Check(!File.Exists(secretFile) && !AiSecretStore.HasSecret("api-key:deepseek") && AiSecretStore.Get("api-key:deepseek") is null,
+                "Setting a null or whitespace secret must delete the secret file.");
+
+            var changedProviders = new List<AiProviders>();
+            void OnChanged(AiProviders p) => changedProviders.Add(p);
+            AiUsageService.CredentialsChanged += OnChanged;
+            try
+            {
+                foreach (var (provider, sampleKey) in new[]
+                         {
+                             (AiProviders.DeepSeek, "ds-secret-key-1"),
+                             (AiProviders.OpenRouter, "or-secret-key-2"),
+                             (AiProviders.OpenCode, "oc-secret-key-3")
+                         })
+                {
+                    Check(!AiUsageService.HasSavedSecret(provider), $"{provider} must start without a saved DPAPI secret.");
+                    AiUsageService.SaveApiKey(provider, sampleKey);
+                    Check(AiUsageService.HasSavedSecret(provider) && AiUsageService.HasCredential(provider),
+                        $"{provider} must report a saved secret and valid credential after SaveApiKey.");
+                    var readBack = provider switch
+                    {
+                        AiProviders.DeepSeek => AiUsageService.ReadDeepSeekToken(),
+                        AiProviders.OpenRouter => AiUsageService.ReadOpenRouterToken(),
+                        _ => AiUsageService.ReadOpenCodeToken()
+                    };
+                    Check(readBack == sampleKey, $"{provider} must read its DPAPI secret before environment/file fallbacks.");
+
+                    AiUsageService.SaveApiKey(provider, null);
+                    Check(!AiUsageService.HasSavedSecret(provider), $"{provider} must clear its DPAPI secret when SaveApiKey is passed null.");
+                }
+                Check(changedProviders.Count == 6
+                    && changedProviders[0] == AiProviders.DeepSeek
+                    && changedProviders[2] == AiProviders.OpenRouter
+                    && changedProviders[4] == AiProviders.OpenCode,
+                    "SaveApiKey must fire CredentialsChanged on save and clear.");
+            }
+            finally
+            {
+                AiUsageService.CredentialsChanged -= OnChanged;
+            }
+
+            foreach (var cliProvider in new[] { AiProviders.Claude, AiProviders.Codex, AiProviders.Copilot, AiProviders.OpenCode, AiProviders.Antigravity })
+            {
+                var signInInfo = AiUsageService.BuildSignInStartInfo(cliProvider);
+                Check(signInInfo is not null && !signInInfo.CreateNoWindow && signInInfo.WindowStyle != ProcessWindowStyle.Hidden,
+                    $"{cliProvider} interactive sign-in must use a visible window rather than HiddenCliStartInfo.");
+            }
+
+            // Windows Terminal ConPTY path and cmd.exe fallback for CLI Sign-In (so paste works in Claude TUI).
+            var wtInfo = AiUsageService.BuildSignInStartInfo(AiProviders.Claude, @"C:\fake\wt.exe");
+            Check(wtInfo is not null && wtInfo.FileName == @"C:\fake\wt.exe"
+                && !wtInfo.CreateNoWindow && !wtInfo.UseShellExecute
+                && wtInfo.ArgumentList.SequenceEqual(["-w", "new", "--", "cmd.exe", "/c", "claude", "auth", "login"]),
+                "Claude CLI sign-in must launch inside Windows Terminal when wt.exe is available so bracketed paste works.");
+
+            var cmdFallback = AiUsageService.BuildSignInStartInfo(AiProviders.Claude, "");
+            Check(cmdFallback is not null && cmdFallback.FileName == "cmd.exe"
+                && cmdFallback.UseShellExecute && cmdFallback.Arguments == "/c claude auth login",
+                "CLI sign-in must fall back to UseShellExecute cmd.exe when Windows Terminal is absent.");
+
+            // Secret store path hardening & oversized secret guard.
+            var sanitizedPath = AiSecretStore.SecretPath("../../evil");
+            var fullRoot = Path.GetFullPath(AiSecretStore.Root);
+            if (!fullRoot.EndsWith(Path.DirectorySeparatorChar)) fullRoot += Path.DirectorySeparatorChar;
+            Check(sanitizedPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(sanitizedPath).Contains("..", StringComparison.Ordinal),
+                "AiSecretStore.SecretPath must neutralize traversal characters and stay within Root.");
+
+            var oversizedPath = AiSecretStore.SecretPath("api-key:oversized");
+            Directory.CreateDirectory(Path.GetDirectoryName(oversizedPath)!);
+            File.WriteAllBytes(oversizedPath, new byte[(1 << 16) + 16]);
+            Check(AiSecretStore.Get("api-key:oversized") is null,
+                "AiSecretStore.Get must reject oversized (>64 KB) secret files cleanly.");
+        }
+        finally
+        {
+            AiSecretStore.Root = previousRoot;
+            if (Directory.Exists(tempSecretRoot))
+            {
+                try { Directory.Delete(tempSecretRoot, recursive: true); } catch (IOException) { }
+            }
+        }
+
+        // GitHub CLI (`gh auth login`) fallback for Copilot, isolated from the real hosts.yml and keyring.
+        var hosts = AiUsageService.ParseGhHostsYaml("""
+            enterprise.example.com:
+                user: enterprise-user
+                oauth_token: fixture-enterprise-token
+            github.com:
+                users:
+                    fixture-user:
+                        oauth_token: fixture-nested-token
+                git_protocol: https
+                user: fixture-user
+            """);
+        Check(hosts == ("fixture-user", "fixture-nested-token"),
+            "hosts.yml parsing must read the github.com user and its token while ignoring other hosts.");
+        var directHosts = AiUsageService.ParseGhHostsYaml("github.com:\r\n  oauth_token: \"fixture-direct\"  \r\n  user: 'quoted-user' # comment\r\nother.host:\r\n  user: nope\r\n");
+        Check(directHosts == ("quoted-user", "fixture-direct"), "hosts.yml parsing must handle quotes, comments and CRLF.");
+        Check(AiUsageService.ParseGhHostsYaml("other.host:\n  user: nope\n  oauth_token: nope\n") == (null, null)
+            && AiUsageService.ParseGhHostsYaml("") == (null, null), "hosts.yml without github.com must yield nothing.");
+
+        var fixtureGho = "gho_" + new string('x', 36);
+        var encodedGho = "go-keyring-base64:" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(fixtureGho));
+        Check(AiUsageService.DecodeGhKeyringToken(fixtureGho) == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(encodedGho) == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken("  " + encodedGho + "\0\0\n") == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(fixtureGho + "\0 \r\n") == fixtureGho
+            && AiUsageService.DecodeGhKeyringToken(string.Join("\0", fixtureGho.ToCharArray()) + "\0") == fixtureGho,
+            "gh keyring tokens must decode plain, base64-prefixed, padded and UTF-16-as-UTF-8 blobs.");
+        Check(AiUsageService.DecodeGhKeyringToken("go-keyring-base64:!!not-base64!!") is null
+            && AiUsageService.DecodeGhKeyringToken("go-keyring-base64:") is null
+            && AiUsageService.DecodeGhKeyringToken(null) is null && AiUsageService.DecodeGhKeyringToken(" \0 ") is null,
+            "Invalid or empty gh keyring blobs must fail closed.");
+
+        var previousHostsOverride = AiUsageService.GhHostsPathOverride;
+        var previousKeyringOverride = AiUsageService.GhKeyringReaderOverride;
+        var previousProbeOverride = AiUsageService.GhCliTokenProbeOverride;
+        var ghHostsPath = Path.Combine(Path.GetTempPath(), $"opentaskbar-gh-hosts-{Guid.NewGuid():N}.yml");
+        try
+        {
+            var keyringReads = new List<string>();
+            var keyring = new Dictionary<string, (string? Value, DateTime LastWrittenUtc)>();
+            var probeCalls = 0;
+            AiUsageService.GhHostsPathOverride = ghHostsPath;
+            AiUsageService.GhKeyringReaderOverride = target =>
+            {
+                keyringReads.Add(target);
+                return keyring.TryGetValue(target, out var entry) ? entry : (null, DateTime.MinValue);
+            };
+            AiUsageService.GhCliTokenProbeOverride = () => { probeCalls++; return "fixture-cli-token"; };
+
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out var emptyStamp) is null && emptyStamp == DateTime.MinValue
+                && keyringReads.SequenceEqual(["gh:github.com:"]) && probeCalls == 0,
+                "Without hosts.yml only the default gh keyring target is read and no CLI probe runs.");
+
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n    git_protocol: https\n");
+            var userWritten = new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+            keyring["gh:github.com:fixture-user"] = (encodedGho, userWritten);
+            keyringReads.Clear();
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out var userStamp) == fixtureGho && userStamp == userWritten
+                && keyringReads.SequenceEqual(["gh:github.com:", "gh:github.com:fixture-user"]) && probeCalls == 0,
+                "The per-user gh keyring target must be read after the default one and decoded.");
+
+            keyring["gh:github.com:"] = (fixtureGho + "-default", DateTime.MinValue);
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out _) == fixtureGho + "-default",
+                "The default gh keyring target must win over the per-user one.");
+
+            keyring.Clear();
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n    oauth_token: fixture-plain-token\n");
+            Check(AiUsageService.TryReadGitHubCliCredential(true, out var plainStamp) == "fixture-plain-token"
+                && plainStamp == File.GetLastWriteTimeUtc(ghHostsPath) && probeCalls == 0,
+                "A plaintext hosts.yml token must be used when the keyring has none, before any CLI probe.");
+
+            File.WriteAllText(ghHostsPath, "github.com:\n    user: fixture-user\n");
+            Check(AiUsageService.TryReadGitHubCliCredential(false, out _) is null && probeCalls == 0,
+                "allowCliProbe:false must never run `gh auth token`.");
+            Check(AiUsageService.TryReadGitHubCliCredential(true, out _) == "fixture-cli-token" && probeCalls == 1,
+                "allowCliProbe:true must fall back to `gh auth token`.");
+
+            _ = AiUsageService.HasCredential(AiProviders.Copilot);
+            _ = AiUsageService.CredentialStamp(AiProviders.Copilot);
+            Check(probeCalls == 1, "HasCredential/CredentialStamp for Copilot must not invoke any CLI subprocess.");
+
+            var stampBefore = AiUsageService.CredentialStamp(AiProviders.Copilot);
+            keyring["gh:github.com:fixture-user"] = (encodedGho, DateTime.UtcNow.AddYears(5));
+            Check(AiUsageService.CredentialStamp(AiProviders.Copilot) > stampBefore,
+                "CredentialStamp(Copilot) must change when `gh auth login` writes the keyring.");
+
+            var ghStartInfo = AiUsageService.HiddenCliStartInfo("gh", "auth", "token");
+            Check(ghStartInfo.ArgumentList.SequenceEqual(["auth", "token"]) && ghStartInfo.CreateNoWindow && ghStartInfo.RedirectStandardInput,
+                "`gh auth token` must run hidden with redirected stdin.");
+        }
+        finally
+        {
+            AiUsageService.GhHostsPathOverride = previousHostsOverride;
+            AiUsageService.GhKeyringReaderOverride = previousKeyringOverride;
+            AiUsageService.GhCliTokenProbeOverride = previousProbeOverride;
+            File.Delete(ghHostsPath);
+        }
+
         // Widgets need an STA thread; this also runs headless, without application resources.
         Exception? renderFailure = null;
         var thread = new Thread(() =>
         {
             try { checks += EmptyRenderChecks(); }
             catch (Exception ex) { renderFailure = ex; }
+            finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         thread.Join();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
         if (renderFailure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(renderFailure).Throw();
         return checks;
     }
@@ -431,7 +823,7 @@ internal static class AiUsageChecks
             throw new InvalidOperationException("An AI usage widget must require exactly one provider.");
         }
         foreach (var loader in loaders)
-            foreach (var provider in new[] { AiProviders.OpenCode, AiProviders.Copilot, AiProviders.DeepSeek, AiProviders.OpenRouter })
+            foreach (var provider in new[] { AiProviders.OpenCode, AiProviders.Copilot, AiProviders.DeepSeek, AiProviders.OpenRouter, AiProviders.Cursor })
                 foreach (var compact in new[] { false, true })
                 {
                     using var widget = new AiUsageWidget(provider, loader);
@@ -475,6 +867,8 @@ internal static class AiUsageChecks
             var sessionLabel = (TextBlock)sessionLabelProp.GetValue(codexBars)!;
             var weeklyLabelProp = codexBars.GetType().GetProperty("WeeklyLabel")!;
             var weeklyLabel = (TextBlock)weeklyLabelProp.GetValue(codexBars)!;
+            var sessionRowProp = codexBars.GetType().GetProperty("SessionRow")!;
+            var dualSessionRow = (StackPanel)sessionRowProp.GetValue(codexBars)!;
             var sessionResetProp = codexBars.GetType().GetProperty("SessionReset")!;
             var sessionReset = (TextBlock)sessionResetProp.GetValue(codexBars)!;
             var weeklyResetProp = codexBars.GetType().GetProperty("WeeklyReset")!;
@@ -492,6 +886,11 @@ internal static class AiUsageChecks
             if (sessionFill.Width <= 0 || weeklyFill.Width <= 0)
                 throw new InvalidOperationException($"{dualProvider} progress bars must reflect loaded quota.");
 
+            var dualBarsPanel = (StackPanel)dualSessionRow.Parent;
+            dualBarsPanel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (dualBarsPanel.DesiredSize.Height <= 0 || dualBarsPanel.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"{dualProvider} DualQuotaBars StackPanel height must fit inside 34 DIP card (<= 33), got {dualBarsPanel.DesiredSize.Height:F2}.");
+
             // English test
             UiText.Current.SetLanguage(AppLanguage.English);
             dualWidget.Tick(DateTime.Now.AddMinutes(2));
@@ -505,7 +904,79 @@ internal static class AiUsageChecks
                 throw new InvalidOperationException($"{dualProvider} card must hide its provider name text.");
 
             UiText.Current.SetLanguage(AppLanguage.Turkish);
-            checks += 7;
+            checks += 8;
+        }
+
+        // Cursor bar + theme layout checks: matches Codex/Claude horizontal bar theme (no ring, hides name, single weekly/monthly row, no hardcoded cyan logo fill)
+        {
+            using var cursorBarWidget = new AiUsageWidget(AiProviders.Cursor, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Plus",
+                [
+                    new("AiUsageWeekly", 0.35, DateTimeOffset.UtcNow.AddDays(3), 604800L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            cursorBarWidget.Activate();
+
+            var cardField = typeof(AiUsageWidget).GetField("_card", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            var cardObj = cardField.GetValue(cursorBarWidget)!;
+            var ringProp = cardObj.GetType().GetProperty("Ring")!;
+            if (ringProp.GetValue(cardObj) is not null)
+                throw new InvalidOperationException("Cursor must use the themed dual-bar card layout instead of a RingMeter.");
+
+            var logoProp = cardObj.GetType().GetProperty("Logo")!;
+            var logoPath = (System.Windows.Shapes.Path)logoProp.GetValue(cardObj)!;
+            if (logoPath.ReadLocalValue(System.Windows.Shapes.Shape.FillProperty) is System.Windows.Media.SolidColorBrush)
+                throw new InvalidOperationException("Cursor logo fill must follow the active theme resource rather than a hardcoded brand brush.");
+
+            var nameProp = cardObj.GetType().GetProperty("Name")!;
+            var nameBlock = (TextBlock)nameProp.GetValue(cardObj)!;
+            if (nameBlock.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("Cursor card must hide its provider name text to match Codex and Claude.");
+
+            var barsObj = cardObj.GetType().GetProperty("Codex")!.GetValue(cardObj)!;
+            var sessionRow = (StackPanel)barsObj.GetType().GetProperty("SessionRow")!.GetValue(barsObj)!;
+            var weeklyRow = (StackPanel)barsObj.GetType().GetProperty("WeeklyRow")!.GetValue(barsObj)!;
+            var weeklyLabel = (TextBlock)barsObj.GetType().GetProperty("WeeklyLabel")!.GetValue(barsObj)!;
+            var weeklyFill = (Border)barsObj.GetType().GetProperty("WeeklyFill")!.GetValue(barsObj)!;
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            cursorBarWidget.Tick(DateTime.Now.AddMinutes(1));
+            if (sessionRow.Visibility != System.Windows.Visibility.Collapsed
+                || weeklyRow.Visibility != System.Windows.Visibility.Visible
+                || weeklyLabel.Text != "7g"
+                || weeklyFill.Width <= 0)
+            {
+                throw new InvalidOperationException("Cursor card must show only its localized weekly/monthly progress bar row.");
+            }
+
+            UiText.Current.SetLanguage(AppLanguage.English);
+            cursorBarWidget.Tick(DateTime.Now.AddMinutes(2));
+            if (weeklyLabel.Text != "7d")
+                throw new InvalidOperationException($"Cursor weekly label must localize in English, got {weeklyLabel.Text}.");
+
+            var weeklyTrack = (Border)barsObj.GetType().GetProperty("WeeklyTrack")!.GetValue(barsObj)!;
+            var weeklyReset = (TextBlock)barsObj.GetType().GetProperty("WeeklyReset")!.GetValue(barsObj)!;
+            var fullResetText = weeklyReset.Text;
+            if (weeklyLabel.Visibility != System.Windows.Visibility.Visible || weeklyTrack.Width != 38
+                || fullResetText.Contains("35", StringComparison.Ordinal) || string.IsNullOrEmpty(fullResetText))
+                throw new InvalidOperationException("Cursor full card must show the 7d label, 38px track, and reset time.");
+
+            cursorBarWidget.SetCompactState(true);
+            cursorBarWidget.Tick(DateTime.Now.AddMinutes(3));
+            if (weeklyLabel.Visibility != System.Windows.Visibility.Collapsed || weeklyTrack.Width != 26
+                || weeklyFill.Width > 26 || weeklyFill.Width <= 0
+                || !weeklyReset.Text.Contains("35", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Cursor compact card must collapse the label, shrink the track to 26px and show the percentage, got '{weeklyReset.Text}'.");
+
+            cursorBarWidget.SetCompactState(false);
+            if (weeklyLabel.Visibility != System.Windows.Visibility.Visible || weeklyTrack.Width != 38
+                || weeklyReset.Text != fullResetText || weeklyLabel.Text != "7d")
+                throw new InvalidOperationException("Cursor full card must restore the 7d label, 38px track, and reset time after compact.");
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            checks += 9;
         }
 
         // Antigravity widget checks: dynamic columns with vertical dividers, headers on top, no empty quotas, no name, no ring, no flyout menu
@@ -561,6 +1032,18 @@ internal static class AiUsageChecks
         var col1Panel = (StackPanel)col1ElemProp.GetValue(col1)!;
         if (col1Panel.Orientation != Orientation.Vertical || ((TextBlock)col1Panel.Children[0]).Text != "Gemini")
             throw new InvalidOperationException("Gemini column must be vertical StackPanel with 'Gemini' header on top.");
+        if (col1Panel.VerticalAlignment != System.Windows.VerticalAlignment.Center || container.VerticalAlignment != System.Windows.VerticalAlignment.Center)
+            throw new InvalidOperationException("Antigravity column and container must be vertically centered.");
+        var agyButton = (Button)agyCardObj.GetType().GetProperty("Button")!.GetValue(agyCardObj)!;
+        var agyRow = (StackPanel)agyButton.Content;
+        if (agyRow.VerticalAlignment != System.Windows.VerticalAlignment.Center)
+            throw new InvalidOperationException("Antigravity card row must be vertically centered.");
+        col1Panel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (col1Panel.DesiredSize.Height <= 0 || col1Panel.DesiredSize.Height > 33)
+            throw new InvalidOperationException($"Antigravity Full Gemini column (header + 5s + 7g) must measure <= 33 DIP to avoid vertical clipping in 34 DIP cards, got {col1Panel.DesiredSize.Height:F2}.");
+        agyRow.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (agyRow.DesiredSize.Height <= 0 || agyRow.DesiredSize.Height > 33)
+            throw new InvalidOperationException($"Antigravity Full card row must measure <= 33 DIP, got {agyRow.DesiredSize.Height:F2}.");
 
         // Column 2 (Claude) has only 1 slot (weekly only, no missing 5h slot) and header "Claude" on top
         var col2 = columnsList[1]!;
@@ -572,6 +1055,45 @@ internal static class AiUsageChecks
         var col2Panel = (StackPanel)col2ElemProp.GetValue(col2)!;
         if (col2Panel.Orientation != Orientation.Vertical || ((TextBlock)col2Panel.Children[0]).Text != "Claude")
             throw new InvalidOperationException("Claude column must be vertical StackPanel with 'Claude' header on top.");
+
+        // Placeholder Antigravity widget (no report yet) must also measure <= 33 DIP for 2-row Gemini column
+        using (var agyPlaceholderWidget = new AiUsageWidget(AiProviders.Antigravity, loaders[0]))
+        {
+            var phCardObj = agyCardField.GetValue(agyPlaceholderWidget)!;
+            var phCard = agyProp.GetValue(phCardObj)!;
+            var phCols = (System.Collections.IList)columnsProp.GetValue(phCard)!;
+            var phGeminiCol = (StackPanel)col1ElemProp.GetValue(phCols[0]!)!;
+            phGeminiCol.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (phGeminiCol.DesiredSize.Height <= 0 || phGeminiCol.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Full Gemini placeholder column must measure <= 33 DIP, got {phGeminiCol.DesiredSize.Height:F2}.");
+        }
+
+        // Full Antigravity group with 3 windows must cap card rows at 2 (keeping full list in flyout) and measure <= 33 DIP
+        using (var agyThreeWinWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
+        {
+            var threeWinReport = new AiUsageReport(provider, "Google AI Pro",
+            [
+                new("AiUsageSession", 0.40, DateTimeOffset.UtcNow.AddHours(2), 18000L, Group: "AiUsageGroupGemini"),
+                new("AiUsageWeekly", 0.65, DateTimeOffset.UtcNow.AddDays(5), 604800L, Group: "AiUsageGroupGemini"),
+                new("AiUsageMonthly", 0.20, DateTimeOffset.UtcNow.AddDays(20), 2592000L, Group: "AiUsageGroupGemini")
+            ], DateTimeOffset.UtcNow);
+            return Task.FromResult<(AiUsageReport?, string?)>((threeWinReport, null));
+        }))
+        {
+            agyThreeWinWidget.Activate();
+            var twCardObj = agyCardField.GetValue(agyThreeWinWidget)!;
+            var twCard = agyProp.GetValue(twCardObj)!;
+            var twCols = (System.Collections.IList)columnsProp.GetValue(twCard)!;
+            var twSlots = (System.Collections.IList)col1SlotsProp.GetValue(twCols[0]!)!;
+            if (twSlots.Count != 2)
+                throw new InvalidOperationException($"Antigravity Full group column must cap displayed card rows at 2 when 3+ windows are present, got {twSlots.Count}.");
+            var twColPanel = (StackPanel)col1ElemProp.GetValue(twCols[0]!)!;
+            twColPanel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (twColPanel.DesiredSize.Height <= 0 || twColPanel.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Full 3-window group column must measure <= 33 DIP, got {twColPanel.DesiredSize.Height:F2}.");
+            if (agyThreeWinWidget.BuildHoverFlyoutContent() is null)
+                throw new InvalidOperationException("Antigravity 3-window hover flyout must still build with all windows.");
+        }
 
         // Now test 3 pools format
         using var agyPoolWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
@@ -591,10 +1113,449 @@ internal static class AiUsageChecks
         // 3 pools separated by 2 dividers = 5 children
         if (poolContainer.Children.Count != 5)
             throw new InvalidOperationException($"Antigravity pool container must have 5 children (3 columns + 2 dividers), got {poolContainer.Children.Count}");
+        var poolColumnsList = (System.Collections.IList)columnsProp.GetValue(agyPoolCard)!;
+        var poolCol0 = (StackPanel)col1ElemProp.GetValue(poolColumnsList[0]!)!;
+        poolCol0.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (poolCol0.DesiredSize.Height <= 0 || poolCol0.DesiredSize.Height > 33)
+            throw new InvalidOperationException($"Antigravity Pool column must measure <= 33 DIP to avoid vertical clipping, got {poolCol0.DesiredSize.Height:F2}.");
 
-        checks += 8;
+        checks += 16;
+
+        // Width estimate checks: CompactWidthEstimate must be strictly smaller than FullWidthEstimate for every AI provider
+        foreach (var provider in new[]
+        {
+            AiProviders.Claude, AiProviders.Codex, AiProviders.Antigravity,
+            AiProviders.OpenCode, AiProviders.Copilot, AiProviders.DeepSeek, AiProviders.OpenRouter
+        })
+        {
+            using var w = new AiUsageWidget(provider, loaders[1]);
+            if (w.CompactWidthEstimate >= w.FullWidthEstimate)
+                throw new InvalidOperationException($"{provider} CompactWidthEstimate ({w.CompactWidthEstimate}) must be smaller than FullWidthEstimate ({w.FullWidthEstimate}).");
+            checks++;
+        }
+
+        // DualQuotaBars (Claude/Codex) AiUsageRing + Compact + HoverExpand checks
+        {
+            using var claudeWidget = new AiUsageWidget(AiProviders.Claude, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Max",
+                [
+                    new("AiUsageSession", 0.30, DateTimeOffset.UtcNow.AddHours(2), 18000L),
+                    new("AiUsageWeekly", 0.65, DateTimeOffset.UtcNow.AddDays(4), 604800L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            claudeWidget.Activate();
+            UiText.Current.SetLanguage(AppLanguage.English);
+
+            var cardObj = agyCardField.GetValue(claudeWidget)!;
+            var bars = cardObj.GetType().GetProperty("Codex")!.GetValue(cardObj)!;
+            var sessionRow = (StackPanel)bars.GetType().GetProperty("SessionRow")!.GetValue(bars)!;
+            var weeklyRow = (StackPanel)bars.GetType().GetProperty("WeeklyRow")!.GetValue(bars)!;
+            var sessionTrack = (Border)bars.GetType().GetProperty("SessionTrack")!.GetValue(bars)!;
+            var weeklyTrack = (Border)bars.GetType().GetProperty("WeeklyTrack")!.GetValue(bars)!;
+            var sessionReset = (TextBlock)bars.GetType().GetProperty("SessionReset")!.GetValue(bars)!;
+            var weeklyReset = (TextBlock)bars.GetType().GetProperty("WeeklyReset")!.GetValue(bars)!;
+
+            // Full + Session => only SessionRow visible
+            claudeWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AiUsageRing: AiUsageRing.Session));
+            if (sessionRow.Visibility != System.Windows.Visibility.Visible || weeklyRow.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("Claude Full+Session must show only SessionRow.");
+
+            // Full + Weekly => only WeeklyRow visible
+            claudeWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AiUsageRing: AiUsageRing.Weekly));
+            if (sessionRow.Visibility != System.Windows.Visibility.Collapsed || weeklyRow.Visibility != System.Windows.Visibility.Visible)
+                throw new InvalidOperationException("Claude Full+Weekly must show only WeeklyRow.");
+
+            // Compact + Highest => single row with higher Used (weekly 65% > session 30%), 26px bar track, concise percentage text preserved across Tick
+            claudeWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AiUsageRing: AiUsageRing.Highest));
+            claudeWidget.SetCompactState(true);
+            if (sessionRow.Visibility != System.Windows.Visibility.Collapsed || weeklyRow.Visibility != System.Windows.Visibility.Visible)
+                throw new InvalidOperationException("Claude Compact+Highest must show only the fuller row (WeeklyRow 65%).");
+            if (Math.Abs(weeklyTrack.Width - 26) > 0.01)
+                throw new InvalidOperationException($"Claude Compact bar track width must be 26px, got {weeklyTrack.Width}.");
+            if (weeklyReset.Text != "65%")
+                throw new InvalidOperationException($"Claude Compact reset text must be '65%', got '{weeklyReset.Text}'.");
+            claudeWidget.Tick(DateTime.Now.AddMinutes(3));
+            if (weeklyReset.Text != "65%")
+                throw new InvalidOperationException($"Claude Compact percentage text must survive OnTick countdown update, got '{weeklyReset.Text}'.");
+
+            // Hover expand while compact temporarily restores Full two-row 38px layout
+            claudeWidget.SetHoverExpanded(true);
+            if (sessionRow.Visibility != System.Windows.Visibility.Visible || weeklyRow.Visibility != System.Windows.Visibility.Visible || Math.Abs(sessionTrack.Width - 38) > 0.01)
+                throw new InvalidOperationException("Hover-expanding a compact Claude widget must render Full two-row 38px bars.");
+            claudeWidget.SetHoverExpanded(false);
+            checks += 5;
+        }
+
+        // Antigravity groups filtering, placeholder fallback, AiUsageRing, and Compact mode checks
+        {
+            using var agyFilterWidget = new AiUsageWidget(AiProviders.Antigravity, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Google AI Pro",
+                [
+                    new("AiUsageSession", 0.25, DateTimeOffset.UtcNow.AddHours(3), 18000L, Group: "AiUsageGroupGemini"),
+                    new("AiUsageWeekly", 0.55, DateTimeOffset.UtcNow.AddDays(5), 604800L, Group: "AiUsageGroupGemini"),
+                    new("AiUsageSession", 0.80, DateTimeOffset.UtcNow.AddHours(1), 18000L, Group: "AiUsageGroupClaudeGpt"),
+                    new("AiUsageWeekly", 0.40, DateTimeOffset.UtcNow.AddDays(4), 604800L, Group: "AiUsageGroupClaudeGpt")
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            agyFilterWidget.Activate();
+            UiText.Current.SetLanguage(AppLanguage.English);
+
+            var cardObj = agyCardField.GetValue(agyFilterWidget)!;
+            var card = agyProp.GetValue(cardObj)!;
+            var cols = (System.Collections.IList)columnsProp.GetValue(card)!;
+
+            // Filter to Gemini only => 1 column
+            agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.Gemini));
+            if (cols.Count != 1)
+                throw new InvalidOperationException($"Antigravity filtered to Gemini must have 1 column, got {cols.Count}.");
+
+            // Filter to Argon only (when report has no Argon windows) => must build Argon placeholder column instead of empty card
+            agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.Argon));
+            if (cols.Count != 1)
+                throw new InvalidOperationException($"Antigravity filtered to missing Argon group must show 1 Argon placeholder column, got {cols.Count}.");
+            var argonColPanel = (StackPanel)col1ElemProp.GetValue(cols[0]!)!;
+            if (((TextBlock)argonColPanel.Children[0]).Text != "Argon")
+                throw new InvalidOperationException("Antigravity missing Argon fallback must show 'Argon' header.");
+            argonColPanel.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (argonColPanel.DesiredSize.Height <= 0 || argonColPanel.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Placeholder column must measure <= 33 DIP, got {argonColPanel.DesiredSize.Height:F2}.");
+
+            // Compact + All => 2 matched columns, each with 1 slot, 22px bar width, and concise percentage text preserved across Tick
+            agyFilterWidget.ApplySettings(new DockSettings(Language: AppLanguage.English, AntigravityGroups: AntigravityGroups.All, AiUsageRing: AiUsageRing.Highest));
+            agyFilterWidget.SetCompactState(true);
+            if (cols.Count != 2)
+                throw new InvalidOperationException($"Antigravity Compact+All with Gemini & Claude data must have 2 columns, got {cols.Count}.");
+            var compactCol0 = (StackPanel)col1ElemProp.GetValue(cols[0]!)!;
+            compactCol0.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (compactCol0.DesiredSize.Height <= 0 || compactCol0.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Antigravity Compact column must measure <= 33 DIP, got {compactCol0.DesiredSize.Height:F2}.");
+            var compactSlots0 = (System.Collections.IList)col1SlotsProp.GetValue(cols[0]!)!;
+            var compactSlots1 = (System.Collections.IList)col1SlotsProp.GetValue(cols[1]!)!;
+            if (compactSlots0.Count != 1 || compactSlots1.Count != 1)
+                throw new InvalidOperationException("Antigravity Compact mode must render exactly 1 row per enabled group.");
+            var slot0Reset = (TextBlock)compactSlots0[0]!.GetType().GetProperty("Reset")!.GetValue(compactSlots0[0]!)!;
+            if (slot0Reset.Text != "55%")
+                throw new InvalidOperationException($"Antigravity Compact+Highest Gemini slot must show '55%', got '{slot0Reset.Text}'.");
+            agyFilterWidget.Tick(DateTime.Now.AddMinutes(4));
+            if (slot0Reset.Text != "55%")
+                throw new InvalidOperationException($"Antigravity Compact percentage text must survive OnTick, got '{slot0Reset.Text}'.");
+            checks += 7;
+        }
+
+        // OpenCode and Copilot/DeepSeek compact mode checks
+        {
+            using var ocWidget = new AiUsageWidget(AiProviders.OpenCode, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Go",
+                [
+                    new("AiUsageSession", 0.20, DateTimeOffset.UtcNow.AddHours(2), 18000L),
+                    new("AiUsageWeekly", 0.70, DateTimeOffset.UtcNow.AddDays(3), 604800L),
+                    new("AiUsageMonthly", 0.40, DateTimeOffset.UtcNow.AddDays(15), 2592000L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            ocWidget.Activate();
+            var ocCardObj = agyCardField.GetValue(ocWidget)!;
+            var ocBars = ocCardObj.GetType().GetProperty("OpenCode")!.GetValue(ocCardObj)!;
+            var hourCol = (StackPanel)ocBars.GetType().GetProperty("HourCol")!.GetValue(ocBars)!;
+            var weekCol = (StackPanel)ocBars.GetType().GetProperty("WeekCol")!.GetValue(ocBars)!;
+            var monthCol = (StackPanel)ocBars.GetType().GetProperty("MonthCol")!.GetValue(ocBars)!;
+            var weekReset = (TextBlock)ocBars.GetType().GetProperty("WeekReset")!.GetValue(ocBars)!;
+
+            hourCol.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (hourCol.DesiredSize.Height <= 0 || hourCol.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"OpenCode Full column height must fit inside 34 DIP card (<= 33), got {hourCol.DesiredSize.Height:F2}.");
+
+            ocWidget.ApplySettings(new DockSettings(AiUsageRing: AiUsageRing.Session));
+            if (hourCol.Visibility != System.Windows.Visibility.Visible || weekCol.Visibility != System.Windows.Visibility.Collapsed || monthCol.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("OpenCode Full+Session must show only HourCol.");
+
+            ocWidget.ApplySettings(new DockSettings(AiUsageRing: AiUsageRing.Highest));
+            ocWidget.SetCompactState(true);
+            if (hourCol.Visibility != System.Windows.Visibility.Collapsed || weekCol.Visibility != System.Windows.Visibility.Visible || monthCol.Visibility != System.Windows.Visibility.Collapsed || weekReset.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("OpenCode Compact+Highest must show only the highest column (WeekCol 70%) and collapse reset text.");
+
+            using var copilotWidget = new AiUsageWidget(AiProviders.Copilot, (provider, _) =>
+            {
+                var report = new AiUsageReport(provider, "Individual",
+                [
+                    new("AiUsageMonthly", 0.28, DateTimeOffset.UtcNow.AddDays(10), 2592000L)
+                ], DateTimeOffset.UtcNow);
+                return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+            });
+            copilotWidget.Activate();
+            var cpCardObj = agyCardField.GetValue(copilotWidget)!;
+            var cpName = (TextBlock)cpCardObj.GetType().GetProperty("Name")!.GetValue(cpCardObj)!;
+            var cpSimple = cpCardObj.GetType().GetProperty("Simple")!.GetValue(cpCardObj)!;
+            var cpSep = (Border)cpSimple.GetType().GetProperty("Separator")!.GetValue(cpSimple)!;
+            var cpMeta = (TextBlock)cpSimple.GetType().GetProperty("MetaText")!.GetValue(cpSimple)!;
+            var cpMiniTrack = (Border)cpSimple.GetType().GetProperty("MiniBarTrack")!.GetValue(cpSimple)!;
+
+            var cpValStack = (StackPanel)cpMeta.Parent;
+            cpValStack.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (cpValStack.DesiredSize.Height <= 0 || cpValStack.DesiredSize.Height > 33)
+                throw new InvalidOperationException($"Copilot Full value stack height must fit inside 34 DIP card (<= 33), got {cpValStack.DesiredSize.Height:F2}.");
+
+            copilotWidget.SetCompactState(true);
+            if (cpName.Visibility != System.Windows.Visibility.Collapsed
+                || cpSep.Visibility != System.Windows.Visibility.Collapsed
+                || cpMeta.Visibility != System.Windows.Visibility.Collapsed
+                || cpMiniTrack.Visibility != System.Windows.Visibility.Collapsed)
+                throw new InvalidOperationException("Copilot Compact mode must collapse Name, Separator, MetaText, and MiniBarTrack.");
+
+            copilotWidget.SetCompactState(false);
+            if (cpName.Visibility != System.Windows.Visibility.Visible
+                || cpSep.Visibility != System.Windows.Visibility.Visible
+                || cpMeta.Visibility != System.Windows.Visibility.Visible
+                || cpMiniTrack.Visibility != System.Windows.Visibility.Visible)
+                throw new InvalidOperationException("Copilot Full mode must restore Name, Separator, MetaText, and MiniBarTrack.");
+            checks += 6;
+        }
+
+        UiText.Current.SetLanguage(AppLanguage.Turkish);
+
+        // Cursor live-refresh on SessionChanged check (without touching user DPAPI store)
+        var cursorLoads = 0;
+        using (var cursorWidget = new AiUsageWidget(AiProviders.Cursor, (provider, _) =>
+        {
+            cursorLoads++;
+            if (cursorLoads == 1)
+                return Task.FromResult<(AiUsageReport?, string?)>((null, "ErrorAiUsageSignIn"));
+            var report = new AiUsageReport(provider, "Plus",
+                [new("AiUsageWeekly", 0.4, DateTimeOffset.UtcNow.AddDays(4), 604800L)], DateTimeOffset.UtcNow);
+            return Task.FromResult<(AiUsageReport?, string?)>((report, null));
+        }))
+        {
+            var prevPath = CursorAuthService.TokenFilePath;
+            var tmpPath = Path.Combine(Path.GetTempPath(), $"ot-cursor-widget-{Guid.NewGuid():N}", "cursor-auth.bin");
+            CursorAuthService.TokenFilePath = tmpPath;
+            try
+            {
+                cursorWidget.Activate();
+                if (cursorLoads != 1)
+                    throw new InvalidOperationException("Cursor widget must perform an initial load on Activate.");
+                CursorAuthService.SaveTokens("live-access", "live-refresh");
+                if (cursorLoads != 2)
+                    throw new InvalidOperationException("Cursor widget must reset sign-in backoff and reload immediately on SessionChanged.");
+                checks += 2;
+            }
+            finally
+            {
+                CursorAuthService.TokenFilePath = prevPath;
+                var dir = Path.GetDirectoryName(tmpPath);
+                if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            }
+        }
 
         pending.SetCanceled();
         return checks;
+    }
+
+    public static int RunUiChecks(Application application)
+    {
+        var checks = 0;
+        void Check(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException(message);
+            checks++;
+        }
+
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"ot-ai-settings-ui-{Guid.NewGuid():N}.json");
+        var secretRoot = Path.Combine(Path.GetTempPath(), $"ot-ai-secrets-ui-{Guid.NewGuid():N}");
+        var previousRoot = AiSecretStore.Root;
+        var previousLauncher = AiUsageService.ProcessLauncherOverride;
+        AiSecretStore.Root = secretRoot;
+        try
+        {
+            var store = new DockSettingsStore(settingsPath);
+            Check(store.Save(new DockSettings(Language: AppLanguage.English)) is null,
+                "Initial AI UI test settings must save cleanly.");
+            var preferences = new ApplicationPreferences(store);
+            var changeCount = 0;
+            preferences.Changed += (_, _) => changeCount++;
+
+            // Verify AiUsageWidget immediately re-polls on CredentialsChanged without waiting for the 15-minute cooldown.
+            var loadCalls = 0;
+            using (var liveWidget = new AiUsageWidget(AiProviders.DeepSeek, (_, _) =>
+                   {
+                       loadCalls++;
+                       return Task.FromResult<(AiUsageReport?, string?)>((null, "ErrorAiUsageSignIn"));
+                   }))
+            {
+                liveWidget.Activate();
+                PumpDispatcher(application.Dispatcher, 60);
+                var initialCalls = loadCalls;
+                Check(initialCalls >= 1, "Activated AiUsageWidget must perform initial load.");
+                AiUsageService.NotifyCredentialsChanged(AiProviders.DeepSeek);
+                PumpDispatcher(application.Dispatcher, 60);
+                Check(loadCalls > initialCalls,
+                    "CredentialsChanged must bypass the sign-in cooldown and trigger an immediate reload.");
+            }
+
+            var sw = new SettingsWindow(preferences)
+            {
+                Left = -20000,
+                Top = -20000,
+                ShowActivated = false,
+                ShowInTaskbar = false
+            };
+            try
+            {
+                sw.Show();
+                PumpDispatcher(application.Dispatcher, 120);
+
+                var optionsField = typeof(SettingsWindow).GetField("_widgetOptions",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var options = ((System.Collections.IEnumerable)optionsField.GetValue(sw)!).Cast<DockWidgetOption>().ToList();
+
+                foreach (var def in DockWidgetService.AiUsageWidgets)
+                {
+                    var option = options.Single(o => o.Id == def.Id);
+                    Check(option.SettingsView is Panel, $"{def.Id} must expose a SettingsView panel.");
+                    var view = option.SettingsView!;
+
+                    var section = FindTagged<FrameworkElement>(view, $"AiAccountSection:{def.Id}");
+                    var statusText = FindTagged<TextBlock>(view, $"AiAccountStatus:{def.Provider}");
+                    var refreshBtn = FindTagged<Button>(view, $"AiAccountRefresh:{def.Provider}");
+                    Check(section is not null && statusText is not null && refreshBtn is not null,
+                        $"{def.Id} settings panel must expose account status and refresh controls.");
+
+                    if (AiUsageService.IsCliSignInProvider(def.Provider))
+                    {
+                        var signInBtn = FindTagged<Button>(view, $"AiAccountSignIn:{def.Provider}");
+                        var cliHint = FindTagged<TextBlock>(view, $"AiAccountCliHint:{def.Provider}");
+                        Check(signInBtn is not null && cliHint is not null && !string.IsNullOrWhiteSpace(cliHint.Text),
+                            $"{def.Id} must expose CLI sign-in button and command hint.");
+                    }
+
+                    if (AiUsageService.IsApiKeyProvider(def.Provider))
+                    {
+                        var keyBox = FindTagged<PasswordBox>(view, $"AiAccountKeyBox:{def.Provider}");
+                        var saveBtn = FindTagged<Button>(view, $"AiAccountKeySave:{def.Provider}");
+                        var clearBtn = FindTagged<Button>(view, $"AiAccountKeyClear:{def.Provider}");
+                        Check(keyBox is not null && saveBtn is not null && clearBtn is not null,
+                            $"{def.Id} must expose PasswordBox, Save, and Clear controls.");
+                    }
+                }
+
+                // Exercise DeepSeek API key Save & Clear via UI controls without mutating settings.json.
+                var deepSeekView = options.Single(o => o.Id == "AiUsageDeepSeek").SettingsView!;
+                var dsKeyBox = FindTagged<PasswordBox>(deepSeekView, $"AiAccountKeyBox:{AiProviders.DeepSeek}")!;
+                var dsSaveBtn = FindTagged<Button>(deepSeekView, $"AiAccountKeySave:{AiProviders.DeepSeek}")!;
+                var dsClearBtn = FindTagged<Button>(deepSeekView, $"AiAccountKeyClear:{AiProviders.DeepSeek}")!;
+                var dsStatus = FindTagged<TextBlock>(deepSeekView, $"AiAccountStatus:{AiProviders.DeepSeek}")!;
+
+                dsKeyBox.Password = "sk-ui-deepseek-secret";
+                dsSaveBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                PumpDispatcher(application.Dispatcher, 60);
+
+                Check(string.IsNullOrEmpty(dsKeyBox.Password), "Saving API key must clear the PasswordBox.");
+                Check(AiUsageService.HasSavedSecret(AiProviders.DeepSeek) && AiUsageService.ReadDeepSeekToken() == "sk-ui-deepseek-secret",
+                    "Saving API key from SettingsWindow must persist the DPAPI secret.");
+                Check(dsStatus.Text == UiText.Get("AiUsageAccountConnected"),
+                    "Account status must switch to Connected after saving an API key.");
+                Check(!File.ReadAllText(settingsPath).Contains("sk-ui-deepseek-secret", StringComparison.Ordinal),
+                    "API keys must never be written into settings.json.");
+                Check(changeCount == 0,
+                    "Saving an API key must not fire spurious preference edits.");
+
+                dsClearBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                PumpDispatcher(application.Dispatcher, 60);
+                Check(!AiUsageService.HasSavedSecret(AiProviders.DeepSeek),
+                    "Clicking Clear must remove the saved DPAPI secret.");
+                Check(changeCount == 0,
+                    "Clearing an API key must not fire spurious preference edits.");
+
+                // Exercise CLI Sign-In button safely via ProcessLauncherOverride.
+                ProcessStartInfo? capturedSignIn = null;
+                AiUsageService.ProcessLauncherOverride = psi => { capturedSignIn = psi; return true; };
+                var claudeView = options.Single(o => o.Id == "AiUsageClaude").SettingsView!;
+                var claudeSignInBtn = FindTagged<Button>(claudeView, $"AiAccountSignIn:{AiProviders.Claude}")!;
+                claudeSignInBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                PumpDispatcher(application.Dispatcher, 40);
+                var launchedCommandOk = capturedSignIn is not null
+                    && !capturedSignIn.CreateNoWindow
+                    && capturedSignIn.WindowStyle == ProcessWindowStyle.Normal
+                    && (capturedSignIn.ArgumentList.SequenceEqual(["-w", "new", "--", "cmd.exe", "/c", "claude", "auth", "login"])
+                        || (capturedSignIn.UseShellExecute && capturedSignIn.Arguments == "/c claude auth login"));
+                Check(launchedCommandOk,
+                    "Claude Sign-in button must launch an interactive visible CLI login command.");
+                Check(changeCount == 0, "Clicking CLI Sign-in must not trigger preference saves.");
+            }
+            finally
+            {
+                sw.Close();
+                PumpDispatcher(application.Dispatcher, 220);
+            }
+
+            // Firing CredentialsChanged after SettingsWindow closes must be a safe no-op (clean unsubscribe).
+            AiUsageService.NotifyCredentialsChanged(AiProviders.Claude);
+            PumpDispatcher(application.Dispatcher, 40);
+            Check(changeCount == 0, "Closing SettingsWindow after AI panel checks must not mutate preferences.");
+        }
+        finally
+        {
+            AiUsageService.ProcessLauncherOverride = previousLauncher;
+            AiSecretStore.Root = previousRoot;
+            if (File.Exists(settingsPath)) File.Delete(settingsPath);
+            if (File.Exists(settingsPath + ".tmp")) File.Delete(settingsPath + ".tmp");
+            if (Directory.Exists(secretRoot))
+            {
+                try { Directory.Delete(secretRoot, recursive: true); } catch (IOException) { }
+            }
+        }
+
+        return checks;
+    }
+
+    private static T? FindTagged<T>(DependencyObject root, string tag) where T : FrameworkElement
+    {
+        if (root is T match && Equals(match.Tag, tag)) return match;
+        if (root is Panel panel)
+        {
+            foreach (var child in panel.Children)
+            {
+                if (child is DependencyObject dep && FindTagged<T>(dep, tag) is { } found) return found;
+            }
+        }
+        else if (root is Border { Child: DependencyObject borderChild } && FindTagged<T>(borderChild, tag) is { } foundBorder)
+        {
+            return foundBorder;
+        }
+        else if (root is ContentControl { Content: DependencyObject contentChild } && FindTagged<T>(contentChild, tag) is { } foundContent)
+        {
+            return foundContent;
+        }
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (FindTagged<T>(VisualTreeHelper.GetChild(root, i), tag) is { } foundVisual) return foundVisual;
+        }
+        return null;
+    }
+
+    private static void PumpDispatcher(Dispatcher dispatcher, int milliseconds)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(milliseconds)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            frame.Continue = false;
+        };
+        timer.Start();
+        Dispatcher.PushFrame(frame);
+    }
+
+    private sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(responder(request));
     }
 }

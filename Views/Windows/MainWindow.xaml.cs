@@ -190,6 +190,11 @@ public partial class MainWindow : Window
         };
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
         TrayButton.Initialize(ReportError, CloseApplication, TerminateApplication);
+        TrayButton.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
+        TrayButton.PinToggled += OnTrayIconPinToggled;
+        PinnedTrayStrip.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
+        PinnedTrayStrip.IsStripEnabled = _preferences.Current.ShowTrayButton;
+        PinnedTrayStrip.LayoutChanged += OnPinnedTrayStripLayoutChanged;
         _widgetCoordinator.ConfigureWidgetMenu = menu =>
         {
             menu.Opened += DockContextMenu_Opened;
@@ -446,7 +451,7 @@ public partial class MainWindow : Window
         }
         else if (_replacementSession.IsActive)
         {
-            TrayHost.Start();
+            EnsureTrayHostStarted();
         }
         StartupStopwatch.Mark("taskbar replacement started");
         InitializeFeatures();
@@ -535,7 +540,7 @@ public partial class MainWindow : Window
         try
         {
             session.Start();
-            if (startTrayHost && session.IsActive) TrayHost.Start();
+            if (startTrayHost && session.IsActive) EnsureTrayHostStarted();
         }
         catch (InvalidOperationException ex)
         {
@@ -544,6 +549,47 @@ public partial class MainWindow : Window
             PositionDock(useWorkArea: true);
             ReportError(ex.Message);
         }
+    }
+
+    private void EnsureTrayHostStarted()
+    {
+        var host = TrayHost.Start();
+        if (host is not null)
+        {
+            PinnedTrayStrip.AttachHost(host);
+        }
+    }
+
+    private void OnTrayIconPinToggled(string pinKey)
+    {
+        var updatedPins = TrayPinIdentity.TogglePin(_preferences.Current.PinnedTrayIcons, pinKey);
+        var error = _preferences.Save(_preferences.Current with { PinnedTrayIcons = updatedPins });
+        if (error is not null)
+        {
+            ReportError(error);
+            return;
+        }
+        RefreshPinnedTrayStrip();
+    }
+
+    private void RefreshPinnedTrayStrip()
+    {
+        PinnedTrayStrip.IsStripEnabled = _preferences.Current.ShowTrayButton;
+        if (TrayHost.Current is { IsRunning: true } host)
+        {
+            PinnedTrayStrip.AttachHost(host);
+        }
+        else
+        {
+            PinnedTrayStrip.Refresh();
+        }
+    }
+
+    private void OnPinnedTrayStripLayoutChanged()
+    {
+        InvalidateMagnificationTargets();
+        ResizeDockToContent();
+        _replacementSession?.RefreshPosition();
     }
 
     private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -2102,6 +2148,7 @@ public partial class MainWindow : Window
         ApplyWidgets(_preferences.Current.Widgets);
         ApplyExtrasSettings();
         ApplyFeatureSettings();
+        RefreshPinnedTrayStrip();
         ApplyHeadroom();
         ApplySizeProfile();
         ApplyLayoutMode();
@@ -2222,7 +2269,15 @@ public partial class MainWindow : Window
             && (!clockStripActive || id != DockWidgetService.DateId)
             && (!statsStripActive || id != DockWidgetService.BatteryId))
             .ToArray();
-        foreach (var widget in _widgetService.CreateWidgets(filtered)) _widgets.Add(widget);
+        foreach (var widget in _widgetService.CreateWidgets(filtered))
+        {
+            var mode = _preferences.Current.WidgetDensityOverrides is not null
+                && _preferences.Current.WidgetDensityOverrides.TryGetValue(widget.Id, out var overrideMode)
+                    ? overrideMode
+                    : _preferences.Current.GlobalWidgetDensity;
+            widget.IsCompact = mode == WidgetDensityMode.Compact;
+            _widgets.Add(widget);
+        }
         foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
 
         var activeIds = new HashSet<string>(_widgets.Select(w => w.Id), StringComparer.OrdinalIgnoreCase);
@@ -2529,6 +2584,7 @@ public partial class MainWindow : Window
             _dockItemElements.Clear();
             DockContents.Children.Remove(StartDivider);
             DockContents.Children.Remove(TrayGroupDivider);
+            DockContents.Children.Remove(PinnedTrayStrip);
 
             var insertAt = DockContents.Children.IndexOf(StatusText);
             if (insertAt < 0) insertAt = DockContents.Children.Count;
@@ -2543,8 +2599,13 @@ public partial class MainWindow : Window
             {
                 if (i == leadCount && showLeadDivider)
                     DockContents.Children.Insert(insertAt++, StartDivider);
-                if (i == trayIndex && showTrayDivider)
-                    DockContents.Children.Insert(insertAt++, TrayGroupDivider);
+                if (i == trayIndex)
+                {
+                    if (showTrayDivider)
+                        DockContents.Children.Insert(insertAt++, TrayGroupDivider);
+                    if (PinnedTrayStrip.Parent is Panel oldStripPanel) oldStripPanel.Children.Remove(PinnedTrayStrip);
+                    DockContents.Children.Insert(insertAt++, PinnedTrayStrip);
+                }
 
                 var (token, element) = pairs[i];
                 // A UIElement cannot be a logical child of two panels; detach from the old grouped host first.
@@ -2929,6 +2990,7 @@ public partial class MainWindow : Window
         ApplyDividerPadding(profile.IconPadding);
         Application.Current.Resources["DockIconSize"] = profile.Icon;
         Application.Current.Resources["DockUtilityGlyphSize"] = Math.Round(profile.Icon * 0.6);
+        PinnedTrayStrip.SetIconScale(profile.Icon);
         Application.Current.Resources["StartLogoSize"] = Application.Current.Resources["DockApplicationIconSize"] is double currentSize ? currentSize : 36.0;
         DockFrame.Padding = new Thickness(10, profile.VerticalPadding, 10, profile.VerticalPadding);
         DockFrame.CornerRadius = new CornerRadius(radius);
@@ -2944,10 +3006,12 @@ public partial class MainWindow : Window
         var bevelV = -profile.VerticalPadding + 1;
         DockInnerBevel.Margin = IsVertical ? new Thickness(bevelV, bevelH, bevelV, bevelH) : new Thickness(bevelH, bevelV, bevelH, bevelV);
         if (IsVertical) DockFrame.Padding = new Thickness(profile.VerticalPadding + 4, 10, profile.VerticalPadding + 4, 10);
-        var scale = profile.WidgetScale;
-        var widgetTransform = Math.Abs(scale - 1) > 0.001 ? new ScaleTransform(scale, scale) : Transform.Identity;
-        WidgetStrip.LayoutTransform = widgetTransform;
-        DockWidgets.LayoutTransform = widgetTransform;
+        // Widget cards are laid out at their real height (34–46 DIP) through the dynamic WidgetHeight resource.
+        // Only when the cell is outside that band is a residual scale applied; a fractional LayoutTransform on
+        // Display-formatted text is what made compact-dock widgets look blurry.
+        Application.Current.Resources["WidgetHeight"] = profile.WidgetCardHeight;
+        ApplyWidgetScale(WidgetStrip, profile.WidgetLayoutScale);
+        ApplyWidgetScale(DockWidgets, profile.WidgetLayoutScale);
         // The external bottom gap is subtracted from the shelf by DockSurface.Margin, so the frame's inner
         // height must still fit the full DockCellHeight. Otherwise WPF gives every DockButton a LayoutClip
         // (e.g. 0,0,38,36) and magnified icons get cut at the top edge of the dock. Grow the shelf instead.
@@ -2979,6 +3043,34 @@ public partial class MainWindow : Window
         StartDivider.Margin = new Thickness(3 + padding, 0, 4 + padding, 0);
         TrayGroupDivider.Margin = new Thickness(6 + padding, 0, 4 + padding, 0);
         WidgetDivider.Margin = new Thickness(6 + padding, 0, 6 + padding, 0);
+    }
+
+    /// <summary>
+    /// Applies the residual widget scale. At 1.0 the strip uses no transform and pixel-snapped Display text; any
+    /// other scale switches to Ideal/Grayscale vector text with fixed hinting and high-quality bitmap scaling so
+    /// glyphs are rasterized at the final size instead of being resampled from Display-mode bitmaps.
+    /// </summary>
+    internal static void ApplyWidgetScale(FrameworkElement host, double scale)
+    {
+        if (!double.IsFinite(scale) || Math.Abs(scale - 1.0) <= 0.001)
+        {
+            host.LayoutTransform = Transform.Identity;
+            TextOptions.SetTextFormattingMode(host, TextFormattingMode.Display);
+            TextOptions.SetTextRenderingMode(host, TextRenderingMode.Auto);
+            host.ClearValue(TextOptions.TextHintingModeProperty);
+            host.ClearValue(RenderOptions.BitmapScalingModeProperty);
+        }
+        else
+        {
+            var transform = new ScaleTransform(scale, scale);
+            transform.Freeze();
+            host.LayoutTransform = transform;
+            TextOptions.SetTextFormattingMode(host, TextFormattingMode.Ideal);
+            TextOptions.SetTextRenderingMode(host, TextRenderingMode.Grayscale);
+            TextOptions.SetTextHintingMode(host, TextHintingMode.Fixed);
+            RenderOptions.SetBitmapScalingMode(host, BitmapScalingMode.HighQuality);
+        }
+        host.InvalidateMeasure();
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -3202,7 +3294,7 @@ public partial class MainWindow : Window
         var densityBudget = _dockWidthOverride is not null
             ? Math.Max(1, maximumSurfaceWidth - DockHorizontalChrome)
             : maxLayoutWidth;
-        if (_widgetCoordinator.UpdateAdaptiveDensity(densityBudget, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetScale))
+        if (_widgetCoordinator.UpdateAdaptiveDensity(densityBudget, contentFixedWidth, _preferences.Current, widgetScale: Profile.WidgetLayoutScale))
             _resizePending = true; // Measure again after the widget templates switch to compact mode.
 
         DockScrollViewer.MaxWidth = maxAppsWidth;
@@ -3305,6 +3397,7 @@ public partial class MainWindow : Window
         try
         {
             // Hand tray icons back to Explorer before its taskbar becomes visible again.
+            PinnedTrayStrip.DetachHost();
             TrayHost.Current?.Dispose();
             var session = _replacementSession;
             if (session is null) return null;
@@ -3396,6 +3489,9 @@ public partial class MainWindow : Window
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();
         _wheelAudio = null;
+        PinnedTrayStrip.DetachHost();
+        PinnedTrayStrip.LayoutChanged -= OnPinnedTrayStripLayoutChanged;
+        TrayButton.PinToggled -= OnTrayIconPinToggled;
         DisposeExtras();
         DisposeFeatures();
     }

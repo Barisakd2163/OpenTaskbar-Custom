@@ -50,7 +50,7 @@
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="{DynamicResource WidgetRadius}" />
-        <Setter Property="Height" Value="{StaticResource WidgetHeight}" />
+        <Setter Property="Height" Value="{DynamicResource WidgetHeight}" />
         <Setter Property="Padding" Value="8,0" />
         <Setter Property="Margin" Value="{StaticResource WidgetSpacing}" />
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -184,7 +184,7 @@
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Height" Value="{StaticResource WidgetHeight}" />
+        <Setter Property="Height" Value="{DynamicResource WidgetHeight}" />
         <Setter Property="Padding" Value="8,0" />
         <Setter Property="Margin" Value="{StaticResource WidgetSpacing}" />
         <Setter Property="VerticalAlignment" Value="Center" />

@@ -37,6 +37,7 @@ public sealed class NetSpeedWidget : DockWidget
     public override double FullWidthEstimate => 140;
 
     private readonly Button _cardButton;
+    private readonly ContentControl _wifiIcon;
     private readonly ContentControl _downIcon;
     private readonly TextBlock _downloadText;
     private readonly ContentControl _upIcon;
@@ -94,7 +95,7 @@ public sealed class NetSpeedWidget : DockWidget
 
     public NetSpeedWidget()
     {
-        var wifiIcon = new ContentControl
+        _wifiIcon = new ContentControl
         {
             Content = FindResource("IconWifi"),
             Width = 15,
@@ -103,8 +104,8 @@ public sealed class NetSpeedWidget : DockWidget
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false
         };
-        wifiIcon.SetResourceReference(StyleProperty, "WidgetIcon");
-        wifiIcon.SetResourceReference(ForegroundProperty, "TextSecondary");
+        _wifiIcon.SetResourceReference(StyleProperty, "WidgetIcon");
+        _wifiIcon.SetResourceReference(ForegroundProperty, "TextSecondary");
 
         _downIcon = new ContentControl
         {
@@ -183,7 +184,7 @@ public sealed class NetSpeedWidget : DockWidget
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        contentRow.Children.Add(wifiIcon);
+        contentRow.Children.Add(_wifiIcon);
         contentRow.Children.Add(speedLines);
 
         _cardButton = new Button
@@ -297,10 +298,18 @@ public sealed class NetSpeedWidget : DockWidget
         return (deltaReceived / elapsedSeconds, deltaSent / elapsedSeconds, deltaReceived, deltaSent);
     }
 
-    protected override void OnCompactChanged(bool compact)
+    protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
+    protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+
+    private void ApplyDensityLayout()
     {
+        var compact = IsCompact && !IsHoverExpanded;
+        _wifiIcon.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         _uploadGroup.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        _downloadText.MinWidth = compact ? 48 : 64;
+        _cardButton.Padding = compact ? new Thickness(7, 0, 7, 0) : new Thickness(10, 0, 10, 0);
         UpdateLabels();
+        RaiseContentWidthChanged();
     }
 
     private void UpdateLabels()

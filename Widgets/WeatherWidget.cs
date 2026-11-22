@@ -87,6 +87,7 @@ public sealed class WeatherWidget : DockWidget
 
     protected override void OnLanguageChanged() => Render();
     protected override void OnCompactChanged(bool compact) => Render();
+    protected override void OnHoverExpandedChanged(bool expanded) => Render();
 
     private string LocationKey => $"{Settings.WeatherCity.Trim()}|{Settings.Language}";
 
@@ -179,6 +180,8 @@ public sealed class WeatherWidget : DockWidget
             return;
         }
 
+        var compact = IsCompact && !IsHoverExpanded;
+        _card.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(10, 0, 10, 0);
         var culture = Settings.Language.Culture;
         var (iconKey, conditionKey) = WeatherService.Describe(report.Code);
         var conditionText = UiText.Get(conditionKey);
@@ -187,8 +190,8 @@ public sealed class WeatherWidget : DockWidget
         var mainIcon = new ContentControl
         {
             Content = TryFindResource(iconKey),
-            Width = IsCompact ? 16 : 20,
-            Height = IsCompact ? 16 : 20,
+            Width = compact ? 16 : 20,
+            Height = compact ? 16 : 20,
             Margin = new Thickness(0, 0, 7, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = IconBrushForCode(report.Code)
@@ -199,7 +202,7 @@ public sealed class WeatherWidget : DockWidget
         var tempText = new TextBlock
         {
             Text = FormatDegrees(report.Temperature),
-            FontSize = IsCompact ? 15 : 18,
+            FontSize = compact ? 15 : 18,
             FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
@@ -207,7 +210,7 @@ public sealed class WeatherWidget : DockWidget
         tempText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         _root.Children.Add(tempText);
 
-        if (!IsCompact)
+        if (!compact)
         {
             var placeStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
             if (!string.IsNullOrWhiteSpace(report.Place))

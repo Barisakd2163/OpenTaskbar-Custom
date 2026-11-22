@@ -35,7 +35,7 @@ public sealed class StorageWidget : DockWidget
     public override int ShrinkPriority => 35;
     public override bool SupportsStaticPreview => true;
     public override double FullWidthEstimate => Math.Max(110, Math.Max(1, _drives.Count) * 108);
-    public override double CompactWidthEstimate => 108;
+    public override double CompactWidthEstimate => 78;
 
     public StorageWidget()
     {
@@ -70,6 +70,7 @@ public sealed class StorageWidget : DockWidget
     }
 
     protected override void OnCompactChanged(bool compact) => Render();
+    protected override void OnHoverExpandedChanged(bool expanded) => Render();
     protected override void OnLanguageChanged() => Render();
 
     protected override void OnRenderPreview()
@@ -131,7 +132,9 @@ public sealed class StorageWidget : DockWidget
             return;
         }
 
-        var visibleDrives = IsCompact ? _drives.Take(1).ToList() : _drives;
+        var compact = IsCompact && !IsHoverExpanded;
+        _card.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(10, 0, 10, 0);
+        var visibleDrives = compact ? _drives.Take(1).ToList() : _drives;
         var tooltipLines = new List<string>(_drives.Count);
 
         for (var i = 0; i < visibleDrives.Count; i++)
@@ -150,7 +153,9 @@ public sealed class StorageWidget : DockWidget
             }
 
             var drive = visibleDrives[i];
-            var capacityText = FormatCapacityPair(drive.FreeBytes, drive.TotalBytes, culture);
+            var capacityText = compact
+                ? FormatFreeCapacity(drive.FreeBytes, drive.TotalBytes, culture)
+                : FormatCapacityPair(drive.FreeBytes, drive.TotalBytes, culture);
 
             var entry = new StackPanel
             {
@@ -207,6 +212,20 @@ public sealed class StorageWidget : DockWidget
         var freeGb = Math.Round(free / BytesPerGb);
         var totalGb = Math.Round(total / BytesPerGb);
         return $"{freeGb.ToString("0", culture)} / {totalGb.ToString("0", culture)} GB";
+    }
+
+    internal static string FormatFreeCapacity(long freeBytes, long totalBytes, CultureInfo culture)
+    {
+        var free = Math.Max(0, freeBytes);
+        var total = Math.Max(1, totalBytes);
+        if (total >= BytesPerTb * 0.95)
+        {
+            var freeTb = free / BytesPerTb;
+            return $"{freeTb.ToString("0.0", culture)} TB";
+        }
+
+        var freeGb = Math.Round(free / BytesPerGb);
+        return $"{freeGb.ToString("0", culture)} GB";
     }
 
     private static IReadOnlyList<DriveStorageInfo> ReadFixedDrives()

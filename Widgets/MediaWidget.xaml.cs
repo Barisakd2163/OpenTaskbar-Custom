@@ -84,12 +84,15 @@ public partial class MediaWidget : DockWidget
         var compact = IsCompact && !IsHoverExpanded;
         Card.Padding = compact ? new Thickness(6, 0, 6, 0) : new Thickness(9, 0, 9, 0);
         InfoPanel.Width = compact ? 76 : 96;
+        InfoPanel.Margin = compact ? new Thickness(7, 0, 6, 0) : new Thickness(9, 0, 10, 0);
+        TransportPanel.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 4, 0);
         ArtistText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         ProgressPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         PreviousButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NextButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         VolumePanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         if (compact && VolumePopup.IsOpen) CloseVolumePopover();
+        RaiseContentWidthChanged();
     }
 
     // V19: Media widget uses its own compact hover volume popover and does not open a large generic flyout.

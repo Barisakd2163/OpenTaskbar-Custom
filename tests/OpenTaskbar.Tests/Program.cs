@@ -21,6 +21,7 @@ DockIconPixelChecks();
 StartMenuAndOverlayChecks();
 AppLaunchChecks();
 TrayListChecks();
+checks += PinnedTrayChecks.RunHeadless();
 ShellTokenChecks();
 DockGroupsProfilesAndPinsChecks();
 checks += RunningAppChecks.Run();
@@ -35,6 +36,7 @@ checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
 checks += SecondaryDockAndInteropChecks.Run();
 checks += ApplicationJumpListChecks.Run();
+checks += WirelessBatteryChecks.Run(headless);
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)
@@ -348,7 +350,7 @@ void WidgetCategoryChecks()
     var catalog = new DockWidgetService(clock);
     var options = catalog.CreateOptions([], []);
 
-    Check(options.Count == 21, "Catalog must define exactly 21 widgets.");
+    Check(options.Count == 22, "Catalog must define exactly 22 widgets.");
 
     var timeWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.TimeAndWeather).Select(o => o.Id).ToArray();
     Check(timeWidgets.Length == 5
@@ -369,9 +371,9 @@ void WidgetCategoryChecks()
         "SystemAndHardware category must contain SystemStats, NetSpeed, Battery, BluetoothBattery and Storage.");
 
     var aiWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.AiQuotas).Select(o => o.Id).ToArray();
-    Check(aiWidgets.Length == 7
+    Check(aiWidgets.Length == 8
         && DockWidgetService.AiUsageWidgets.All(w => aiWidgets.Contains(w.Id)),
-        "AiQuotas category must contain all 7 AI provider widgets.");
+        "AiQuotas category must contain all 8 AI provider widgets.");
 
     var mediaWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.MediaAndControls).Select(o => o.Id).ToArray();
     Check(mediaWidgets.Length == 3

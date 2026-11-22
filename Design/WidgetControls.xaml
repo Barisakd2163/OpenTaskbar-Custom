@@ -275,15 +275,19 @@
 
             <!-- SystemStats widget taskbar preview (CPU & RAM rings) -->
             <StackPanel x:Name="SystemStatsPreview" Orientation="Horizontal" Visibility="Collapsed">
-                <Border Style="{StaticResource WidgetCardBorder}" Width="{StaticResource WidgetHeight}" Padding="3">
-                    <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="CPU" Value="0" Text="—"
-                                 CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
-                                 ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                <Border Style="{StaticResource WidgetCardBorder}" Width="{DynamicResource WidgetHeight}" Padding="3">
+                    <Viewbox Stretch="Uniform">
+                        <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="CPU" Value="0" Text="—"
+                                     CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
+                                     ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                    </Viewbox>
                 </Border>
-                <Border Style="{StaticResource WidgetCardBorder}" Width="{StaticResource WidgetHeight}" Padding="3">
-                    <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="RAM" Value="0" Text="—"
-                                 CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
-                                 ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                <Border Style="{StaticResource WidgetCardBorder}" Width="{DynamicResource WidgetHeight}" Padding="3">
+                    <Viewbox Stretch="Uniform">
+                        <w:RingMeter Width="38" Height="38" StrokeThickness="3" FontSize="11.5" Caption="RAM" Value="0" Text="—"
+                                     CaptionBrush="{DynamicResource TextSecondary}" TrackBrush="{DynamicResource WidgetTrack}"
+                                     ValueBrush="{DynamicResource WidgetAccent}" Foreground="{DynamicResource TextPrimary}" />
+                    </Viewbox>
                 </Border>
             </StackPanel>
 
@@ -314,6 +318,9 @@
                                 <DataTrigger Binding="{Binding Id}" Value="AiUsageOpenRouter">
                                     <Setter Property="Data" Value="{StaticResource LogoOpenRouter}" />
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding Id}" Value="AiUsageCursor">
+                                    <Setter Property="Data" Value="{StaticResource LogoCursor}" />
+                                </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Path.Style>
@@ -341,6 +348,9 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Id}" Value="AiUsageOpenRouter">
                                     <Setter Property="Text" Value="OpenRouter" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Id}" Value="AiUsageCursor">
+                                    <Setter Property="Text" Value="Cursor" />
                                 </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -439,6 +449,10 @@
                 <Setter TargetName="AiUsagePreview" Property="Visibility" Value="Visible" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Id}" Value="AiUsageOpenRouter">
+                <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="AiUsagePreview" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Id}" Value="AiUsageCursor">
                 <Setter TargetName="DefaultTile" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="AiUsagePreview" Property="Visibility" Value="Visible" />
             </DataTrigger>

@@ -178,6 +178,7 @@ public sealed class DockWidgetOption(
         "AiUsageCopilot" => "LogoCopilot",
         "AiUsageDeepSeek" => "LogoDeepSeek",
         "AiUsageOpenRouter" => "LogoOpenRouter",
+        "AiUsageCursor" => "LogoCursor",
         "Media" => "IconMusic",
         "Audio" => "IconVolume",
         "QuickSettings" => "IconSliders",

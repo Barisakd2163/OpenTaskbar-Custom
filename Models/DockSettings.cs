@@ -82,10 +82,14 @@ public enum SystemMeters
 }
 
 [Flags]
-public enum AiProviders { None = 0, Claude = 1, Codex = 2, Antigravity = 4, OpenCode = 8, Copilot = 16, DeepSeek = 32, OpenRouter = 64, All = Claude | Codex | Antigravity | OpenCode | Copilot | DeepSeek | OpenRouter }
+public enum AiProviders { None = 0, Claude = 1, Codex = 2, Antigravity = 4, OpenCode = 8, Copilot = 16, DeepSeek = 32, OpenRouter = 64, Cursor = 128, All = Claude | Codex | Antigravity | OpenCode | Copilot | DeepSeek | OpenRouter | Cursor }
 
 /// <summary>Which quota window the AI usage ring shows; Highest follows whichever window is closest to its limit.</summary>
 public enum AiUsageRing { Highest, Session, Weekly }
+
+/// <summary>Which Antigravity model groups are displayed on the dock widget card.</summary>
+[Flags]
+public enum AntigravityGroups { None = 0, Gemini = 1, Claude = 2, Argon = 4, All = Gemini | Claude | Argon }
 
 /// <summary>A named dock configuration snapshot (widgets, layout, appearance, hotkeys, and hidden pinned apps).</summary>
 public sealed record DockProfile(
@@ -194,6 +198,7 @@ public sealed record DockSettings(
     // Legacy: read only to migrate the retired single AI usage widget; every provider is now its own widget.
     AiProviders AiUsageProviders = AiProviders.None,
     AiUsageRing AiUsageRing = AiUsageRing.Highest,
+    AntigravityGroups AntigravityGroups = AntigravityGroups.All,
     // User-defined application groups. Each app belongs to at most one group.
     IReadOnlyList<DockAppGroup>? AppGroups = null,
     // Shows the Search button beside Start. Search used to be a widget; the setting keeps the same opt-out.
@@ -220,7 +225,9 @@ public sealed record DockSettings(
     int DockIconPadding = 0,
     bool FocusModeEnabled = false,
     string? CustomLauncherHotkey = null,
-    string? CustomDockHotkey = null)
+    string? CustomDockHotkey = null,
+    // Stable tray icon identifiers (from TrayPinIdentity) shown directly beside the tray chevron while running.
+    IReadOnlyList<string>? PinnedTrayIcons = null)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

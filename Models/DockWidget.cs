@@ -9,8 +9,20 @@ public class DockWidgetItem(string id, string label) : INotifyPropertyChanged
 {
     private string _value = string.Empty;
     private string _label = label;
+    private bool _isCompact;
 
     public string Id { get; } = id;
+
+    public bool IsCompact
+    {
+        get => _isCompact;
+        set
+        {
+            if (_isCompact == value) return;
+            _isCompact = value;
+            NotifyChanged(nameof(IsCompact));
+        }
+    }
 
     public string Label
     {

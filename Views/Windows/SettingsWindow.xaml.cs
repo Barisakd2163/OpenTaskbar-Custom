@@ -28,6 +28,9 @@ public partial class SettingsWindow : Window
     private readonly ObservableCollection<WidgetCategoryGroup> _widgetGroups = [];
     private readonly Dictionary<string, ComboBox> _widgetDensityBoxes = [];
     private readonly List<ComboBox> _aiRingBoxes = [];
+    private readonly Dictionary<AntigravityGroups, CheckBox> _antigravityGroupBoxes = [];
+    private readonly List<Action> _aiAccountRefreshers = [];
+    private readonly Action<AiProviders> _credentialsChangedHandler;
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly List<OpenTaskbar.Widgets.DockWidget> _livePreviewWidgets = [];
@@ -48,6 +51,7 @@ public partial class SettingsWindow : Window
     private bool _isInternalSave;
     private bool _hasUnappliedThemePreview;
     private AiUsageRing _aiUsageRing;
+    private AntigravityGroups _antigravityGroups = AntigravityGroups.All;
     private bool _closed;
     private bool _sourceReady;
     private HwndSource? _source;
@@ -63,6 +67,14 @@ public partial class SettingsWindow : Window
     private readonly Dictionary<SurfaceKind, Slider> _surfaceSliders = [];
     private readonly Dictionary<SurfaceKind, TextBlock> _surfaceValues = [];
     private readonly Dictionary<SurfaceKind, ComboBox> _surfaceBoxes = [];
+    private CancellationTokenSource? _cursorLoginCts;
+    private TextBlock? _cursorAccountLabel;
+    private TextBlock? _cursorStatusText;
+    private Button? _cursorSignInButton;
+    private Button? _cursorRefreshButton;
+    private Button? _cursorSignOutButton;
+    private bool _cursorSignInTimedOut;
+    private bool _cursorAuthSubscribed;
 
     internal bool IsClosingOrClosed => _isClosing || _closed;
     internal int LivePreviewWidgetCount => _livePreviewWidgets.Count;
@@ -73,6 +85,7 @@ public partial class SettingsWindow : Window
         _applied = preferences.Current;
         _preferenceEditedHandler = PreferenceEdited;
         _dockScaleDragCompletedHandler = (_, _) => CommitDockScale();
+        _credentialsChangedHandler = OnAiCredentialsChanged;
         InitializeComponent();
         HardwareAccelerationToggle.IsChecked = !RenderModePreference.IsSoftware();
         HardwareAccelerationToggle.Checked += (_, _) => RenderModePreference.SetSoftware(false);
@@ -102,6 +115,7 @@ public partial class SettingsWindow : Window
         WeatherCountryBox.ItemsSource = CountryCityService.GetInitialCountries().Select(c => c.Name).ToList();
         WeatherCityCombo.LostFocus += WeatherCityCombo_LostFocus;
         _preferences.Changed += Preferences_Changed;
+        AiUsageService.CredentialsChanged += _credentialsChangedHandler;
         Deactivated += Settings_Deactivated;
         _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
         _autoSaveTimer.Tick += AutoSaveTimer_Tick;
@@ -109,6 +123,17 @@ public partial class SettingsWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            CancelCursorLogin();
+            if (_cursorAuthSubscribed)
+            {
+                CursorAuthService.SessionChanged -= CursorAuthService_SessionChanged;
+                _cursorAuthSubscribed = false;
+            }
+            _cursorAccountLabel = null;
+            _cursorStatusText = null;
+            _cursorSignInButton = null;
+            _cursorRefreshButton = null;
+            _cursorSignOutButton = null;
             ClearSearchHighlight();
             RemoveHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
             RemoveHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
@@ -123,6 +148,7 @@ public partial class SettingsWindow : Window
             StopAndDisposeLivePreviews();
             IsVisibleChanged -= Settings_IsVisibleChanged;
             _preferences.Changed -= Preferences_Changed;
+            AiUsageService.CredentialsChanged -= _credentialsChangedHandler;
             Deactivated -= Settings_Deactivated;
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             WidgetOptionsList.ItemsSource = null;
@@ -134,6 +160,8 @@ public partial class SettingsWindow : Window
             _widgetGroups.Clear();
             _widgetDensityBoxes.Clear();
             _aiRingBoxes.Clear();
+            _antigravityGroupBoxes.Clear();
+            _aiAccountRefreshers.Clear();
             WeatherCountryBox.ItemsSource = null;
             if (_hasUnappliedThemePreview || !ThemeManager.IsApplied(_preferences.Current))
             {
@@ -344,7 +372,9 @@ public partial class SettingsWindow : Window
             }
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
+            foreach (var refresh in _aiAccountRefreshers) refresh();
             UpdateHotkeyControls();
+            UpdateCursorAuthUi();
             RefreshSettingsSearchIfActive();
         }
         var themeGalleryDirty = _applied.Theme != _preferences.Current.Theme
@@ -378,12 +408,17 @@ public partial class SettingsWindow : Window
             LoadSurfaceStyles(_preferences.Current);
         }
         ApplySettingsToLivePreviews(_preferences.Current);
-        foreach (var native in _widgetOptions
+        foreach (var option in _widgetOptions
             .Where(o => o.NativePreview is OpenTaskbar.Widgets.DockWidget d
-                        && !_livePreviewWidgets.Contains(d))
-            .Select(o => (OpenTaskbar.Widgets.DockWidget)o.NativePreview!))
+                        && !_livePreviewWidgets.Contains(d)))
         {
+            var native = (OpenTaskbar.Widgets.DockWidget)option.NativePreview!;
             native.ApplySettings(_preferences.Current);
+            var mode = _preferences.Current.WidgetDensityOverrides is not null
+                && _preferences.Current.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                    ? overrideMode
+                    : _preferences.Current.GlobalWidgetDensity;
+            native.SetCompactState(native.SupportsCompactMode && mode == WidgetDensityMode.Compact);
             native.Visibility = Visibility.Visible;
         }
         if ((themeGalleryDirty || themeApplied) && !reloadedSelections)
@@ -523,6 +558,7 @@ public partial class SettingsWindow : Window
             DateStyle = Enum.TryParse<ClockDateStyle>(Choice(DateStyleBox), out var dateStyle) ? dateStyle : ClockDateStyle.DayAndShortDate,
             StatsMeters = ReadStatsMeters(),
             AiUsageRing = _aiUsageRing,
+            AntigravityGroups = _antigravityGroups,
             ThemePack = _selectedThemePackId,
             ThemeApplicationIcons = false
         };
@@ -1191,6 +1227,11 @@ public partial class SettingsWindow : Window
         StopAndDisposeLivePreviews();
         _livePreviewsAttached = true;
         var currentSettings = _autoSaveTimer.IsEnabled ? ReadSelection() : _preferences.Current;
+        foreach (var option in _widgetOptions)
+        {
+            var mode = ResolveDensityMode(currentSettings, option.Id);
+            option.Preview.IsCompact = mode == WidgetDensityMode.Compact;
+        }
         foreach (var option in _widgetOptions.Where(o => WidgetCoordinator.HandlesWidget(o.Id)))
         {
             try
@@ -1199,6 +1240,8 @@ public partial class SettingsWindow : Window
                 widget.ReportError = message => AppLog.Warning($"Widget preview '{option.Id}': {message}");
                 widget.ApplySettings(currentSettings);
                 widget.Activate();
+                var mode = ResolveDensityMode(currentSettings, option.Id);
+                widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
                 widget.Tick(DateTime.Now);
                 // Reflect hardware availability (e.g. a desktop without a battery) in the catalog.
                 option.IsHardwareAvailable = widget.IsHardwareAvailable;
@@ -1240,20 +1283,38 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void ApplySettingsToLivePreviews(DockSettings settings)
     {
-        if (!_livePreviewsAttached || _livePreviewWidgets.Count == 0) return;
-        foreach (var option in _widgetOptions.Where(o => o.LivePreview is OpenTaskbar.Widgets.DockWidget))
+        foreach (var option in _widgetOptions)
         {
-            var widget = (OpenTaskbar.Widgets.DockWidget)option.LivePreview!;
-            widget.ApplySettings(settings);
-            // Some widgets hide themselves when their data source is inactive (e.g. media with no
-            // session). A preview must stay visible so the card never collapses to an empty tile.
-            if (widget.IsHardwareAvailable && widget.Visibility != Visibility.Visible)
-                widget.Visibility = Visibility.Visible;
-            option.IsHardwareAvailable = widget.IsHardwareAvailable;
-            // Rebuild the inline flyout preview so it reflects the just-applied settings.
-            if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
+            var mode = ResolveDensityMode(settings, option.Id);
+            option.Preview.IsCompact = mode == WidgetDensityMode.Compact;
+
+            if (_livePreviewsAttached && option.LivePreview is OpenTaskbar.Widgets.DockWidget widget)
+            {
+                widget.ApplySettings(settings);
+                widget.SetCompactState(widget.SupportsCompactMode && mode == WidgetDensityMode.Compact);
+                // Some widgets hide themselves when their data source is inactive (e.g. media with no
+                // session). A preview must stay visible so the card never collapses to an empty tile.
+                if (widget.IsHardwareAvailable && widget.Visibility != Visibility.Visible)
+                    widget.Visibility = Visibility.Visible;
+                option.IsHardwareAvailable = widget.IsHardwareAvailable;
+                // Rebuild the inline flyout preview so it reflects the just-applied settings.
+                if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
+            }
+
+            if (option.NativePreview is OpenTaskbar.Widgets.DockWidget native && !ReferenceEquals(native, option.LivePreview))
+            {
+                native.ApplySettings(settings);
+                native.SetCompactState(native.SupportsCompactMode && mode == WidgetDensityMode.Compact);
+                if (native.SupportsStaticPreview) native.RenderPreview();
+            }
         }
     }
+
+    private static WidgetDensityMode ResolveDensityMode(DockSettings settings, string widgetId) =>
+        settings.WidgetDensityOverrides is not null
+        && settings.WidgetDensityOverrides.TryGetValue(widgetId, out var overrideMode)
+            ? overrideMode
+            : settings.GlobalWidgetDensity;
 
     private void StopAndDisposeLivePreviews()
     {
@@ -1344,7 +1405,13 @@ public partial class SettingsWindow : Window
             var native = live ?? WidgetCoordinator.CreatePreviewWidget(option.Id);
             if (native is not null)
             {
-                native.ApplySettings(ReadSelection());
+                var currentSettings = ReadSelection();
+                native.ApplySettings(currentSettings);
+                var mode = currentSettings.WidgetDensityOverrides is not null
+                    && currentSettings.WidgetDensityOverrides.TryGetValue(option.Id, out var overrideMode)
+                        ? overrideMode
+                        : currentSettings.GlobalWidgetDensity;
+                native.SetCompactState(native.SupportsCompactMode && mode == WidgetDensityMode.Compact);
                 native.Visibility = Visibility.Visible;
                 // Only widgets with local-only rendering paint an extra frame when they are not
                 // already activated; the rest keep their constructor's honest placeholder state.
@@ -1448,6 +1515,10 @@ public partial class SettingsWindow : Window
                 }
             }
         }
+        _antigravityGroups = (settings.AntigravityGroups & AntigravityGroups.All) == AntigravityGroups.None
+            ? AntigravityGroups.All
+            : (settings.AntigravityGroups & AntigravityGroups.All);
+        UpdateAntigravityGroupCheckboxes();
         StatsCpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Cpu);
         StatsMemoryToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Memory);
         StatsGpuToggle.IsChecked = settings.StatsMeters.HasFlag(SystemMeters.Gpu);
@@ -1556,8 +1627,18 @@ public partial class SettingsWindow : Window
         WidgetPanelsPool.Children.Clear();
         _widgetDensityBoxes.Clear();
         _aiRingBoxes.Clear();
-        if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock) clock.SettingsView = ClockOptions;
-        if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather) weather.SettingsView = WeatherOptions;
+        _antigravityGroupBoxes.Clear();
+        _aiAccountRefreshers.Clear();
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock)
+        {
+            AttachDensityRow("Clock", ClockOptions);
+            clock.SettingsView = ClockOptions;
+        }
+        if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather)
+        {
+            AttachDensityRow("Weather", WeatherOptions);
+            weather.SettingsView = WeatherOptions;
+        }
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } focus)
         {
             AttachDensityRow("Focus", FocusOptions);
@@ -1568,19 +1649,536 @@ public partial class SettingsWindow : Window
             AttachDensityRow("SystemStats", StatsOptions);
             stats.SettingsView = StatsOptions;
         }
-        var aiUsageIds = new HashSet<string>(DockWidgetService.AiUsageWidgets.Select(w => w.Id), StringComparer.Ordinal);
+        var aiUsageById = DockWidgetService.AiUsageWidgets.ToDictionary(w => w.Id, w => w.Provider, StringComparer.Ordinal);
         foreach (var option in _widgetOptions.Where(o => o.SettingsView is null))
         {
             var panel = new StackPanel();
             AttachDensityRow(option.Id, panel);
-            if (aiUsageIds.Contains(option.Id))
+            if (aiUsageById.TryGetValue(option.Id, out var provider))
             {
                 AttachAiRingRow(panel);
+                if (provider == AiProviders.Cursor)
+                {
+                    AttachCursorAuthSection(panel);
+                }
+                else
+                {
+                    AttachAiAccountSection(option.Id, provider, panel);
+                }
+            }
+            if (option.Id == "AiUsageAntigravity")
+            {
+                AttachAntigravityGroupsRow(panel);
             }
             option.SettingsView = panel;
         }
     }
 
+    private void OnAiCredentialsChanged(AiProviders provider)
+    {
+        if (_closed) return;
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(() => OnAiCredentialsChanged(provider));
+            return;
+        }
+        foreach (var refresh in _aiAccountRefreshers) refresh();
+        if (_livePreviewsAttached)
+        {
+            foreach (var option in _widgetOptions.Where(o => o.LivePreview is OpenTaskbar.Widgets.DockWidget))
+            {
+                var widget = (OpenTaskbar.Widgets.DockWidget)option.LivePreview!;
+                if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
+            }
+        }
+    }
+
+    private void AttachAiAccountSection(string widgetId, AiProviders provider, Panel panel)
+    {
+        var section = new Border
+        {
+            Tag = $"AiAccountSection:{widgetId}",
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, 4, 0, 0),
+            Padding = new Thickness(0, 10, 0, 0)
+        };
+        section.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
+
+        var container = new StackPanel();
+        section.Child = container;
+
+        // 1. Account status row + Refresh button
+        var statusRow = new Grid();
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var accountLabel = new TextBlock
+        {
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        accountLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        Grid.SetColumn(accountLabel, 0);
+        statusRow.Children.Add(accountLabel);
+
+        var statusRight = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var statusDot = new Border
+        {
+            Width = 6,
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0)
+        };
+        statusRight.Children.Add(statusDot);
+
+        var statusText = new TextBlock
+        {
+            Tag = $"AiAccountStatus:{provider}",
+            FontSize = 11.5,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        statusRight.Children.Add(statusText);
+
+        var refreshBtn = new Button
+        {
+            Tag = $"AiAccountRefresh:{provider}",
+            Padding = new Thickness(10, 4, 10, 4),
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        refreshBtn.SetResourceReference(StyleProperty, "SettingsButton");
+        statusRight.Children.Add(refreshBtn);
+
+        Grid.SetColumn(statusRight, 1);
+        statusRow.Children.Add(statusRight);
+        container.Children.Add(statusRow);
+
+        TextBlock? cliLabel = null;
+        TextBlock? cliHint = null;
+        Button? signInBtn = null;
+        var hasCliLaunchError = false;
+
+        if (AiUsageService.IsCliSignInProvider(provider))
+        {
+            var cliRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+            cliRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cliRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var cliLeft = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0)
+            };
+            cliLabel = new TextBlock
+            {
+                FontSize = 12
+            };
+            cliLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            cliLeft.Children.Add(cliLabel);
+
+            cliHint = new TextBlock
+            {
+                Tag = $"AiAccountCliHint:{provider}",
+                FontSize = 11,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            };
+            cliHint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            cliLeft.Children.Add(cliHint);
+
+            Grid.SetColumn(cliLeft, 0);
+            cliRow.Children.Add(cliLeft);
+
+            signInBtn = new Button
+            {
+                Tag = $"AiAccountSignIn:{provider}",
+                Padding = new Thickness(12, 5, 12, 5),
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            signInBtn.SetResourceReference(StyleProperty, "SettingsButton");
+            Grid.SetColumn(signInBtn, 1);
+            cliRow.Children.Add(signInBtn);
+
+            container.Children.Add(cliRow);
+        }
+
+        TextBlock? apiKeyLabel = null;
+        TextBlock? apiKeyHint = null;
+        PasswordBox? apiKeyBox = null;
+        Button? saveBtn = null;
+        Button? clearBtn = null;
+
+        if (AiUsageService.IsApiKeyProvider(provider))
+        {
+            var apiBlock = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+
+            var headerRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            apiKeyHint = new TextBlock
+            {
+                Tag = $"AiAccountKeyHint:{provider}",
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            apiKeyHint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            DockPanel.SetDock(apiKeyHint, Dock.Right);
+            headerRow.Children.Add(apiKeyHint);
+
+            apiKeyLabel = new TextBlock
+            {
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0)
+            };
+            apiKeyLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            headerRow.Children.Add(apiKeyLabel);
+            apiBlock.Children.Add(headerRow);
+
+            var inputRow = new Grid();
+            inputRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            inputRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            inputRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            apiKeyBox = new PasswordBox
+            {
+                Tag = $"AiAccountKeyBox:{provider}",
+                MinHeight = 30,
+                Padding = new Thickness(8, 4, 8, 4),
+                FontSize = 12,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                BorderThickness = new Thickness(1)
+            };
+            apiKeyBox.SetResourceReference(Control.BackgroundProperty, "SettingsControl");
+            apiKeyBox.SetResourceReference(Control.ForegroundProperty, "TextPrimary");
+            apiKeyBox.SetResourceReference(Control.BorderBrushProperty, "StrokeSubtle");
+            Grid.SetColumn(apiKeyBox, 0);
+            inputRow.Children.Add(apiKeyBox);
+
+            saveBtn = new Button
+            {
+                Tag = $"AiAccountKeySave:{provider}",
+                Padding = new Thickness(12, 5, 12, 5),
+                FontSize = 12,
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            saveBtn.SetResourceReference(StyleProperty, "SettingsButton");
+            Grid.SetColumn(saveBtn, 1);
+            inputRow.Children.Add(saveBtn);
+
+            clearBtn = new Button
+            {
+                Tag = $"AiAccountKeyClear:{provider}",
+                Padding = new Thickness(10, 5, 10, 5),
+                FontSize = 12,
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            clearBtn.SetResourceReference(StyleProperty, "SettingsGhostButton");
+            Grid.SetColumn(clearBtn, 2);
+            inputRow.Children.Add(clearBtn);
+
+            apiBlock.Children.Add(inputRow);
+            container.Children.Add(apiBlock);
+        }
+
+        void RefreshAccountUi()
+        {
+            var connected = AiUsageService.HasCredential(provider);
+            var hasSavedKey = AiUsageService.HasSavedSecret(provider);
+
+            accountLabel.Text = UiText.Get("AiUsageAccountLabel");
+            statusText.Text = UiText.Get(connected ? "AiUsageAccountConnected" : "AiUsageAccountSignInRequired");
+            statusText.SetResourceReference(TextBlock.ForegroundProperty, connected ? "WidgetAccent" : "TextSecondary");
+            statusDot.SetResourceReference(Border.BackgroundProperty, connected ? "WidgetAccent" : "TextMuted");
+            refreshBtn.Content = UiText.Get("AiUsageRefresh");
+
+            if (cliLabel is not null && cliHint is not null && signInBtn is not null)
+            {
+                var cmd = AiUsageService.CliSignInCommand(provider) ?? string.Empty;
+                cliLabel.Text = UiText.Get("AiUsageCliSignInLabel");
+                cliHint.Text = hasCliLaunchError ? UiText.Format("ErrorAiUsageSignIn", cmd) : cmd;
+                cliHint.SetResourceReference(TextBlock.ForegroundProperty, hasCliLaunchError ? "WidgetWarning" : "TextSecondary");
+                signInBtn.Content = UiText.Get("AiUsageStatusSignIn");
+            }
+
+            if (apiKeyLabel is not null && apiKeyHint is not null && saveBtn is not null && clearBtn is not null)
+            {
+                apiKeyLabel.Text = UiText.Get("AiUsageApiKeyLabel");
+                apiKeyHint.Text = UiText.Get(hasSavedKey ? "AiUsageApiKeySaved" : "AiUsageApiKeyPlaceholder");
+                apiKeyHint.SetResourceReference(TextBlock.ForegroundProperty, hasSavedKey ? "WidgetAccent" : "TextSecondary");
+                saveBtn.Content = UiText.Get("AiUsageApiKeySave");
+                clearBtn.Content = UiText.Get("AiUsageApiKeyClear");
+                clearBtn.IsEnabled = hasSavedKey;
+            }
+        }
+
+        refreshBtn.Click += (_, e) =>
+        {
+            e.Handled = true;
+            hasCliLaunchError = false;
+            AiUsageService.NotifyCredentialsChanged(provider);
+            RefreshAccountUi();
+        };
+
+        if (signInBtn is not null)
+        {
+            signInBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                hasCliLaunchError = AiUsageService.TryLaunchSignIn(provider) is not null;
+                RefreshAccountUi();
+            };
+        }
+
+        if (saveBtn is not null && clearBtn is not null && apiKeyBox is not null)
+        {
+            saveBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                var entered = apiKeyBox.Password;
+                if (string.IsNullOrWhiteSpace(entered)) return;
+                apiKeyBox.Clear();
+                AiUsageService.SaveApiKey(provider, entered.Trim());
+                RefreshAccountUi();
+            };
+
+            clearBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                apiKeyBox.Clear();
+                AiUsageService.SaveApiKey(provider, null);
+                RefreshAccountUi();
+            };
+        }
+
+        RefreshAccountUi();
+        _aiAccountRefreshers.Add(RefreshAccountUi);
+        panel.Children.Add(section);
+    }
+
+    private void AttachCursorAuthSection(Panel panel)
+    {
+        var section = new StackPanel
+        {
+            Name = "CursorAuthSection",
+            Tag = "AiAccountSection:AiUsageCursor",
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+
+        var statusRow = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var accountLabel = new TextBlock
+        {
+            Text = UiText.Get("AiUsageCursorAccountLabel"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        accountLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        Grid.SetColumn(accountLabel, 0);
+        statusRow.Children.Add(accountLabel);
+
+        var statusText = new TextBlock
+        {
+            Name = "CursorAccountStatusText",
+            Tag = "AiAccountStatus:Cursor",
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(statusText, 1);
+        statusRow.Children.Add(statusText);
+        section.Children.Add(statusRow);
+
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal };
+
+        var signInButton = new Button
+        {
+            Name = "CursorSignInButton",
+            Padding = new Thickness(10, 5, 10, 5),
+            FontSize = 11.5,
+            Margin = new Thickness(0, 0, 6, 4)
+        };
+        signInButton.SetResourceReference(StyleProperty, "SettingsPrimaryButton");
+        signInButton.Click += CursorSignInButton_Click;
+
+        var refreshButton = new Button
+        {
+            Name = "CursorRefreshButton",
+            Tag = "AiAccountRefresh:Cursor",
+            Padding = new Thickness(10, 5, 10, 5),
+            FontSize = 11.5,
+            Margin = new Thickness(0, 0, 6, 4)
+        };
+        refreshButton.SetResourceReference(StyleProperty, "SettingsGhostButton");
+        refreshButton.Click += (_, _) =>
+        {
+            _cursorSignInTimedOut = false;
+            CursorAuthService.RequestRefresh();
+            UpdateCursorAuthUi();
+        };
+
+        var signOutButton = new Button
+        {
+            Name = "CursorSignOutButton",
+            Padding = new Thickness(10, 5, 10, 5),
+            FontSize = 11.5,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        signOutButton.SetResourceReference(StyleProperty, "SettingsGhostButton");
+        signOutButton.Click += (_, _) =>
+        {
+            CancelCursorLogin();
+            _cursorSignInTimedOut = false;
+            CursorAuthService.SignOut();
+            UpdateCursorAuthUi();
+        };
+
+        actions.Children.Add(signInButton);
+        actions.Children.Add(refreshButton);
+        actions.Children.Add(signOutButton);
+        section.Children.Add(actions);
+
+        _cursorAccountLabel = accountLabel;
+        _cursorStatusText = statusText;
+        _cursorSignInButton = signInButton;
+        _cursorRefreshButton = refreshButton;
+        _cursorSignOutButton = signOutButton;
+
+        if (!_cursorAuthSubscribed)
+        {
+            CursorAuthService.SessionChanged += CursorAuthService_SessionChanged;
+            _cursorAuthSubscribed = true;
+        }
+
+        UpdateCursorAuthUi();
+        panel.Children.Add(section);
+    }
+
+    private async void CursorSignInButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_closed) return;
+        if (_cursorLoginCts is not null)
+        {
+            CancelCursorLogin();
+            _cursorSignInTimedOut = false;
+            UpdateCursorAuthUi();
+            return;
+        }
+
+        _cursorSignInTimedOut = false;
+        var (verifier, _, uuid, loginUrl) = CursorAuthService.StartLogin();
+        try
+        {
+            Process.Start(new ProcessStartInfo(loginUrl) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            AppLog.Info($"Cursor sign-in browser unavailable: {ex.GetType().Name}");
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _cursorLoginCts = cts;
+        UpdateCursorAuthUi();
+
+        var completed = false;
+        var canceled = false;
+        try
+        {
+            completed = await CursorAuthService.PollLoginAsync(uuid, verifier, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            canceled = true;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Info($"Cursor sign-in failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_cursorLoginCts, cts))
+                _cursorLoginCts = null;
+            cts.Dispose();
+        }
+
+        if (_closed) return;
+        if (!completed && !canceled)
+            _cursorSignInTimedOut = true;
+        UpdateCursorAuthUi();
+    }
+
+    private void CancelCursorLogin()
+    {
+        var cts = _cursorLoginCts;
+        _cursorLoginCts = null;
+        if (cts is null) return;
+        try { cts.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    private void CursorAuthService_SessionChanged()
+    {
+        if (_closed || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        void Handle()
+        {
+            if (_closed) return;
+            if (CursorAuthService.HasSession) _cursorSignInTimedOut = false;
+            UpdateCursorAuthUi();
+        }
+        if (Dispatcher.CheckAccess()) Handle();
+        else _ = Dispatcher.BeginInvoke(Handle);
+    }
+
+    private void UpdateCursorAuthUi()
+    {
+        if (_closed || _cursorAccountLabel is null || _cursorStatusText is null
+            || _cursorSignInButton is null || _cursorRefreshButton is null || _cursorSignOutButton is null)
+            return;
+
+        var isPolling = _cursorLoginCts is not null;
+        var hasSession = CursorAuthService.HasSession;
+
+        _cursorAccountLabel.Text = UiText.Get("AiUsageCursorAccountLabel");
+        if (isPolling)
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorWaiting");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        }
+        else if (hasSession)
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorConnected");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "WidgetAccent");
+        }
+        else if (_cursorSignInTimedOut)
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorSignInTimedOut");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "WidgetWarning");
+        }
+        else
+        {
+            _cursorStatusText.Text = UiText.Get("AiUsageCursorSignInRequired");
+            _cursorStatusText.SetResourceReference(TextBlock.ForegroundProperty, "WidgetWarning");
+        }
+
+        _cursorSignInButton.Content = UiText.Get(isPolling ? "Cancel" : "AiUsageCursorSignIn");
+        _cursorRefreshButton.Content = UiText.Get("AiUsageRefresh");
+        _cursorRefreshButton.IsEnabled = hasSession && !isPolling;
+        _cursorSignOutButton.Content = UiText.Get("AiUsageCursorSignOut");
+        _cursorSignOutButton.IsEnabled = hasSession && !isPolling;
+    }
     private void AttachAiRingRow(Panel panel)
     {
         var row = new Grid { Margin = new Thickness(0, 0, 0, panel.Children.Count > 0 ? 8 : 0) };
@@ -1611,6 +2209,20 @@ public partial class SettingsWindow : Window
             if (!_initializing && combo.SelectedItem is ComboBoxItem { Tag: string tag } && Enum.TryParse<AiUsageRing>(tag, out var ring))
             {
                 _aiUsageRing = ring;
+                var wasInitializing = _initializing;
+                _initializing = true;
+                try
+                {
+                    foreach (var other in _aiRingBoxes)
+                    {
+                        if (!ReferenceEquals(other, combo))
+                            SelectChoice(other, tag);
+                    }
+                }
+                finally
+                {
+                    _initializing = wasInitializing;
+                }
                 ApplySettingsToLivePreviews(ReadSelection());
                 TriggerAutoSave(immediate: true);
             }
@@ -1619,6 +2231,102 @@ public partial class SettingsWindow : Window
         row.Children.Add(combo);
         _aiRingBoxes.Add(combo);
         panel.Children.Add(row);
+    }
+
+    private void AttachAntigravityGroupsRow(Panel panel)
+    {
+        var row = new Grid { Margin = new Thickness(0, panel.Children.Count > 0 ? 4 : 0, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var label = new TextBlock
+        {
+            Text = UiText.Get("AiUsageAntigravityGroupsLabel"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        Grid.SetColumn(label, 0);
+        row.Children.Add(label);
+
+        var checksPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        foreach (var (group, name) in new[]
+        {
+            (AntigravityGroups.Gemini, "Gemini"),
+            (AntigravityGroups.Claude, "Claude"),
+            (AntigravityGroups.Argon, "Argon")
+        })
+        {
+            var box = new CheckBox
+            {
+                Content = name,
+                Tag = $"AntigravityGroup:{name}",
+                IsChecked = _antigravityGroups.HasFlag(group),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            box.SetResourceReference(StyleProperty, "SettingsCheckbox");
+            System.Windows.Automation.AutomationProperties.SetName(box, name);
+
+            void HandleToggle(object sender, RoutedEventArgs e)
+            {
+                e.Handled = true;
+                if (_initializing) return;
+                var next = ReadAntigravityGroupsFromBoxes();
+                if (next == AntigravityGroups.None)
+                {
+                    var wasInitializing = _initializing;
+                    _initializing = true;
+                    try
+                    {
+                        box.IsChecked = true;
+                    }
+                    finally
+                    {
+                        _initializing = wasInitializing;
+                    }
+                    next = ReadAntigravityGroupsFromBoxes();
+                    if (next == AntigravityGroups.None) next = group;
+                    _antigravityGroups = next;
+                    return;
+                }
+                _antigravityGroups = next;
+                ApplySettingsToLivePreviews(ReadSelection());
+                TriggerAutoSave(immediate: true);
+            }
+
+            box.Checked += HandleToggle;
+            box.Unchecked += HandleToggle;
+            _antigravityGroupBoxes[group] = box;
+            checksPanel.Children.Add(box);
+        }
+
+        Grid.SetColumn(checksPanel, 1);
+        row.Children.Add(checksPanel);
+        panel.Children.Add(row);
+    }
+
+    private AntigravityGroups ReadAntigravityGroupsFromBoxes()
+    {
+        var flags = AntigravityGroups.None;
+        foreach (var (group, box) in _antigravityGroupBoxes)
+        {
+            if (box.IsChecked == true) flags |= group;
+        }
+        return flags;
+    }
+
+    private void UpdateAntigravityGroupCheckboxes()
+    {
+        foreach (var (group, box) in _antigravityGroupBoxes)
+        {
+            box.IsChecked = _antigravityGroups.HasFlag(group);
+        }
     }
 
     private void AttachDensityRow(string widgetId, FrameworkElement container)
@@ -2053,6 +2761,8 @@ public partial class SettingsWindow : Window
             LoadSecondaryAppChoices(defaults.SecondaryApps);
             SecondaryWidgetsToggle.IsChecked = defaults.SecondaryWidgets;
             UpdateMultiMonitorControls();
+            _antigravityGroups = defaults.AntigravityGroups;
+            UpdateAntigravityGroupCheckboxes();
         }
         finally
         {
@@ -2194,10 +2904,7 @@ public partial class SettingsWindow : Window
         UpdateMultiMonitorControls();
         // Reflect widget-related edits in the catalog immediately, without waiting for the
         // debounced save. Every live preview is a real widget, so ApplySettings re-renders it.
-        if (_livePreviewsAttached)
-        {
-            ApplySettingsToLivePreviews(ReadSelection());
-        }
+        ApplySettingsToLivePreviews(ReadSelection());
         TriggerAutoSave(immediate: sender is not (Slider or TextBox));
     }
 
