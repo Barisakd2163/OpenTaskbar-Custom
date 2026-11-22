@@ -266,11 +266,19 @@ public static class ShellShortcuts
             ShowWindow(taskbar, SwHide);
             AppLog.Info("EnsureNativeTaskbarHidden: Shell_TrayWnd hidden.");
         }
-        var secondary = FindWindow("Shell_SecondaryTrayWnd", null);
-        if (secondary != 0 && IsWindowVisible(secondary))
+        // FindWindow returns only ONE secondary taskbar; enumerate all of them on multi-monitor setups.
+        var classBuffer = new System.Text.StringBuilder(64);
+        EnumWindows((handle, _) =>
         {
-            ShowWindow(secondary, SwHide);
-        }
+            classBuffer.Clear();
+            if (GetClassName(handle, classBuffer, classBuffer.Capacity) > 0
+                && classBuffer.ToString() == "Shell_SecondaryTrayWnd"
+                && IsWindowVisible(handle))
+            {
+                ShowWindow(handle, SwHide);
+            }
+            return true;
+        }, 0);
     }
 
     private static List<nint> FindSearchWindows()
@@ -451,6 +459,14 @@ public static class ShellShortcuts
         previous?.Cancel();
         previous?.Dispose();
         _ = RepositionStartMenuAsync(anchor, hintHwnd, next.Token);
+    }
+
+    private static bool IsStartMenuProcessWindow(nint hwnd)
+    {
+        var pids = CollectProcessIds("StartMenuExperienceHost");
+        if (pids.Count == 0) return false;
+        GetWindowThreadProcessId(hwnd, out var pid);
+        return pids.Contains(pid);
     }
 
     public static List<nint> FindStartMenuWindows()
@@ -881,7 +897,11 @@ public static class ShellShortcuts
 
                 EnsureNativeTaskbarHidden();
 
-                var startWindows = hintHwnd != 0 && IsWindowVisible(hintHwnd) && !IsWindowCloaked(hintHwnd)
+                // A cloak-event HWND can be recycled by an unrelated app; only trust it when it still
+                // belongs to the real Start menu process.
+                var hintValid = hintHwnd != 0 && IsWindowVisible(hintHwnd) && !IsWindowCloaked(hintHwnd)
+                    && IsStartMenuProcessWindow(hintHwnd);
+                var startWindows = hintValid
                     ? new List<nint> { hintHwnd }
                     : FindStartMenuWindows();
 
@@ -1153,6 +1173,9 @@ public static class ShellShortcuts
     private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint FindWindow(string? lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(nint hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -906,8 +906,17 @@ public sealed class TaskbarReplacementSession : IDisposable
     /// its video, but its Esc bubble or another popup can briefly take focus; testing only GetForegroundWindow()
     /// would flicker the dock back on top of the video.
     /// </summary>
+    // PositionDock and the 500 ms poll both scan fullscreen state; coalesce bursts so a single
+    // reposition does not enumerate windows several times within the same tick.
+    private long _lastFullScreenScanMs;
+    private bool _lastFullScreenScanResult;
+
     private bool IsAnyFullScreenOnDockMonitor()
     {
+        var now = Environment.TickCount64;
+        if (now - _lastFullScreenScanMs < 200) return _lastFullScreenScanResult;
+        _lastFullScreenScanMs = now;
+
         var found = false;
         EnumWindows((handle, _) =>
         {
@@ -926,6 +935,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             found = true;
             return false;
         }, 0);
+        _lastFullScreenScanResult = found;
         return found;
     }
 
