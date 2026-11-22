@@ -95,6 +95,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            ClearSearchHighlight();
             RemoveHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
             RemoveHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
             _autoSaveTimer.Stop();
@@ -283,6 +284,7 @@ public partial class SettingsWindow : Window
             }
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
+            RefreshSettingsSearchIfActive();
         }
         if (!_isSaving && !ReferenceEquals(_preferences.Current, _applied))
         {
@@ -1030,6 +1032,10 @@ public partial class SettingsWindow : Window
     {
         if (!_initializing && ReferenceEquals(e.Source, SettingsTabs))
         {
+            if (!string.IsNullOrWhiteSpace(SettingsSearchBox.Text))
+            {
+                SettingsSearchBox.Text = string.Empty;
+            }
             UpdateWidgetPreviewRefresh();
             if (_preferences.Current.AnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
             {
@@ -2112,6 +2118,13 @@ public partial class SettingsWindow : Window
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape) return;
+        if (!string.IsNullOrEmpty(SettingsSearchBox.Text)
+            && (SettingsSearchBox.IsKeyboardFocusWithin || SettingsSearchOverlay.Visibility == Visibility.Visible))
+        {
+            SettingsSearchBox.Text = string.Empty;
+            e.Handled = true;
+            return;
+        }
         e.Handled = true;
         Close();
     }

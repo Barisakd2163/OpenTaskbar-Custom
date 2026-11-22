@@ -256,6 +256,9 @@ internal static class FeatureAndMemoryChecks
 
             // 11. Dock profiles lifecycle, migration, sync, validation, and localization checks
             CheckDockProfiles(Check);
+
+            // 12. Settings search indexing and filtering (issue #74)
+            CheckSettingsSearch(app, Check);
         }
         finally
         {
@@ -263,6 +266,145 @@ internal static class FeatureAndMemoryChecks
         }
 
         return checks;
+    }
+
+    private static void CheckSettingsSearch(Application app, Action<bool, string> Check)
+    {
+        var entries = new SettingsSearchEntry[]
+        {
+            new(0, "Dock", "Opacity", "Window opacity for the dock"),
+            new(1, "Themes", "Theme pack", "Choose a theme"),
+            new(2, "Shortcuts", "Launcher hotkey", "Keyboard shortcut to open search"),
+        };
+
+        Check(SettingsSearchMatcher.Search(entries, null).Count == 0, "A null settings search query must return no matches.");
+        Check(SettingsSearchMatcher.Search(entries, string.Empty).Count == 0, "An empty settings search query must return no matches.");
+        Check(SettingsSearchMatcher.Search(entries, " \t ").Count == 0, "A whitespace settings search query must return no matches.");
+
+        Check(SettingsSearchMatcher.Search(entries, "oPaCiTy").Any(entry => entry.Title == "Opacity"),
+            "Settings search must match Title case-insensitively.");
+        Check(SettingsSearchMatcher.Search(entries, "WINDOW").Any(entry => entry.Description.Contains("Window", StringComparison.Ordinal)),
+            "Settings search must match Description case-insensitively.");
+        Check(SettingsSearchMatcher.Search(entries, "tHeMeS").Any(entry => entry.PageName == "Themes"),
+            "Settings search must match PageName case-insensitively.");
+
+        var multiWord = SettingsSearchMatcher.Search(entries, "hotkey keyboard");
+        Check(multiWord.Count == 1 && multiWord[0].Title == "Launcher hotkey",
+            "A multi-word settings query must match only when every term hits Title, Description, or PageName.");
+        Check(SettingsSearchMatcher.Search(entries, "zzznomatch").Count == 0, "A settings query with no hits must return an empty list.");
+
+        var ordered = SettingsSearchMatcher.Search(entries, "e");
+        Check(ordered.Count == entries.Length
+            && ordered[0].Title == entries[0].Title
+            && ordered[1].Title == entries[1].Title
+            && ordered[2].Title == entries[2].Title,
+            "Settings search must preserve source order.");
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"ot-search-{Guid.NewGuid():N}.json");
+        SettingsWindow? window = null;
+        var changeCount = 0;
+        try
+        {
+            var preferences = new ApplicationPreferences(new DockSettingsStore(tempPath));
+            preferences.Changed += (_, _) => changeCount++;
+            UiText.Current.SetLanguage(AppLanguage.English);
+
+            window = new SettingsWindow(preferences)
+            {
+                Left = -10000,
+                Top = -10000,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+            };
+            window.Show();
+            PumpDispatcher(app.Dispatcher, 120);
+
+            var indexed = window.CollectSearchEntries();
+            Check(indexed.Select(entry => entry.TabIndex).Distinct().Count() == 6,
+                "Settings search must index rows from all 6 tabs.");
+            Check(indexed.Count > 0 && indexed.All(entry => !string.IsNullOrWhiteSpace(entry.PageName) && !string.IsNullOrWhiteSpace(entry.Title)),
+                "Every indexed settings row must have a page name and a title.");
+
+            var opacityHits = SettingsSearchMatcher.Search(indexed, "opacity");
+            Check(opacityHits.Count > 0, "Searching for opacity must find opacity rows.");
+            Check(SettingsSearchMatcher.Search(indexed, "language").Any(entry =>
+                    entry.Title.Contains("Language", StringComparison.CurrentCultureIgnoreCase)),
+                "Searching for language must find the Language row.");
+            Check(SettingsSearchMatcher.Search(indexed, "theme").Count > 0, "Searching for theme must find Theme rows.");
+            var shortcutHits = SettingsSearchMatcher.Search(indexed, "keyboard");
+            if (shortcutHits.Count == 0) shortcutHits = SettingsSearchMatcher.Search(indexed, "shortcut");
+            Check(shortcutHits.Count > 0 && shortcutHits.Any(entry =>
+                    entry.PageName.Contains("Shortcut", StringComparison.CurrentCultureIgnoreCase)
+                    || entry.Title.Contains("Shortcut", StringComparison.CurrentCultureIgnoreCase)
+                    || entry.Description.Contains("Shortcut", StringComparison.CurrentCultureIgnoreCase)
+                    || entry.Title.Contains("Keyboard", StringComparison.CurrentCultureIgnoreCase)
+                    || entry.Description.Contains("Keyboard", StringComparison.CurrentCultureIgnoreCase)),
+                "Searching for keyboard or shortcut must find Shortcuts rows.");
+            Check(SettingsSearchMatcher.Search(indexed, "zzznomatch").Count == 0, "A live no-match query must return no indexed rows.");
+
+            window.SettingsSearchBox.Text = "opacity";
+            Check(window.SettingsSearchOverlay.Visibility == Visibility.Visible, "An opacity query must show the search overlay.");
+            Check(window.SettingsSearchResultsPanel.Children.Count > 0, "An opacity query must populate search results.");
+            Check(window.SettingsSearchEmptyText.Visibility != Visibility.Visible, "An opacity query must hide the empty-search message.");
+            var opacityTabs = opacityHits.Select(entry => entry.TabIndex).ToHashSet();
+            Check(window.SettingsTabs.Items.Count == 6, "Settings must keep 6 tabs while search is active.");
+            for (var i = 0; i < window.SettingsTabs.Items.Count; i++)
+            {
+                var tab = (TabItem)window.SettingsTabs.Items[i]!;
+                var expected = opacityTabs.Contains(i) ? Visibility.Visible : Visibility.Collapsed;
+                Check(tab.Visibility == expected, "Search must keep matching tabs visible and collapse tabs with no matches.");
+            }
+
+            window.SettingsSearchBox.Text = "zzznomatch";
+            Check(window.SettingsSearchOverlay.Visibility == Visibility.Visible, "A no-match query must keep the search overlay visible.");
+            Check(window.SettingsSearchEmptyText.Visibility == Visibility.Visible, "A no-match query must show the empty-search message.");
+            Check(window.SettingsSearchResultsGroup.Visibility != Visibility.Visible, "A no-match query must hide the results group.");
+            for (var i = 0; i < window.SettingsTabs.Items.Count; i++)
+            {
+                Check(((TabItem)window.SettingsTabs.Items[i]!).Visibility == Visibility.Collapsed,
+                    "A no-match query must collapse all 6 tabs.");
+            }
+
+            window.SettingsSearchBox.Text = string.Empty;
+            Check(window.SettingsSearchOverlay.Visibility != Visibility.Visible, "Clearing search must hide the search overlay.");
+            for (var i = 0; i < window.SettingsTabs.Items.Count; i++)
+            {
+                Check(((TabItem)window.SettingsTabs.Items[i]!).Visibility == Visibility.Visible,
+                    "Clearing search must restore all 6 tabs.");
+            }
+
+            UiText.Current.SetLanguage(AppLanguage.Turkish);
+            var turkish = window.CollectSearchEntries();
+            Check(SettingsSearchMatcher.Search(turkish, "saydam").Count > 0
+                && SettingsSearchMatcher.Search(turkish, "SAYDAM").Count > 0,
+                "Turkish search must find saydamlığı rows case-insensitively.");
+            Check(SettingsSearchMatcher.Search(turkish, "DİL").Any(entry => entry.Title == UiText.Get("Language")),
+                "Turkish search must find Dil rows case-insensitively.");
+
+            Check(changeCount == 0, "Settings search and indexing must not mutate preferences.");
+        }
+        finally
+        {
+            if (window is not null)
+            {
+                window.Close();
+                PumpDispatcher(app.Dispatcher, 80);
+            }
+
+            UiText.Current.SetLanguage(AppLanguage.English);
+            try { File.Delete(tempPath); } catch (IOException) { }
+            try { File.Delete(tempPath + ".tmp"); } catch (IOException) { }
+        }
+    }
+
+    private static void PumpDispatcher(Dispatcher dispatcher, int milliseconds)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(milliseconds), DispatcherPriority.Background,
+            (_, _) => frame.Continue = false, dispatcher);
+        timer.Start();
+        Dispatcher.PushFrame(frame);
+        timer.Stop();
     }
 
     private static void CheckDockProfiles(Action<bool, string> Check)
