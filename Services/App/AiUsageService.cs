@@ -39,6 +39,131 @@ public static class AiUsageService
     internal sealed record LoadResult(AiUsageReport? Report, string? Error, TimeSpan? RetryAfter = null);
     private sealed record Credential(string Token, string? Account = null, string? Plan = null, string? RefreshToken = null, string? FilePath = null);
 
+    public static event Action<AiProviders>? CredentialsChanged;
+
+    public static void NotifyCredentialsChanged(AiProviders provider) => CredentialsChanged?.Invoke(provider);
+
+    public static bool IsApiKeyProvider(AiProviders provider) =>
+        provider is AiProviders.DeepSeek or AiProviders.OpenRouter or AiProviders.OpenCode;
+
+    public static bool IsCliSignInProvider(AiProviders provider) =>
+        provider is AiProviders.Claude or AiProviders.Codex or AiProviders.Copilot or AiProviders.OpenCode or AiProviders.Antigravity;
+
+    internal static string SecretKey(AiProviders provider) => provider switch
+    {
+        AiProviders.DeepSeek => "api-key:deepseek",
+        AiProviders.OpenRouter => "api-key:openrouter",
+        AiProviders.OpenCode => "api-key:opencode",
+        _ => $"api-key:{provider.ToString().ToLowerInvariant()}"
+    };
+
+    public static bool HasCredential(AiProviders provider) => ReadCredential(provider) is not null;
+
+    public static bool HasSavedSecret(AiProviders provider) =>
+        IsApiKeyProvider(provider) && AiSecretStore.HasSecret(SecretKey(provider));
+
+    public static void SaveApiKey(AiProviders provider, string? key)
+    {
+        if (!IsApiKeyProvider(provider)) return;
+        AiSecretStore.Set(SecretKey(provider), key);
+        NotifyCredentialsChanged(provider);
+    }
+
+    public static string? CliSignInCommand(AiProviders provider) => provider switch
+    {
+        AiProviders.Claude => "claude auth login",
+        AiProviders.Codex => "codex login",
+        AiProviders.Copilot => "gh auth login",
+        AiProviders.OpenCode => "opencode auth login",
+        AiProviders.Antigravity => "agy",
+        _ => null
+    };
+
+    private static string? CliExecutableName(AiProviders provider) => provider switch
+    {
+        AiProviders.Claude => "claude",
+        AiProviders.Codex => "codex",
+        AiProviders.Copilot => "gh",
+        AiProviders.OpenCode => "opencode",
+        AiProviders.Antigravity => "agy",
+        _ => null
+    };
+
+    internal static ProcessStartInfo? BuildSignInStartInfo(AiProviders provider)
+    {
+        if (CliSignInCommand(provider) is not { } command) return null;
+        var startInfo = new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Normal
+        };
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add(command);
+        return startInfo;
+    }
+
+    internal static Func<ProcessStartInfo, bool>? ProcessLauncherOverride { get; set; }
+
+    internal static string? FindExecutableOnPath(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return null;
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathEnv)) return null;
+        string[] extensions = [".exe", ".cmd", ".bat", ""];
+        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                foreach (var ext in extensions)
+                {
+                    var candidate = Path.Combine(dir, command + ext);
+                    if (File.Exists(candidate)) return candidate;
+                }
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException) { }
+        }
+        return null;
+    }
+
+    public static string? TryLaunchSignIn(AiProviders provider)
+    {
+        if (BuildSignInStartInfo(provider) is not { } startInfo || CliExecutableName(provider) is not { } exeName)
+            return "ErrorAiUsageSignIn";
+
+        if (ProcessLauncherOverride is { } launcher)
+        {
+            try
+            {
+                return launcher(startInfo) ? null : "ErrorAiUsageSignIn";
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+            {
+                return "ErrorAiUsageSignIn";
+            }
+        }
+
+        if (FindExecutableOnPath(exeName) is null)
+            return "ErrorAiUsageSignIn";
+
+        try
+        {
+            var process = Process.Start(startInfo);
+            if (process is null) return "ErrorAiUsageSignIn";
+            _ = process.WaitForExitAsync().ContinueWith(task =>
+            {
+                _ = task.Exception;
+                process.Dispose();
+                NotifyCredentialsChanged(provider);
+            }, TaskScheduler.Default);
+            return null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        {
+            return "ErrorAiUsageSignIn";
+        }
+    }
+
     // Keep background quota queries non-interactive and out of the foreground.
     // CreateNoWindow applies to a console executable; Hidden also requests that
     // Windows not show its initial window if the target has a window subsystem.
@@ -158,6 +283,11 @@ public static class AiUsageService
     internal static DateTime CredentialStamp(AiProviders provider)
     {
         var stamp = DateTime.MinValue;
+        if (IsApiKeyProvider(provider))
+        {
+            var secretStamp = AiSecretStore.GetLastWriteTimeUtc(SecretKey(provider));
+            if (secretStamp > stamp) stamp = secretStamp;
+        }
         if (provider == AiProviders.Antigravity && ReadKeyringCredential("gemini:antigravity", out var keyringStamp) is not null)
             stamp = keyringStamp;
         else if (provider == AiProviders.Claude && ReadKeyringCredential("Claude Code-credentials", out var claudeKeyringStamp) is not null)
@@ -226,6 +356,8 @@ public static class AiUsageService
 
     private static Credential? ReadCredential(AiProviders provider, string? path = null)
     {
+        if (path is null && IsApiKeyProvider(provider) && AiSecretStore.Get(SecretKey(provider)) is { Length: > 0 } savedSecret)
+            return new(savedSecret);
         if (provider == AiProviders.Antigravity && path is null
             && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GEMINI_CONFIG_DIR"))
             && ReadKeyringCredential("gemini:antigravity", out var unusedLastWritten) is { } keyringJson

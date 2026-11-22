@@ -28,6 +28,8 @@ public partial class SettingsWindow : Window
     private readonly ObservableCollection<WidgetCategoryGroup> _widgetGroups = [];
     private readonly Dictionary<string, ComboBox> _widgetDensityBoxes = [];
     private readonly List<ComboBox> _aiRingBoxes = [];
+    private readonly List<Action> _aiAccountRefreshers = [];
+    private readonly Action<AiProviders> _credentialsChangedHandler;
     private readonly DockWidgetService _widgetPreviewService = new(TimeProvider.System);
     private readonly DispatcherTimer _widgetPreviewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly List<OpenTaskbar.Widgets.DockWidget> _livePreviewWidgets = [];
@@ -73,6 +75,7 @@ public partial class SettingsWindow : Window
         _applied = preferences.Current;
         _preferenceEditedHandler = PreferenceEdited;
         _dockScaleDragCompletedHandler = (_, _) => CommitDockScale();
+        _credentialsChangedHandler = OnAiCredentialsChanged;
         InitializeComponent();
         HardwareAccelerationToggle.IsChecked = !RenderModePreference.IsSoftware();
         HardwareAccelerationToggle.Checked += (_, _) => RenderModePreference.SetSoftware(false);
@@ -102,6 +105,7 @@ public partial class SettingsWindow : Window
         WeatherCountryBox.ItemsSource = CountryCityService.GetInitialCountries().Select(c => c.Name).ToList();
         WeatherCityCombo.LostFocus += WeatherCityCombo_LostFocus;
         _preferences.Changed += Preferences_Changed;
+        AiUsageService.CredentialsChanged += _credentialsChangedHandler;
         Deactivated += Settings_Deactivated;
         _widgetPreviewTimer.Tick += WidgetPreviewTimer_Tick;
         _autoSaveTimer.Tick += AutoSaveTimer_Tick;
@@ -123,6 +127,7 @@ public partial class SettingsWindow : Window
             StopAndDisposeLivePreviews();
             IsVisibleChanged -= Settings_IsVisibleChanged;
             _preferences.Changed -= Preferences_Changed;
+            AiUsageService.CredentialsChanged -= _credentialsChangedHandler;
             Deactivated -= Settings_Deactivated;
             if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
             WidgetOptionsList.ItemsSource = null;
@@ -134,6 +139,7 @@ public partial class SettingsWindow : Window
             _widgetGroups.Clear();
             _widgetDensityBoxes.Clear();
             _aiRingBoxes.Clear();
+            _aiAccountRefreshers.Clear();
             WeatherCountryBox.ItemsSource = null;
             if (_hasUnappliedThemePreview || !ThemeManager.IsApplied(_preferences.Current))
             {
@@ -344,6 +350,7 @@ public partial class SettingsWindow : Window
             }
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
+            foreach (var refresh in _aiAccountRefreshers) refresh();
             UpdateHotkeyControls();
             RefreshSettingsSearchIfActive();
         }
@@ -1556,6 +1563,7 @@ public partial class SettingsWindow : Window
         WidgetPanelsPool.Children.Clear();
         _widgetDensityBoxes.Clear();
         _aiRingBoxes.Clear();
+        _aiAccountRefreshers.Clear();
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Clock") is { } clock) clock.SettingsView = ClockOptions;
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Weather") is { } weather) weather.SettingsView = WeatherOptions;
         if (_widgetOptions.FirstOrDefault(o => o.Id == "Focus") is { } focus)
@@ -1568,17 +1576,310 @@ public partial class SettingsWindow : Window
             AttachDensityRow("SystemStats", StatsOptions);
             stats.SettingsView = StatsOptions;
         }
-        var aiUsageIds = new HashSet<string>(DockWidgetService.AiUsageWidgets.Select(w => w.Id), StringComparer.Ordinal);
+        var aiUsageById = DockWidgetService.AiUsageWidgets.ToDictionary(w => w.Id, w => w.Provider, StringComparer.Ordinal);
         foreach (var option in _widgetOptions.Where(o => o.SettingsView is null))
         {
             var panel = new StackPanel();
             AttachDensityRow(option.Id, panel);
-            if (aiUsageIds.Contains(option.Id))
+            if (aiUsageById.TryGetValue(option.Id, out var provider))
             {
                 AttachAiRingRow(panel);
+                AttachAiAccountSection(option.Id, provider, panel);
             }
             option.SettingsView = panel;
         }
+    }
+
+    private void OnAiCredentialsChanged(AiProviders provider)
+    {
+        if (_closed) return;
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(() => OnAiCredentialsChanged(provider));
+            return;
+        }
+        foreach (var refresh in _aiAccountRefreshers) refresh();
+        if (_livePreviewsAttached)
+        {
+            foreach (var option in _widgetOptions.Where(o => o.LivePreview is OpenTaskbar.Widgets.DockWidget))
+            {
+                var widget = (OpenTaskbar.Widgets.DockWidget)option.LivePreview!;
+                if (option.ShowFlyoutPreview) option.PreviewFlyoutContent = widget.BuildPreviewFlyoutContent();
+            }
+        }
+    }
+
+    private void AttachAiAccountSection(string widgetId, AiProviders provider, Panel panel)
+    {
+        var section = new Border
+        {
+            Tag = $"AiAccountSection:{widgetId}",
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, 4, 0, 0),
+            Padding = new Thickness(0, 10, 0, 0)
+        };
+        section.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
+
+        var container = new StackPanel();
+        section.Child = container;
+
+        // 1. Account status row + Refresh button
+        var statusRow = new Grid();
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var accountLabel = new TextBlock
+        {
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        accountLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        Grid.SetColumn(accountLabel, 0);
+        statusRow.Children.Add(accountLabel);
+
+        var statusRight = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var statusDot = new Border
+        {
+            Width = 6,
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0)
+        };
+        statusRight.Children.Add(statusDot);
+
+        var statusText = new TextBlock
+        {
+            Tag = $"AiAccountStatus:{provider}",
+            FontSize = 11.5,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        statusRight.Children.Add(statusText);
+
+        var refreshBtn = new Button
+        {
+            Tag = $"AiAccountRefresh:{provider}",
+            Padding = new Thickness(10, 4, 10, 4),
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        refreshBtn.SetResourceReference(StyleProperty, "SettingsButton");
+        statusRight.Children.Add(refreshBtn);
+
+        Grid.SetColumn(statusRight, 1);
+        statusRow.Children.Add(statusRight);
+        container.Children.Add(statusRow);
+
+        TextBlock? cliLabel = null;
+        TextBlock? cliHint = null;
+        Button? signInBtn = null;
+        var hasCliLaunchError = false;
+
+        if (AiUsageService.IsCliSignInProvider(provider))
+        {
+            var cliRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+            cliRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cliRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var cliLeft = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0)
+            };
+            cliLabel = new TextBlock
+            {
+                FontSize = 12
+            };
+            cliLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            cliLeft.Children.Add(cliLabel);
+
+            cliHint = new TextBlock
+            {
+                Tag = $"AiAccountCliHint:{provider}",
+                FontSize = 11,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            };
+            cliHint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            cliLeft.Children.Add(cliHint);
+
+            Grid.SetColumn(cliLeft, 0);
+            cliRow.Children.Add(cliLeft);
+
+            signInBtn = new Button
+            {
+                Tag = $"AiAccountSignIn:{provider}",
+                Padding = new Thickness(12, 5, 12, 5),
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            signInBtn.SetResourceReference(StyleProperty, "SettingsButton");
+            Grid.SetColumn(signInBtn, 1);
+            cliRow.Children.Add(signInBtn);
+
+            container.Children.Add(cliRow);
+        }
+
+        TextBlock? apiKeyLabel = null;
+        TextBlock? apiKeyHint = null;
+        PasswordBox? apiKeyBox = null;
+        Button? saveBtn = null;
+        Button? clearBtn = null;
+
+        if (AiUsageService.IsApiKeyProvider(provider))
+        {
+            var apiBlock = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+
+            var headerRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            apiKeyHint = new TextBlock
+            {
+                Tag = $"AiAccountKeyHint:{provider}",
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            apiKeyHint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            DockPanel.SetDock(apiKeyHint, Dock.Right);
+            headerRow.Children.Add(apiKeyHint);
+
+            apiKeyLabel = new TextBlock
+            {
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0)
+            };
+            apiKeyLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            headerRow.Children.Add(apiKeyLabel);
+            apiBlock.Children.Add(headerRow);
+
+            var inputRow = new Grid();
+            inputRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            inputRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            inputRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            apiKeyBox = new PasswordBox
+            {
+                Tag = $"AiAccountKeyBox:{provider}",
+                MinHeight = 30,
+                Padding = new Thickness(8, 4, 8, 4),
+                FontSize = 12,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                BorderThickness = new Thickness(1)
+            };
+            apiKeyBox.SetResourceReference(Control.BackgroundProperty, "SettingsControl");
+            apiKeyBox.SetResourceReference(Control.ForegroundProperty, "TextPrimary");
+            apiKeyBox.SetResourceReference(Control.BorderBrushProperty, "StrokeSubtle");
+            Grid.SetColumn(apiKeyBox, 0);
+            inputRow.Children.Add(apiKeyBox);
+
+            saveBtn = new Button
+            {
+                Tag = $"AiAccountKeySave:{provider}",
+                Padding = new Thickness(12, 5, 12, 5),
+                FontSize = 12,
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            saveBtn.SetResourceReference(StyleProperty, "SettingsButton");
+            Grid.SetColumn(saveBtn, 1);
+            inputRow.Children.Add(saveBtn);
+
+            clearBtn = new Button
+            {
+                Tag = $"AiAccountKeyClear:{provider}",
+                Padding = new Thickness(10, 5, 10, 5),
+                FontSize = 12,
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            clearBtn.SetResourceReference(StyleProperty, "SettingsGhostButton");
+            Grid.SetColumn(clearBtn, 2);
+            inputRow.Children.Add(clearBtn);
+
+            apiBlock.Children.Add(inputRow);
+            container.Children.Add(apiBlock);
+        }
+
+        void RefreshAccountUi()
+        {
+            var connected = AiUsageService.HasCredential(provider);
+            var hasSavedKey = AiUsageService.HasSavedSecret(provider);
+
+            accountLabel.Text = UiText.Get("AiUsageAccountLabel");
+            statusText.Text = UiText.Get(connected ? "AiUsageAccountConnected" : "AiUsageAccountSignInRequired");
+            statusText.SetResourceReference(TextBlock.ForegroundProperty, connected ? "WidgetAccent" : "TextSecondary");
+            statusDot.SetResourceReference(Border.BackgroundProperty, connected ? "WidgetAccent" : "TextMuted");
+            refreshBtn.Content = UiText.Get("AiUsageRefresh");
+
+            if (cliLabel is not null && cliHint is not null && signInBtn is not null)
+            {
+                var cmd = AiUsageService.CliSignInCommand(provider) ?? string.Empty;
+                cliLabel.Text = UiText.Get("AiUsageCliSignInLabel");
+                cliHint.Text = hasCliLaunchError ? UiText.Format("ErrorAiUsageSignIn", cmd) : cmd;
+                cliHint.SetResourceReference(TextBlock.ForegroundProperty, hasCliLaunchError ? "WidgetWarning" : "TextSecondary");
+                signInBtn.Content = UiText.Get("AiUsageStatusSignIn");
+            }
+
+            if (apiKeyLabel is not null && apiKeyHint is not null && saveBtn is not null && clearBtn is not null)
+            {
+                apiKeyLabel.Text = UiText.Get("AiUsageApiKeyLabel");
+                apiKeyHint.Text = UiText.Get(hasSavedKey ? "AiUsageApiKeySaved" : "AiUsageApiKeyPlaceholder");
+                apiKeyHint.SetResourceReference(TextBlock.ForegroundProperty, hasSavedKey ? "WidgetAccent" : "TextSecondary");
+                saveBtn.Content = UiText.Get("AiUsageApiKeySave");
+                clearBtn.Content = UiText.Get("AiUsageApiKeyClear");
+                clearBtn.IsEnabled = hasSavedKey;
+            }
+        }
+
+        refreshBtn.Click += (_, e) =>
+        {
+            e.Handled = true;
+            hasCliLaunchError = false;
+            AiUsageService.NotifyCredentialsChanged(provider);
+            RefreshAccountUi();
+        };
+
+        if (signInBtn is not null)
+        {
+            signInBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                hasCliLaunchError = AiUsageService.TryLaunchSignIn(provider) is not null;
+                RefreshAccountUi();
+            };
+        }
+
+        if (saveBtn is not null && clearBtn is not null && apiKeyBox is not null)
+        {
+            saveBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                var entered = apiKeyBox.Password;
+                if (string.IsNullOrWhiteSpace(entered)) return;
+                apiKeyBox.Clear();
+                AiUsageService.SaveApiKey(provider, entered.Trim());
+                RefreshAccountUi();
+            };
+
+            clearBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                apiKeyBox.Clear();
+                AiUsageService.SaveApiKey(provider, null);
+                RefreshAccountUi();
+            };
+        }
+
+        RefreshAccountUi();
+        _aiAccountRefreshers.Add(RefreshAccountUi);
+        panel.Children.Add(section);
     }
 
     private void AttachAiRingRow(Panel panel)

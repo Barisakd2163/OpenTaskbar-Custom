@@ -852,5 +852,14 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "AiUsageAccountLabel": "アカウント",
+  "AiUsageAccountConnected": "接続済み",
+  "AiUsageAccountSignInRequired": "サインインが必要",
+  "AiUsageCliSignInLabel": "CLI サインイン",
+  "AiUsageApiKeyLabel": "API キー",
+  "AiUsageApiKeyPlaceholder": "ローカルで暗号化 (Windows DPAPI)",
+  "AiUsageApiKeySaved": "保存済み (••••••••)",
+  "AiUsageApiKeySave": "保存",
+  "AiUsageApiKeyClear": "クリア"
 }

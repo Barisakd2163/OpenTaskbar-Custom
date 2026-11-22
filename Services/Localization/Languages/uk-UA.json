@@ -852,5 +852,14 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "AiUsageAccountLabel": "Обліковий запис",
+  "AiUsageAccountConnected": "Підключено",
+  "AiUsageAccountSignInRequired": "Потрібен вхід",
+  "AiUsageCliSignInLabel": "Вхід через CLI",
+  "AiUsageApiKeyLabel": "API-ключ",
+  "AiUsageApiKeyPlaceholder": "Зашифровано локально (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Збережено (••••••••)",
+  "AiUsageApiKeySave": "Зберегти",
+  "AiUsageApiKeyClear": "Очистити"
 }

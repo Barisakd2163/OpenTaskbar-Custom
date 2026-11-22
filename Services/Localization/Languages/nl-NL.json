@@ -852,5 +852,14 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "AiUsageAccountLabel": "Account",
+  "AiUsageAccountConnected": "Verbonden",
+  "AiUsageAccountSignInRequired": "Aanmelden vereist",
+  "AiUsageCliSignInLabel": "CLI-aanmelding",
+  "AiUsageApiKeyLabel": "API-sleutel",
+  "AiUsageApiKeyPlaceholder": "Lokaal versleuteld (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Opgeslagen (••••••••)",
+  "AiUsageApiKeySave": "Opslaan",
+  "AiUsageApiKeyClear": "Wissen"
 }

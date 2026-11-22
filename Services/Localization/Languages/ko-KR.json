@@ -852,5 +852,14 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "AiUsageAccountLabel": "계정",
+  "AiUsageAccountConnected": "연결됨",
+  "AiUsageAccountSignInRequired": "로그인 필요",
+  "AiUsageCliSignInLabel": "CLI 로그인",
+  "AiUsageApiKeyLabel": "API 키",
+  "AiUsageApiKeyPlaceholder": "로컬 암호화 저장 (Windows DPAPI)",
+  "AiUsageApiKeySaved": "저장됨 (••••••••)",
+  "AiUsageApiKeySave": "저장",
+  "AiUsageApiKeyClear": "지우기"
 }

@@ -852,5 +852,14 @@
   "ThemeFieldWidgetRadius": "Widget köşe yarıçapı",
   "ThemeFieldWidgetSelectedFill": "Widget seçili dolgusu",
   "ThemeFieldWidgetSelectedForeground": "Widget seçili metni",
-  "ThemeFieldWidgetSelectedStroke": "Widget seçili kenarlığı"
+  "ThemeFieldWidgetSelectedStroke": "Widget seçili kenarlığı",
+  "AiUsageAccountLabel": "Hesap",
+  "AiUsageAccountConnected": "Bağlı",
+  "AiUsageAccountSignInRequired": "Giriş gerekli",
+  "AiUsageCliSignInLabel": "CLI ile giriş",
+  "AiUsageApiKeyLabel": "API anahtarı",
+  "AiUsageApiKeyPlaceholder": "Yerel olarak şifrelenir (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Kaydedildi (••••••••)",
+  "AiUsageApiKeySave": "Kaydet",
+  "AiUsageApiKeyClear": "Temizle"
 }

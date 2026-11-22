@@ -852,5 +852,14 @@
   "ThemeFieldWidgetRadius": "Widget corner radius",
   "ThemeFieldWidgetSelectedFill": "Widget selected fill",
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
-  "ThemeFieldWidgetSelectedStroke": "Widget selected border"
+  "ThemeFieldWidgetSelectedStroke": "Widget selected border",
+  "AiUsageAccountLabel": "Account",
+  "AiUsageAccountConnected": "Connected",
+  "AiUsageAccountSignInRequired": "Sign in required",
+  "AiUsageCliSignInLabel": "CLI sign-in",
+  "AiUsageApiKeyLabel": "API key",
+  "AiUsageApiKeyPlaceholder": "Encrypted locally (Windows DPAPI)",
+  "AiUsageApiKeySaved": "Saved (••••••••)",
+  "AiUsageApiKeySave": "Save",
+  "AiUsageApiKeyClear": "Clear"
 }
