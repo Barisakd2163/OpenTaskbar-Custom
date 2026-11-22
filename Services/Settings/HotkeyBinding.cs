@@ -23,7 +23,6 @@ public readonly record struct HotkeyBinding(uint Modifiers, uint VirtualKey, str
     private const uint VkRWin = 0x5C;
     private const uint VkLShift = 0xA0;
     private const uint VkRMenu = 0xA5;
-    private const uint VkSpace = 0x20;
 
     public static bool TryParse(string? text, out HotkeyBinding binding)
     {
@@ -80,7 +79,6 @@ public readonly record struct HotkeyBinding(uint Modifiers, uint VirtualKey, str
 
         var canonicalKey = KeyInterop.KeyFromVirtualKey((int)vk);
         if (IsDisallowedKey(canonicalKey)) return false;
-        if (IsSystemReserved(modifiers, vk)) return false;
 
         var displayText = FormatDisplayText(modifiers, canonicalKey);
         binding = new HotkeyBinding(modifiers, vk, displayText);
@@ -122,8 +120,6 @@ public readonly record struct HotkeyBinding(uint Modifiers, uint VirtualKey, str
         if ((modifiers & ModifierKeys.Control) != 0) winModifiers |= ModControl;
         if ((modifiers & ModifierKeys.Alt) != 0) winModifiers |= ModAlt;
         if ((modifiers & ModifierKeys.Shift) != 0) winModifiers |= ModShift;
-
-        if (IsSystemReserved(winModifiers, vk)) return false;
 
         var displayText = FormatDisplayText(winModifiers, canonicalKey);
         binding = new HotkeyBinding(winModifiers, vk, displayText);
@@ -223,14 +219,6 @@ public readonly record struct HotkeyBinding(uint Modifiers, uint VirtualKey, str
         && vk != VkLWin
         && vk != VkRWin
         && !(vk >= VkLShift && vk <= VkRMenu);
-
-    /// <summary>
-    /// Windows reserves Alt+Space (the window system menu) and Ctrl+Alt+Del (secure desktop).
-    /// Registering them globally can steal OS behavior or silently fail, so reject them up front.
-    /// </summary>
-    private static bool IsSystemReserved(uint modifiers, uint vk) =>
-        (modifiers == ModAlt && vk == VkSpace)
-        || ((modifiers & (ModControl | ModAlt)) == (ModControl | ModAlt) && vk == 0x2E); // Ctrl+Alt+Del
 
     private static bool TryParseKeyToken(string token, out Key key)
     {
