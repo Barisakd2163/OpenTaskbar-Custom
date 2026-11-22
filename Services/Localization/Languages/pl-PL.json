@@ -331,8 +331,8 @@
   "SpeedTestRetry": "Ponów",
   "SpeedTestPrivacyNote": "Zorientowany na prywatność · Brak logów",
   "NetworkSettings": "Ustawienia sieci Windows",
-  "WidgetBluetoothBattery": "Baterie Bluetooth",
-  "WidgetBluetoothBatteryDescription": "Wyświetla poziom naładowania podłączonych urządzeń Bluetooth.",
+  "WidgetBluetoothBattery": "Baterie bezprzewodowe i Bluetooth",
+  "WidgetBluetoothBatteryDescription": "Wyświetla poziom naładowania baterii połączonych urządzeń bezprzewodowych i Bluetooth.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "Rozłączono",
   "WidgetAiUsage": "Użycie AI",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "Ładowanie",
+  "WirelessBatteryLastReading": "Ostatni odczyt {0} temu",
+  "WirelessBatteryRefresh": "Odśwież",
+  "WirelessBatterySpareDock": "Stacja: {0}%",
+  "WirelessBatteryLevelEmpty": "Pusta",
+  "WirelessBatteryLevelLow": "Niski",
+  "WirelessBatteryLevelMedium": "Średni",
+  "WirelessBatteryLevelFull": "Pełny"
 }

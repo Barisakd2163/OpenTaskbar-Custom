@@ -331,8 +331,8 @@
   "SpeedTestRetry": "再試行",
   "SpeedTestPrivacyNote": "プライバシー重視 · ログ保存なし",
   "NetworkSettings": "Windows ネットワーク設定",
-  "WidgetBluetoothBattery": "Bluetooth バッテリー",
-  "WidgetBluetoothBatteryDescription": "接続されている Bluetooth デバイスのバッテリー残量を表示します。",
+  "WidgetBluetoothBattery": "ワイヤレス・Bluetooth バッテリー",
+  "WidgetBluetoothBatteryDescription": "接続されているワイヤレスおよび Bluetooth デバイスのバッテリー残量を表示します。",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "未接続",
   "WidgetAiUsage": "AI 使用状況",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "充電中",
+  "WirelessBatteryLastReading": "{0}前の最終読み取り",
+  "WirelessBatteryRefresh": "更新",
+  "WirelessBatterySpareDock": "ドック: {0}%",
+  "WirelessBatteryLevelEmpty": "空",
+  "WirelessBatteryLevelLow": "低",
+  "WirelessBatteryLevelMedium": "中",
+  "WirelessBatteryLevelFull": "満"
 }

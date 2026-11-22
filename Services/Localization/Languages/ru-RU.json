@@ -331,8 +331,8 @@
   "SpeedTestRetry": "Повторить",
   "SpeedTestPrivacyNote": "Конфиденциально · Без сохранения логов",
   "NetworkSettings": "Параметры сети Windows",
-  "WidgetBluetoothBattery": "Батареи Bluetooth",
-  "WidgetBluetoothBatteryDescription": "Показывает уровень заряда подключенных устройств Bluetooth.",
+  "WidgetBluetoothBattery": "Батареи беспроводных и Bluetooth-устройств",
+  "WidgetBluetoothBatteryDescription": "Показывает уровень заряда подключенных беспроводных и Bluetooth-устройств.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "Отключено",
   "WidgetAiUsage": "Использование ИИ",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "Заряжается",
+  "WirelessBatteryLastReading": "Последнее чтение {0} назад",
+  "WirelessBatteryRefresh": "Обновить",
+  "WirelessBatterySpareDock": "Станция: {0}%",
+  "WirelessBatteryLevelEmpty": "Пусто",
+  "WirelessBatteryLevelLow": "Низкий",
+  "WirelessBatteryLevelMedium": "Средний",
+  "WirelessBatteryLevelFull": "Полный"
 }

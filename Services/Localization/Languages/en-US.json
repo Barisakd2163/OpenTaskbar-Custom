@@ -394,8 +394,8 @@
   "SpeedTestRetry": "Retry",
   "SpeedTestPrivacyNote": "Privacy-first · No logs stored",
   "NetworkSettings": "Windows Network Settings",
-  "WidgetBluetoothBattery": "Bluetooth Batteries",
-  "WidgetBluetoothBatteryDescription": "Displays battery levels for connected Bluetooth devices.",
+  "WidgetBluetoothBattery": "Wireless & Bluetooth Batteries",
+  "WidgetBluetoothBatteryDescription": "Displays battery levels for connected wireless and Bluetooth devices.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "Disconnected",
   "WidgetAiUsage": "AI usage",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetRadius": "Widget corner radius",
   "ThemeFieldWidgetSelectedFill": "Widget selected fill",
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
-  "ThemeFieldWidgetSelectedStroke": "Widget selected border"
+  "ThemeFieldWidgetSelectedStroke": "Widget selected border",
+  "WirelessBatteryCharging": "Charging",
+  "WirelessBatteryLastReading": "Last reading {0} ago",
+  "WirelessBatteryRefresh": "Refresh",
+  "WirelessBatterySpareDock": "Dock: {0}%",
+  "WirelessBatteryLevelEmpty": "Empty",
+  "WirelessBatteryLevelLow": "Low",
+  "WirelessBatteryLevelMedium": "Medium",
+  "WirelessBatteryLevelFull": "Full"
 }

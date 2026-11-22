@@ -36,6 +36,7 @@ checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
 checks += SecondaryDockAndInteropChecks.Run();
 checks += ApplicationJumpListChecks.Run();
+checks += WirelessBatteryChecks.Run(headless);
 Console.WriteLine($"{checks} behavior checks passed.");
 
 void Check(bool condition, string name)

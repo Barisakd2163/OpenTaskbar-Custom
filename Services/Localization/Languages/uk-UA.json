@@ -331,8 +331,8 @@
   "SpeedTestRetry": "Спробувати знову",
   "SpeedTestPrivacyNote": "Конфіденційно · Без збереження логів",
   "NetworkSettings": "Параметри мережі Windows",
-  "WidgetBluetoothBattery": "Батареї Bluetooth",
-  "WidgetBluetoothBatteryDescription": "Показує рівень заряду підключених пристроїв Bluetooth.",
+  "WidgetBluetoothBattery": "Батареї бездротових і Bluetooth-пристроїв",
+  "WidgetBluetoothBatteryDescription": "Показує рівень заряду підключених бездротових і Bluetooth-пристроїв.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "Відключено",
   "WidgetAiUsage": "Використання ШІ",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "Заряджається",
+  "WirelessBatteryLastReading": "Останнє зчитування {0} тому",
+  "WirelessBatteryRefresh": "Оновити",
+  "WirelessBatterySpareDock": "Станція: {0}%",
+  "WirelessBatteryLevelEmpty": "Порожньо",
+  "WirelessBatteryLevelLow": "Низький",
+  "WirelessBatteryLevelMedium": "Середній",
+  "WirelessBatteryLevelFull": "Повний"
 }

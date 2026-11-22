@@ -331,8 +331,8 @@
   "SpeedTestRetry": "다시 시도",
   "SpeedTestPrivacyNote": "개인정보 보호 · 로그 미저장",
   "NetworkSettings": "Windows 네트워크 설정",
-  "WidgetBluetoothBattery": "Bluetooth 배터리",
-  "WidgetBluetoothBatteryDescription": "연결된 Bluetooth 기기의 배터리 잔량을 표시합니다.",
+  "WidgetBluetoothBattery": "무선 및 Bluetooth 배터리",
+  "WidgetBluetoothBatteryDescription": "연결된 무선 및 Bluetooth 기기의 배터리 잔량을 표시합니다.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "연결 안 됨",
   "WidgetAiUsage": "AI 사용량",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "충전 중",
+  "WirelessBatteryLastReading": "마지막 측정 {0} 전",
+  "WirelessBatteryRefresh": "새로 고침",
+  "WirelessBatterySpareDock": "독: {0}%",
+  "WirelessBatteryLevelEmpty": "방전",
+  "WirelessBatteryLevelLow": "낮음",
+  "WirelessBatteryLevelMedium": "보통",
+  "WirelessBatteryLevelFull": "가득 참"
 }

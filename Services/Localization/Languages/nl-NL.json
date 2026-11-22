@@ -331,8 +331,8 @@
   "SpeedTestRetry": "Opnieuw proberen",
   "SpeedTestPrivacyNote": "Privacygericht · Geen logs",
   "NetworkSettings": "Windows-netwerkinstellingen",
-  "WidgetBluetoothBattery": "Bluetooth-batterijen",
-  "WidgetBluetoothBatteryDescription": "Toont het batterijniveau van verbonden Bluetooth-apparaten.",
+  "WidgetBluetoothBattery": "Draadloze & Bluetooth-batterijen",
+  "WidgetBluetoothBatteryDescription": "Toont het batterijniveau van verbonden draadloze en Bluetooth-apparaten.",
   "BluetoothNoDevicesAbbr": "—",
   "BluetoothDisconnected": "Niet verbonden",
   "WidgetAiUsage": "AI-gebruik",
@@ -854,5 +854,13 @@
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
   "ThemeFieldWidgetSelectedStroke": "Widget selected border",
   "HardwareAcceleration": "Hardware acceleration",
-  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply.",
+  "WirelessBatteryCharging": "Opladen",
+  "WirelessBatteryLastReading": "Laatste meting {0} geleden",
+  "WirelessBatteryRefresh": "Vernieuwen",
+  "WirelessBatterySpareDock": "Dock: {0}%",
+  "WirelessBatteryLevelEmpty": "Leeg",
+  "WirelessBatteryLevelLow": "Laag",
+  "WirelessBatteryLevelMedium": "Gemiddeld",
+  "WirelessBatteryLevelFull": "Vol"
 }
