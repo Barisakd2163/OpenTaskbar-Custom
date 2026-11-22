@@ -408,6 +408,13 @@ public partial class MainWindow
 
     private async Task CheckForUpdatesAsync(bool userInitiated)
     {
+        if (!UpdateChecker.SupportsInAppUpdates)
+        {
+            if (userInitiated)
+                ReportResult(ShellShortcuts.OpenUri(AppIdentity.StoreUpdatesUri));
+            return;
+        }
+
         _updateCheck?.Cancel();
         var check = new CancellationTokenSource();
         _updateCheck = check;

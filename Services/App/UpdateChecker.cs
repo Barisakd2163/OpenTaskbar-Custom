@@ -19,6 +19,9 @@ public static class UpdateChecker
 
     public static Version CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0);
 
+    /// <summary>False when installed from the Microsoft Store (MSIX), where Store manages updates per Policy 10.2.5.</summary>
+    public static bool SupportsInAppUpdates => !AppIdentity.IsPackaged;
+
     public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null, string? Sha256 = null);
 
     private static readonly HttpClient ApiClient = CreateApiClient();
@@ -42,6 +45,7 @@ public static class UpdateChecker
     /// <summary>The newer release (null when up to date); <c>Checked</c> is false when GitHub could not be reached.</summary>
     public static async Task<(Release? Release, bool Checked)> FindNewerAsync(CancellationToken cancellation)
     {
+        if (!SupportsInAppUpdates) return (null, true);
         try
         {
             using var response = await ApiClient.GetAsync($"https://api.github.com/repos/{Repository}/releases/latest", cancellation);
@@ -118,6 +122,11 @@ public static class UpdateChecker
         Release release,
         CancellationToken cancellation = default)
     {
+        if (!SupportsInAppUpdates)
+        {
+            return (false, "UpdateFailed", null);
+        }
+
         var targetPath = GetExecutablePath();
         if (string.IsNullOrEmpty(targetPath) || !File.Exists(targetPath))
         {

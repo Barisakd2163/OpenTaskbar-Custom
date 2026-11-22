@@ -187,6 +187,12 @@ internal static class TaskbarRecoveryWatchdog
     {
         try
         {
+            // When packaged (MSIX) or deployed alongside OpenTaskbar.exe, run the signed local watchdog
+            // directly instead of extracting an executable into %LOCALAPPDATA%.
+            var appDir = Path.GetDirectoryName(mainExecutablePath) ?? string.Empty;
+            var localExe = Path.Combine(appDir, "OpenTaskbarWatchdog.exe");
+            if (File.Exists(localExe)) return localExe;
+
             var targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar");
             Directory.CreateDirectory(targetDir);
             var watchdogExe = Path.Combine(targetDir, "OpenTaskbarWatchdog.exe");
@@ -231,10 +237,6 @@ internal static class TaskbarRecoveryWatchdog
                 }
                 if (File.Exists(watchdogExe)) return watchdogExe;
             }
-
-            var appDir = Path.GetDirectoryName(mainExecutablePath) ?? string.Empty;
-            var localExe = Path.Combine(appDir, "OpenTaskbarWatchdog.exe");
-            if (File.Exists(localExe)) return localExe;
 
             return mainExecutablePath;
         }
