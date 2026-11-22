@@ -117,6 +117,9 @@ jobs:
       id-token: write
       attestations: write
       artifact-metadata: write
+    env:
+      # 'secrets' is not available in step-level `if`; expose it as a job env instead.
+      VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
 
     steps:
       - name: Download release assets
@@ -150,14 +153,12 @@ jobs:
           subject-checksums: release/checksums.txt
 
       - name: Optional VirusTotal scan (report only)
-        if: ${{ secrets.VIRUSTOTAL_API_KEY != '' }}
+        if: ${{ env.VIRUSTOTAL_API_KEY != '' }}
         shell: pwsh
-        env:
-          VT_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           foreach ($file in Get-ChildItem -LiteralPath release -Filter 'OpenTaskbar-*.zip' -File) {
             try {
-              $response = & curl -sS -F "file=@$($file.FullName)" -H "x-apikey: $env:VT_KEY" `
+              $response = & curl -sS -F "file=@$($file.FullName)" -H "x-apikey: $env:VIRUSTOTAL_API_KEY" `
                 'https://www.virustotal.com/api/v3/files' | ConvertFrom-Json
               Write-Host "Submitted $($file.Name) to VirusTotal: $($response.data.id)"
             } catch {
