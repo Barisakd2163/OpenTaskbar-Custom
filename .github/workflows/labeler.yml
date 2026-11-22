@@ -13,6 +13,8 @@ permissions:
 
 jobs:
   label:
+    # Fork PRs receive a read-only GITHUB_TOKEN on pull_request events, so skip instead of failing with 403.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/labeler@v7

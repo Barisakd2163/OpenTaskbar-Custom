@@ -3,6 +3,11 @@ name: Dependency Review
 on:
   pull_request:
     branches: [master]
+    paths:
+      - '**/*.csproj'
+      - 'Directory.Packages.props'
+      - '**/packages.lock.json'
+      - '.github/workflows/**'
 
 permissions:
   contents: read
