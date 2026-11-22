@@ -86,20 +86,7 @@ public partial class SettingsWindow
         var hasText = !string.IsNullOrEmpty(text);
         SettingsSearchPlaceholder.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
         SettingsSearchClearButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
-        // Re-indexing the whole settings tree and rebuilding result templates on every keystroke
-        // is expensive; coalesce rapid typing into one update ~120ms after the last character.
-        _searchDebounceTimer.Stop();
-        _searchDebounceTimer.Interval = TimeSpan.FromMilliseconds(120);
-        _searchDebounceTimer.Tick -= SearchDebounce_Tick;
-        _searchDebounceTimer.Tick += SearchDebounce_Tick;
-        _searchDebounceTimer.Start();
-    }
-
-    private void SearchDebounce_Tick(object? sender, EventArgs e)
-    {
-        _searchDebounceTimer.Stop();
-        _searchDebounceTimer.Tick -= SearchDebounce_Tick;
-        ApplySettingsSearch(SettingsSearchBox.Text);
+        ApplySettingsSearch(text);
     }
 
     private void SettingsSearchClearButton_Click(object sender, RoutedEventArgs e)

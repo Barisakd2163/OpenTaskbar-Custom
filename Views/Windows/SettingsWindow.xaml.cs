@@ -33,8 +33,6 @@ public partial class SettingsWindow : Window
     private readonly List<OpenTaskbar.Widgets.DockWidget> _livePreviewWidgets = [];
     private DispatcherTimer? _livePreviewTimer;
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    // Settings search re-indexes the whole tree; debounce keystrokes so typing stays smooth.
-    private readonly DispatcherTimer _searchDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private bool _startupEnabled;
     private bool _startupAvailable;
     private DockSettings _applied;
