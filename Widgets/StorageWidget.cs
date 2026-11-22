@@ -161,22 +161,22 @@ public sealed class StorageWidget : DockWidget
             var letter = new TextBlock
             {
                 Text = drive.Letter,
-                FontSize = 11.5,
-                FontWeight = FontWeights.Bold,
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 4, 0)
             };
-            letter.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+            letter.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
 
             var capacity = new TextBlock
             {
                 Text = capacityText,
-                FontSize = 11,
-                FontWeight = FontWeights.Medium,
+                FontSize = 11.5,
+                FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
                 Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
             };
-            capacity.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            capacity.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
 
             entry.Children.Add(letter);
             entry.Children.Add(capacity);

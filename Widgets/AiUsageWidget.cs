@@ -505,7 +505,7 @@ public sealed class AiUsageWidget : DockWidget
             sessionBar.Children.Add(sessionTrack);
             sessionBar.Children.Add(sessionFill);
 
-            var sessionReset = Text("—", 9, "TextSecondary");
+            var sessionReset = Text("—", 9, "TextPrimary");
             sessionReset.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(sessionReset, FontNumeralAlignment.Tabular);
 
@@ -531,7 +531,7 @@ public sealed class AiUsageWidget : DockWidget
             weeklyBar.Children.Add(weeklyTrack);
             weeklyBar.Children.Add(weeklyFill);
 
-            var weeklyReset = Text("—", 9, "TextSecondary");
+            var weeklyReset = Text("—", 9, "TextPrimary");
             weeklyReset.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(weeklyReset, FontNumeralAlignment.Tabular);
 
@@ -657,8 +657,10 @@ public sealed class AiUsageWidget : DockWidget
 
     private void UpdateCard(AiUsageWindow? main, bool stale, string toolTip)
     {
-        var foreground = stale ? "TextMuted" : "TextPrimary";
-        var secondary = stale ? "TextMuted" : "TextSecondary";
+        // Keep stale widget text legible on glass: step primary text down to TextSecondary rather than
+        // 50%-alpha TextMuted so dock text opacity stays uniform across all widgets.
+        var foreground = stale ? "TextSecondary" : "TextPrimary";
+        const string secondary = "TextSecondary";
         _card.Name.SetResourceReference(TextBlock.ForegroundProperty, foreground);
         if (!stale && _provider == AiProviders.Claude) _card.Logo.Fill = ClaudeBrandBrush;
         else if (!stale && _provider == AiProviders.DeepSeek) _card.Logo.Fill = DeepSeekBrandBrush;
@@ -672,11 +674,11 @@ public sealed class AiUsageWidget : DockWidget
         }
         else if (_card.OpenCode is { } oc)
         {
-            UpdateOpenCodeCard(oc, secondary);
+            UpdateOpenCodeCard(oc, foreground, secondary);
         }
         else if (_card.Simple is { } simple)
         {
-            UpdateSimpleInlineCard(simple, main, secondary);
+            UpdateSimpleInlineCard(simple, main, foreground, secondary);
         }
         else if (_card.Bars is { } bars)
         {
@@ -709,7 +711,7 @@ public sealed class AiUsageWidget : DockWidget
             {
                 bars.SessionReset.Text = "—";
             }
-            bars.SessionReset.SetResourceReference(TextBlock.ForegroundProperty, secondary);
+            bars.SessionReset.SetResourceReference(TextBlock.ForegroundProperty, foreground);
 
             var wUsed = longWindow?.Used ?? 0;
             bars.WeeklyFill.Width = Math.Max(0, Math.Min(38, 38 * wUsed));
@@ -723,7 +725,7 @@ public sealed class AiUsageWidget : DockWidget
             {
                 bars.WeeklyReset.Text = "—";
             }
-            bars.WeeklyReset.SetResourceReference(TextBlock.ForegroundProperty, secondary);
+            bars.WeeklyReset.SetResourceReference(TextBlock.ForegroundProperty, foreground);
         }
         else if (_card.Ring is { } ring)
         {
@@ -734,7 +736,7 @@ public sealed class AiUsageWidget : DockWidget
         }
     }
 
-    private void UpdateOpenCodeCard(OpenCodeQuotaBars oc, string secondary)
+    private void UpdateOpenCodeCard(OpenCodeQuotaBars oc, string foreground, string secondary)
     {
         var windows = _report?.Windows ?? [];
         var hourly = windows.FirstOrDefault(w => w.LabelKey == "AiUsageSession" || (w.WindowSeconds is > 0 and <= 21600));
@@ -749,6 +751,8 @@ public sealed class AiUsageWidget : DockWidget
         {
             lbl.Text = text;
             lbl.SetResourceReference(TextBlock.ForegroundProperty, secondary);
+            pct.SetResourceReference(TextBlock.ForegroundProperty, foreground);
+            reset.SetResourceReference(TextBlock.ForegroundProperty, secondary);
             if (win is null)
             {
                 pct.Text = "—";
@@ -775,8 +779,9 @@ public sealed class AiUsageWidget : DockWidget
         }
     }
 
-    private void UpdateSimpleInlineCard(SimpleInlineQuota simple, AiUsageWindow? main, string secondary)
+    private void UpdateSimpleInlineCard(SimpleInlineQuota simple, AiUsageWindow? main, string foreground, string secondary)
     {
+        simple.ValueText.SetResourceReference(TextBlock.ForegroundProperty, foreground);
         if (_provider == AiProviders.Copilot)
         {
             if (main is not null)
@@ -867,11 +872,12 @@ public sealed class AiUsageWidget : DockWidget
     {
         agy.Container.Children.Clear();
         agy.Columns.Clear();
-        var secondary = stale ? "TextMuted" : "TextSecondary";
+        var foreground = stale ? "TextSecondary" : "TextPrimary";
+        const string secondary = "TextSecondary";
 
         if (_report is not { } report || report.Windows.Count == 0)
         {
-            BuildAntigravityPlaceholder(agy, secondary);
+            BuildAntigravityPlaceholder(agy, foreground, secondary);
             return;
         }
 
@@ -887,7 +893,7 @@ public sealed class AiUsageWidget : DockWidget
             for (var i = 0; i < groups.Count; i++)
             {
                 if (i > 0) agy.Container.Children.Add(CreateVerticalDivider());
-                var col = BuildAntigravityGroupColumn(groups[i].Key, groups[i].ToList(), secondary);
+                var col = BuildAntigravityGroupColumn(groups[i].Key, groups[i].ToList(), foreground, secondary);
                 agy.Columns.Add(col);
                 agy.Container.Children.Add(col.Element);
             }
@@ -897,43 +903,43 @@ public sealed class AiUsageWidget : DockWidget
             for (var i = 0; i < report.Windows.Count; i++)
             {
                 if (i > 0) agy.Container.Children.Add(CreateVerticalDivider());
-                var col = BuildAntigravityPoolColumn(report.Windows[i], secondary);
+                var col = BuildAntigravityPoolColumn(report.Windows[i], foreground, secondary);
                 agy.Columns.Add(col);
                 agy.Container.Children.Add(col.Element);
             }
         }
     }
 
-    private void BuildAntigravityPlaceholder(AntigravityCard agy, string secondary)
+    private void BuildAntigravityPlaceholder(AntigravityCard agy, string foreground, string secondary)
     {
-        var col1 = BuildAntigravityPlaceholderColumn("Gemini", secondary, hasSession: true);
+        var col1 = BuildAntigravityPlaceholderColumn("Gemini", foreground, secondary, hasSession: true);
         agy.Columns.Add(col1);
         agy.Container.Children.Add(col1.Element);
 
         agy.Container.Children.Add(CreateVerticalDivider());
 
-        var col2 = BuildAntigravityPlaceholderColumn("Claude", secondary, hasSession: false);
+        var col2 = BuildAntigravityPlaceholderColumn("Claude", foreground, secondary, hasSession: false);
         agy.Columns.Add(col2);
         agy.Container.Children.Add(col2.Element);
     }
 
-    private AntigravityColumn BuildAntigravityPlaceholderColumn(string label, string secondary, bool hasSession = true)
+    private AntigravityColumn BuildAntigravityPlaceholderColumn(string label, string foreground, string secondary, bool hasSession = true)
     {
         var slots = new List<AntigravityQuotaSlot>();
         var rows = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
 
         if (hasSession)
         {
-            var (sRow, sSlot) = CreateAntigravityBarRow(UiText.Get("AiUsageSessionShort"), null, false, secondary, true);
+            var (sRow, sSlot) = CreateAntigravityBarRow(UiText.Get("AiUsageSessionShort"), null, false, foreground, secondary, true);
             rows.Children.Add(sRow);
             slots.Add(sSlot);
         }
 
-        var (wRow, wSlot) = CreateAntigravityBarRow(UiText.Get("AiUsageWeeklyShort"), null, true, secondary, false);
+        var (wRow, wSlot) = CreateAntigravityBarRow(UiText.Get("AiUsageWeeklyShort"), null, true, foreground, secondary, false);
         rows.Children.Add(wRow);
         slots.Add(wSlot);
 
-        var header = Text(label, 9.5, secondary);
+        var header = Text(label, 9.5, foreground);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
         header.Margin = new Thickness(0, 0, 0, 1.5);
@@ -951,7 +957,7 @@ public sealed class AiUsageWidget : DockWidget
     }
 
     private (StackPanel Row, AntigravityQuotaSlot Slot) CreateAntigravityBarRow(
-        string label, AiUsageWindow? window, bool isWeekly, string secondary, bool hasBottomMargin)
+        string label, AiUsageWindow? window, bool isWeekly, string foreground, string secondary, bool hasBottomMargin)
     {
         var lbl = Text(label, 9, secondary);
         lbl.FontWeight = FontWeights.SemiBold;
@@ -1004,7 +1010,7 @@ public sealed class AiUsageWidget : DockWidget
             resetStr = "—";
         }
 
-        var resetText = Text(resetStr, 8.5, secondary);
+        var resetText = Text(resetStr, 8.5, foreground);
         resetText.VerticalAlignment = VerticalAlignment.Center;
         Typography.SetNumeralAlignment(resetText, FontNumeralAlignment.Tabular);
 
@@ -1021,7 +1027,7 @@ public sealed class AiUsageWidget : DockWidget
         return (row, new AntigravityQuotaSlot(fill, resetText, window?.ResetsAt, isWeekly));
     }
 
-    private AntigravityColumn BuildAntigravityGroupColumn(string group, List<AiUsageWindow> windows, string secondary)
+    private AntigravityColumn BuildAntigravityGroupColumn(string group, List<AiUsageWindow> windows, string foreground, string secondary)
     {
         var slots = new List<AntigravityQuotaSlot>();
         var rows = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
@@ -1036,12 +1042,12 @@ public sealed class AiUsageWidget : DockWidget
             var isWeekly = win.LabelKey == "AiUsageWeekly" || (win.WindowSeconds is { } s && s >= 604800);
             var isLast = i == orderedWindows.Count - 1;
             var shortLabel = UiText.Get(isWeekly ? "AiUsageWeeklyShort" : "AiUsageSessionShort");
-            var (row, slot) = CreateAntigravityBarRow(shortLabel, win, isWeekly, secondary, !isLast);
+            var (row, slot) = CreateAntigravityBarRow(shortLabel, win, isWeekly, foreground, secondary, !isLast);
             rows.Children.Add(row);
             slots.Add(slot);
         }
 
-        var header = Text(AntigravityGroupHeader(group), 9.5, secondary);
+        var header = Text(AntigravityGroupHeader(group), 9.5, foreground);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
         header.Margin = new Thickness(0, 0, 0, 1.5);
@@ -1058,7 +1064,7 @@ public sealed class AiUsageWidget : DockWidget
         return new(colPanel, slots);
     }
 
-    private AntigravityColumn BuildAntigravityPoolColumn(AiUsageWindow window, string secondary)
+    private AntigravityColumn BuildAntigravityPoolColumn(AiUsageWindow window, string foreground, string secondary)
     {
         var slots = new List<AntigravityQuotaSlot>();
         var colPanel = new StackPanel
@@ -1069,7 +1075,7 @@ public sealed class AiUsageWidget : DockWidget
         };
 
         var label = AntigravityPoolHeader(window.LabelKey);
-        var header = Text(label, 9.5, secondary);
+        var header = Text(label, 9.5, foreground);
         header.FontWeight = FontWeights.SemiBold;
         header.HorizontalAlignment = HorizontalAlignment.Left;
         header.Margin = new Thickness(0, 0, 0, 1.5);
@@ -1122,7 +1128,7 @@ public sealed class AiUsageWidget : DockWidget
             resetStr = "—";
         }
 
-        var resetText = Text(resetStr, 8.5, secondary);
+        var resetText = Text(resetStr, 8.5, foreground);
         resetText.VerticalAlignment = VerticalAlignment.Center;
         Typography.SetNumeralAlignment(resetText, FontNumeralAlignment.Tabular);
 

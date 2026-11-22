@@ -21,7 +21,7 @@
             <TextBlock x:Name="InputDeviceText" Style="{StaticResource WidgetText}" FontSize="12" FontWeight="SemiBold"
                        MaxWidth="82" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
             <ContentControl x:Name="ChevronIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconChevronDown}"
-                            Width="13" Height="13" VerticalAlignment="Center" Margin="7,0,0,0" Opacity="0.75"
+                            Width="13" Height="13" VerticalAlignment="Center" Margin="7,0,0,0"
                             Foreground="{DynamicResource TextSecondary}" />
         </StackPanel>
     </Button>

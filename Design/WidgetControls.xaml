@@ -358,7 +358,7 @@
                         </TextBlock.Style>
                     </TextBlock>
                     <TextBlock FontSize="11" VerticalAlignment="Center" Margin="2,0,0,0"
-                               Foreground="{DynamicResource TextMuted}" Text="—" />
+                               Foreground="{DynamicResource TextSecondary}" Text="—" />
                 </StackPanel>
             </Border>
             <!-- Focus (Pomodoro) widget taskbar preview -->

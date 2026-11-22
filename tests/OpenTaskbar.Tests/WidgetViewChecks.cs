@@ -170,6 +170,20 @@ internal static class WidgetViewChecks
                   && batteryBorders.Any(b => ReferenceEquals(b.Background, app.FindResource("WidgetPressedMaterial"))),
                 "BatteryWidget must render both WidgetHoverMaterial and WidgetPressedMaterial overlays.");
 
+            // Uniform widget text hierarchy: primary values must use full-opacity TextPrimary, never dimmed TextMuted/Opacity < 1.
+            var storageWidget = new OpenTaskbar.Widgets.StorageWidget { Visibility = Visibility.Visible };
+            storageWidget.ApplyDrives([new OpenTaskbar.Widgets.DriveStorageInfo("C:", 128L * 1024 * 1024 * 1024, 512L * 1024 * 1024 * 1024)]);
+            Layout(storageWidget);
+            var storageTexts = Descendants<TextBlock>(storageWidget).ToList();
+            Check(storageTexts.Any(t => t.Text.Contains("GB", StringComparison.Ordinal) && ReferenceEquals(t.Foreground, app.FindResource("TextPrimary")))
+                  && storageTexts.All(t => t.Opacity >= 1.0),
+                "StorageWidget must render capacity values in full-opacity TextPrimary.");
+
+            var audioWidget = new OpenTaskbar.Widgets.AudioWidget { Visibility = Visibility.Visible };
+            Layout(audioWidget);
+            Check(Math.Abs(RequiredName<ContentControl>(audioWidget, "ChevronIcon").Opacity - 1.0) < 0.001,
+                "AudioWidget ChevronIcon must not dim below full TextSecondary opacity.");
+
             var interfaceFont = (FontFamily)app.FindResource("InterfaceFont");
             Check(interfaceFont.Source.Contains("#Inter", StringComparison.OrdinalIgnoreCase),
                 "The UI must use the embedded Inter font instead of a machine-dependent system font.");
