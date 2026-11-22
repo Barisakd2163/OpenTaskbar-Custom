@@ -33,6 +33,8 @@ public partial class SettingsWindow : Window
     private readonly List<OpenTaskbar.Widgets.DockWidget> _livePreviewWidgets = [];
     private DispatcherTimer? _livePreviewTimer;
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    // Settings search re-indexes the whole tree; debounce keystrokes so typing stays smooth.
+    private readonly DispatcherTimer _searchDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private bool _startupEnabled;
     private bool _startupAvailable;
     private DockSettings _applied;
@@ -103,6 +105,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            ClearSearchHighlight();
             RemoveHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
             RemoveHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
             _autoSaveTimer.Stop();
@@ -311,6 +314,21 @@ public partial class SettingsWindow : Window
             RefreshWidgetPreviews();
             foreach (var group in _widgetGroups) group.RefreshLabel();
             UpdateHotkeyControls();
+            RefreshSettingsSearchIfActive();
+        }
+        if (!_isSaving && !ReferenceEquals(_preferences.Current, _applied))
+        {
+            _autoSaveTimer.Stop();
+            var wasInitializing = _initializing;
+            _initializing = true;
+            try
+            {
+                LoadAllSelections(_preferences.Current);
+            }
+            finally
+            {
+                _initializing = wasInitializing;
+            }
         }
         ThemeManager.Apply(_preferences.Current.Theme, _preferences.Current);
         LoadSurfaceStyles(_preferences.Current);
@@ -1051,6 +1069,10 @@ public partial class SettingsWindow : Window
         }
         if (!_initializing && ReferenceEquals(e.OriginalSource, SettingsTabs))
         {
+            if (!string.IsNullOrWhiteSpace(SettingsSearchBox.Text))
+            {
+                SettingsSearchBox.Text = string.Empty;
+            }
             UpdateWidgetPreviewRefresh();
             if (_preferences.Current.EffectiveAnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
             {
@@ -2387,6 +2409,13 @@ public partial class SettingsWindow : Window
         }
 
         if (e.Key != Key.Escape) return;
+        if (!string.IsNullOrEmpty(SettingsSearchBox.Text)
+            && (SettingsSearchBox.IsKeyboardFocusWithin || SettingsSearchOverlay.Visibility == Visibility.Visible))
+        {
+            SettingsSearchBox.Text = string.Empty;
+            e.Handled = true;
+            return;
+        }
         e.Handled = true;
         Close();
     }

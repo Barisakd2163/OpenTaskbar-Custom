@@ -126,7 +126,7 @@ internal static class WidgetViewChecks
             var downInner = new System.Windows.Input.MouseButtonEventArgs(
                 System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
             {
-                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent,
                 Source = innerButton
             };
             innerButton.RaiseEvent(downInner);
@@ -136,7 +136,7 @@ internal static class WidgetViewChecks
             var downDetails = new System.Windows.Input.MouseButtonEventArgs(
                 System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
             {
-                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent,
                 Source = propagatingButton
             };
             propagatingButton.RaiseEvent(downDetails);
@@ -146,7 +146,7 @@ internal static class WidgetViewChecks
             var upDetails = new System.Windows.Input.MouseButtonEventArgs(
                 System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
             {
-                RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseUpEvent,
                 Source = propagatingButton
             };
             propagatingButton.RaiseEvent(upDetails);

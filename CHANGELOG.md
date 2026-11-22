@@ -2,9 +2,13 @@
 
 ## Unreleased
 
+<<<<<<< HEAD
 - Added a one-click Focus Mode toggle in the dock/tray context menu and Preferences that hides notification badges and widgets, pauses widget polling, and disables animations without overwriting saved settings.
 - Added combined `.otbackup` archives for exporting and importing settings, pinned apps, and the active custom theme, with backup validation and optional theme restoration.
 - Added custom keyboard shortcut recording with conflict detection and per-shortcut reset for dock focus and launcher/search.
+=======
+- Added live search in the Settings title bar to filter pages and jump directly to matching setting rows with brief highlighting.
+>>>>>>> pr98
 - Added full dock profiles for switching, creating, renaming, and deleting profiles, with widgets, order, width, theme, hotkeys, and auto-hide saved per profile.
 - Fixed the media widget volume slider changing the system/master output volume instead of the playing app's volume. The widget now resolves the WASAPI audio session for the current media session (via its AppUserModelId) and controls that app's per-app volume and mute. When no matching app session can be found, the volume control is disabled rather than falling back to the master endpoint, so the headset/system volume is never changed unexpectedly.
 - Settings UI consistency pass: unified input metrics (34 DIP controls, one border/radius vocabulary), removed per-row padding overrides, replaced the auto-hide radio list and the side-by-side backup/theme-pack button rows with dropdowns, and gave the sidebar a deliberate header/nav hierarchy. Scrollbars are now thin rounded pills. Widget catalog hover paints only the outer card surface (inner preview no longer changes color or carries top corner radii).
