@@ -361,57 +361,57 @@ internal static class WidgetViewChecks
             }
 
             foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
-            foreach (var language in new[] { AppLanguage.Turkish, AppLanguage.English })
-            {
-                ThemeManager.Apply(theme);
-                UiText.Current.SetLanguage(language);
-                var options = new DockWidgetService(clock).CreateOptions([], []);
-                foreach (var option in options)
+                foreach (var language in new[] { AppLanguage.Turkish, AppLanguage.English })
                 {
-                    option.Preview.Value = option.Preview is CountdownDockWidget ? string.Empty : "00:00:00";
-                    var card = new WidgetCatalogItem { DataContext = option };
-                    Layout(card);
-                    var expand = RequiredName<Button>(card, "PreviewButton");
-                    var install = RequiredName<Button>(card, "InstallButton");
-                    var preview = Descendants<ContentControl>(card)
-                        .Single(control => ReferenceEquals(control.Content, option.NativePreview));
-                    Check(!preview.IsHitTestVisible
-                        && System.Windows.Input.KeyboardNavigation.GetTabNavigation(preview)
-                            == System.Windows.Input.KeyboardNavigationMode.None,
-                        "Expanded previews must remain non-interactive.");
-                    Check(AutomationProperties.GetName(expand) == option.Label,
-                        "Expandable widget rows must announce the widget label.");
-                    Check(!Descendants<TextBlock>(card).Any(text => text.Text == option.Description),
-                        "Compact rows must omit verbose widget descriptions.");
-                    var expansions = 0;
-                    card.SettingsRequested += (_, _) => expansions++;
-                    expand.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(expansions == 1 && !option.IsInstalled,
-                        "Expanding a widget must not automatically install it.");
-                    var installations = 0;
-                    card.InstallationRequested += (_, _) => installations++;
-                    install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(installations == 1 && !option.IsInstalled,
-                        "The dedicated management action must request installation.");
-                    option.UpdateText("Localized widget", "Localized description");
-                    Check(option.Preview.Label == option.Label, "Preview labels must follow catalog localization.");
-                }
-
-                foreach (var width in new[] { 292d, 500d, 720d })
-                {
-                    var gallery = new OpenTaskbar.Views.ExpandableWidgetGrid { Width = width, MinItemWidth = 270 };
-                    foreach (var option in options) gallery.Children.Add(new WidgetCatalogItem { DataContext = option });
-                    Layout(gallery);
-                    Check(gallery.Children.Cast<FrameworkElement>().All(item =>
+                    ThemeManager.Apply(theme);
+                    UiText.Current.SetLanguage(language);
+                    var options = new DockWidgetService(clock).CreateOptions([], []);
+                    foreach (var option in options)
                     {
-                        var point = item.TranslatePoint(new Point(), gallery);
-                        return point.X >= 0 && point.X + item.ActualWidth <= width;
-                    }), "The widget catalogue must avoid horizontal overflow.");
-                    var second = (FrameworkElement)gallery.Children[1];
-                    Check(second.TranslatePoint(new Point(), gallery).Y > 0,
-                        "The widget catalogue must use a single full-width column for every category.");
+                        option.Preview.Value = option.Preview is CountdownDockWidget ? string.Empty : "00:00:00";
+                        var card = new WidgetCatalogItem { DataContext = option };
+                        Layout(card);
+                        var expand = RequiredName<Button>(card, "PreviewButton");
+                        var install = RequiredName<Button>(card, "InstallButton");
+                        var preview = Descendants<ContentControl>(card)
+                            .Single(control => ReferenceEquals(control.Content, option.NativePreview));
+                        Check(!preview.IsHitTestVisible
+                            && System.Windows.Input.KeyboardNavigation.GetTabNavigation(preview)
+                                == System.Windows.Input.KeyboardNavigationMode.None,
+                            "Expanded previews must remain non-interactive.");
+                        Check(AutomationProperties.GetName(expand) == option.Label,
+                            "Expandable widget rows must announce the widget label.");
+                        Check(!Descendants<TextBlock>(card).Any(text => text.Text == option.Description),
+                            "Compact rows must omit verbose widget descriptions.");
+                        var expansions = 0;
+                        card.SettingsRequested += (_, _) => expansions++;
+                        expand.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Check(expansions == 1 && !option.IsInstalled,
+                            "Expanding a widget must not automatically install it.");
+                        var installations = 0;
+                        card.InstallationRequested += (_, _) => installations++;
+                        install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Check(installations == 1 && !option.IsInstalled,
+                            "The dedicated management action must request installation.");
+                        option.UpdateText("Localized widget", "Localized description");
+                        Check(option.Preview.Label == option.Label, "Preview labels must follow catalog localization.");
+                    }
+
+                    foreach (var width in new[] { 292d, 500d, 720d })
+                    {
+                        var gallery = new OpenTaskbar.Views.ExpandableWidgetGrid { Width = width, MinItemWidth = 270 };
+                        foreach (var option in options) gallery.Children.Add(new WidgetCatalogItem { DataContext = option });
+                        Layout(gallery);
+                        Check(gallery.Children.Cast<FrameworkElement>().All(item =>
+                        {
+                            var point = item.TranslatePoint(new Point(), gallery);
+                            return point.X >= 0 && point.X + item.ActualWidth <= width;
+                        }), "The widget catalogue must avoid horizontal overflow.");
+                        var second = (FrameworkElement)gallery.Children[1];
+                        Check(second.TranslatePoint(new Point(), gallery).Y > 0,
+                            "The widget catalogue must use a single full-width column for every category.");
+                    }
                 }
-            }
             UiText.Current.SetLanguage(AppLanguage.Turkish);
 
             timer.Reset();
@@ -475,8 +475,10 @@ internal static class WidgetViewChecks
                 preview.Children.Add(strip);
                 preview.Children.Add(new WidgetPanelFrame
                 {
-                    Heading = UiText.Get("WidgetCountdown"), Body = new TimedWidgetPanel { DataContext = timer },
-                    HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0)
+                    Heading = UiText.Get("WidgetCountdown"),
+                    Body = new TimedWidgetPanel { DataContext = timer },
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 12, 0, 0)
                 });
                 var surface = new Border { Background = (Brush)app.Resources["SettingsBackground"], Child = preview };
                 Layout(surface);

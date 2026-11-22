@@ -463,9 +463,16 @@ public sealed class AiUsageWidget : DockWidget
 
     private Card AddCard()
     {
-        var logo = new System.Windows.Shapes.Path { Width = LogoSize, Height = LogoSize, Stretch = Stretch.Uniform,
-            Margin = new Thickness(0, 0, Gap, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
-            Data = (Geometry)TryFindResource(LogoKey(_provider)) };
+        var logo = new System.Windows.Shapes.Path
+        {
+            Width = LogoSize,
+            Height = LogoSize,
+            Stretch = Stretch.Uniform,
+            Margin = new Thickness(0, 0, Gap, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Data = (Geometry)TryFindResource(LogoKey(_provider))
+        };
         logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "TextPrimary");
         var label = Text(ShortName(_provider), 12, "TextPrimary");
         label.FontWeight = FontWeights.SemiBold;
@@ -1218,8 +1225,14 @@ public sealed class AiUsageWidget : DockWidget
         title.Children.Add(name);
         if (report?.Plan is { } plan)
         {
-            var chip = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 0, 6, 1), Margin = new Thickness(6, 1, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center, Child = Text(plan, 10.5, "TextSecondary") };
+            var chip = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(6, 0, 6, 1),
+                Margin = new Thickness(6, 1, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = Text(plan, 10.5, "TextSecondary")
+            };
             chip.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
             title.Children.Add(chip);
         }
@@ -1327,8 +1340,13 @@ public sealed class AiUsageWidget : DockWidget
         bar.Children.Add(Split(value, fill, 0));
         if (pace is { } elapsed)
         {
-            var tick = new Border { Width = 2, CornerRadius = new CornerRadius(1), HorizontalAlignment = HorizontalAlignment.Left,
-                Margin = new Thickness(-1, 0, 0, 0) };
+            var tick = new Border
+            {
+                Width = 2,
+                CornerRadius = new CornerRadius(1),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(-1, 0, 0, 0)
+            };
             tick.SetResourceReference(Border.BackgroundProperty, "TextPrimary");
             bar.Children.Add(Split(elapsed, tick, 1));
             bar.ToolTip = UiText.Get("AiUsagePaceMarker");

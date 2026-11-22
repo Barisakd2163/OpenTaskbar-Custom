@@ -70,9 +70,10 @@ public static class ApplicationWindowMenu
     [DllImport("user32.dll")] private static extern uint GetMenuState(nint menu, uint item, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetMenuString(nint menu, uint item, StringBuilder text, int count, uint flags);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindow(nint window);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsMenu(nint menu);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    [DllImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindow(nint window);
+    [DllImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsMenu(nint menu);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(nint window, uint message, nint wParam, nint lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint SendMessageTimeout(nint window, uint message, nint wParam, nint lParam,

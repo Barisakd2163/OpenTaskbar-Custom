@@ -111,7 +111,8 @@ public sealed class ApplicationJumpListService : IDisposable
                     _session = null;
                     CoUninitialize();
                 }
-            }) { IsBackground = true, Name = "OpenTaskbar Jump Lists" };
+            })
+            { IsBackground = true, Name = "OpenTaskbar Jump Lists" };
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
             return _worker;

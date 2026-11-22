@@ -109,90 +109,90 @@ public sealed class ThemePropertyEditor : UserControl
         _loadingTheme = true;
         try
         {
-        _id = id;
-        _mode = mode == AppTheme.System ? ThemeManager.EffectiveTheme : mode;
-        _widgetPack = null;
-        _manifest = null;
-        _body.Children.Clear();
-        _fieldHost = _body;
-        _body.Children.Add(_message);
+            _id = id;
+            _mode = mode == AppTheme.System ? ThemeManager.EffectiveTheme : mode;
+            _widgetPack = null;
+            _manifest = null;
+            _body.Children.Clear();
+            _fieldHost = _body;
+            _body.Children.Add(_message);
 
-        var pack = ThemePacks.Discover().FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (pack is null || ThemePack.IsBuiltInTheme(pack.Id))
-        {
-            ShowCurrentAppearance(pack?.DisplayName ?? UiText.Get("ThemeWindowsAppearance"));
-            return;
-        }
+            var pack = ThemePacks.Discover().FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (pack is null || ThemePack.IsBuiltInTheme(pack.Id))
+            {
+                ShowCurrentAppearance(pack?.DisplayName ?? UiText.Get("ThemeWindowsAppearance"));
+                return;
+            }
 
-        try
-        {
-            var manifestPath = Path.Combine(pack.Directory, ThemePack.ManifestFileName);
-            _manifest = JsonNode.Parse(File.ReadAllText(manifestPath)) as JsonObject ?? new JsonObject();
-            var widgetPath = Path.Combine(pack.Directory, ThemePack.WidgetFolder, WidgetPack.ManifestFileName);
-            _widgetPack = File.Exists(widgetPath)
-                ? JsonNode.Parse(File.ReadAllText(widgetPath)) as JsonObject ?? new JsonObject()
-                : new JsonObject { ["name"] = pack.DisplayName + " " + UiText.Get("ThemeWidgetPackSuffix") };
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-        {
-            _message.Text = UiText.Format("ThemeLoadFailed", ex.Message);
-            return;
-        }
+            try
+            {
+                var manifestPath = Path.Combine(pack.Directory, ThemePack.ManifestFileName);
+                _manifest = JsonNode.Parse(File.ReadAllText(manifestPath)) as JsonObject ?? new JsonObject();
+                var widgetPath = Path.Combine(pack.Directory, ThemePack.WidgetFolder, WidgetPack.ManifestFileName);
+                _widgetPack = File.Exists(widgetPath)
+                    ? JsonNode.Parse(File.ReadAllText(widgetPath)) as JsonObject ?? new JsonObject()
+                    : new JsonObject { ["name"] = pack.DisplayName + " " + UiText.Get("ThemeWidgetPackSuffix") };
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                _message.Text = UiText.Format("ThemeLoadFailed", ex.Message);
+                return;
+            }
 
-        _message.Text = UiText.Format("ThemeEditing", pack.DisplayName);
-        ShowColorSwatches();
-        SectionHeader(UiText.Get("ThemeInformation"));
-        _name = AddTextField(UiText.Get("ThemeFieldName"), ReadManifest("Name") ?? pack.DisplayName);
-        _author = AddTextField(UiText.Get("ThemeFieldAuthor"), ReadManifest("Author") ?? string.Empty);
-        _description = AddTextField(UiText.Get("ThemeFieldDescription"), ReadManifest("Description") ?? string.Empty);
-        foreach (var metaField in new[] { _name, _author, _description })
-        {
-            metaField.TextChanged += (_, _) => ScheduleAutoSave(immediate: false);
-            metaField.LostFocus += (_, _) => FlushAutoSave();
-        }
-        var categoryTabs = new TabControl { MinHeight = 260, Margin = new Thickness(0, 14, 0, 0) };
-        categoryTabs.SetResourceReference(FrameworkElement.StyleProperty, "ThemeEditorTabControl");
-        _body.Children.Add(categoryTabs);
-        foreach (var (title, keys) in Sections)
-        {
-            var panel = new StackPanel { Margin = new Thickness(0, 2, 0, 8) };
-            var tabItem = new TabItem { Header = SectionTitle(title), Content = panel };
-            tabItem.SetResourceReference(FrameworkElement.StyleProperty, "ThemeEditorTabItem");
-            categoryTabs.Items.Add(tabItem);
-            _fieldHost = panel;
-            foreach (var key in keys)
+            _message.Text = UiText.Format("ThemeEditing", pack.DisplayName);
+            ShowColorSwatches();
+            SectionHeader(UiText.Get("ThemeInformation"));
+            _name = AddTextField(UiText.Get("ThemeFieldName"), ReadManifest("Name") ?? pack.DisplayName);
+            _author = AddTextField(UiText.Get("ThemeFieldAuthor"), ReadManifest("Author") ?? string.Empty);
+            _description = AddTextField(UiText.Get("ThemeFieldDescription"), ReadManifest("Description") ?? string.Empty);
+            foreach (var metaField in new[] { _name, _author, _description })
+            {
+                metaField.TextChanged += (_, _) => ScheduleAutoSave(immediate: false);
+                metaField.LostFocus += (_, _) => FlushAutoSave();
+            }
+            var categoryTabs = new TabControl { MinHeight = 260, Margin = new Thickness(0, 14, 0, 0) };
+            categoryTabs.SetResourceReference(FrameworkElement.StyleProperty, "ThemeEditorTabControl");
+            _body.Children.Add(categoryTabs);
+            foreach (var (title, keys) in Sections)
+            {
+                var panel = new StackPanel { Margin = new Thickness(0, 2, 0, 8) };
+                var tabItem = new TabItem { Header = SectionTitle(title), Content = panel };
+                tabItem.SetResourceReference(FrameworkElement.StyleProperty, "ThemeEditorTabItem");
+                categoryTabs.Items.Add(tabItem);
+                _fieldHost = panel;
+                foreach (var key in keys)
+                {
+                    var existing = ResolveTokenValue(key);
+                    if (existing is null) continue;
+                    if (key == "DockBackgroundMode") AddModeField(key, existing.ToString() ?? "Glass");
+                    else if (existing is Brush brush) AddBrushField(key, brush);
+                    else if (existing is CornerRadius radius) AddCornerField(key, radius);
+                    else if (existing is Thickness thickness) AddThicknessField(key, thickness);
+                    else if (existing is double value) AddNumberField(key, value);
+                    else if (existing is FontFamily family) AddFontField(key, family);
+                }
+            }
+
+            var covered = Sections.SelectMany(section => section.Keys).ToHashSet(StringComparer.Ordinal);
+            var advancedFields = new StackPanel { Margin = new Thickness(0, 2, 0, 8) };
+            var advancedTab = new TabItem { Header = UiText.Get("ThemeSectionAdvanced"), Content = advancedFields };
+            advancedTab.SetResourceReference(FrameworkElement.StyleProperty, "ThemeEditorTabItem");
+            categoryTabs.Items.Add(advancedTab);
+            _fieldHost = advancedFields;
+            foreach (var key in AllThemeKeys(Application.Current.Resources)
+                         .Where(key => !covered.Contains(key) && IsEditableAdvancedToken(key))
+                         .Distinct(StringComparer.Ordinal)
+                         .OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
             {
                 var existing = ResolveTokenValue(key);
-                if (existing is null) continue;
-                if (key == "DockBackgroundMode") AddModeField(key, existing.ToString() ?? "Glass");
-                else if (existing is Brush brush) AddBrushField(key, brush);
+                if (existing is Brush brush) AddBrushField(key, brush);
+                else if (existing is Color color) AddBrushField(key, new SolidColorBrush(color));
                 else if (existing is CornerRadius radius) AddCornerField(key, radius);
-                else if (existing is Thickness thickness) AddThicknessField(key, thickness);
-                else if (existing is double value) AddNumberField(key, value);
+                else if (existing is Thickness thickness) AddNumberField(key, thickness.Left);
+                else if (existing is double number) AddNumberField(key, number);
                 else if (existing is FontFamily family) AddFontField(key, family);
             }
-        }
-
-        var covered = Sections.SelectMany(section => section.Keys).ToHashSet(StringComparer.Ordinal);
-        var advancedFields = new StackPanel { Margin = new Thickness(0, 2, 0, 8) };
-        var advancedTab = new TabItem { Header = UiText.Get("ThemeSectionAdvanced"), Content = advancedFields };
-        advancedTab.SetResourceReference(FrameworkElement.StyleProperty, "ThemeEditorTabItem");
-        categoryTabs.Items.Add(advancedTab);
-        _fieldHost = advancedFields;
-        foreach (var key in AllThemeKeys(Application.Current.Resources)
-                     .Where(key => !covered.Contains(key) && IsEditableAdvancedToken(key))
-                     .Distinct(StringComparer.Ordinal)
-                     .OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
-        {
-            var existing = ResolveTokenValue(key);
-            if (existing is Brush brush) AddBrushField(key, brush);
-            else if (existing is Color color) AddBrushField(key, new SolidColorBrush(color));
-            else if (existing is CornerRadius radius) AddCornerField(key, radius);
-            else if (existing is Thickness thickness) AddNumberField(key, thickness.Left);
-            else if (existing is double number) AddNumberField(key, number);
-            else if (existing is FontFamily family) AddFontField(key, family);
-        }
-        _fieldHost = _body;
+            _fieldHost = _body;
         }
         finally
         {
@@ -221,7 +221,8 @@ public sealed class ThemePropertyEditor : UserControl
             cell.Children.Add(new Border
             {
                 Background = brush.CloneCurrentValue(),
-                Height = 34, CornerRadius = new CornerRadius(6),
+                Height = 34,
+                CornerRadius = new CornerRadius(6),
                 BorderThickness = new Thickness(1),
                 BorderBrush = Application.Current.TryFindResource("StrokeSubtle") as Brush
             });
@@ -289,8 +290,13 @@ public sealed class ThemePropertyEditor : UserControl
     private void SectionHeader(string title)
     {
         var stack = new StackPanel { Margin = new Thickness(0, 20, 0, 8) };
-        var heading = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 8) };
+        var heading = new TextBlock
+        {
+            Text = title,
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
         heading.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         stack.Children.Add(heading);
         var divider = new Border { Height = 1 };
@@ -312,8 +318,14 @@ public sealed class ThemePropertyEditor : UserControl
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
-        var text = new TextBlock { Text = PrettyName(label), FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0), TextWrapping = TextWrapping.Wrap };
+        var text = new TextBlock
+        {
+            Text = PrettyName(label),
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
         text.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         grid.Children.Add(text);
         rowBorder.Child = grid;
@@ -451,9 +463,14 @@ public sealed class ThemePropertyEditor : UserControl
                 VerticalAlignment = VerticalAlignment.Center
             };
             slider.SetResourceReference(FrameworkElement.StyleProperty, "SettingsOpacitySlider");
-            var percent = new TextBlock { Width = 45, Margin = new Thickness(9, 0, 0, 0),
-                TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-                Text = Math.Round(slider.Value).ToString(CultureInfo.InvariantCulture) + "%" };
+            var percent = new TextBlock
+            {
+                Width = 45,
+                Margin = new Thickness(9, 0, 0, 0),
+                TextAlignment = TextAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Text = Math.Round(slider.Value).ToString(CultureInfo.InvariantCulture) + "%"
+            };
             percent.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             group.Children.Add(slider);
             group.Children.Add(percent);
@@ -558,8 +575,12 @@ public sealed class ThemePropertyEditor : UserControl
         };
         swatch.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
         content.Children.Add(swatch);
-        var title = new TextBlock { Text = initial is LinearGradientBrush ? UiText.Get("SurfaceGradient") : UiText.Get("SurfaceSolid"),
-            VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+        var title = new TextBlock
+        {
+            Text = initial is LinearGradientBrush ? UiText.Get("SurfaceGradient") : UiText.Get("SurfaceSolid"),
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12
+        };
         title.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         content.Children.Add(title);
         button.Content = content;
@@ -582,7 +603,10 @@ public sealed class ThemePropertyEditor : UserControl
     {
         var btn = new Button
         {
-            Content = text, MinHeight = 31, Padding = new Thickness(12, 5, 12, 5), MinWidth = 96
+            Content = text,
+            MinHeight = 31,
+            Padding = new Thickness(12, 5, 12, 5),
+            MinWidth = 96
         };
         btn.SetResourceReference(FrameworkElement.StyleProperty, "SettingsButton");
         return btn;

@@ -181,7 +181,8 @@ public static class AiUsageService
             return stamp;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
-            or NotSupportedException or SecurityException) { return stamp; }
+            or NotSupportedException or SecurityException)
+        { return stamp; }
     }
 
     internal static string? ReadClaudeToken(string? path = null) =>
@@ -297,7 +298,8 @@ public static class AiUsageService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
             or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException
-            or NotSupportedException or SecurityException) { return null; }
+            or NotSupportedException or SecurityException)
+        { return null; }
     }
 
     private static Credential? ParseClaudeCredential(string json, string? filePath)
@@ -427,7 +429,7 @@ public static class AiUsageService
         }
     }
 
-    private static Credential? ParseAntigravityCredential( string json)
+    private static Credential? ParseAntigravityCredential(string json)
     {
         try
         {
@@ -836,7 +838,8 @@ public static class AiUsageService
             return windows.Count == 0 ? (null, "ErrorAiUsageLoad") : (report, null);
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException
-            or FormatException or ArgumentException or OverflowException) { return (null, "ErrorAiUsageLoad"); }
+            or FormatException or ArgumentException or OverflowException)
+        { return (null, "ErrorAiUsageLoad"); }
     }
 
     /// <summary>Claude pay-as-you-go spend, only when the account has it switched on.</summary>
@@ -897,8 +900,12 @@ public static class AiUsageService
 
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient(new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = false,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(10) })
+        var client = new HttpClient(new SocketsHttpHandler
+        {
+            UseCookies = false,
+            AllowAutoRedirect = false,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        })
         { Timeout = TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = 1 << 20 };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenTaskbar");
         return client;

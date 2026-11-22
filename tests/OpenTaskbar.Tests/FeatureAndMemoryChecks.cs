@@ -100,7 +100,8 @@ internal static class FeatureAndMemoryChecks
             var aiNow = DateTimeOffset.UtcNow;
             AiUsageWidget CreateAiWidget(AiProviders provider) => new(provider, (p, _) => Task.FromResult<(AiUsageReport?, string?)>((new(p, "Plus",
                 [new("AiUsageSession", 0.42, aiNow.AddHours(3), 18000), new("AiUsageWeekly", p == AiProviders.Codex ? 0.9 : 0.29,
-                    aiNow.AddDays(5), 604800)], aiNow) { LimitReached = p == AiProviders.Codex }, null)));
+                    aiNow.AddDays(5), 604800)], aiNow)
+            { LimitReached = p == AiProviders.Codex }, null)));
             using (var claude = CreateAiWidget(AiProviders.Claude))
             using (var codex = CreateAiWidget(AiProviders.Codex))
             {

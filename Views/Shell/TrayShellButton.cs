@@ -297,7 +297,9 @@ public sealed class TrayShellButton : Button
             // Tray apps may keep running after WM_CLOSE; force quit uses the dock's existing confirmation flow.
             var quitIcon = new ContentControl
             {
-                Content = FindResource("IconClose"), Width = 14, Height = 14
+                Content = FindResource("IconClose"),
+                Width = 14,
+                Height = 14
             };
             quitIcon.SetResourceReference(StyleProperty, "WidgetIcon");
             var quit = new Button

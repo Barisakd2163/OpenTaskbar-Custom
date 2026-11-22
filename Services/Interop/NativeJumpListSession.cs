@@ -345,9 +345,14 @@ internal sealed class NativeJumpListSession : IDisposable
             if (defaultId == uint.MaxValue || defaultId == 0) throw new InvalidOperationException("Shell default command unavailable.");
             var command = new InvokeInfo
             {
-                Size = Marshal.SizeOf<InvokeInfo>(), Mask = 0x4000, Window = owner,
-                Verb = (nint)(defaultId - 1), VerbW = (nint)(defaultId - 1), Show = 1,
-                Parameters = activationContext, ParametersW = activationContext
+                Size = Marshal.SizeOf<InvokeInfo>(),
+                Mask = 0x4000,
+                Window = owner,
+                Verb = (nint)(defaultId - 1),
+                VerbW = (nint)(defaultId - 1),
+                Show = 1,
+                Parameters = activationContext,
+                ParametersW = activationContext
             };
             Marshal.ThrowExceptionForHR(menu.Method<InvokeMenu>(4)(menu.Handle, ref command));
         }
@@ -364,7 +369,8 @@ internal sealed class NativeJumpListSession : IDisposable
     [StructLayout(LayoutKind.Explicit, Size = 24)] private struct Variant { [FieldOffset(0)] public ushort Type; [FieldOffset(8)] public nint Pointer; [FieldOffset(8)] public short Bool; [FieldOffset(8)] public uint UInt32; }
     [StructLayout(LayoutKind.Explicit, Size = 64)] private struct Category { [FieldOffset(0)] public int Type; [FieldOffset(8)] public nint NameOrKind; [FieldOffset(8)] public int Kind; }
     [StructLayout(LayoutKind.Sequential)] private readonly struct NativeSize(int width, int height) { public readonly int Width = width; public readonly int Height = height; }
-    [StructLayout(LayoutKind.Sequential)] private struct InvokeInfo
+    [StructLayout(LayoutKind.Sequential)]
+    private struct InvokeInfo
     {
         public int Size; public uint Mask; public nint Window; public nint Verb;
         [MarshalAs(UnmanagedType.LPStr)] public string? Parameters;
@@ -397,8 +403,8 @@ internal sealed class NativeJumpListSession : IDisposable
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern int SHCreateItemInKnownFolder(ref Guid folder, uint flags, string path, ref Guid iid, out nint item);
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)] private static extern int SHLoadIndirectString(string source, StringBuilder output, uint count, nint reserved);
     [DllImport("ole32.dll")] private static extern int PropVariantClear(ref Variant value);
-    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(nint bitmap);
+    [DllImport("gdi32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(nint bitmap);
     [DllImport("user32.dll", SetLastError = true)] private static extern nint CreatePopupMenu();
     [DllImport("user32.dll")] private static extern uint GetMenuDefaultItem(nint menu, [MarshalAs(UnmanagedType.Bool)] bool byPosition, uint flags);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DestroyMenu(nint menu);
+    [DllImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static extern bool DestroyMenu(nint menu);
 }

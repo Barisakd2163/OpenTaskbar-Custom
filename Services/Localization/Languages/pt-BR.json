@@ -850,5 +850,7 @@
   "ThemeFieldWidgetRadius": "Widget corner radius",
   "ThemeFieldWidgetSelectedFill": "Widget selected fill",
   "ThemeFieldWidgetSelectedForeground": "Widget selected text",
-  "ThemeFieldWidgetSelectedStroke": "Widget selected border"
+  "ThemeFieldWidgetSelectedStroke": "Widget selected border",
+  "HardwareAcceleration": "Hardware acceleration",
+  "HardwareAccelerationDescription": "Smoother animations; uses about 100 MB more memory. Restart the dock to apply."
 }

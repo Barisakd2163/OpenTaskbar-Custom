@@ -115,8 +115,12 @@ public partial class MainWindow
 
         foreach (var group in AppGroups)
         {
-            var item = new MenuItem { Header = group.Name.Replace("_", "__"), IsCheckable = true,
-                IsChecked = current is not null && SamePath(current.Id, group.Id) };
+            var item = new MenuItem
+            {
+                Header = group.Name.Replace("_", "__"),
+                IsCheckable = true,
+                IsChecked = current is not null && SamePath(current.Id, group.Id)
+            };
             var captured = group;
             item.Click += (_, _) => ToggleAppInGroup(app, captured);
             menu.Items.Add(item);
@@ -245,7 +249,9 @@ public partial class MainWindow
             var icon = new Image
             {
                 Source = app?.Icon ?? ApplicationIconProvider.GetForFile(path),
-                Width = 22, Height = 22, Stretch = Stretch.Uniform,
+                Width = 22,
+                Height = 22,
+                Stretch = Stretch.Uniform,
                 Margin = new Thickness(2, 0, 10, 0)
             };
             DockPanel.SetDock(icon, Dock.Left);

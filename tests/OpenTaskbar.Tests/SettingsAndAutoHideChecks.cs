@@ -67,8 +67,13 @@ internal static class SettingsAndAutoHideChecks
         var anchor = new Button { Content = "Flyout anchor" };
         var host = new Window
         {
-            Width = 300, Height = 180, Left = -20000, Top = -20000,
-            ShowInTaskbar = false, ShowActivated = false, Content = anchor
+            Width = 300,
+            Height = 180,
+            Left = -20000,
+            Top = -20000,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Content = anchor
         };
         var flyout = new DockFlyout();
         var secondFlyout = new DockFlyout();

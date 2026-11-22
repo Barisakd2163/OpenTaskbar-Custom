@@ -32,13 +32,20 @@ public sealed class ThemeBrushPicker : Window
     private readonly Canvas _colorCursorLayer = new() { IsHitTestVisible = false };
     private readonly Ellipse _colorCursor = new()
     {
-        Width = 12, Height = 12, Stroke = Brushes.White, StrokeThickness = 2,
-        Fill = Brushes.Transparent, IsHitTestVisible = false
+        Width = 12,
+        Height = 12,
+        Stroke = Brushes.White,
+        StrokeThickness = 2,
+        Fill = Brushes.Transparent,
+        IsHitTestVisible = false
     };
     private readonly Slider _hueSlider = new()
     {
-        Minimum = 0, Maximum = 360, Width = 305,
-        TickFrequency = 1, IsSnapToTickEnabled = true
+        Minimum = 0,
+        Maximum = 360,
+        Width = 305,
+        TickFrequency = 1,
+        IsSnapToTickEnabled = true
     };
     private readonly Slider _alphaSlider = new() { Minimum = 0, Maximum = 255, TickFrequency = 1, IsSnapToTickEnabled = true };
     private readonly TextBlock _alphaValue = new() { Width = 42, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
@@ -114,8 +121,12 @@ public sealed class ThemeBrushPicker : Window
         outer.SetResourceReference(TextElement.FontFamilyProperty, "InterfaceFont");
         outer.SetResourceReference(Panel.BackgroundProperty, "SettingsBackground");
         Content = outer;
-        var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 15, 0, 0) };
+        var footer = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 15, 0, 0)
+        };
         DockPanel.SetDock(footer, Dock.Bottom);
         outer.Children.Add(footer);
         var cancel = Button(UiText.Get("ColorCancel"));
@@ -208,7 +219,8 @@ public sealed class ThemeBrushPicker : Window
         var colorArea = new StackPanel { Margin = new Thickness(6, 12, 0, 8) };
         colorArea.Children.Add(new TextBlock
         {
-            Text = UiText.Get("ColorTitle"), FontWeight = FontWeights.SemiBold,
+            Text = UiText.Get("ColorTitle"),
+            FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 9)
         });
         _colorField.Children.Add(new Rectangle
@@ -246,8 +258,11 @@ public sealed class ThemeBrushPicker : Window
         rainbow.GradientStops.Add(new GradientStop(Colors.Red, 1));
         colorArea.Children.Add(new Border
         {
-            Height = 8, Width = 305, Background = rainbow,
-            CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 12, 0, 0),
+            Height = 8,
+            Width = 305,
+            Background = rainbow,
+            CornerRadius = new CornerRadius(4),
+            Margin = new Thickness(0, 12, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left
         });
         _hueSlider.ValueChanged += (_, _) =>
@@ -263,10 +278,20 @@ public sealed class ThemeBrushPicker : Window
         {
             var index = i;
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 5) };
-            row.Children.Add(new TextBlock { Text = new[] { UiText.Get("ColorRed"), UiText.Get("ColorGreen"), UiText.Get("ColorBlue") }[i], Width = 55,
-                VerticalAlignment = VerticalAlignment.Center });
-            var slider = new Slider { Minimum = 0, Maximum = 255, Width = 230, TickFrequency = 1,
-                IsSnapToTickEnabled = true };
+            row.Children.Add(new TextBlock
+            {
+                Text = new[] { UiText.Get("ColorRed"), UiText.Get("ColorGreen"), UiText.Get("ColorBlue") }[i],
+                Width = 55,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var slider = new Slider
+            {
+                Minimum = 0,
+                Maximum = 255,
+                Width = 230,
+                TickFrequency = 1,
+                IsSnapToTickEnabled = true
+            };
             slider.SetResourceReference(FrameworkElement.StyleProperty, "SettingsOpacitySlider");
             _channels[i] = slider;
             slider.ValueChanged += (_, _) => SetChannel(index, (byte)Math.Round(slider.Value));
@@ -309,7 +334,10 @@ public sealed class ThemeBrushPicker : Window
 
     private static Button Button(string label) => new()
     {
-        Content = label, MinWidth = 72, MinHeight = 31, Padding = new Thickness(10, 4, 10, 4),
+        Content = label,
+        MinWidth = 72,
+        MinHeight = 31,
+        Padding = new Thickness(10, 4, 10, 4),
         Style = (Style)Application.Current.FindResource("SettingsButton")
     };
 

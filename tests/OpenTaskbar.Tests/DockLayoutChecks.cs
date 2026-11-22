@@ -68,23 +68,23 @@ internal static class DockLayoutChecks
         var minimum = (double)app.FindResource("DockMinimumShelfHeight");
         var headroom = (double)app.FindResource("DockHeadroom");
         foreach (var dpi in new uint[] { 96, 120, 144, 192 })
-        foreach (var nativeHeight in new[] { 0d, 48d, 100d })
-        {
-            var metrics = DockLayoutMetrics.Calculate(minimum, nativeHeight, headroom, dpi);
-            var nativePixels = (int)Math.Ceiling(nativeHeight * dpi / 96d);
-            Check(metrics.ShelfPixels * 96d / dpi >= Math.Max(minimum, nativeHeight),
-                "The reserved shelf must fit the dock and native taskbar at every supported scale.");
-            Check(metrics.WindowPixels - metrics.ShelfPixels == metrics.HeadroomPixels,
-                "Hover headroom must enlarge the window without enlarging the desktop reservation.");
-            Check(nativePixels + metrics.AdditionalReservation(nativePixels, false) == metrics.ShelfPixels,
-                "Existing native space plus the extra AppBar must reserve exactly one shelf.");
-            Check(metrics.AdditionalReservation(0, false) == metrics.ShelfPixels,
-                "When Explorer reserves no strip, OpenTaskbar must reserve the complete shelf.");
-            Check(metrics.AdditionalReservation(metrics.ShelfPixels + 20, false) == 0,
-                "A larger existing reservation must not receive another shelf.");
-            Check(metrics.AdditionalReservation(nativePixels, true) == 0,
-                "Auto-hide must release the additional desktop reservation.");
-        }
+            foreach (var nativeHeight in new[] { 0d, 48d, 100d })
+            {
+                var metrics = DockLayoutMetrics.Calculate(minimum, nativeHeight, headroom, dpi);
+                var nativePixels = (int)Math.Ceiling(nativeHeight * dpi / 96d);
+                Check(metrics.ShelfPixels * 96d / dpi >= Math.Max(minimum, nativeHeight),
+                    "The reserved shelf must fit the dock and native taskbar at every supported scale.");
+                Check(metrics.WindowPixels - metrics.ShelfPixels == metrics.HeadroomPixels,
+                    "Hover headroom must enlarge the window without enlarging the desktop reservation.");
+                Check(nativePixels + metrics.AdditionalReservation(nativePixels, false) == metrics.ShelfPixels,
+                    "Existing native space plus the extra AppBar must reserve exactly one shelf.");
+                Check(metrics.AdditionalReservation(0, false) == metrics.ShelfPixels,
+                    "When Explorer reserves no strip, OpenTaskbar must reserve the complete shelf.");
+                Check(metrics.AdditionalReservation(metrics.ShelfPixels + 20, false) == 0,
+                    "A larger existing reservation must not receive another shelf.");
+                Check(metrics.AdditionalReservation(nativePixels, true) == 0,
+                    "Auto-hide must release the additional desktop reservation.");
+            }
 
         // Secondary docks must appear even when taskbar replacement releases Explorer's strip.
         Check(SecondaryDockWindow.NeedsOwnShelf(0, 96), "A released strip must make the secondary dock reserve a shelf.");
@@ -108,17 +108,17 @@ internal static class DockLayoutChecks
 
         // Primary replacement session shelf reservation when returning from side dock (Explorer strip released)
         foreach (var dpi in new uint[] { 96, 120, 144, 192 })
-        foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
-        {
-            var profile = DockMetrics.For(size);
-            var metrics = DockLayoutMetrics.Calculate(profile.Shelf, 0, DockMetrics.Headroom, dpi);
-            Check(metrics.AdditionalReservation(0, false) == metrics.ShelfPixels,
-                $"Returning from side dock with released strip must reserve the full shelf for {size}@{dpi}dpi.");
-            var nativePixels = (int)Math.Ceiling(48d * dpi / 96d);
-            var expectedExtra = Math.Max(0, metrics.ShelfPixels - nativePixels);
-            Check(metrics.AdditionalReservation(nativePixels, false) == expectedExtra,
-                $"Existing native taskbar strip must reduce the primary dock reservation for {size}@{dpi}dpi.");
-        }
+            foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
+            {
+                var profile = DockMetrics.For(size);
+                var metrics = DockLayoutMetrics.Calculate(profile.Shelf, 0, DockMetrics.Headroom, dpi);
+                Check(metrics.AdditionalReservation(0, false) == metrics.ShelfPixels,
+                    $"Returning from side dock with released strip must reserve the full shelf for {size}@{dpi}dpi.");
+                var nativePixels = (int)Math.Ceiling(48d * dpi / 96d);
+                var expectedExtra = Math.Max(0, metrics.ShelfPixels - nativePixels);
+                Check(metrics.AdditionalReservation(nativePixels, false) == expectedExtra,
+                    $"Existing native taskbar strip must reduce the primary dock reservation for {size}@{dpi}dpi.");
+            }
 
         Check((SecondaryDockWindow.PositionFlags(false) & 0x0040u) == 0,
             "Positioning a fullscreen-hidden secondary dock must not force it visible.");
@@ -131,7 +131,9 @@ internal static class DockLayoutChecks
             var cellSize = (double)app.FindResource("DockCellSize");
             var icon = new Border
             {
-                Width = iconSize, Height = iconSize, Background = Brushes.Cyan,
+                Width = iconSize,
+                Height = iconSize,
+                Background = Brushes.Cyan,
                 RenderTransformOrigin = new Point(0.5, 0.95),
                 RenderTransform = new TransformGroup
                 {
@@ -145,12 +147,16 @@ internal static class DockLayoutChecks
             var viewer = new DockScrollViewer
             {
                 Style = (Style)app.FindResource("DockScrollViewerStyle"),
-                HoverHeadroom = headroom, ContentInset = (Thickness)app.FindResource("DockScrollContentInset"), Content = content
+                HoverHeadroom = headroom,
+                ContentInset = (Thickness)app.FindResource("DockScrollContentInset"),
+                Content = content
             };
             var shelf = new Border
             {
-                Padding = (Thickness)app.FindResource("DockPadding"), BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 0, 6), Child = viewer
+                Padding = (Thickness)app.FindResource("DockPadding"),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 6),
+                Child = viewer
             };
             var root = new Grid { Width = width, Height = minimum + headroom };
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(headroom) });
@@ -209,19 +215,24 @@ internal static class DockLayoutChecks
         {
             var icons = Enumerable.Range(0, 10).Select(index => new Border
             {
-                Width = iconWidth, Height = iconWidth, Background = Brushes.Cyan
+                Width = iconWidth,
+                Height = iconWidth,
+                Background = Brushes.Cyan
             }).ToArray();
             var buttons = icons.Select((icon, index) => new Button
             {
-                Style = (Style)app.FindResource("DockButton"), Content = icon,
+                Style = (Style)app.FindResource("DockButton"),
+                Content = icon,
                 DataContext = new DockApp($"Test app {index}", $"test-{index}.exe")
             }).ToArray();
             var content = new StackPanel { Orientation = Orientation.Horizontal };
             foreach (var button in buttons) content.Children.Add(button);
             var viewer = new DockScrollViewer
             {
-                Style = (Style)app.FindResource("DockScrollViewerStyle"), HoverHeadroom = headroom,
-                ContentInset = inset, Content = content
+                Style = (Style)app.FindResource("DockScrollViewerStyle"),
+                HoverHeadroom = headroom,
+                ContentInset = inset,
+                Content = content
             };
             var frame = new Border { Padding = padding, BorderThickness = stroke, Background = Brushes.Black, Child = viewer };
             var left = new Thumb { Style = (Style)app.FindResource("DockResizeThumb"), HorizontalAlignment = HorizontalAlignment.Left };
@@ -340,7 +351,8 @@ internal static class DockLayoutChecks
             dockContents.Children.Add(new Button { Style = (Style)app.FindResource("DockButton") });
             dockContents.Children.Add(new ItemsControl
             {
-                ItemsSource = apps, ItemTemplate = new DataTemplate { VisualTree = appButton },
+                ItemsSource = apps,
+                ItemTemplate = new DataTemplate { VisualTree = appButton },
                 ItemsPanel = new ItemsPanelTemplate(appPanel)
             });
             var widgetIsland = new Border { Width = 120, Height = iconWidth, Margin = new Thickness(4, 0, 0, 0) };
@@ -353,12 +365,17 @@ internal static class DockLayoutChecks
             dockLayoutRoot.Children.Add(widgetIsland);
             var dockViewer = new DockScrollViewer
             {
-                Style = (Style)app.FindResource("DockScrollViewerStyle"), HoverHeadroom = headroom,
-                ContentInset = inset, Content = dockLayoutRoot
+                Style = (Style)app.FindResource("DockScrollViewerStyle"),
+                HoverHeadroom = headroom,
+                ContentInset = inset,
+                Content = dockLayoutRoot
             };
             var dockSurface = new Border
             {
-                Padding = padding, BorderThickness = stroke, HorizontalAlignment = HorizontalAlignment.Left, Child = dockViewer
+                Padding = padding,
+                BorderThickness = stroke,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = dockViewer
             };
             var dockRoot = new Grid { Width = 1000, Height = minimum };
             dockRoot.Children.Add(dockSurface);
@@ -455,24 +472,24 @@ internal static class DockLayoutChecks
         DockFlyout.Edge = DockEdge.Bottom;
 
         foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
-        foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
-        {
-            var profile = DockMetrics.For(size, scale);
-            var flyoutGap = DockMetrics.ComputeFlyoutGap(profile);
-            Check(flyoutGap >= DockMetrics.FlyoutGapMin && flyoutGap <= DockMetrics.FlyoutGapMax,
-                $"Flyout gap for {size}@{scale} must stay within {DockMetrics.FlyoutGapMin}–{DockMetrics.FlyoutGapMax} px of the dock.");
-            Check(Math.Round(DockMetrics.WidgetDesignHeight * profile.WidgetScale) + 2 <= profile.Cell,
-                $"Widget strip scale for {size}@{scale} must fit inside the dock cell height.");
-            app.Resources["DockCellSize"] = profile.Cell;
-            app.Resources["DockCellHeight"] = profile.Cell;
-            app.Resources["DockIconSize"] = profile.Icon;
-            var button = new Button { Style = (Style)app.FindResource("DockButton"), DataContext = new DockApp("App", "app.exe") { WindowCount = 1, IsForeground = true } };
-            button.Measure(new Size(profile.Cell, profile.Cell));
-            button.Arrange(new Rect(0, 0, profile.Cell, profile.Cell));
-            button.UpdateLayout();
-            Check(button.ActualWidth == profile.Cell && button.ActualHeight == profile.Cell,
-                $"DockButton must dynamically resize to {profile.Cell} DIP for {size}@{scale}.");
-        }
+            foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
+            {
+                var profile = DockMetrics.For(size, scale);
+                var flyoutGap = DockMetrics.ComputeFlyoutGap(profile);
+                Check(flyoutGap >= DockMetrics.FlyoutGapMin && flyoutGap <= DockMetrics.FlyoutGapMax,
+                    $"Flyout gap for {size}@{scale} must stay within {DockMetrics.FlyoutGapMin}–{DockMetrics.FlyoutGapMax} px of the dock.");
+                Check(Math.Round(DockMetrics.WidgetDesignHeight * profile.WidgetScale) + 2 <= profile.Cell,
+                    $"Widget strip scale for {size}@{scale} must fit inside the dock cell height.");
+                app.Resources["DockCellSize"] = profile.Cell;
+                app.Resources["DockCellHeight"] = profile.Cell;
+                app.Resources["DockIconSize"] = profile.Icon;
+                var button = new Button { Style = (Style)app.FindResource("DockButton"), DataContext = new DockApp("App", "app.exe") { WindowCount = 1, IsForeground = true } };
+                button.Measure(new Size(profile.Cell, profile.Cell));
+                button.Arrange(new Rect(0, 0, profile.Cell, profile.Cell));
+                button.UpdateLayout();
+                Check(button.ActualWidth == profile.Cell && button.ActualHeight == profile.Cell,
+                    $"DockButton must dynamically resize to {profile.Cell} DIP for {size}@{scale}.");
+            }
         // The scale slider must change the height Windows reserves for the taskbar, including the default
         // Compact size where smaller scales produce a shelf below Explorer's native 48 DIP strip.
         var compactReservations = new[] { 0.75, 0.9, 1.0, 1.25, 1.5 }
@@ -984,12 +1001,12 @@ internal static class DockLayoutChecks
             "Excessive DockCornerRadius must fail validation.");
 
         foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
-        foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
-        {
-            var autoProfile = DockMetrics.For(size, scale);
-            Check(autoProfile.BottomGap >= 2 && autoProfile.Shelf >= autoProfile.SurfaceHeight + autoProfile.BottomGap,
-                $"Screen edge spacing must be computed automatically from profile for {size}@{scale}.");
-        }
+            foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
+            {
+                var autoProfile = DockMetrics.For(size, scale);
+                Check(autoProfile.BottomGap >= 2 && autoProfile.Shelf >= autoProfile.SurfaceHeight + autoProfile.BottomGap,
+                    $"Screen edge spacing must be computed automatically from profile for {size}@{scale}.");
+            }
 
         // Legacy settings files containing the removed DockBottomGap key must still load cleanly.
         var legacyJson = """{"DockCornerRadius":18,"DockBottomGap":12}""";
@@ -1052,15 +1069,15 @@ internal static class DockLayoutChecks
 
             // Safe lift must stay inside DockHeadroom + vertical padding at every size and scale.
             foreach (var size in new[] { DockSize.Compact, DockSize.Medium, DockSize.Large })
-            foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
-            {
-                var p = DockMetrics.For(size, scale);
-                var availableHeadroom = DockMetrics.Headroom + p.VerticalPadding;
-                var lift = DockFisheyeLayout.ComputeSafeLift(DockMetrics.HoverScale, DockMetrics.HoverScale, p.Icon, availableHeadroom);
-                var growth = p.Icon * (DockMetrics.HoverScale - 1.0);
-                Check(lift >= 0 && growth + lift <= availableHeadroom + 0.01,
-                    $"Magnified icon growth + lift must fit inside headroom for {size}@{scale}.");
-            }
+                foreach (var scale in new[] { 0.75, 1.0, 1.25, 1.5 })
+                {
+                    var p = DockMetrics.For(size, scale);
+                    var availableHeadroom = DockMetrics.Headroom + p.VerticalPadding;
+                    var lift = DockFisheyeLayout.ComputeSafeLift(DockMetrics.HoverScale, DockMetrics.HoverScale, p.Icon, availableHeadroom);
+                    var growth = p.Icon * (DockMetrics.HoverScale - 1.0);
+                    Check(lift >= 0 && growth + lift <= availableHeadroom + 0.01,
+                        $"Magnified icon growth + lift must fit inside headroom for {size}@{scale}.");
+                }
 
             // Expansion must map continuously to both peak scale and influence radius: no boolean cliff at 0.5 DIP.
             {

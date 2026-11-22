@@ -396,7 +396,9 @@ public partial class MainWindow
         countBadge.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
         var countText = new TextBlock
         {
-            Text = entries.Count.ToString(), FontSize = 11, FontWeight = FontWeights.SemiBold
+            Text = entries.Count.ToString(),
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold
         };
         countText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         countBadge.Child = countText;
@@ -407,7 +409,9 @@ public partial class MainWindow
         var folderIcon = new ContentControl
         {
             Content = Application.Current?.TryFindResource("IconFolder"),
-            Width = 15, Height = 15, Margin = new Thickness(0, 0, 8, 0),
+            Width = 15,
+            Height = 15,
+            Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         folderIcon.SetResourceReference(FrameworkElement.StyleProperty, "WidgetIcon");
@@ -415,7 +419,9 @@ public partial class MainWindow
 
         var titleText = new TextBlock
         {
-            Text = stack.Name, FontWeight = FontWeights.SemiBold, FontSize = 13.5,
+            Text = stack.Name,
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 13.5,
             VerticalAlignment = VerticalAlignment.Center
         };
         titleText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
@@ -427,7 +433,8 @@ public partial class MainWindow
 
         var divider = new System.Windows.Shapes.Rectangle
         {
-            Height = 1, Margin = new Thickness(2, 0, 2, 10)
+            Height = 1,
+            Margin = new Thickness(2, 0, 2, 10)
         };
         divider.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "StrokeSubtle");
         root.Children.Add(divider);
@@ -445,8 +452,12 @@ public partial class MainWindow
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
             var label = new TextBlock
             {
-                Text = entry.Name, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
-                TextTrimming = TextTrimming.CharacterEllipsis, MaxHeight = 32, FontSize = 11
+                Text = entry.Name,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxHeight = 32,
+                FontSize = 11
             };
             label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
 
@@ -473,7 +484,9 @@ public partial class MainWindow
         var openFolderIcon = new ContentControl
         {
             Content = Application.Current?.TryFindResource("IconFolder"),
-            Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0),
+            Width = 14,
+            Height = 14,
+            Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         openFolderIcon.SetResourceReference(FrameworkElement.StyleProperty, "WidgetIcon");
@@ -481,7 +494,9 @@ public partial class MainWindow
 
         var footerText = new TextBlock
         {
-            Text = UiText.Get("OpenFolderInExplorer"), FontWeight = FontWeights.SemiBold, FontSize = 11.5
+            Text = UiText.Get("OpenFolderInExplorer"),
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 11.5
         };
         footerText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         footerPanel.Children.Add(openFolderIcon);
