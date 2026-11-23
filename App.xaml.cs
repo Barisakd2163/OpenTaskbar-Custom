@@ -78,6 +78,11 @@ public partial class App : Application
         }
         _ownsSingletonMutex = true;
 
+#if !DEBUG
+        if (!IsDev && !IsInspection && StartupRegistration.RefreshPortableTarget() is { } startupError)
+            AppLog.Warning($"Portable startup registration could not be refreshed: {startupError}.");
+#endif
+
         // Heal only after winning the singleton race: a second instance must never consume the live instance's
         // recovery journal.
         var healError = RestoreCoordinator.HealPending("startup-heal");
