@@ -145,7 +145,7 @@ public partial class MainWindow
             ReportError("ErrorGroupExists");
             return;
         }
-        RemoveAppFromItsGroup(app.DockKey, save: false);
+        RemoveAppFromItsGroup(app, save: false);
         var groups = AppGroups.ToList();
         groups.Add(new DockAppGroup(NewGroupId(), name, [app.DockKey]));
         SaveGroups(groups);
@@ -156,11 +156,11 @@ public partial class MainWindow
     {
         if (GroupContaining(app) is { } current && SamePath(current.Id, group.Id))
         {
-            RemoveAppFromItsGroup(app.DockKey, save: false);
+            RemoveAppFromItsGroup(app, save: false);
         }
         else
         {
-            RemoveAppFromItsGroup(app.DockKey, save: false, preserveGroupId: group.Id);
+            RemoveAppFromItsGroup(app, save: false, preserveGroupId: group.Id);
             var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
                 ? g with { ExecutablePaths = g.ExecutablePaths.Append(app.DockKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList() }
                 : g).ToList();
@@ -168,6 +168,16 @@ public partial class MainWindow
             return;
         }
         SaveGroups(AppGroups.ToList());
+    }
+
+    private void RemoveAppFromItsGroup(DockApp app, bool save = true, string? preserveGroupId = null)
+    {
+        RemoveAppFromItsGroup(app.DockKey, save: false, preserveGroupId: preserveGroupId);
+        if (string.IsNullOrWhiteSpace(app.LaunchArguments) && !SamePath(app.DockKey, app.ExecutablePath))
+        {
+            RemoveAppFromItsGroup(app.ExecutablePath, save: false, preserveGroupId: preserveGroupId);
+        }
+        if (save) SaveGroups(AppGroups.ToList());
     }
 
     /// <summary>
@@ -368,7 +378,7 @@ public partial class MainWindow
         if (e.Data.GetData(typeof(DockApp)) is DockApp app)
         {
             // Dropping an app onto a group icon adds it (removing it from any previous group).
-            RemoveAppFromItsGroup(app.DockKey, save: false, preserveGroupId: group.Id);
+            RemoveAppFromItsGroup(app, save: false, preserveGroupId: group.Id);
             var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
                 ? g with { ExecutablePaths = g.ExecutablePaths.Append(app.DockKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList() }
                 : g).ToList();

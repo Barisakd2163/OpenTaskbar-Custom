@@ -898,7 +898,10 @@ public partial class MainWindow : Window
     {
         // Apps hidden by the active profile still show up among running apps while they have windows.
         var visiblePinned = _pinnedApps.Where(app => !IsHiddenByProfile(app)).ToList();
-        var pinnedPaths = visiblePinned.Select(app => app.ExecutablePath)
+        var pinnedPaths = visiblePinned
+            .Where(app => !DockApp.IsSharedHostExecutable(app.ExecutablePath)
+                && (string.IsNullOrWhiteSpace(app.LaunchArguments) || string.IsNullOrWhiteSpace(app.AppUserModelId)))
+            .Select(app => app.ExecutablePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var pinnedAumids = visiblePinned
             .Where(app => !string.IsNullOrWhiteSpace(app.AppUserModelId))
@@ -1206,7 +1209,8 @@ public partial class MainWindow : Window
             .ToList();
         if (windows is not { Count: > 0 }) return;
         var current = windows.FindIndex(window => window.Handle == _foregroundWindow);
-        if (current < 0 && _lastSelectedWindows.TryGetValue(app.ExecutablePath, out var last))
+        var lookupPath = windows[0].ExecutablePath ?? app.ExecutablePath;
+        if (current < 0 && _lastSelectedWindows.TryGetValue(lookupPath, out var last))
             current = windows.FindIndex(window => window.Handle == last);
         var step = e.Delta < 0 ? 1 : -1;
         var next = windows[((current < 0 ? (step > 0 ? -1 : 0) : current) + step + windows.Count) % windows.Count];
@@ -1591,36 +1595,18 @@ public partial class MainWindow : Window
 
     private void UpdateWindowIndicators(IReadOnlyList<RunningAppCandidate> candidates)
     {
-        // Candidates are grouped by AUMID when present, so two groups can share one executable (e.g. LibreWolf
-        // with several AppUserModelIDs). Aggregate by path and by AUMID instead of ToDictionary: duplicate keys
-        // used to throw "An item with the same key has already been added" during startup and tear down the dock.
-        var pathStates = RunningAppProjection.AggregateByExecutablePath(candidates);
-        var aumidStates = new Dictionary<string, (int WindowCount, bool IsForeground)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var candidate in candidates)
-        {
-            if (string.IsNullOrWhiteSpace(candidate.AppUserModelId)) continue;
-            aumidStates.TryGetValue(candidate.AppUserModelId, out var current);
-            aumidStates[candidate.AppUserModelId] = (
-                current.WindowCount + candidate.WindowCount,
-                current.IsForeground || candidate.IsForeground);
-        }
-
         for (var index = 0; index < _pinnedApps.Count; index++)
         {
             var app = _pinnedApps[index];
-            (int WindowCount, bool IsForeground) state = default;
-            if (!string.IsNullOrWhiteSpace(app.AppUserModelId)
-                && aumidStates.TryGetValue(app.AppUserModelId, out var aumidState))
+            var count = 0;
+            var isForeground = false;
+            foreach (var candidate in candidates)
             {
-                state = aumidState;
-            }
-            else if (!app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                pathStates.TryGetValue(app.ExecutablePath, out state);
+                if (!MatchesCandidate(app, candidate)) continue;
+                count += candidate.WindowCount;
+                isForeground |= candidate.IsForeground;
             }
 
-            var isForeground = state.IsForeground;
-            var count = state.WindowCount;
             if (app.IsRunning != (count > 0) || app.IsForeground != isForeground || app.WindowCount != count)
             {
                 app.IsForeground = isForeground;
@@ -2229,10 +2215,15 @@ public partial class MainWindow : Window
     {
         if (sender is MenuItem { CommandParameter: DockApp app })
         {
-            if (app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            if (app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase)
+                || DockApp.IsSharedHostExecutable(app.ExecutablePath)
+                || !string.IsNullOrWhiteSpace(app.AppUserModelId))
             {
                 var window = FindWindowForApp(app);
-                if (window?.ExecutablePath is { } hostPath && !DockApp.IsSharedHostExecutable(hostPath))
+                if (string.IsNullOrWhiteSpace(app.LaunchArguments)
+                    && string.IsNullOrWhiteSpace(app.AppUserModelId)
+                    && window?.ExecutablePath is { } hostPath
+                    && !DockApp.IsSharedHostExecutable(hostPath))
                 {
                     TerminateApplication(hostPath);
                     return;
