@@ -278,9 +278,9 @@ public sealed class AudioEndpointMonitor : IDisposable
         var policy = (IPolicyConfig)new PolicyConfigClient();
         try
         {
-            policy.SetDefaultEndpoint(deviceId, RoleConsole);
-            policy.SetDefaultEndpoint(deviceId, RoleMultimedia);
-            policy.SetDefaultEndpoint(deviceId, RoleCommunications);
+            Marshal.ThrowExceptionForHR(policy.SetDefaultEndpoint(deviceId, RoleConsole));
+            Marshal.ThrowExceptionForHR(policy.SetDefaultEndpoint(deviceId, RoleMultimedia));
+            Marshal.ThrowExceptionForHR(policy.SetDefaultEndpoint(deviceId, RoleCommunications));
             return true;
         }
         catch (Exception ex)
@@ -297,7 +297,7 @@ public sealed class AudioEndpointMonitor : IDisposable
     public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null)
     {
         var sessions = new List<AppAudioSession>();
-        var seenPids = new HashSet<int>();
+        var seenSessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         void CollectFromDevice(IMMDevice device)
@@ -335,7 +335,10 @@ public sealed class AudioEndpointMonitor : IDisposable
                                 ctl2.GetProcessId(out var pid);
                                 if (pid == myPid) continue;
 
-                                if (pid > 0 && !seenPids.Add(pid)) continue;
+                                var sessionKey = ctl2.GetSessionInstanceIdentifier(out var instanceId) == 0 && !string.IsNullOrWhiteSpace(instanceId)
+                                    ? instanceId
+                                    : $"pid:{pid}:{i}";
+                                if (!seenSessionIds.Add(sessionKey)) continue;
 
                                 string appName;
                                 BitmapSource? appIcon = null;
