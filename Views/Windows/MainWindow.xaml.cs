@@ -205,6 +205,9 @@ public partial class MainWindow : Window
         TrayButton.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
         TrayButton.PinToggled += OnTrayIconPinToggled;
         PinnedTrayStrip.PinnedKeysProvider = () => _preferences.Current.PinnedTrayIcons;
+        PinnedTrayStrip.PinToggled += OnTrayIconPinToggled;
+        PinnedTrayStrip.CloseApplicationRequested = CloseApplication;
+        PinnedTrayStrip.TerminateApplicationRequested = TerminateApplication;
         PinnedTrayStrip.IsStripEnabled = _preferences.Current.ShowTrayButton;
         PinnedTrayStrip.LayoutChanged += OnPinnedTrayStripLayoutChanged;
         _widgetCoordinator.ConfigureWidgetMenu = menu =>
@@ -3669,6 +3672,7 @@ public partial class MainWindow : Window
         _wheelAudio?.Dispose();
         _wheelAudio = null;
         PinnedTrayStrip.DetachHost();
+        PinnedTrayStrip.PinToggled -= OnTrayIconPinToggled;
         PinnedTrayStrip.LayoutChanged -= OnPinnedTrayStripLayoutChanged;
         TrayButton.PinToggled -= OnTrayIconPinToggled;
         DisposeExtras();

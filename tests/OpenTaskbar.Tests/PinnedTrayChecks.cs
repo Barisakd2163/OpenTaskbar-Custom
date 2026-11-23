@@ -493,6 +493,12 @@ internal static class PinnedTrayChecks
         strip.UpdateFromIcons([], ["guid:22222222-2222-2222-2222-222222222222"]);
         check(strip.Visibility == Visibility.Collapsed && strip.VisibleCount == 0,
             "PinnedTrayStrip must collapse when no pinned tray icons are running.");
+
+        // UIPI integrity check: un-elevated dock (Medium 0x2000) cannot forward tray input to High/System (0x3000/0x4000).
+        check(!TrayHost.IsIntegrityReachable(0x2000, 0x3000)
+              && !TrayHost.IsIntegrityReachable(0x2000, 0x4000)
+              && TrayHost.IsIntegrityReachable(0x2000, 0x2000),
+            "TrayHost.IsIntegrityReachable must reject higher-integrity windows that UIPI isolates.");
     }
 
     private static NotifyIcon CreateTestNotifyIcon(Guid guid, string? path, uint uid, string title)

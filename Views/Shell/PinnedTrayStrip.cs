@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -39,18 +40,27 @@ public sealed class PinnedTrayStrip : StackPanel
     private double _buttonSize = 24;
     private double _imageSize = 18;
 
-    /// <summary>Supplies the persisted pinned tray icon keys in user order.</summary>
-    public Func<IReadOnlyList<string>?>? PinnedKeysProvider { get; set; }
-
-    /// <summary>Seam for tests: forwards context-menu clicks for live tray icons.</summary>
-    internal Action<NotifyIcon, MouseButton> ClickHandler { get; set; } = TrayHost.Click;
-
-    /// <summary>Seam for tests: opens a background app by executable path (activate window or launch).</summary>
-    internal Action<TrayApp, MouseButton> OpenAppHandler { get; set; } = static (app, _) =>
+    private static readonly Action<NotifyIcon, MouseButton> DefaultClickHandler = TrayHost.Click;
+    private static readonly Action<TrayApp, MouseButton> DefaultOpenAppHandler = static (app, _) =>
     {
         var error = TrayIcons.Open(app);
         if (error is not null) AppLog.Warning($"Cannot open pinned tray app {app.Name}: {error}");
     };
+
+    /// <summary>Supplies the persisted pinned tray icon keys in user order.</summary>
+    public Func<IReadOnlyList<string>?>? PinnedKeysProvider { get; set; }
+
+    /// <summary>Raised when the user unpins an icon from the fallback context menu.</summary>
+    public event Action<string>? PinToggled;
+
+    public Action<string>? CloseApplicationRequested { get; set; }
+    public Action<string>? TerminateApplicationRequested { get; set; }
+
+    /// <summary>Seam for tests: forwards context-menu clicks for live tray icons.</summary>
+    internal Action<NotifyIcon, MouseButton> ClickHandler { get; set; } = DefaultClickHandler;
+
+    /// <summary>Seam for tests: opens a background app by executable path (activate window or launch).</summary>
+    internal Action<TrayApp, MouseButton> OpenAppHandler { get; set; } = DefaultOpenAppHandler;
 
     /// <summary>Seam for tests: supplies apps for path-based pins with no live icon. Defaults to the shared snapshot.</summary>
     internal Func<IReadOnlyList<TrayApp>> AppsProvider { get; set; } = SharedAppsProvider;
@@ -341,7 +351,26 @@ public sealed class PinnedTrayStrip : StackPanel
                 // reliable way to open them. Path pins belong to real executables: activating the
                 // existing window (or launching the exe) is far more reliable than synthetic tray
                 // clicks, which some apps (Steam, etc.) only answer on double-click.
-                if (button == MouseButton.Right || strategy != "open-path" || !CanOpenByPath(captured.Path))
+                if (button == MouseButton.Right)
+                {
+                    if (ReferenceEquals(ClickHandler, DefaultClickHandler))
+                    {
+                        if (!TrayHost.TryClick(captured, MouseButton.Right))
+                        {
+                            var fallbackApp = CanOpenByPath(captured.Path)
+                                ? new TrayApp(title, captured.Path.Trim(), captured.Icon as BitmapSource,
+                                    captured.GUID == Guid.Empty ? (Guid?)null : captured.GUID, captured.UID, IconSource.Live)
+                                : null;
+                            ShowFallbackContextMenu(FindButtonByKey(key), key, fallbackApp, captured.Path);
+                        }
+                    }
+                    else
+                    {
+                        ClickHandler(captured, MouseButton.Right);
+                    }
+                    return;
+                }
+                if (strategy != "open-path" || !CanOpenByPath(captured.Path))
                 {
                     ClickHandler(captured, button);
                     return;
@@ -377,6 +406,11 @@ public sealed class PinnedTrayStrip : StackPanel
                     button =>
                     {
                         ReportPinClick(TrayPinIdentity.KeyKindOf(matchedKey).ToString(), "open-path");
+                        if (button == MouseButton.Right && ReferenceEquals(OpenAppHandler, DefaultOpenAppHandler))
+                        {
+                            ShowFallbackContextMenu(FindButtonByKey(matchedKey), matchedKey, captured, captured.ExecutablePath);
+                            return;
+                        }
                         OpenAppHandler(captured, button);
                     })));
             }
@@ -504,7 +538,7 @@ public sealed class PinnedTrayStrip : StackPanel
                 if (_clickActions.TryGetValue(button, out var action))
                     action(MouseButton.Left);
             };
-            button.MouseRightButtonUp += (_, e) =>
+            button.PreviewMouseRightButtonUp += (_, e) =>
             {
                 e.Handled = true;
                 if (_clickActions.TryGetValue(button, out var action))
@@ -519,6 +553,70 @@ public sealed class PinnedTrayStrip : StackPanel
         {
             LayoutChanged?.Invoke();
         }
+    }
+
+    private Button? FindButtonByKey(string key)
+    {
+        for (var i = 0; i < Children.Count; i++)
+        {
+            if (Children[i] is Button btn && string.Equals(btn.Tag as string, key, StringComparison.OrdinalIgnoreCase))
+                return btn;
+        }
+        return null;
+    }
+
+    private void ShowFallbackContextMenu(Button? target, string pinKey, TrayApp? app, string? executablePath)
+    {
+        var menu = new ContextMenu();
+
+        if (app is not null)
+        {
+            var openItem = new MenuItem { Header = UiText.Get("OpenApplication") };
+            openItem.Click += (_, _) =>
+            {
+                var error = TrayIcons.Open(app);
+                if (error is not null) AppLog.Warning($"Cannot open pinned tray app {app.Name}: {error}");
+            };
+            menu.Items.Add(openItem);
+        }
+
+        var unpinItem = new MenuItem
+        {
+            Header = UiText.Get("UnpinTrayIcon"),
+            Icon = TryFindResource("IconPin")
+        };
+        unpinItem.Click += (_, _) => PinToggled?.Invoke(pinKey);
+        menu.Items.Add(unpinItem);
+
+        if (!string.IsNullOrWhiteSpace(executablePath))
+        {
+            var path = executablePath.Trim();
+            var closeItem = new MenuItem
+            {
+                Header = UiText.Get("CloseApplication"),
+                Icon = TryFindResource("IconClose")
+            };
+            closeItem.Click += (_, _) => CloseApplicationRequested?.Invoke(path);
+
+            var terminateItem = new MenuItem
+            {
+                Header = UiText.Get("Terminate"),
+                Icon = TryFindResource("IconTerminate")
+            };
+            terminateItem.SetResourceReference(StyleProperty, "DestructiveMenuItem");
+            terminateItem.Click += (_, _) => TerminateApplicationRequested?.Invoke(path);
+
+            menu.Items.Add(new Separator());
+            menu.Items.Add(closeItem);
+            menu.Items.Add(terminateItem);
+        }
+
+        if (target is not null)
+        {
+            menu.PlacementTarget = target;
+            menu.Placement = PlacementMode.MousePoint;
+        }
+        menu.IsOpen = true;
     }
 
     private bool AreSameKeys(IReadOnlyList<PinnedTrayItem> items)
