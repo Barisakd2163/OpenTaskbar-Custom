@@ -398,10 +398,18 @@ public sealed class AiUsageWidget : DockWidget
         return _nextLoadAt is not { } next || DateTimeOffset.UtcNow >= next;
     }
 
+    private long _lastSignInStampCheckTicks;
+
     private async Task LoadAsync()
     {
         if (!IsActive || _loading is not null) return;
-        if (_signInStamp is null && _nextLoadAt is { } scheduled && DateTimeOffset.UtcNow < scheduled) return;
+        if (_nextLoadAt is { } scheduled && DateTimeOffset.UtcNow < scheduled)
+        {
+            if (_signInStamp is null) return;
+            var nowTicks = Environment.TickCount64;
+            if (nowTicks - _lastSignInStampCheckTicks < 5000) return;
+            _lastSignInStampCheckTicks = nowTicks;
+        }
         var loading = new CancellationTokenSource();
         _loading = loading;
         bool Superseded() => !ReferenceEquals(_loading, loading) || !IsActive || loading.IsCancellationRequested;
@@ -434,6 +442,7 @@ public sealed class AiUsageWidget : DockWidget
             _failures = Math.Min(10, _failures + 1);
             _nextLoadAt = DateTimeOffset.UtcNow + RetryDelay("ErrorAiUsageLoad", _failures, null);
             AppLog.Info($"AI usage unavailable: {ex.GetType().Name}");
+            Refresh();
         }
         finally
         {

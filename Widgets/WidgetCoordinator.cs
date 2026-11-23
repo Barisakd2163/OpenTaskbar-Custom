@@ -560,7 +560,7 @@ public sealed class WidgetCoordinator : IDisposable
         foreach (var slot in _widgets.Where(slot => slot.Widget is { Visibility: Visibility.Visible }))
         {
             var widget = slot.Widget!;
-            var mode = settings.GlobalWidgetDensity;
+            var mode = ResolveWidgetDensity(settings, slot.Id);
 
             if (!widget.SupportsCompactMode) continue;
 
@@ -598,7 +598,7 @@ public sealed class WidgetCoordinator : IDisposable
         foreach (var slot in _widgets.Where(slot => slot.Widget is { Visibility: Visibility.Visible }))
         {
             var widget = slot.Widget!;
-            var mode = settings.GlobalWidgetDensity;
+            var mode = ResolveWidgetDensity(settings, slot.Id);
 
             var shouldCompact = widget.SupportsCompactMode
                 && (mode == WidgetDensityMode.Compact
@@ -609,6 +609,21 @@ public sealed class WidgetCoordinator : IDisposable
         }
 
         return changed;
+    }
+
+    private static WidgetDensityMode ResolveWidgetDensity(DockSettings settings, string widgetId)
+    {
+        if (settings.WidgetDensityOverrides is { Count: > 0 } overrides)
+        {
+            if (overrides.TryGetValue(widgetId, out var mode))
+                return mode;
+            foreach (var (k, v) in overrides)
+            {
+                if (string.Equals(k, widgetId, StringComparison.OrdinalIgnoreCase))
+                    return v;
+            }
+        }
+        return settings.GlobalWidgetDensity;
     }
 
     /// <summary>Automatic density is applied as a group during layout, not one widget at a time.</summary>

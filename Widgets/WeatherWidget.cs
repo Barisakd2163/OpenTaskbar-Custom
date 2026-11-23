@@ -102,6 +102,8 @@ public sealed class WeatherWidget : DockWidget
         _flyout.Close();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         _loading?.Cancel();
+        _loading = null;
+        _loadingFor = null;
     }
 
     private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Render();
@@ -128,7 +130,7 @@ public sealed class WeatherWidget : DockWidget
     private async Task LoadAsync()
     {
         var key = LocationKey;
-        if (_loading is not null && _loadingFor == key) return;
+        if (_loading is { IsCancellationRequested: false } && _loadingFor == key) return;
         _loading?.Cancel();
         var loading = new CancellationTokenSource();
         _loading = loading;
@@ -147,7 +149,7 @@ public sealed class WeatherWidget : DockWidget
             if (report is not null || _loadedFor != key) _report = report;
             if (error is not null && _loadedFor != key && !string.IsNullOrWhiteSpace(Settings.WeatherCity)) Report(error);
             _error = _report is null ? error : null;
-            _loadedFor = key;
+            if (report is not null) _loadedFor = key;
             Render();
         }
         finally

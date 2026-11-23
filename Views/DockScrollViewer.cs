@@ -49,6 +49,11 @@ public sealed class DockScrollViewer : ScrollViewer
     private double _lastIndicatorTopOffset = double.NaN;
     private double _lastIndicatorRadius = double.NaN;
 
+    public DockScrollViewer()
+    {
+        Unloaded += (_, _) => StopSmoothScroll();
+    }
+
     /// <summary>
     /// Temporarily suppresses overflow scroll indicators and edge fades while magnification expands the dock
     /// from an unscrolled state, preventing sub-pixel layout jitter from flickering the scroll buttons.
@@ -397,7 +402,7 @@ public sealed class DockScrollViewer : ScrollViewer
             BeginAnimation(CurrentHorizontalOffsetProperty, null);
             BeginAnimation(CurrentVerticalOffsetProperty, null);
             _panStart = e.GetPosition(this);
-            _panOffset = HorizontalOffset;
+            _panOffset = (ScrollableHeight > 0 && ScrollableWidth <= 0) ? VerticalOffset : HorizontalOffset;
             e.Handled = true;
         }
         base.OnPreviewMouseDown(e);
@@ -407,8 +412,16 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         if (_panStart is { } origin)
         {
-            var target = _panOffset + origin.X - e.GetPosition(this).X;
-            ApplyHorizontalOffset(target);
+            if (ScrollableHeight > 0 && ScrollableWidth <= 0)
+            {
+                var target = _panOffset + origin.Y - e.GetPosition(this).Y;
+                ApplyVerticalOffset(target);
+            }
+            else
+            {
+                var target = _panOffset + origin.X - e.GetPosition(this).X;
+                ApplyHorizontalOffset(target);
+            }
             e.Handled = true;
         }
         base.OnMouseMove(e);

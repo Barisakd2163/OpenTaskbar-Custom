@@ -32,16 +32,26 @@ public sealed class SidebarNavPanel : Panel
         var totalHeight = 0.0;
         var count = InternalChildren.Count;
         var split = Math.Max(0, count - Math.Max(0, BottomCount));
+        var topVisible = 0;
+        var bottomVisible = 0;
 
         for (var i = 0; i < count; i++)
         {
             var child = InternalChildren[i];
+            if (child.Visibility == Visibility.Collapsed) continue;
             child.Measure(new Size(width, double.PositiveInfinity));
             totalHeight += child.DesiredSize.Height;
-            if (i > 0 && i != split) totalHeight += ItemGap;
+            if (i < split)
+            {
+                if (topVisible++ > 0) totalHeight += ItemGap;
+            }
+            else
+            {
+                if (bottomVisible++ > 0) totalHeight += ItemGap;
+            }
         }
 
-        if (split > 0 && split < count) totalHeight += SectionGap * 2 + 1;
+        if (topVisible > 0 && bottomVisible > 0) totalHeight += SectionGap * 2 + 1;
 
         var desiredHeight = double.IsInfinity(availableSize.Height)
             ? totalHeight
@@ -55,23 +65,29 @@ public sealed class SidebarNavPanel : Panel
         var split = Math.Max(0, count - Math.Max(0, BottomCount));
         var width = finalSize.Width;
         var y = 0.0;
+        var hasTopVisible = false;
 
         for (var i = 0; i < split; i++)
         {
             var child = InternalChildren[i];
+            if (child.Visibility == Visibility.Collapsed) continue;
+            hasTopVisible = true;
             var h = child.DesiredSize.Height;
             child.Arrange(new Rect(0, y, width, h));
             y += h + ItemGap;
         }
 
         var bottomHeight = 0.0;
+        var bottomVisible = 0;
         for (var i = split; i < count; i++)
         {
-            bottomHeight += InternalChildren[i].DesiredSize.Height;
-            if (i > split) bottomHeight += ItemGap;
+            var child = InternalChildren[i];
+            if (child.Visibility == Visibility.Collapsed) continue;
+            bottomHeight += child.DesiredSize.Height;
+            if (bottomVisible++ > 0) bottomHeight += ItemGap;
         }
 
-        if (split > 0 && split < count)
+        if (hasTopVisible && bottomVisible > 0)
         {
             var bottomStart = Math.Max(y + SectionGap * 2, finalSize.Height - bottomHeight);
             _dividerY = bottomStart - SectionGap;
@@ -79,6 +95,7 @@ public sealed class SidebarNavPanel : Panel
             for (var i = split; i < count; i++)
             {
                 var child = InternalChildren[i];
+                if (child.Visibility == Visibility.Collapsed) continue;
                 var h = child.DesiredSize.Height;
                 child.Arrange(new Rect(0, by, width, h));
                 by += h + ItemGap;
@@ -90,6 +107,7 @@ public sealed class SidebarNavPanel : Panel
             for (var i = split; i < count; i++)
             {
                 var child = InternalChildren[i];
+                if (child.Visibility == Visibility.Collapsed) continue;
                 var h = child.DesiredSize.Height;
                 child.Arrange(new Rect(0, y, width, h));
                 y += h + ItemGap;

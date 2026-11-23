@@ -126,8 +126,6 @@ public partial class MainWindow
             DockScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
             DockScrollViewer.ScrollToHorizontalOffset(0);
             DockScrollViewer.ScrollToVerticalOffset(0);
-            ScrollPrevOverlay.Visibility = Visibility.Collapsed;
-            ScrollNextOverlay.Visibility = Visibility.Collapsed;
         }
         else
         {
@@ -230,8 +228,6 @@ public partial class MainWindow
         DockSurface.BeginAnimation(WidthProperty, null);
         DockLayoutRoot.MinWidth = 0;
         DockScrollViewer.MaxWidth = double.PositiveInfinity;
-        ScrollPrevOverlay.Visibility = Visibility.Collapsed;
-        ScrollNextOverlay.Visibility = Visibility.Collapsed;
         DockSurface.Width = double.NaN;
 
         const double verticalExtraWidth = 8;

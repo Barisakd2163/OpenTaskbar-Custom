@@ -117,7 +117,7 @@ public partial class MainWindow
 
     private void DockScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (e.HorizontalChange == 0) return;
+        if (e.HorizontalChange == 0 && e.VerticalChange == 0) return;
         _widgetPanel.Close(restoreFocus: false);
 
         // This is the entry to the documented feedback chain:

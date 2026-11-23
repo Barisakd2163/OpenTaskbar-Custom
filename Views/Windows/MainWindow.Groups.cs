@@ -27,6 +27,11 @@ public partial class MainWindow
         public BitmapSource? Icon { get; set; }
         public event PropertyChangedEventHandler? PropertyChanged;
         public void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MemberCount)));
+        public void SetIcon(BitmapSource? icon)
+        {
+            Icon = icon;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
+        }
     }
 
     private IReadOnlyList<DockAppGroup> AppGroups => _preferences.Current.AppGroups ?? [];
@@ -41,11 +46,24 @@ public partial class MainWindow
     private GroupViewModel CreateGroupViewModel(DockAppGroup group)
     {
         var vm = new GroupViewModel(group);
-        // Use the first member's icon (or the folder-plus glyph if empty).
+        // Use the first member's icon (or resolve asynchronously from its executable if not pinned/loaded yet).
         foreach (var path in group.ExecutablePaths)
         {
             var app = FindDockApp(path);
             if (app?.Icon is not null) { vm.Icon = app.Icon; break; }
+        }
+        if (vm.Icon is null && group.ExecutablePaths.Count > 0)
+        {
+            var firstPath = group.ExecutablePaths[0];
+            _ = RunningAppIconCache.IconLoaderThread.Run(() => ApplicationIconProvider.GetForFile(firstPath))
+                .ContinueWith(task =>
+                {
+                    if (!task.IsCompletedSuccessfully || task.Result is not { } raw) return;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (vm.Icon is null) vm.SetIcon(ThemePacks.ApplyIcon(raw, firstPath));
+                    }));
+                }, TaskScheduler.Default);
         }
         return vm;
     }

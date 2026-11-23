@@ -54,9 +54,9 @@ public partial class MainWindow
     private void DockContents_LiveDragOver(object sender, DragEventArgs e)
     {
         if (!TryGetDockItemToken(e, out var token)) return;
-        if (e.Data.GetDataPresent(typeof(Models.DockApp))
-            && e.OriginalSource is Visual source
-            && FindVisualParent<Button>(source)?.DataContext is GroupViewModel)
+        if (e.Data.GetData(typeof(Models.DockApp)) is Models.DockApp
+            && e.OriginalSource is DependencyObject source
+            && FindAncestorDataContext<GroupViewModel>(source) is not null)
         {
             CancelLiveDrag();
             return;
@@ -65,6 +65,16 @@ public partial class MainWindow
         if (_liveDrag is null) BeginLiveDrag(token, pointer);
         if (_liveDrag is { } drag && string.Equals(drag.Token, token, StringComparison.OrdinalIgnoreCase))
             UpdateLiveDrag(drag, pointer);
+    }
+
+    private static T? FindAncestorDataContext<T>(DependencyObject? current) where T : class
+    {
+        while (current is not null)
+        {
+            if (current is FrameworkElement { DataContext: T match }) return match;
+            current = VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     private void DockContents_LiveDragLeave(object sender, DragEventArgs e)

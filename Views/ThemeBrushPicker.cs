@@ -153,7 +153,10 @@ public sealed class ThemeBrushPicker : Window
 
         var grad = new StackPanel { Margin = new Thickness(7) };
         grad.Children.Add(new TextBlock { Text = UiText.Get("ColorSelectStop"), Margin = new Thickness(0, 8, 0, 8) });
-        _stopList.SelectionChanged += (_, _) => SyncChannels();
+        _stopList.SelectionChanged += (_, _) =>
+        {
+            if (!_updating) SyncChannels();
+        };
         grad.Children.Add(_stopChoices);
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 9) };
         var add = Button(UiText.Get("ColorAddStop"));
@@ -425,15 +428,24 @@ public sealed class ThemeBrushPicker : Window
 
     private void RefreshStops(int selected = -1)
     {
-        _stopList.ItemsSource = null;
-        _stopList.Items.Clear();
-        foreach (var stop in _stops)
+        var wasUpdating = _updating;
+        _updating = true;
+        try
         {
-            var label = new TextBlock { Text = $"{stop.Color} · {stop.Offset * 100:0}%", Margin = new Thickness(6, 3, 6, 3) };
-            label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-            _stopList.Items.Add(new ListBoxItem { Content = label, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            _stopList.ItemsSource = null;
+            _stopList.Items.Clear();
+            foreach (var stop in _stops)
+            {
+                var label = new TextBlock { Text = $"{stop.Color} · {stop.Offset * 100:0}%", Margin = new Thickness(6, 3, 6, 3) };
+                label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+                _stopList.Items.Add(new ListBoxItem { Content = label, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            }
+            if (selected >= 0 && selected < _stops.Count) _stopList.SelectedIndex = selected;
         }
-        if (selected >= 0 && selected < _stops.Count) _stopList.SelectedIndex = selected;
+        finally
+        {
+            _updating = wasUpdating;
+        }
         UpdateStopChoices();
     }
 

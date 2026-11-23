@@ -29,7 +29,7 @@ public sealed class ThemePropertyEditor : UserControl
         ("Windows & Popups", ["MenuMaterial", "MenuDivider", "SurfacePopup", "MenuLabelWidth", "PopupRadius", "PopupInnerRadius",
                                "SettingsBackground", "SettingsBackgroundOpacity", "SettingsControl", "SettingsControlHover", "SettingsSidebarOverlay"]),
         ("Icons", ["IconForeground", "WindowsLogoBrush", "IconHoverGlow", "StartTileBackground",
-                   "StartTileStroke", "StartTileHover", "WidgetAccent", "WidgetWarning", "WidgetFocusAccent"]),
+                   "StartTileStroke", "StartTileHover", "WidgetWarning", "WidgetFocusAccent"]),
         ("Typography & Geometry", ["InterfaceFont", "TextSizeBody", "TextSizeCaption",
                                     "ControlRadius", "SettingsPageInset"])
     ];
@@ -188,7 +188,7 @@ public sealed class ThemePropertyEditor : UserControl
                 if (existing is Brush brush) AddBrushField(key, brush);
                 else if (existing is Color color) AddBrushField(key, new SolidColorBrush(color));
                 else if (existing is CornerRadius radius) AddCornerField(key, radius);
-                else if (existing is Thickness thickness) AddNumberField(key, thickness.Left);
+                else if (existing is Thickness thickness) AddThicknessField(key, thickness);
                 else if (existing is double number) AddNumberField(key, number);
                 else if (existing is FontFamily family) AddFontField(key, family);
             }
@@ -716,6 +716,8 @@ public sealed class ThemePropertyEditor : UserControl
 
             ThemePacks.Select(_id, reload: true);
             ThemePacks.ApplyWidgets(_mode);
+            RadiusManager.Initialize();
+            RadiusManager.Rebuild();
             _message.Text = UiText.Get("ThemeSavedMessage");
             ThemeSaved?.Invoke(this, EventArgs.Empty);
         }
