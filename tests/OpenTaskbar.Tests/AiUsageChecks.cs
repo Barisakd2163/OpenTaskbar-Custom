@@ -29,7 +29,8 @@ internal static class AiUsageChecks
         foreach (var command in new[] { "opencode", "agy" })
         {
             var startInfo = AiUsageService.HiddenCliStartInfo(command, "--test");
-            Check(startInfo.FileName == command && startInfo.ArgumentList.SequenceEqual(["--test"])
+            Check(Path.GetFileNameWithoutExtension(startInfo.FileName).Equals(command, StringComparison.OrdinalIgnoreCase)
+                && startInfo.ArgumentList.SequenceEqual(["--test"])
                 && !startInfo.UseShellExecute && startInfo.CreateNoWindow
                 && startInfo.WindowStyle == ProcessWindowStyle.Hidden
                 && startInfo.RedirectStandardInput && startInfo.RedirectStandardOutput

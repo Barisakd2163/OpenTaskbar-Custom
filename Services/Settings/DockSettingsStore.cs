@@ -435,6 +435,7 @@ public sealed class DockSettingsStore
             .Distinct(StringComparer.OrdinalIgnoreCase).Count()
             == settings.AppGroups?.Sum(group => (group.ExecutablePaths ?? []).Count)
         && (settings.DockCornerRadius is null || settings.DockCornerRadius is >= 0 and <= 48)
+        && (string.IsNullOrWhiteSpace(settings.ThemePack) || ThemePackTransfer.IsSafeId(settings.ThemePack.Trim()))
         && IsValidPinnedTrayIcons(settings.PinnedTrayIcons)
         && !HotkeysConflict(settings);
 

@@ -33,8 +33,24 @@ public static class UpdateChecker
 
     public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null, string? Sha256 = null);
 
+    private const long MaxDownloadBytes = 350L * 1024 * 1024;
+    private static readonly HashSet<string> AllowedDownloadHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "github-releases.githubusercontent.com"
+    };
+
     private static readonly HttpClient ApiClient = CreateApiClient();
     private static readonly HttpClient DownloadClient = CreateDownloadClient();
+
+    internal static bool IsAllowedDownloadUrl(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        return string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && AllowedDownloadHosts.Contains(uri.Host);
+    }
 
     private static HttpClient CreateApiClient()
     {
@@ -90,6 +106,7 @@ public static class UpdateChecker
         string? downloadUrl = null;
         long? size = null;
         string? sha256 = null;
+
         if (document.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
         {
             var selected = SelectAsset(assets, architecture);
@@ -182,6 +199,11 @@ public static class UpdateChecker
             return (false, "ErrorUpdateBinaryMissing", null);
         }
 
+        if (!IsAllowedDownloadUrl(release.DownloadUrl))
+        {
+            return (false, "ErrorUpdateExecutableInvalid", null);
+        }
+
         // GitHub release asset digests are the minimum integrity requirement for unattended replacement.
         // Older releases without a digest can still be installed manually from the release page.
         if (!IsValidSha256Digest(release.Sha256))
@@ -189,7 +211,9 @@ public static class UpdateChecker
             return (false, "ErrorUpdateExecutableInvalid", null);
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "OpenTaskbar", "update");
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var baseDir = string.IsNullOrWhiteSpace(localAppData) ? Path.GetTempPath() : localAppData;
+        var tempDir = Path.Combine(baseDir, "OpenTaskbar", "updates", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var tempExe = Path.Combine(tempDir, "OpenTaskbar.exe");
         var partFile = tempExe + ".part";
@@ -206,10 +230,34 @@ public static class UpdateChecker
                 return (false, "ErrorUpdateHttp", statusCode);
             }
 
+            if (!IsAllowedDownloadUrl(response.RequestMessage?.RequestUri?.AbsoluteUri))
+            {
+                AppLog.Warning("Update redirect targeted a disallowed host.");
+                return (false, "ErrorUpdateExecutableInvalid", null);
+            }
+
+            if (response.Content.Headers.ContentLength is > MaxDownloadBytes)
+            {
+                return (false, "ErrorUpdateSizeInvalid", null);
+            }
+
             await using (var contentStream = await response.Content.ReadAsStreamAsync(cancellation))
             await using (var fileStream = new FileStream(partFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
             {
-                await contentStream.CopyToAsync(fileStream, cancellation);
+                var buffer = new byte[81920];
+                long totalWritten = 0;
+                while (true)
+                {
+                    var read = await contentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellation);
+                    if (read == 0) break;
+                    totalWritten += read;
+                    if (totalWritten > MaxDownloadBytes)
+                    {
+                        TryDelete(partFile);
+                        return (false, "ErrorUpdateSizeInvalid", null);
+                    }
+                    await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellation);
+                }
             }
 
             var fileInfo = new FileInfo(partFile);
@@ -274,8 +322,20 @@ public static class UpdateChecker
         digest is { Length: 71 } && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
         && digest[7..].All(Uri.IsHexDigit);
 
+    // Inside set "VAR=..." only a quote, percent/delayed-expansion marker or line break can break quoting.
+    // Rejecting &|^<> as well would make self-update fail on legal Windows paths such as "Tom & Jerry".
+    private static readonly char[] UnsafeBatchChars = ['"', '%', '!', '\r', '\n'];
+
+    private static void EnsureSafeBatchPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.IndexOfAny(UnsafeBatchChars) >= 0)
+            throw new InvalidOperationException("Unsafe path for updater script.");
+    }
+
     internal static string GenerateUpdaterScript(string tempExe, string targetExe)
     {
+        EnsureSafeBatchPath(tempExe);
+        EnsureSafeBatchPath(targetExe);
         return $"""
         @echo off
         set "SRC={tempExe}"
@@ -300,15 +360,19 @@ public static class UpdateChecker
 
     internal static void LaunchUpdaterAndRestart(string tempExe, string targetPath)
     {
+        EnsureSafeBatchPath(tempExe);
+        EnsureSafeBatchPath(targetPath);
         var targetDir = Path.GetDirectoryName(targetPath) ?? AppContext.BaseDirectory;
         var scriptPath = Path.Combine(Path.GetDirectoryName(tempExe)!, "apply-update.cmd");
+        EnsureSafeBatchPath(scriptPath);
         var script = GenerateUpdaterScript(tempExe, targetPath);
         File.WriteAllText(scriptPath, script);
 
         var requiresElevation = !IsDirectoryWritable(targetDir);
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
         var startInfo = new ProcessStartInfo
         {
-            FileName = "cmd.exe",
+            FileName = cmdPath,
             UseShellExecute = requiresElevation,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,

@@ -217,6 +217,7 @@ internal static class ThemePackTransfer
         var prefix = Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar;
         var count = 0;
         long total = 0;
+        long actualTotal = 0;
         foreach (var entry in archive.Entries)
         {
             if (string.IsNullOrEmpty(entry.Name)) continue; // directory marker
@@ -236,7 +237,30 @@ internal static class ThemePackTransfer
                 throw new InvalidDataException("Unsafe path in archive.");
 
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            entry.ExtractToFile(full, overwrite: true);
+            long entryWritten = 0;
+            var buffer = new byte[8192];
+            try
+            {
+                using var source = entry.Open();
+                using var target = new FileStream(full, FileMode.Create, FileAccess.Write, FileShare.None);
+                while (true)
+                {
+                    var read = source.Read(buffer, 0, buffer.Length);
+                    if (read == 0) break;
+                    entryWritten += read;
+                    actualTotal += read;
+                    if (entryWritten > MaxFileBytes || actualTotal > MaxUncompressedBytes)
+                    {
+                        throw new InvalidDataException("Theme is too large.");
+                    }
+                    target.Write(buffer, 0, read);
+                }
+            }
+            catch
+            {
+                try { if (File.Exists(full)) File.Delete(full); } catch { }
+                throw;
+            }
         }
     }
 
