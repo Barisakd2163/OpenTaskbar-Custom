@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="tr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dinamik Ada · OpenTaskbar</title>
+<style>
+  :root {
+    color-scheme: light;
+    font-family: "Segoe UI", sans-serif;
+    --paper: #f4f1e9;
+    --ink: #232921;
+    --muted: #555c52;
+    --line: #d7d9cc;
+    --panel: #171a18;
+    --panel-raised: #2a302c;
+    --white: #fafbf4;
+    --dim: #bcc7bc;
+    --accent: #d7ef9e;
+    --motion: 220ms cubic-bezier(.23,1,.32,1);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); }
+  button, select, input { font: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid #58802b; outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  main { width: min(1280px, 100%); margin: auto; padding: 32px clamp(16px, 5vw, 66px) 44px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; display: flex; align-items: center; gap: 9px; }
+  .brand::before { content: ""; width: 17px; height: 14px; border: 2px solid currentColor; border-radius: 4px; background: linear-gradient(currentColor,currentColor) center 80% / 9px 2px no-repeat; }
+  .tag, .hint { color: var(--muted); font-size: .86rem; }
+  .intro { margin: 39px 0 28px; }
+  h1 { margin: 0; font-size: clamp(2.55rem, 6vw, 4.75rem); line-height: 1.05; letter-spacing: -.065em; font-weight: 650; }
+  .intro p { margin: 14px 0 0; color: var(--muted); max-width: 52ch; line-height: 1.55; }
+  .screens { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
+  .monitor { min-width: 0; }
+  .monitor-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 10px; }
+  h2 { font-size: .95rem; font-weight: 650; margin: 0; }
+  .desktop {
+    position: relative; min-height: 362px; padding: 14px 12px 58px;
+    border: 1px solid #172a24; border-radius: 18px; isolation: isolate;
+    background:
+      repeating-radial-gradient(ellipse at 5% 120%, transparent 0 10px, #a2c9aa28 11px 12px, transparent 13px 22px),
+      radial-gradient(ellipse at 7% 118%, #d1cf88 8%, #6f9d7f 48%, #163c3c 72%, #152a32 100%);
+  }
+  .monitor:nth-child(2) .desktop {
+    background:
+      repeating-radial-gradient(ellipse at 99% 113%, transparent 0 10px, #d7c09a2e 11px 12px, transparent 13px 23px),
+      radial-gradient(ellipse at 96% 122%, #e7ad72 16%, #b97961 40%, #714953 67%, #252c3b 100%);
+  }
+  .island {
+    width: min(232px, 100%); margin: 0 auto; color: var(--white); background: var(--panel);
+    border: 1px solid #ffffff28; border-radius: 23px; overflow: hidden;
+    box-shadow: 0 14px 32px #10191658, inset 0 1px #ffffff10;
+    transition: width var(--motion), border-radius var(--motion); touch-action: pan-y;
+  }
+  .island[data-open="true"] { width: min(100%, 396px); border-radius: 24px; }
+  .island :focus-visible { outline-color: var(--accent); outline-offset: -3px; }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 6px 14px; border: 0; color: inherit; background: transparent; text-align: left; }
+  .identity { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: .85rem; }
+  .identity::before { content: ""; width: 7px; height: 7px; border-radius: 3px; background: var(--accent); }
+  .summary { color: var(--dim); font-size: .84rem; font-variant-numeric: tabular-nums; margin-inline-start: auto; }
+  .indicator { width: 8px; height: 8px; margin: 0 2px 4px; border: solid var(--dim); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  [data-open="true"] .indicator { transform: rotate(225deg); margin-block: 4px 0; }
+  .expand { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion); }
+  [data-open="true"] .expand { grid-template-rows: 1fr; }
+  .expand-mask { overflow: hidden; min-height: 0; }
+  .content { padding: 4px 14px 10px; }
+  .page { min-height: 154px; border-radius: 15px; background: var(--panel-raised); padding: 14px 16px; }
+  .clock { display: flex; flex-direction: column; justify-content: center; gap: 3px; background: #292f23; }
+  .clock small { color: var(--accent); font-weight: 600; }
+  .clock time { color: var(--white); font-size: clamp(2.6rem, 7vw, 4.1rem); line-height: 1.05; font-weight: 600; letter-spacing: -.065em; font-variant-numeric: tabular-nums; }
+  .date { color: var(--dim); font-size: .88rem; }
+  .media { display: flex; flex-direction: column; justify-content: center; gap: 9px; }
+  .media p { margin: 0; overflow-wrap: anywhere; }
+  .file-label { align-self: start; font-size: .85rem; }
+  input[type="file"] { width: 100%; max-width: 100%; font-size: .83rem; color: var(--dim); }
+  input::file-selector-button { font: inherit; border: 0; border-radius: 7px; padding: 6px 9px; background: var(--accent); color: var(--ink); cursor: pointer; }
+  audio { width: 100%; height: 36px; }
+  .pages { display: flex; justify-content: center; margin-top: 5px; }
+  .page-dot { width: 36px; min-height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--white); }
+  .page-dot::before { content: ""; width: 6px; height: 6px; border-radius: 8px; background: #8d998e; }
+  .page-dot[aria-current="true"]::before { background: var(--accent); width: 17px; }
+  .dock { position: absolute; bottom: 12px; left: 50%; translate: -50% 0; display: flex; gap: 6px; align-items: center; border: 1px solid #ffffff3b; border-radius: 11px; padding: 5px; background: #171c1adc; color: var(--white); }
+  .dock span { padding: 4px 8px; font-size: .75rem; }
+  .placement { margin-top: 9px; font-size: .86rem; }
+  summary { width: fit-content; cursor: pointer; padding-block: 7px; color: var(--muted); }
+  .fields { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 7px 0 3px; }
+  .fields label { display: flex; align-items: center; gap: 7px; }
+  select { color: var(--ink); background: #fffcf5; border: 1px solid #a5aa9b; border-radius: 6px; padding: 4px; }
+  .hint { line-height: 1.55; margin-top: 22px; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (max-width: 720px) { .screens { grid-template-columns: 1fr; } .desktop { min-height: 328px; } }
+  @media (prefers-reduced-motion: reduce) { .island, .expand { transition: none; } }
+</style>
+<main>
+  <header><span class="brand">OpenTaskbar</span><span class="tag">Tasarım prototipi</span></header>
+  <div class="intro">
+    <h1>Dinamik Ada</h1>
+    <p>Her ekranda açık kalacak widget’ı seç. Ayrıntılar gerektiğinde ada bulunduğu yerden genişler.</p>
+  </div>
+  <div class="screens"></div>
+  <p class="hint">Adayı tıklayarak aç. Yatay kaydır, fare tekerleğini kullan veya klavyede sağ ve sol oklarla sayfa değiştir.</p>
+</main>
+<template id="monitor">
+  <section class="monitor">
+    <div class="monitor-heading"><h2></h2><span class="tag"></span></div>
+    <div class="desktop">
+      <div class="island" data-open="false">
+        <button class="toggle" type="button" aria-expanded="false">
+          <span class="identity"></span><span class="summary" aria-hidden="true"></span><span class="indicator" aria-hidden="true"></span>
+        </button>
+        <div class="expand" inert>
+          <div class="expand-mask">
+            <div class="content">
+              <section class="page clock" data-widget="clock" aria-label="Saat">
+                <small>Yerel saat</small><time></time><span class="date"></span>
+              </section>
+              <section class="page media" data-widget="media" aria-label="Müzik" hidden>
+                <p class="track">Ses dosyası seçilmedi.</p>
+                <label class="file-label">Yerel ses dosyası <input type="file" accept="audio/*"></label>
+                <audio controls hidden></audio>
+              </section>
+              <nav class="pages" aria-label="Widget sayfaları">
+                <button class="page-dot" type="button" data-widget="clock" aria-label="Saat sayfası"></button>
+                <button class="page-dot" type="button" data-widget="media" aria-label="Müzik sayfası"></button>
+              </nav>
+            </div>
+          </div>
+        </div>
+        <span class="visually-hidden announcement" role="status"></span>
+      </div>
+      <div class="dock" aria-label="Dock widget’ları" hidden></div>
+    </div>
+    <details class="placement">
+      <summary>Widget konumları</summary>
+      <div class="fields">
+        <label>Saat <select data-widget="clock"><option value="island">Ada</option><option value="dock">Dock</option></select></label>
+        <label>Müzik <select data-widget="media"><option value="island">Ada</option><option value="dock">Dock</option></select></label>
+      </div>
+    </details>
+  </section>
+</template>
+<script>
+  const names = { clock: 'Saat', media: 'Müzik' };
+  const timeFormat = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const dateFormat = new Intl.DateTimeFormat('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const template = document.querySelector('#monitor');
+  const screens = document.querySelector('.screens');
+
+  function createMonitor(index, initialPage, expanded) {
+    const monitor = template.content.firstElementChild.cloneNode(true);
+    const island = monitor.querySelector('.island');
+    const toggle = monitor.querySelector('.toggle');
+    const expand = monitor.querySelector('.expand');
+    const nav = monitor.querySelector('nav');
+    const dock = monitor.querySelector('.dock');
+    const identity = monitor.querySelector('.identity');
+    const summary = monitor.querySelector('.summary');
+    const time = monitor.querySelector('time');
+    const date = monitor.querySelector('.date');
+    const audio = monitor.querySelector('audio');
+    const track = monitor.querySelector('.track');
+    const positions = { clock: 'island', media: 'island' };
+    let selected = initialPage;
+    let audioUrl;
+    let gesture;
+    let wheelTotal = 0;
+    let lastWheel = -Infinity;
+    let wheelConsumed = false;
+    monitor.querySelector('h2').textContent = 'Ekran ' + index;
+    monitor.querySelector('.monitor-heading .tag').textContent = index === 1 ? 'Ana ekran' : 'İkinci ekran';
+    expand.id = 'island-content-' + index;
+    toggle.setAttribute('aria-controls', expand.id);
+
+    function setOpen(open) {
+      if (!open && expand.contains(document.activeElement)) toggle.focus();
+      island.dataset.open = String(open);
+      toggle.setAttribute('aria-expanded', String(open));
+      expand.inert = !open;
+    }
+
+    function islandPages() {
+      return Object.keys(names).filter(widget => positions[widget] === 'island');
+    }
+
+    function updateClock() {
+      const now = new Date();
+      const localTime = timeFormat.format(now);
+      time.textContent = localTime;
+      time.dateTime = localTime;
+      date.textContent = dateFormat.format(now);
+      summary.textContent = selected === 'clock' ? localTime : audio.paused ? '' : 'Çalıyor';
+      const dockClock = dock.querySelector('[data-clock]');
+      if (dockClock) dockClock.textContent = localTime;
+    }
+
+    function showPage(widget, announce = false) {
+      selected = widget;
+      identity.textContent = names[widget] ?? '';
+      for (const page of monitor.querySelectorAll('.page')) page.hidden = page.dataset.widget !== widget;
+      for (const button of nav.querySelectorAll('button')) {
+        button.hidden = positions[button.dataset.widget] !== 'island';
+        button.setAttribute('aria-current', String(button.dataset.widget === widget));
+      }
+      nav.hidden = islandPages().length < 2;
+      island.hidden = !widget;
+      if (announce && widget) monitor.querySelector('.announcement').textContent = names[widget] + ' sayfası';
+      updateClock();
+    }
+
+    function movePage(direction) {
+      const pages = islandPages();
+      if (pages.length < 2) return;
+      showPage(pages[(pages.indexOf(selected) + direction + pages.length) % pages.length], true);
+    }
+
+    toggle.addEventListener('click', () => setOpen(island.dataset.open !== 'true'));
+    nav.addEventListener('click', event => {
+      const button = event.target.closest('button');
+      if (button) showPage(button.dataset.widget, true);
+    });
+    island.addEventListener('keydown', event => {
+      if (event.target.closest('input, audio')) return;
+      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        movePage(event.key === 'ArrowRight' ? 1 : -1);
+      }
+    });
+    island.addEventListener('wheel', event => {
+      if (islandPages().length < 2 || event.ctrlKey || event.target.closest('input, audio')) return;
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!delta) return;
+      event.preventDefault();
+      if (event.timeStamp - lastWheel > 150) {
+        wheelTotal = 0;
+        wheelConsumed = false;
+      }
+      lastWheel = event.timeStamp;
+      if (wheelConsumed) return;
+      wheelTotal += delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1);
+      if (Math.abs(wheelTotal) >= 24) {
+        movePage(Math.sign(wheelTotal));
+        wheelConsumed = true;
+      }
+    }, { passive: false });
+    island.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' || event.target.closest('input, audio, .page-dot')) return;
+      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    island.addEventListener('pointerup', event => {
+      if (!gesture || gesture.id !== event.pointerId) return;
+      const { x, y } = gesture;
+      gesture = undefined;
+      const dx = event.clientX - x;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(event.clientY - y)) {
+        event.preventDefault();
+        movePage(dx < 0 ? 1 : -1);
+        toggle.addEventListener('click', suppressSwipeClick, { capture: true, once: true });
+        setTimeout(() => toggle.removeEventListener('click', suppressSwipeClick, true), 350);
+      }
+    });
+    function suppressSwipeClick(event) { event.stopImmediatePropagation(); }
+    island.addEventListener('pointercancel', () => { gesture = undefined; });
+
+    for (const select of monitor.querySelectorAll('select')) {
+      select.addEventListener('change', () => {
+        positions[select.dataset.widget] = select.value;
+        const pages = islandPages();
+        dock.replaceChildren();
+        for (const widget of Object.keys(names)) {
+          if (positions[widget] !== 'dock') continue;
+          const item = document.createElement('span');
+          item.textContent = names[widget];
+          if (widget === 'clock') item.dataset.clock = '';
+          dock.append(item);
+        }
+        dock.hidden = !dock.childElementCount;
+        showPage(pages.includes(selected) ? selected : pages[0]);
+      });
+    }
+
+    monitor.querySelector('input').addEventListener('change', event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      audioUrl = URL.createObjectURL(file);
+      audio.src = audioUrl;
+      track.textContent = file.name;
+      audio.hidden = false;
+    });
+    for (const event of ['play', 'pause', 'ended']) audio.addEventListener(event, updateClock);
+    audio.addEventListener('error', () => { track.textContent = 'Bu ses dosyası oynatılamadı.'; });
+    setOpen(expanded);
+    showPage(initialPage);
+    screens.append(monitor);
+    return updateClock;
+  }
+
+  const clocks = [createMonitor(1, 'clock', true), createMonitor(2, 'media', false)];
+  setInterval(() => clocks.forEach(update => update()), 1000);
+</script>
+</html>
