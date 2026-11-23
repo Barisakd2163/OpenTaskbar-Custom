@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "オフ",
   "WirelessBatteryListenOnly": "受信のみ: {0}",
   "WirelessBatteryListenOnlyOn": "オン",
-  "WirelessBatteryListenOnlyOff": "オフ"
+  "WirelessBatteryListenOnlyOff": "オフ",
+  "WidgetShowDesktop": "デスクトップを表示",
+  "WidgetShowDesktopDescription": "クリックでデスクトップを切り替え、ドラッグ中にホバーして表示、またはファイルをドロップしてデスクトップに移動します。",
+  "WidgetShowDesktopShort": "デスクトップ",
+  "OpenDesktopFolder": "デスクトップ フォルダーを開く",
+  "ShowDesktopTooltip": "デスクトップを表示 (クリック) · ドロップでデスクトップへ移動 (Ctrl でコピー)",
+  "MovedToDesktop": "デスクトップに移動しました",
+  "CopiedToDesktop": "デスクトップにコピーしました"
 }

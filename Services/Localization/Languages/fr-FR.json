@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Désactivée",
   "WirelessBatteryListenOnly": "Écoute seule : {0}",
   "WirelessBatteryListenOnlyOn": "Activé",
-  "WirelessBatteryListenOnlyOff": "Désactivé"
+  "WirelessBatteryListenOnlyOff": "Désactivé",
+  "WidgetShowDesktop": "Afficher le bureau",
+  "WidgetShowDesktopDescription": "Cliquez pour afficher le bureau, survolez en glissant des fichiers pour le révéler ou déposez-les pour les déplacer sur le Bureau.",
+  "WidgetShowDesktopShort": "Bureau",
+  "OpenDesktopFolder": "Ouvrir le dossier Bureau",
+  "ShowDesktopTooltip": "Afficher le bureau (clic) · Déposez des fichiers vers le Bureau (Ctrl pour copier)",
+  "MovedToDesktop": "Déplacé sur le Bureau",
+  "CopiedToDesktop": "Copié sur le Bureau"
 }

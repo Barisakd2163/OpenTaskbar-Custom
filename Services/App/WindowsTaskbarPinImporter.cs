@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -488,6 +489,173 @@ public static class WindowsTaskbarPinImporter
         if (!path.StartsWith(AppsFolderPrefix, StringComparison.OrdinalIgnoreCase)) return null;
         var aumid = path[AppsFolderPrefix.Length..];
         return AppShortcutResolver.IsPackagedAppUserModelId(aumid) ? aumid.Trim() : null;
+    }
+
+    internal sealed record DroppedPinTarget(
+        string Name,
+        string TargetPath,
+        string? LaunchArguments,
+        string? IconLocation,
+        bool IsDirectory);
+
+    /// <summary>Fast check used during DragOver to decide whether a dropped path can be pinned or added as a stack.</summary>
+    internal static bool IsSupportedDockDropPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path.Trim());
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+
+        if (Directory.Exists(full)) return true;
+        if (!File.Exists(full)) return false;
+        var extension = Path.GetExtension(full);
+        return extension.Equals(".exe", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Resolves a dropped .exe, .lnk shortcut, or folder into a dock pin or folder stack target.</summary>
+    internal static DroppedPinTarget? TryResolveDroppedTarget(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path.Trim());
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        if (Directory.Exists(full))
+        {
+            var trimmed = Path.TrimEndingDirectorySeparator(full);
+            var folderName = Path.GetFileName(trimmed);
+            return new DroppedPinTarget(
+                string.IsNullOrWhiteSpace(folderName) ? trimmed : folderName,
+                trimmed,
+                null,
+                null,
+                IsDirectory: true);
+        }
+
+        if (!File.Exists(full)) return null;
+
+        var extension = Path.GetExtension(full);
+        if (extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            var name = ResolveExecutableDisplayName(full);
+            return new DroppedPinTarget(name, full, null, null, IsDirectory: false);
+        }
+
+        if (extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryResolveShortcutDropTarget(full);
+        }
+
+        return null;
+    }
+
+    private static string ResolveExecutableDisplayName(string executablePath)
+    {
+        try
+        {
+            var info = FileVersionInfo.GetVersionInfo(executablePath);
+            if (!string.IsNullOrWhiteSpace(info.FileDescription)) return info.FileDescription.Trim();
+            if (!string.IsNullOrWhiteSpace(info.ProductName)) return info.ProductName.Trim();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FileNotFoundException)
+        {
+        }
+
+        return Path.GetFileNameWithoutExtension(executablePath);
+    }
+
+    private static DroppedPinTarget? TryResolveShortcutDropTarget(string shortcutPath)
+    {
+        Type? shellType;
+        object? shell;
+        try
+        {
+            shellType = Type.GetTypeFromProgID("WScript.Shell");
+            shell = shellType is null ? null : Activator.CreateInstance(shellType);
+        }
+        catch (Exception ex) when (ex is COMException or TargetInvocationException)
+        {
+            return null;
+        }
+
+        if (shellType is null || shell is null) return null;
+
+        try
+        {
+            var shortcut = shellType.InvokeMember(
+                "CreateShortcut",
+                BindingFlags.InvokeMethod,
+                binder: null,
+                target: shell,
+                args: [shortcutPath]);
+            if (shortcut is null) return null;
+
+            try
+            {
+                var shortcutType = shortcut.GetType();
+                var targetPath = ReadStringProperty(shortcutType, shortcut, "TargetPath");
+                var arguments = ReadStringProperty(shortcutType, shortcut, "Arguments");
+                var iconLocation = ReadStringProperty(shortcutType, shortcut, "IconLocation");
+                var shortcutName = Path.GetFileNameWithoutExtension(shortcutPath);
+
+                var executablePath = ResolveExecutablePath(targetPath, iconLocation);
+                if (executablePath is not null)
+                {
+                    return new DroppedPinTarget(
+                        string.IsNullOrWhiteSpace(shortcutName) ? ResolveExecutableDisplayName(executablePath) : shortcutName,
+                        executablePath,
+                        string.IsNullOrWhiteSpace(arguments) ? null : arguments,
+                        string.IsNullOrWhiteSpace(iconLocation) ? null : iconLocation,
+                        IsDirectory: false);
+                }
+
+                var normalizedTarget = Environment.ExpandEnvironmentVariables(targetPath.Trim().Trim('"'));
+                if (!string.IsNullOrWhiteSpace(normalizedTarget) && Directory.Exists(normalizedTarget))
+                {
+                    var dirFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(normalizedTarget));
+                    var dirName = Path.GetFileName(dirFull);
+                    return new DroppedPinTarget(
+                        string.IsNullOrWhiteSpace(shortcutName) ? (string.IsNullOrWhiteSpace(dirName) ? dirFull : dirName) : shortcutName,
+                        dirFull,
+                        null,
+                        null,
+                        IsDirectory: true);
+                }
+
+                return null;
+            }
+            finally
+            {
+                if (Marshal.IsComObject(shortcut))
+                {
+                    _ = Marshal.FinalReleaseComObject(shortcut);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is COMException or TargetInvocationException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+        finally
+        {
+            if (Marshal.IsComObject(shell))
+            {
+                _ = Marshal.FinalReleaseComObject(shell);
+            }
+    }
     }
 
     private static string? ResolveExecutablePath(string targetPath, string iconLocation)

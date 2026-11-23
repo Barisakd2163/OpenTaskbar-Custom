@@ -1063,33 +1063,80 @@ public static partial class ShellShortcuts
         }
     }
 
-    /// <summary>Win+D: toggles the desktop. Used by the slim trailing Show Desktop strip.</summary>
+    /// <summary>Win+D: toggles the desktop. Used by the slim trailing Show Desktop strip and Show Desktop widget.</summary>
     public static string? ToggleShowDesktop() => SendWindowsShortcut(VkD);
 
-    // Modifier keys held for a file drag must not change what the Shell does.
-    public static string? MinimizeAllWindows()
+    private const uint WmCommand = 0x0111;
+    private const nint CommandMinimizeAll = 419;
+    private const ushort VkShift = 0x10;
+    private const ushort VkMenu = 0x12;
+    private const long DragRevealFallbackCooldownMs = 4000;
+    private static long _lastDragRevealFallbackMs;
+
+    /// <summary>
+    /// Reveals the desktop during an active file drag without toggling windows back up on rapid re-entry
+    /// and without injecting synthetic Win+D keystrokes while Ctrl/Shift drag modifiers may be held.
+    /// </summary>
+    public static string? ShowDesktopForDrag()
+    {
+        var tray = NativeTaskbarWindow.Find();
+        if (tray != 0 && PostMessage(tray, WmCommand, CommandMinimizeAll, 0))
+        {
+            return null;
+        }
+
+        if (TryMinimizeAllViaShell())
+        {
+            return null;
+        }
+
+        // Only fall back to Win+D when no drag modifier (e.g. Ctrl, which turns Win+D into new virtual desktop)
+        // is physically held and a recent fallback has not just revealed the desktop.
+        var now = Environment.TickCount64;
+        if (GetAsyncKeyState(VkControl) < 0 || GetAsyncKeyState(VkShift) < 0 || GetAsyncKeyState(VkMenu) < 0)
+        {
+            return null;
+        }
+
+        if (_lastDragRevealFallbackMs != 0 && now - _lastDragRevealFallbackMs < DragRevealFallbackCooldownMs)
+        {
+            return null;
+        }
+
+        _lastDragRevealFallbackMs = now;
+        return ToggleShowDesktop();
+    }
+
+    private static bool TryMinimizeAllViaShell()
     {
         object? shell = null;
         try
         {
-            var type = Type.GetTypeFromProgID("Shell.Application");
-            if (type is null || (shell = Activator.CreateInstance(type)) is null)
-                return UiText.Get("ErrorShortcutSend");
-
-            type.InvokeMember("MinimizeAll", System.Reflection.BindingFlags.InvokeMethod, null, shell, null);
-            return null;
+            var shellType = Type.GetTypeFromProgID("Shell.Application");
+            if (shellType is null) return false;
+            shell = Activator.CreateInstance(shellType);
+            if (shell is null) return false;
+            shellType.InvokeMember("MinimizeAll", BindingFlags.InvokeMethod, binder: null, target: shell, args: null);
+            return true;
         }
-        catch (Exception ex) when (ex is COMException or System.Reflection.TargetInvocationException
-            or MissingMethodException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is COMException or TargetInvocationException or InvalidOperationException)
         {
-            AppLog.Warning($"Cannot reveal the desktop during a file drag: {ex.GetType().Name}.");
-            return UiText.Get("ErrorShortcutSend");
+            AppLog.Warning($"Shell.Application MinimizeAll failed: {ex.Message}");
+            return false;
         }
         finally
         {
-            if (shell is not null && Marshal.IsComObject(shell)) _ = Marshal.FinalReleaseComObject(shell);
+            if (shell is not null && Marshal.IsComObject(shell))
+            {
+                _ = Marshal.FinalReleaseComObject(shell);
+            }
         }
     }
+
+    // Modifier keys held for a file drag must not change what the Shell does.
+    public static string? MinimizeAllWindows() => TryMinimizeAllViaShell()
+        ? null
+        : UiText.Get("ErrorShortcutSend");
 
     /// <summary>Win+R: opens the native Run dialog.</summary>
     public const ushort VkR = 0x52;
@@ -1261,4 +1308,7 @@ public static partial class ShellShortcuts
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
 }

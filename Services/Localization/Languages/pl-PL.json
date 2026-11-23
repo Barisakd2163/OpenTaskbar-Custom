@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Wył.",
   "WirelessBatteryListenOnly": "Tylko nasłuch: {0}",
   "WirelessBatteryListenOnlyOn": "Wł.",
-  "WirelessBatteryListenOnlyOff": "Wył."
+  "WirelessBatteryListenOnlyOff": "Wył.",
+  "WidgetShowDesktop": "Pokaż pulpit",
+  "WidgetShowDesktopDescription": "Kliknij, aby przełączyć pulpit, przytrzymaj podczas przeciągania plików lub upuść pliki, aby przenieść je na Pulpit.",
+  "WidgetShowDesktopShort": "Pulpit",
+  "OpenDesktopFolder": "Otwórz folder Pulpit",
+  "ShowDesktopTooltip": "Pokaż pulpit (klik) · Upuść pliki, aby przenieść na Pulpit (Ctrl, aby skopiować)",
+  "MovedToDesktop": "Przeniesiono na Pulpit",
+  "CopiedToDesktop": "Skopiowano na Pulpit"
 }

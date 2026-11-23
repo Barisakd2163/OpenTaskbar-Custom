@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Disattivato",
   "WirelessBatteryListenOnly": "Solo ascolto: {0}",
   "WirelessBatteryListenOnlyOn": "Attivo",
-  "WirelessBatteryListenOnlyOff": "Disattivo"
+  "WirelessBatteryListenOnlyOff": "Disattivo",
+  "WidgetShowDesktop": "Mostra desktop",
+  "WidgetShowDesktopDescription": "Fai clic per mostrare il desktop, resta sopra mentre trascini file per scoprirlo o rilascia file per spostarli sul Desktop.",
+  "WidgetShowDesktopShort": "Desktop",
+  "OpenDesktopFolder": "Apri cartella Desktop",
+  "ShowDesktopTooltip": "Mostra desktop (clic) · Rilascia file per spostarli sul Desktop (Ctrl per copiare)",
+  "MovedToDesktop": "Spostato sul Desktop",
+  "CopiedToDesktop": "Copiato sul Desktop"
 }

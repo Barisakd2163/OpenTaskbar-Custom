@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Off",
   "WirelessBatteryListenOnly": "Listen only: {0}",
   "WirelessBatteryListenOnlyOn": "On",
-  "WirelessBatteryListenOnlyOff": "Off"
+  "WirelessBatteryListenOnlyOff": "Off",
+  "WidgetShowDesktop": "Show desktop",
+  "WidgetShowDesktopDescription": "Click to toggle the desktop, hover while dragging files to reveal it, or drop files to move them to the Desktop.",
+  "WidgetShowDesktopShort": "Desktop",
+  "OpenDesktopFolder": "Open Desktop folder",
+  "ShowDesktopTooltip": "Show desktop (click) · Drop files to move to Desktop (Ctrl to copy)",
+  "MovedToDesktop": "Moved to Desktop",
+  "CopiedToDesktop": "Copied to Desktop"
 }

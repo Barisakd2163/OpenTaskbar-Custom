@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Desativado",
   "WirelessBatteryListenOnly": "Somente escuta: {0}",
   "WirelessBatteryListenOnlyOn": "Ativado",
-  "WirelessBatteryListenOnlyOff": "Desativado"
+  "WirelessBatteryListenOnlyOff": "Desativado",
+  "WidgetShowDesktop": "Mostrar área de trabalho",
+  "WidgetShowDesktopDescription": "Clique para alternar a área de trabalho, mantenha o ponteiro ao arrastar arquivos para revelá-la ou solte arquivos para movê-los para a Área de Trabalho.",
+  "WidgetShowDesktopShort": "Área de trabalho",
+  "OpenDesktopFolder": "Abrir pasta Área de Trabalho",
+  "ShowDesktopTooltip": "Mostrar área de trabalho (clique) · Solte arquivos para mover (Ctrl para copiar)",
+  "MovedToDesktop": "Movido para a Área de Trabalho",
+  "CopiedToDesktop": "Copiado para a Área de Trabalho"
 }

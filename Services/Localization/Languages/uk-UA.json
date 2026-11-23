@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Вимк.",
   "WirelessBatteryListenOnly": "Лише прослуховування: {0}",
   "WirelessBatteryListenOnlyOn": "Увімк.",
-  "WirelessBatteryListenOnlyOff": "Вимк."
+  "WirelessBatteryListenOnlyOff": "Вимк.",
+  "WidgetShowDesktop": "Показати робочий стіл",
+  "WidgetShowDesktopDescription": "Натисніть, щоб перемкнути робочий стіл, затримайте курсор під час перетягування файлів або відпустіть файли, щоб перемістити їх на Робочий стіл.",
+  "WidgetShowDesktopShort": "Робочий стіл",
+  "OpenDesktopFolder": "Відкрити папку «Робочий стіл»",
+  "ShowDesktopTooltip": "Показати робочий стіл (клік) · Перетягніть файли для переміщення (Ctrl — копіювати)",
+  "MovedToDesktop": "Переміщено на Робочий стіл",
+  "CopiedToDesktop": "Скопійовано на Робочий стіл"
 }

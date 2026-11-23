@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Uit",
   "WirelessBatteryListenOnly": "Alleen luisteren: {0}",
   "WirelessBatteryListenOnlyOn": "Aan",
-  "WirelessBatteryListenOnlyOff": "Uit"
+  "WirelessBatteryListenOnlyOff": "Uit",
+  "WidgetShowDesktop": "Bureaublad weergeven",
+  "WidgetShowDesktopDescription": "Klik om het bureaublad te tonen, zweef tijdens het slepen van bestanden om het te onthullen of zet bestanden neer om ze naar het Bureaublad te verplaatsen.",
+  "WidgetShowDesktopShort": "Bureaublad",
+  "OpenDesktopFolder": "Map Bureaublad openen",
+  "ShowDesktopTooltip": "Bureaublad weergeven (klik) · Zet bestanden neer om te verplaatsen (Ctrl om te kopiëren)",
+  "MovedToDesktop": "Verplaatst naar Bureaublad",
+  "CopiedToDesktop": "Gekopieerd naar Bureaublad"
 }

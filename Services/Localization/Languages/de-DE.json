@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Aus",
   "WirelessBatteryListenOnly": "Nur zuhören: {0}",
   "WirelessBatteryListenOnlyOn": "Ein",
-  "WirelessBatteryListenOnlyOff": "Aus"
+  "WirelessBatteryListenOnlyOff": "Aus",
+  "WidgetShowDesktop": "Desktop anzeigen",
+  "WidgetShowDesktopDescription": "Zum Umschalten klicken, beim Ziehen von Dateien kurz verweilen oder Dateien direkt auf den Desktop ablegen.",
+  "WidgetShowDesktopShort": "Desktop",
+  "OpenDesktopFolder": "Desktop-Ordner öffnen",
+  "ShowDesktopTooltip": "Desktop anzeigen (Klick) · Dateien zum Verschieben ablegen (Strg zum Kopieren)",
+  "MovedToDesktop": "Auf Desktop verschoben",
+  "CopiedToDesktop": "Auf Desktop kopiert"
 }

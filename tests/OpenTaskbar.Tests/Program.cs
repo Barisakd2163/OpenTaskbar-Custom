@@ -25,6 +25,7 @@ TrayListChecks();
 checks += PinnedTrayChecks.RunHeadless();
 ShellTokenChecks();
 LiveDragMathChecks();
+DragDropAndShowDesktopChecks();
 DockGroupsProfilesAndPinsChecks();
 checks += RunningAppChecks.Run();
 checks += TaskbarWindowChecks.Run();
@@ -149,6 +150,72 @@ void LiveDragMathChecks()
     var moved = DockItemOrdering.MoveVisibleItem(visible, visible, "app:b", 4);
     Check(moved.SequenceEqual(["app:a", "app:c", "app:d", "app:b", "app:e"], StringComparer.OrdinalIgnoreCase),
         "Live gap position must match the order saved on drop.");
+}
+
+void DragDropAndShowDesktopChecks()
+{
+    // Windows argument quoting must handle spaces, embedded quotes, trailing backslashes (drive roots), and prefix arguments.
+    var quoted = OpenTaskbar.MainWindow.BuildQuotedArguments(
+        [@"C:\My Files\report.pdf", @"C:\"],
+        prefixArguments: "--reuse-window");
+    Check(quoted == "--reuse-window \"C:\\My Files\\report.pdf\" \"C:\\\\\"",
+        "BuildQuotedArguments must preserve prefix arguments and escape trailing backslashes cleanly.");
+
+    var tempRoot = Path.Combine(Path.GetTempPath(), "OpenTaskbarDragDrop_" + Guid.NewGuid().ToString("N"));
+    var fakeDesktop = Path.Combine(tempRoot, "Desktop");
+    var sourceDir = Path.Combine(tempRoot, "Source");
+    Directory.CreateDirectory(fakeDesktop);
+    Directory.CreateDirectory(sourceDir);
+    try
+    {
+        var sourceFile = Path.Combine(sourceDir, "note.txt");
+        var desktopFile = Path.Combine(fakeDesktop, "already.txt");
+        var fakeAppExe = Path.Combine(sourceDir, "tool.exe");
+        File.WriteAllText(sourceFile, "hello");
+        File.WriteAllText(desktopFile, "on desktop");
+        File.WriteAllText(fakeAppExe, string.Empty);
+
+        // Moving to Desktop must include external files, deduplicate, and skip Desktop itself, ancestors, drive roots, missing paths, and files already on Desktop.
+        var movePaths = DesktopFileTransfer.FilterTransferPaths(
+            [sourceFile, sourceFile, desktopFile, fakeDesktop, tempRoot, @"C:\", Path.Combine(sourceDir, "missing.txt")],
+            fakeDesktop,
+            copy: false);
+        Check(movePaths.Count == 1 && string.Equals(movePaths[0], sourceFile, StringComparison.OrdinalIgnoreCase),
+            "Desktop move filter must keep only valid external paths and skip items already on Desktop or ancestor folders.");
+
+        // Copying to Desktop (Ctrl held) must allow duplicating a file that already sits on Desktop.
+        var copyPaths = DesktopFileTransfer.FilterTransferPaths([sourceFile, desktopFile], fakeDesktop, copy: true);
+        Check(copyPaths.Count == 2, "Desktop copy filter must allow copying files already located on the Desktop.");
+
+        // App drop safety must skip self-launch and non-exe targets, and strip dropping an executable onto itself.
+        Check(!OpenTaskbar.MainWindow.CanOpenFilesWithExecutable(fakeAppExe, currentProcessPath: fakeAppExe),
+            "App drop must refuse self-launch when the target matches the current process.");
+        Check(!OpenTaskbar.MainWindow.CanOpenFilesWithExecutable(sourceFile),
+            "App drop must refuse non-executable targets.");
+        Check(OpenTaskbar.MainWindow.CanOpenFilesWithExecutable(fakeAppExe, currentProcessPath: @"C:\Other\OpenTaskbar.exe"),
+            "App drop must accept an existing external executable.");
+        var appDropTargets = OpenTaskbar.MainWindow.FilterAppDropPaths(
+            [sourceFile, fakeAppExe, Path.Combine(sourceDir, "ghost.txt")],
+            fakeAppExe);
+        Check(appDropTargets.Count == 1 && string.Equals(appDropTargets[0], sourceFile, StringComparison.OrdinalIgnoreCase),
+            "App drop path filtering must omit the target executable itself and non-existent paths.");
+
+        // Dock background drop must accept .exe and directories while rejecting plain documents.
+        Check(WindowsTaskbarPinImporter.IsSupportedDockDropPath(fakeAppExe), "Dock drop must accept .exe files.");
+        Check(WindowsTaskbarPinImporter.IsSupportedDockDropPath(sourceDir), "Dock drop must accept folders.");
+        Check(!WindowsTaskbarPinImporter.IsSupportedDockDropPath(sourceFile), "Dock drop must ignore plain documents.");
+
+        var resolvedExe = WindowsTaskbarPinImporter.TryResolveDroppedTarget(fakeAppExe);
+        Check(resolvedExe is { IsDirectory: false } && string.Equals(resolvedExe.TargetPath, fakeAppExe, StringComparison.OrdinalIgnoreCase),
+            "Dropped .exe must resolve to a pin target.");
+        var resolvedDir = WindowsTaskbarPinImporter.TryResolveDroppedTarget(sourceDir);
+        Check(resolvedDir is { IsDirectory: true } && string.Equals(resolvedDir.TargetPath, sourceDir, StringComparison.OrdinalIgnoreCase),
+            "Dropped directory must resolve to a folder stack target.");
+    }
+    finally
+    {
+        try { Directory.Delete(tempRoot, recursive: true); } catch { }
+    }
 }
 
 void DockGroupsProfilesAndPinsChecks()
@@ -411,7 +478,7 @@ void WidgetCategoryChecks()
     var catalog = new DockWidgetService(clock);
     var options = catalog.CreateOptions([], []);
 
-    Check(options.Count == 22, "Catalog must define exactly 22 widgets.");
+    Check(options.Count == 23, "Catalog must define exactly 23 widgets.");
 
     var timeWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.TimeAndWeather).Select(o => o.Id).ToArray();
     Check(timeWidgets.Length == 5
@@ -444,8 +511,10 @@ void WidgetCategoryChecks()
         "MediaAndControls category must contain Media, Audio and QuickSettings.");
 
     var prodWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.Productivity).Select(o => o.Id).ToArray();
-    Check(prodWidgets.Length == 1 && prodWidgets.Contains(DockWidgetService.FocusId),
-        "Productivity category must contain only Focus.");
+    Check(prodWidgets.Length == 2
+        && prodWidgets.Contains(DockWidgetService.FocusId)
+        && prodWidgets.Contains(DockWidgetService.ShowDesktopId),
+        "Productivity category must contain Focus and ShowDesktop.");
 
     UiText.Current.SetLanguage(AppLanguage.Turkish);
     var sample = options.First(o => o.CategoryEnum == DockWidgetCategory.AiQuotas);
@@ -478,7 +547,8 @@ void WidgetRegistryChecks()
     {
         "Media", "SystemStats", "Focus", "Weather", "NetSpeed", "BluetoothBattery", "Battery", "Storage",
         "DayProgress", "AiUsageClaude", "AiUsageCodex", "AiUsageAntigravity", "AiUsageOpenCode",
-        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock"
+        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock",
+        "ShowDesktop"
     };
     Check(live.Select(descriptor => descriptor.Id).SequenceEqual(expectedOrder),
         "Live widget dock order must stay identical so saved widget orders keep their meaning.");

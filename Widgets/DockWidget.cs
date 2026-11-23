@@ -82,6 +82,9 @@ public class DockWidget : UserControl, IDisposable
     /// </summary>
     public virtual UIElement? BuildPreviewFlyoutContent() => BuildHoverFlyoutContent();
 
+    /// <summary>Optional widget-specific context menu items shown before the standard remove action.</summary>
+    public virtual IReadOnlyList<Control>? BuildContextMenuItems() => null;
+
     /// <summary>
     /// False when the required hardware is absent (e.g. a desktop without a battery). Such widgets
     /// are hidden from the dock and disabled in the Settings catalog.

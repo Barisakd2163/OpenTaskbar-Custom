@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "꺼짐",
   "WirelessBatteryListenOnly": "수신 전용: {0}",
   "WirelessBatteryListenOnlyOn": "켜짐",
-  "WirelessBatteryListenOnlyOff": "꺼짐"
+  "WirelessBatteryListenOnlyOff": "꺼짐",
+  "WidgetShowDesktop": "바탕 화면 표시",
+  "WidgetShowDesktopDescription": "클릭하여 바탕 화면을 전환하고, 파일을 끌 때 잠시 머물러 바탕 화면을 표시하거나 파일을 놓아 바탕 화면으로 이동합니다.",
+  "WidgetShowDesktopShort": "바탕 화면",
+  "OpenDesktopFolder": "바탕 화면 폴더 열기",
+  "ShowDesktopTooltip": "바탕 화면 표시 (클릭) · 파일을 놓아 바탕 화면으로 이동 (Ctrl로 복사)",
+  "MovedToDesktop": "바탕 화면으로 이동됨",
+  "CopiedToDesktop": "바탕 화면으로 복사됨"
 }

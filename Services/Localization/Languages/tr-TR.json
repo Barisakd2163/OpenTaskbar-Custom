@@ -927,5 +927,12 @@
   "WirelessBatteryAlertOff": "Kapalı",
   "WirelessBatteryListenOnly": "Yalnızca dinle: {0}",
   "WirelessBatteryListenOnlyOn": "Açık",
-  "WirelessBatteryListenOnlyOff": "Kapalı"
+  "WirelessBatteryListenOnlyOff": "Kapalı",
+  "WidgetShowDesktop": "Masaüstünü göster",
+  "WidgetShowDesktopDescription": "Masaüstünü açıp kapatmak için tıklayın, dosya sürüklerken üzerinde bekleyip masaüstünü görün veya dosyaları doğrudan Masaüstüne bırakın.",
+  "WidgetShowDesktopShort": "Masaüstü",
+  "OpenDesktopFolder": "Masaüstü klasörünü aç",
+  "ShowDesktopTooltip": "Masaüstünü göster (tıkla) · Masaüstüne taşımak için dosya bırak (kopyalamak için Ctrl)",
+  "MovedToDesktop": "Masaüstüne taşındı",
+  "CopiedToDesktop": "Masaüstüne kopyalandı"
 }

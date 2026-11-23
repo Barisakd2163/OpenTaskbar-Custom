@@ -3681,7 +3681,7 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
-        StopShowDesktopDrag();
+        CancelShowDesktopDragHover();
         _widgetPanel.IsOpenChanged -= WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed -= ReportError;
         _widgetPanel.Dispose();
@@ -3736,6 +3736,7 @@ public partial class MainWindow : Window
         PinnedTrayStrip.PinToggled -= OnTrayIconPinToggled;
         PinnedTrayStrip.LayoutChanged -= OnPinnedTrayStripLayoutChanged;
         TrayButton.PinToggled -= OnTrayIconPinToggled;
+        DisposeDragDrop();
         DisposeExtras();
         DisposeFeatures();
     }
