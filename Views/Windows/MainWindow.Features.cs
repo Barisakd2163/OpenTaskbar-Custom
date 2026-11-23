@@ -286,7 +286,9 @@ public partial class MainWindow
         && GetActiveProfile(settings)?.HiddenApps.Contains(executablePath, StringComparer.OrdinalIgnoreCase) == true;
 
     private bool IsHiddenByProfile(DockApp app) =>
-        IsHiddenByProfile(_preferences.Current, app.ExecutablePath);
+        IsHiddenByProfile(_preferences.Current, app.DockKey)
+        || (string.IsNullOrWhiteSpace(app.LaunchArguments)
+            && IsHiddenByProfile(_preferences.Current, app.ExecutablePath));
 
     private int VisiblePinnedCount => _pinnedApps.Count(app => !IsHiddenByProfile(app));
 
@@ -397,7 +399,7 @@ public partial class MainWindow
     private void HideInProfile_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { CommandParameter: DockApp app } || ActiveProfile is not { } active) return;
-        var updated = DockProfileService.UpdateHiddenApps(_preferences.Current, active.Name, [.. active.HiddenApps, app.ExecutablePath]);
+        var updated = DockProfileService.UpdateHiddenApps(_preferences.Current, active.Name, [.. active.HiddenApps, app.DockKey]);
         SaveProfileSettings(updated);
     }
 
@@ -405,12 +407,18 @@ public partial class MainWindow
     private bool RevealHiddenPin(DockApp app)
     {
         if (ActiveProfile is not { } active || !_pinnedApps.Any(pinned =>
-                string.Equals(pinned.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(pinned.DockKey, app.DockKey, StringComparison.OrdinalIgnoreCase)
+                || (string.IsNullOrWhiteSpace(pinned.LaunchArguments)
+                    && string.IsNullOrWhiteSpace(app.LaunchArguments)
+                    && string.Equals(pinned.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))))
         {
             return false;
         }
 
-        var hiddenApps = active.HiddenApps.Where(path => !string.Equals(path, app.ExecutablePath, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var hiddenApps = active.HiddenApps.Where(path =>
+            !string.Equals(path, app.DockKey, StringComparison.OrdinalIgnoreCase)
+            && !(string.IsNullOrWhiteSpace(app.LaunchArguments)
+                && string.Equals(path, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))).ToArray();
         var updated = DockProfileService.UpdateHiddenApps(_preferences.Current, active.Name, hiddenApps);
         SaveProfileSettings(updated);
         return true;

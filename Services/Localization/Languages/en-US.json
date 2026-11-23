@@ -900,5 +900,8 @@
   "SignOut": "Sign out",
   "RestartComputer": "Restart",
   "ShutDownComputer": "Shut down",
-  "ErrorSystemToolOpen": "Could not open the system tool."
+  "ErrorSystemToolOpen": "Could not open the system tool.",
+  "PinApplication": "Pin application…",
+  "PinApplicationFilter": "Applications \u0026 shortcuts|*.exe;*.lnk;*.url|Applications (*.exe)|*.exe|Shortcuts (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "The selected file could not be pinned as an application."
 }

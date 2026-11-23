@@ -900,5 +900,8 @@
   "SignOut": "Esci",
   "RestartComputer": "Riavvia",
   "ShutDownComputer": "Arresta",
-  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema."
+  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema.",
+  "PinApplication": "Aggiungi applicazione…",
+  "PinApplicationFilter": "Applicazioni e collegamenti|*.exe;*.lnk;*.url|Applicazioni (*.exe)|*.exe|Collegamenti (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Impossibile aggiungere il file selezionato come applicazione."
 }

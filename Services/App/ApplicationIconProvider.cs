@@ -128,15 +128,22 @@ public static class ApplicationIconProvider
             }
         }
 
-        if ((string.IsNullOrWhiteSpace(appUserModelId) ? TryResolvePackagedAppUserModelId(executablePath) : appUserModelId) is { } aumid)
+        var isAppsFolderPath = executablePath.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase);
+        var resolvedAumid = !string.IsNullOrWhiteSpace(appUserModelId)
+            ? appUserModelId.Trim()
+            : (isAppsFolderPath ? executablePath["shell:AppsFolder\\".Length..].Trim() : TryResolvePackagedAppUserModelId(executablePath));
+
+        if (!string.IsNullOrWhiteSpace(resolvedAumid)
+            && (isAppsFolderPath || resolvedAumid.Contains('!') || !File.Exists(executablePath)))
         {
             var shellSize = targetSize > 0 ? targetSize : PreferredIconPixels;
             // iconOnly must match the running-app path: without SIIGBF_ICONONLY the Shell may return the
             // app's window thumbnail (mirrored/rotated) instead of its Start-menu icon.
-            var packagedIcon = GetForShellItem($"shell:AppsFolder\\{aumid}", shellSize, iconOnly: true);
+            var packagedIcon = GetForShellItem($"shell:AppsFolder\\{resolvedAumid}", shellSize, iconOnly: true);
             if (packagedIcon is not null) return packagedIcon;
         }
 
+        if (isAppsFolderPath) return null;
         return GetForFile(executablePath, targetSize);
     }
 

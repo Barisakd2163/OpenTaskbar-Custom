@@ -900,5 +900,8 @@
   "SignOut": "\uB85C\uADF8\uC544\uC6C3",
   "RestartComputer": "\uB2E4\uC2DC \uC2DC\uC791",
   "ShutDownComputer": "\uC885\uB8CC",
-  "ErrorSystemToolOpen": "\uC2DC\uC2A4\uD15C \uB3C4\uAD6C\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
+  "ErrorSystemToolOpen": "\uC2DC\uC2A4\uD15C \uB3C4\uAD6C\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "PinApplication": "애플리케이션 고정…",
+  "PinApplicationFilter": "애플리케이션 및 바로 가기|*.exe;*.lnk;*.url|애플리케이션 (*.exe)|*.exe|바로 가기 (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "선택한 파일을 애플리케이션으로 고정할 수 없습니다."
 }

@@ -725,14 +725,19 @@ public partial class MainWindow : Window
 
         if (preferredOrder is { Count: > 0 })
         {
-            var orderMap = preferredOrder
-                .Select((path, index) => (path, index))
-                .ToDictionary(pair => pair.path, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+            var orderMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (var index = 0; index < preferredOrder.Count; index++)
+            {
+                if (!string.IsNullOrWhiteSpace(preferredOrder[index]))
+                {
+                    orderMap.TryAdd(preferredOrder[index], index);
+                }
+            }
 
             apps.Sort((a, b) =>
             {
-                var hasA = orderMap.TryGetValue(a.ExecutablePath, out var indexA);
-                var hasB = orderMap.TryGetValue(b.ExecutablePath, out var indexB);
+                var hasA = TryGetOrderIndex(orderMap, a, out var indexA);
+                var hasB = TryGetOrderIndex(orderMap, b, out var indexB);
                 if (hasA && hasB) return indexA.CompareTo(indexB);
                 if (hasA) return -1;
                 if (hasB) return 1;
@@ -789,11 +794,13 @@ public partial class MainWindow : Window
         {
             var activeHandles = _thumbnailPreview.ActiveHandles;
             var closed = activeHandles.Where(h => windows.All(w => w.Handle != h)).ToList();
-            if (closed.Count > 0 && _thumbnailPreview.Anchor is { Tag: string previewPath })
+            if (closed.Count > 0 && _thumbnailPreview.Anchor is { } previewAnchor)
             {
-                var remaining = windows
-                    .Where(w => string.Equals(w.ExecutablePath, previewPath, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                var remaining = previewAnchor.DataContext is DockApp previewApp
+                    ? windows.Where(w => MatchesWindow(previewApp, w)).ToList()
+                    : (previewAnchor.Tag is string previewPath
+                        ? windows.Where(w => string.Equals(w.ExecutablePath, previewPath, StringComparison.OrdinalIgnoreCase)).ToList()
+                        : []);
                 _thumbnailPreview.RemoveClosed(closed, remaining);
             }
         }
@@ -821,18 +828,55 @@ public partial class MainWindow : Window
         }
     }
 
+    private static bool TryGetOrderIndex(IReadOnlyDictionary<string, int> orderMap, DockApp app, out int index)
+    {
+        if (orderMap.TryGetValue(app.DockKey, out index)) return true;
+        return string.IsNullOrWhiteSpace(app.LaunchArguments)
+            && orderMap.TryGetValue(app.ExecutablePath, out index);
+    }
+
+    internal static bool MatchesWindow(DockApp app, TrackedWindow window)
+    {
+        if (!string.IsNullOrWhiteSpace(app.AppUserModelId)
+            && !string.IsNullOrWhiteSpace(window.AppUserModelId))
+        {
+            return string.Equals(app.AppUserModelId, window.AppUserModelId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return string.Equals(app.ExecutablePath, window.ExecutablePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesCandidate(DockApp app, RunningAppCandidate candidate)
+    {
+        if (!string.IsNullOrWhiteSpace(app.AppUserModelId)
+            && !string.IsNullOrWhiteSpace(candidate.AppUserModelId))
+        {
+            return string.Equals(app.AppUserModelId, candidate.AppUserModelId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return string.Equals(app.ExecutablePath, candidate.ExecutablePath, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void UpdateNotificationBadges(
         ObservableCollection<DockApp> apps,
         IReadOnlyList<RunningAppCandidate> candidates)
     {
-        var notificationPaths = candidates.Where(candidate => candidate.HasNotification)
-            .Select(candidate => candidate.ExecutablePath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var notifying = candidates.Where(candidate => candidate.HasNotification).ToList();
 
         for (var index = 0; index < apps.Count; index++)
         {
             var app = apps[index];
-            var hasNotification = notificationPaths.Contains(app.ExecutablePath);
+            var hasNotification = notifying.Any(candidate => MatchesCandidate(app, candidate));
             if (app.HasNotification != hasNotification)
             {
                 app.HasNotification = hasNotification;
@@ -853,10 +897,15 @@ public partial class MainWindow : Window
     private IReadOnlyList<RunningAppCandidate> RunningCandidates()
     {
         // Apps hidden by the active profile still show up among running apps while they have windows.
-        var pinnedPaths = _pinnedApps.Where(app => !IsHiddenByProfile(app)).Select(app => app.ExecutablePath)
+        var visiblePinned = _pinnedApps.Where(app => !IsHiddenByProfile(app)).ToList();
+        var pinnedPaths = visiblePinned.Select(app => app.ExecutablePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pinnedAumids = visiblePinned
+            .Where(app => !string.IsNullOrWhiteSpace(app.AppUserModelId))
+            .Select(app => app.AppUserModelId!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return RunningAppProjection.Project(VisibleSnapshot, pinnedPaths, _foregroundWindow,
-            _preferences.Current.EffectiveNotificationBadgesEnabled, File.Exists);
+            _preferences.Current.EffectiveNotificationBadgesEnabled, File.Exists, pinnedAumids);
     }
 
     /// <summary>Updates running apps and their layout together, including callers outside the window-event path.</summary>
@@ -924,14 +973,16 @@ public partial class MainWindow : Window
             })
             .ThenBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var layoutChanged = !_runningApps.Select(app => app.ExecutablePath)
-            .SequenceEqual(desiredApps.Select(app => app.ExecutablePath), StringComparer.OrdinalIgnoreCase);
+        var layoutChanged = !_runningApps.Select(app => app.AppUserModelId ?? app.ExecutablePath)
+            .SequenceEqual(desiredApps.Select(app => app.AppUserModelId ?? app.ExecutablePath), StringComparer.OrdinalIgnoreCase);
 
         for (var desiredIndex = 0; desiredIndex < desiredApps.Count; desiredIndex++)
         {
             var desiredApp = desiredApps[desiredIndex];
+            var desiredIdentity = desiredApp.AppUserModelId ?? desiredApp.ExecutablePath;
             if (desiredIndex < _runningApps.Count
-                && string.Equals(_runningApps[desiredIndex].ExecutablePath, desiredApp.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(_runningApps[desiredIndex].AppUserModelId ?? _runningApps[desiredIndex].ExecutablePath,
+                    desiredIdentity, StringComparison.OrdinalIgnoreCase))
             {
                 if (_runningApps[desiredIndex] != desiredApp)
                 {
@@ -944,7 +995,8 @@ public partial class MainWindow : Window
             var existingIndex = -1;
             for (var index = desiredIndex + 1; index < _runningApps.Count; index++)
             {
-                if (string.Equals(_runningApps[index].ExecutablePath, desiredApp.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(_runningApps[index].AppUserModelId ?? _runningApps[index].ExecutablePath,
+                        desiredIdentity, StringComparison.OrdinalIgnoreCase))
                 {
                     existingIndex = index;
                     break;
@@ -1149,7 +1201,7 @@ public partial class MainWindow : Window
         if (sender is not Button { DataContext: DockApp app }) return;
         e.Handled = true;
         var windows = VisibleSnapshot
-            .Where(window => string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+            .Where(window => MatchesWindow(app, window))
             .OrderBy(window => window.Handle.ToInt64())
             .ToList();
         if (windows is not { Count: > 0 }) return;
@@ -1159,7 +1211,8 @@ public partial class MainWindow : Window
         var step = e.Delta < 0 ? 1 : -1;
         var next = windows[((current < 0 ? (step > 0 ? -1 : 0) : current) + step + windows.Count) % windows.Count];
         _thumbnailPreview.Hide();
-        if (NativeWindowTracker.Activate(next.Handle)) _lastSelectedWindows[app.ExecutablePath] = next.Handle;
+        if (NativeWindowTracker.Activate(next.Handle))
+            _lastSelectedWindows[next.ExecutablePath ?? app.ExecutablePath] = next.Handle;
     }
 
     private void DockSurface_MouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
@@ -1258,16 +1311,15 @@ public partial class MainWindow : Window
 
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false, nint? foregroundAtPress = null)
     {
-        var executablePath = app.ExecutablePath;
         var existingWindow = foregroundAtPress is { } pressedWindow
-            ? _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == pressedWindow
-                && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+            ? _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == pressedWindow && MatchesWindow(app, window))
             : null;
-        existingWindow ??= FindNextWindowForExecutable(executablePath);
+        existingWindow ??= FindNextWindowForApp(app);
         if (existingWindow is not null)
         {
+            var matchPath = existingWindow.ExecutablePath ?? app.ExecutablePath;
             var activated = toggleIfForeground
-                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle, executablePath, foregroundAtPress)
+                ? NativeWindowTracker.ToggleActivation(existingWindow.Handle, matchPath, foregroundAtPress)
                 : NativeWindowTracker.Activate(existingWindow.Handle);
             if (!activated)
             {
@@ -1275,7 +1327,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _lastSelectedWindows[executablePath] = existingWindow.Handle;
+            _lastSelectedWindows[matchPath] = existingWindow.Handle;
             return;
         }
 
@@ -1288,22 +1340,25 @@ public partial class MainWindow : Window
         var executablePath = app.ExecutablePath;
         var arguments = app.LaunchArguments ?? string.Empty;
         // Resolve the real launch target the way Windows does: the matching Start Menu shortcut (or a packaged
-        // AUMID), never the running window's helper executable. This covers Steam/Bitwarden/CEF/Electron apps
-        // without hardcoded patterns.
+        // AUMID), never the running window's helper executable. PWA/argument-bearing shortcuts preserve their
+        // own .lnk/.url and arguments instead of being redirected to plain Edge/Chrome.
         var appUserModelId = app.AppUserModelId
             ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath);
-        var spec = AppShortcutResolver.Resolve(executablePath, appUserModelId, app.Name);
+        var spec = AppShortcutResolver.Resolve(executablePath, appUserModelId, app.Name, app.LaunchArguments, app.ShortcutPath);
         executablePath = spec.Target;
-        // A .lnk carries its own target, arguments and working directory; shell:AppsFolder carries the AUMID.
+        // A .lnk/.url carries its own target, arguments and working directory; shell:AppsFolder carries the AUMID.
         // Only a raw executable needs the pin's arguments passed through.
-        var isShortcut = executablePath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
-        var isPackaged = executablePath.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase);
-        arguments = isShortcut || isPackaged ? string.Empty : arguments;
-        if (isPackaged) appUserModelId = executablePath["shell:AppsFolder\\".Length..];
+        var isShortcut = executablePath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)
+            || executablePath.EndsWith(".url", StringComparison.OrdinalIgnoreCase);
+        var isPackaged = executablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase);
+        arguments = isShortcut || isPackaged
+            ? string.Empty
+            : (!string.IsNullOrEmpty(spec.Arguments) ? spec.Arguments : arguments);
+        var launchAumid = isPackaged ? executablePath[WindowsTaskbarPinImporter.AppsFolderPrefix.Length..] : null;
         // ShellExecuteEx loads shell extensions and can take from 100 ms to over a second. On the UI thread it froze
         // the dock, launch bounce included, until Windows had taken the app. Start it from the thread pool instead;
         // Process.Start runs ShellExecuteEx on its own STA thread when called from an MTA thread.
-        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated, appUserModelId)).ContinueWith(task =>
+        _ = Task.Run(() => StartApplication(executablePath, arguments, elevated, launchAumid)).ContinueWith(task =>
         {
             if (task.IsCompletedSuccessfully)
             {
@@ -1321,9 +1376,12 @@ public partial class MainWindow : Window
     {
         // Packaged Store apps cannot be launched by their WindowsApps executable directly;
         // the Shell AppUserModelID is the supported activation path.
-        var useAumid = !string.IsNullOrWhiteSpace(appUserModelId);
+        var isAppsFolderTarget = executablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase);
+        var useAumid = !string.IsNullOrWhiteSpace(appUserModelId) || isAppsFolderTarget;
         if (!useAumid && !File.Exists(executablePath)) return "ErrorAppFileNotFound";
-        var target = useAumid ? $"shell:AppsFolder\\{appUserModelId}" : executablePath;
+        var target = !string.IsNullOrWhiteSpace(appUserModelId)
+            ? $"{WindowsTaskbarPinImporter.AppsFolderPrefix}{appUserModelId}"
+            : executablePath;
         try
         {
             using var _ = Process.Start(new ProcessStartInfo(target)
@@ -1374,9 +1432,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var matchingWindows = VisibleSnapshot
-            .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
-            .ToList() ?? [];
+        var matchingWindows = hoveredButton.DataContext is DockApp hoveredApp
+            ? VisibleSnapshot.Where(window => MatchesWindow(hoveredApp, window)).ToList()
+            : VisibleSnapshot.Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)).ToList();
 
         ToolTipService.SetIsEnabled(hoveredButton, matchingWindows.Count == 0);
         if (matchingWindows.Count == 0)
@@ -1404,9 +1462,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var matchingWindows = VisibleSnapshot
-            .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
-            .ToList() ?? [];
+        var matchingWindows = hoveredButton.DataContext is DockApp hoveredApp
+            ? VisibleSnapshot.Where(window => MatchesWindow(hoveredApp, window)).ToList()
+            : VisibleSnapshot.Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matchingWindows.Count == 0)
         {
             _thumbnailPreview.Hide();
@@ -1503,18 +1561,15 @@ public partial class MainWindow : Window
 
     }
 
-    private TrackedWindow? FindWindowForExecutable(string executablePath)
+    private TrackedWindow? FindWindowForApp(DockApp app)
     {
-        return VisibleSnapshot.FirstOrDefault(window => window.Handle == _foregroundWindow
-            && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
-            ?? VisibleSnapshot.FirstOrDefault(window =>
-                string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+        return VisibleSnapshot.FirstOrDefault(window => window.Handle == _foregroundWindow && MatchesWindow(app, window))
+            ?? VisibleSnapshot.FirstOrDefault(window => MatchesWindow(app, window));
     }
 
-    private TrackedWindow? FindNextWindowForExecutable(string executablePath)
+    private TrackedWindow? FindNextWindowForApp(DockApp app)
     {
-        var matchingWindows = VisibleSnapshot.Where(window =>
-            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)).ToList();
+        var matchingWindows = VisibleSnapshot.Where(window => MatchesWindow(app, window)).ToList();
         if (matchingWindows is not { Count: > 0 })
         {
             return null;
@@ -1527,7 +1582,8 @@ public partial class MainWindow : Window
         }
 
         matchingWindows.Sort((left, right) => left.Handle.ToInt64().CompareTo(right.Handle.ToInt64()));
-        var previousIndex = _lastSelectedWindows.TryGetValue(executablePath, out var previousHandle)
+        var lookupPath = matchingWindows[0].ExecutablePath ?? app.ExecutablePath;
+        var previousIndex = _lastSelectedWindows.TryGetValue(lookupPath, out var previousHandle)
             ? matchingWindows.FindIndex(window => window.Handle == previousHandle)
             : -1;
         return matchingWindows[(previousIndex + 1) % matchingWindows.Count];
@@ -1536,14 +1592,33 @@ public partial class MainWindow : Window
     private void UpdateWindowIndicators(IReadOnlyList<RunningAppCandidate> candidates)
     {
         // Candidates are grouped by AUMID when present, so two groups can share one executable (e.g. LibreWolf
-        // with several AppUserModelIDs). Aggregate by path instead of ToDictionary: duplicate keys used to throw
-        // "An item with the same key has already been added" during startup and tear down the whole dock.
-        var states = RunningAppProjection.AggregateByExecutablePath(candidates);
+        // with several AppUserModelIDs). Aggregate by path and by AUMID instead of ToDictionary: duplicate keys
+        // used to throw "An item with the same key has already been added" during startup and tear down the dock.
+        var pathStates = RunningAppProjection.AggregateByExecutablePath(candidates);
+        var aumidStates = new Dictionary<string, (int WindowCount, bool IsForeground)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.AppUserModelId)) continue;
+            aumidStates.TryGetValue(candidate.AppUserModelId, out var current);
+            aumidStates[candidate.AppUserModelId] = (
+                current.WindowCount + candidate.WindowCount,
+                current.IsForeground || candidate.IsForeground);
+        }
 
         for (var index = 0; index < _pinnedApps.Count; index++)
         {
             var app = _pinnedApps[index];
-            states.TryGetValue(app.ExecutablePath, out var state);
+            (int WindowCount, bool IsForeground) state = default;
+            if (!string.IsNullOrWhiteSpace(app.AppUserModelId)
+                && aumidStates.TryGetValue(app.AppUserModelId, out var aumidState))
+            {
+                state = aumidState;
+            }
+            else if (!app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                pathStates.TryGetValue(app.ExecutablePath, out state);
+            }
+
             var isForeground = state.IsForeground;
             var count = state.WindowCount;
             if (app.IsRunning != (count > 0) || app.IsForeground != isForeground || app.WindowCount != count)
@@ -1602,8 +1677,7 @@ public partial class MainWindow : Window
             UpdateWindowIndicators(candidates);
             foreach (var app in _runningApps)
             {
-                var isForeground = candidates.Any(candidate => candidate.IsForeground
-                    && string.Equals(candidate.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+                var isForeground = candidates.Any(candidate => candidate.IsForeground && MatchesCandidate(app, candidate));
                 if (app.IsForeground != isForeground) app.IsForeground = isForeground;
             }
         }
@@ -1667,7 +1741,8 @@ public partial class MainWindow : Window
         contextMenu.DataContext = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext;
         _contextTargetWasForeground = pinnedApp?.IsForeground == true;
         var hasAppTarget = pinnedApp is not null;
-        var isPinnedTarget = pinnedApp?.ShortcutPath is not null;
+        var isPinnedTarget = pinnedApp is not null && _pinnedApps.Contains(pinnedApp);
+        var hasRemovablePin = isPinnedTarget && pinnedApp?.ShortcutPath is not null;
         var isRunning = pinnedApp?.IsRunning == true;
         SetMenuItemVisibility(contextMenu, "ActivateDockApp", hasAppTarget);
         SetMenuItemVisibility(contextMenu, "AddToGroup", hasAppTarget);
@@ -1675,7 +1750,7 @@ public partial class MainWindow : Window
         SetMenuItemVisibility(contextMenu, "CloseDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "TerminateDockApp", isRunning);
         SetMenuItemVisibility(contextMenu, "PinDockApp", hasAppTarget && !isPinnedTarget);
-        SetMenuItemVisibility(contextMenu, "UnpinDockApp", isPinnedTarget);
+        SetMenuItemVisibility(contextMenu, "UnpinDockApp", hasRemovablePin);
         SetSeparatorVisibility(contextMenu, "RunningCommandsDivider", isRunning);
         SetMenuItemVisibility(contextMenu, "HideInProfile", isPinnedTarget && ActiveProfile is not null);
         if (FindMenuItem(contextMenu, "AddToGroup") is { } addToGroupMenu) PopulateAddToGroupMenu(addToGroupMenu, pinnedApp);
@@ -1697,7 +1772,7 @@ public partial class MainWindow : Window
         }
 
         SetMenuCommandParameter(contextMenu, pinnedApp.ExecutablePath);
-        var targetWindow = FindWindowForExecutable(pinnedApp.ExecutablePath);
+        var targetWindow = FindWindowForApp(pinnedApp);
         if (FindMenuItem(contextMenu, "ActivateDockApp") is { } activateMenuItem)
         {
             activateMenuItem.CommandParameter = pinnedApp;
@@ -1713,7 +1788,7 @@ public partial class MainWindow : Window
         {
             unpinMenuItem.CommandParameter = pinnedApp;
         }
-        foreach (var item in new[] { "HideInProfile", "NewInstance", "RunAsAdmin" }
+        foreach (var item in new[] { "HideInProfile", "NewInstance", "RunAsAdmin", "CloseDockApp", "TerminateDockApp" }
             .Select(tag => FindMenuItem(contextMenu, tag))
             .Where(item => item is not null)
             .Select(item => item!))
@@ -1902,11 +1977,67 @@ public partial class MainWindow : Window
     {
         if (sender is MenuItem { CommandParameter: DockApp app })
         {
-            if (_contextTargetWasForeground && FindWindowForExecutable(app.ExecutablePath) is { } window)
+            if (_contextTargetWasForeground && FindWindowForApp(app) is { } window)
                 NativeWindowTracker.Activate(window.Handle);
             OpenDockApp(app, toggleIfForeground: _contextTargetWasForeground);
         }
     }
+
+    private void PinApplication_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = UiText.Get("PinApplication"),
+            Filter = UiText.Get("PinApplicationFilter"),
+            CheckFileExists = true,
+            DereferenceLinks = false,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        DockApp? existingMatch = null;
+        var (pinnedApp, error) = WindowsTaskbarPinImporter.PinFromFile(dialog.FileName, candidate =>
+        {
+            existingMatch = FindMatchingPinnedApp(candidate);
+            return existingMatch is not null;
+        });
+
+        if (existingMatch is not null)
+        {
+            _ = RevealHiddenPin(existingMatch);
+            return;
+        }
+
+        if (error is not null || pinnedApp is null)
+        {
+            ReportError(error ?? "ErrorAppPinFailed");
+            return;
+        }
+
+        LoadPinnedIconAsync(pinnedApp);
+        _pinnedApps.Add(pinnedApp);
+        SavePinOrder();
+        if (_windowTracker is not null)
+        {
+            var states = RunningWindowStates();
+            UpdateNotificationBadges(_pinnedApps, states);
+            UpdateWindowIndicators(states);
+            RefreshRunningApps();
+        }
+        else
+        {
+            RebuildDockOrder();
+            ResizeDockToContent();
+            _replacementSession?.RefreshPosition();
+        }
+    }
+
+    private DockApp? FindMatchingPinnedApp(DockApp candidate) =>
+        _pinnedApps.FirstOrDefault(pinned =>
+            string.Equals(pinned.DockKey, candidate.DockKey, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(candidate.AppUserModelId)
+                && !string.IsNullOrWhiteSpace(pinned.AppUserModelId)
+                && string.Equals(pinned.AppUserModelId, candidate.AppUserModelId, StringComparison.OrdinalIgnoreCase)));
 
     private void PinDockApp_Click(object sender, RoutedEventArgs e)
     {
@@ -1921,18 +2052,32 @@ public partial class MainWindow : Window
     internal void PinRunningApp(DockApp app, int insertIndex = -1)
     {
         if (RevealHiddenPin(app)) return;
-        var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
+        var pinExecutablePath = app.ExecutablePath;
+        if (DockApp.IsSharedHostExecutable(pinExecutablePath) && !string.IsNullOrWhiteSpace(app.AppUserModelId))
+        {
+            pinExecutablePath = WindowsTaskbarPinImporter.TryResolvePackagedApp(app.AppUserModelId)?.ExecutablePath
+                ?? $"{WindowsTaskbarPinImporter.AppsFolderPrefix}{app.AppUserModelId}";
+        }
+
+        var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(
+            app.Name,
+            pinExecutablePath,
+            app.LaunchArguments,
+            app.IconLocation,
+            app.AppUserModelId);
         if (error is not null || shortcutPath is null)
         {
             ReportError(error ?? "ErrorAppPinFailed");
             return;
         }
 
-        var pinnedApp = new DockApp(app.Name, app.ExecutablePath)
+        var pinnedApp = new DockApp(app.Name, pinExecutablePath)
         {
             Icon = app.Icon,
             LaunchArguments = app.LaunchArguments,
             ShortcutPath = shortcutPath,
+            IconLocation = app.IconLocation,
+            AppUserModelId = app.AppUserModelId,
             HasNotification = app.HasNotification,
             IsForeground = app.IsForeground,
             WindowCount = app.WindowCount
@@ -1949,13 +2094,14 @@ public partial class MainWindow : Window
         }
 
         SavePinOrder();
+        RebuildDockOrder();
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
 
     private void SavePinOrder()
     {
-        var order = _pinnedApps.Select(app => app.ExecutablePath).ToList();
+        var order = _pinnedApps.Select(app => app.DockKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var error = _preferences.Save(_preferences.Current with { PinOrder = order });
         if (error is not null) ReportError(error);
     }
@@ -1995,12 +2141,50 @@ public partial class MainWindow : Window
 
     private void CloseDockApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { CommandParameter: string executablePath })
+        if (sender is MenuItem { CommandParameter: DockApp app })
         {
+            if (app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(app.AppUserModelId))
+            {
+                CloseMatchedWindows(app);
+                return;
+            }
+            CloseApplication(app.ExecutablePath);
             return;
         }
 
-        CloseApplication(executablePath);
+        if (sender is MenuItem { CommandParameter: string executablePath })
+        {
+            CloseApplication(executablePath);
+        }
+    }
+
+    private void CloseMatchedWindows(DockApp app)
+    {
+        var windows = VisibleSnapshot.Where(window => MatchesWindow(app, window)).ToList();
+        if (windows.Count == 0)
+        {
+            if (!app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                CloseApplication(app.ExecutablePath);
+                return;
+            }
+            ReportError("ErrorAppGracefulClose");
+            return;
+        }
+
+        var closedCount = 0;
+        var failedCount = 0;
+        foreach (var window in windows)
+        {
+            if (NativeWindowTracker.RequestClose(window.Handle)) closedCount++;
+            else failedCount++;
+        }
+
+        if (closedCount == 0)
+            ReportError("ErrorAppGracefulClose");
+        else if (failedCount > 0)
+            ReportError("ErrorAppPartialGracefulClose");
     }
 
     private void CloseApplication(string executablePath)
@@ -2043,12 +2227,28 @@ public partial class MainWindow : Window
 
     private void TerminateDockApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { CommandParameter: string executablePath })
+        if (sender is MenuItem { CommandParameter: DockApp app })
         {
+            if (app.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var window = FindWindowForApp(app);
+                if (window?.ExecutablePath is { } hostPath && !DockApp.IsSharedHostExecutable(hostPath))
+                {
+                    TerminateApplication(hostPath);
+                    return;
+                }
+
+                CloseMatchedWindows(app);
+                return;
+            }
+            TerminateApplication(app.ExecutablePath);
             return;
         }
 
-        TerminateApplication(executablePath);
+        if (sender is MenuItem { CommandParameter: string executablePath })
+        {
+            TerminateApplication(executablePath);
+        }
     }
 
     private void TerminateApplication(string executablePath)
@@ -2155,7 +2355,7 @@ public partial class MainWindow : Window
             {
                 if (task.IsCompletedSuccessfully && task.Result is { } raw)
                 {
-                    Dispatcher.BeginInvoke(new Action(() => app.Icon = ThemePacks.ApplyIcon(raw, app.ExecutablePath)));
+                    Dispatcher.BeginInvoke(new Action(() => app.Icon = ThemePacks.ApplyIcon(raw, app.ExecutablePath, app.AppUserModelId)));
                 }
                 else if (task.Exception is { } failure)
                 {
@@ -2399,10 +2599,12 @@ public partial class MainWindow : Window
         var groupedPaths = (settings.AppGroups ?? []).SelectMany(g => g.ExecutablePaths)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var pins = GetVisiblePinnedPaths(_pinnedApps, settings);
-        foreach (var path in pins.Where(path => !groupedPaths.Contains(path))) tokens.Add("app:" + path);
+        var pinSet = pins.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in pins.Where(key => !groupedPaths.Contains(key))) tokens.Add("app:" + key);
         foreach (var app in _runningApps
-            .Where(app => !pins.Contains(app.ExecutablePath, StringComparer.OrdinalIgnoreCase) && !groupedPaths.Contains(app.ExecutablePath)))
-            tokens.Add("app:" + app.ExecutablePath);
+            .Where(app => !pinSet.Contains(app.DockKey) && !pinSet.Contains(app.ExecutablePath)
+                && !groupedPaths.Contains(app.DockKey) && !groupedPaths.Contains(app.ExecutablePath)))
+            tokens.Add("app:" + app.DockKey);
         foreach (var group in settings.AppGroups ?? []) tokens.Add("group:" + group.Id);
         foreach (var stack in _stacks) tokens.Add("stack:" + stack.Path);
         if (settings.ShowRecycleBin) tokens.Add("bin");
@@ -2431,8 +2633,10 @@ public partial class MainWindow : Window
         DockSettings settings)
     {
         var visibleApps = pinnedApps
-            .Where(app => !string.IsNullOrWhiteSpace(app.ExecutablePath) && !IsHiddenByProfile(settings, app.ExecutablePath))
-            .Select(app => app.ExecutablePath)
+            .Where(app => !string.IsNullOrWhiteSpace(app.ExecutablePath)
+                && !IsHiddenByProfile(settings, app.DockKey)
+                && !(string.IsNullOrWhiteSpace(app.LaunchArguments) && IsHiddenByProfile(settings, app.ExecutablePath)))
+            .Select(app => app.DockKey)
             .ToList();
         if (settings.PinOrder is not { Count: > 0 })
             return visibleApps;
@@ -2462,9 +2666,12 @@ public partial class MainWindow : Window
         IEnumerable<DockApp> runningApps,
         DockSettings settings,
         string path) =>
-        pinnedApps.Where(app => !IsHiddenByProfile(settings, app.ExecutablePath))
+        pinnedApps.Where(app => !IsHiddenByProfile(settings, app.DockKey)
+                && !(string.IsNullOrWhiteSpace(app.LaunchArguments) && IsHiddenByProfile(settings, app.ExecutablePath)))
             .Concat(runningApps)
-            .FirstOrDefault(app => string.Equals(app.ExecutablePath, path, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(app => string.Equals(app.DockKey, path, StringComparison.OrdinalIgnoreCase)
+                || (string.IsNullOrWhiteSpace(app.LaunchArguments)
+                    && string.Equals(app.ExecutablePath, path, StringComparison.OrdinalIgnoreCase)));
 
     private DockApp? FindDockApp(string path) =>
         FindVisibleDockApp(_pinnedApps, _runningApps, _preferences.Current, path);
@@ -2484,7 +2691,7 @@ public partial class MainWindow : Window
         if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
         {
             var app = FindDockApp(token[4..]);
-            if (app is null || GroupContaining(app.ExecutablePath) is not null) return null;
+            if (app is null || GroupContaining(app) is not null) return null;
             var element = (FrameworkElement)((DataTemplate)FindResource("DockAppIconTemplate")).LoadContent();
             element.DataContext = app;
             return element;

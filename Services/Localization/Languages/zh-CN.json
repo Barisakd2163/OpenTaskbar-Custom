@@ -900,5 +900,8 @@
   "SignOut": "\u6CE8\u9500",
   "RestartComputer": "\u91CD\u542F",
   "ShutDownComputer": "\u5173\u673A",
-  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002"
+  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002",
+  "PinApplication": "固定应用程序…",
+  "PinApplicationFilter": "应用程序和快捷方式|*.exe;*.lnk;*.url|应用程序 (*.exe)|*.exe|快捷方式 (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "无法将所选文件固定为应用程序。"
 }

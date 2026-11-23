@@ -900,5 +900,8 @@
   "SignOut": "Oturumu kapat",
   "RestartComputer": "Yeniden ba\u015Flat",
   "ShutDownComputer": "Kapat",
-  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131."
+  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131.",
+  "PinApplication": "Uygulama sabitle…",
+  "PinApplicationFilter": "Uygulamalar ve kısayollar|*.exe;*.lnk;*.url|Uygulamalar (*.exe)|*.exe|Kısayollar (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Seçilen dosya uygulama olarak sabitlenemedi."
 }

@@ -900,5 +900,8 @@
   "SignOut": "Afmelden",
   "RestartComputer": "Opnieuw opstarten",
   "ShutDownComputer": "Afsluiten",
-  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen."
+  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen.",
+  "PinApplication": "App vastmaken…",
+  "PinApplicationFilter": "Apps en snelkoppelingen|*.exe;*.lnk;*.url|Apps (*.exe)|*.exe|Snelkoppelingen (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Het geselecteerde bestand kon niet als app worden vastgemaakt."
 }

@@ -1,3 +1,5 @@
+using System.IO;
+using System.Text;
 using System.Text.Json.Serialization;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -24,6 +26,71 @@ public sealed class DockApp(string name, string executablePath) : INotifyPropert
 
     [JsonIgnore]
     public string? AppUserModelId { get; init; }
+
+    /// <summary>
+    /// Stable unique identity for dock ordering, pin order, drag-and-drop, groups, and profiles.
+    /// Plain desktop apps keep <see cref="ExecutablePath"/> for full compatibility with existing saved settings,
+    /// while multi-argument shortcuts (such as Edge/Chrome PWAs sharing msedge_proxy.exe) and shared UWP host
+    /// processes include their normalized arguments or AUMID so distinct pins never collide.
+    /// </summary>
+    [JsonIgnore]
+    public string DockKey => BuildDockKey(ExecutablePath, LaunchArguments, AppUserModelId);
+
+    internal static string BuildDockKey(string executablePath, string? launchArguments, string? appUserModelId = null)
+    {
+        var normalizedArgs = NormalizeArguments(launchArguments);
+        if (normalizedArgs.Length > 0)
+        {
+            return $"{executablePath}|{normalizedArgs}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(appUserModelId) && IsSharedHostExecutable(executablePath))
+        {
+            return $"{executablePath}|{appUserModelId.Trim()}";
+        }
+
+        return executablePath;
+    }
+
+    internal static string NormalizeArguments(string? arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments)) return string.Empty;
+        var span = arguments.AsSpan().Trim();
+        var sb = new StringBuilder(span.Length);
+        var inQuotes = false;
+        var lastWasSpace = false;
+        foreach (var ch in span)
+        {
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+                sb.Append(ch);
+                lastWasSpace = false;
+            }
+            else if (!inQuotes && char.IsWhiteSpace(ch))
+            {
+                if (!lastWasSpace)
+                {
+                    sb.Append(' ');
+                    lastWasSpace = true;
+                }
+            }
+            else
+            {
+                sb.Append(ch);
+                lastWasSpace = false;
+            }
+        }
+        return sb.ToString();
+    }
+
+    internal static bool IsSharedHostExecutable(string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath)) return false;
+        var fileName = Path.GetFileName(executablePath);
+        return string.Equals(fileName, "ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, "WWAHost.exe", StringComparison.OrdinalIgnoreCase);
+    }
 
     // Notifies because packaged apps can receive their icon after the dock entry is created.
     [JsonIgnore]

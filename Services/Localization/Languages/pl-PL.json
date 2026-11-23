@@ -900,5 +900,8 @@
   "SignOut": "Wyloguj",
   "RestartComputer": "Uruchom ponownie",
   "ShutDownComputer": "Zamknij",
-  "ErrorSystemToolOpen": "Nie mo\u017Cna otworzy\u0107 narz\u0119dzia systemowego."
+  "ErrorSystemToolOpen": "Nie mo\u017Cna otworzy\u0107 narz\u0119dzia systemowego.",
+  "PinApplication": "Przypnij aplikację…",
+  "PinApplicationFilter": "Aplikacje i skróty|*.exe;*.lnk;*.url|Aplikacje (*.exe)|*.exe|Skróty (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Nie można przypiąć wybranego pliku jako aplikacji."
 }

@@ -900,5 +900,8 @@
   "SignOut": "Cerrar sesi\u00F3n",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Apagar",
-  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema."
+  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema.",
+  "PinApplication": "Anclar aplicación…",
+  "PinApplicationFilter": "Aplicaciones y accesos directos|*.exe;*.lnk;*.url|Aplicaciones (*.exe)|*.exe|Accesos directos (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "No se pudo anclar el archivo seleccionado como aplicación."
 }

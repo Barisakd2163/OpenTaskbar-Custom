@@ -900,5 +900,8 @@
   "SignOut": "Se d\u00E9connecter",
   "RestartComputer": "Red\u00E9marrer",
   "ShutDownComputer": "Arr\u00EAter",
-  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me."
+  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me.",
+  "PinApplication": "Épingler une application…",
+  "PinApplicationFilter": "Applications et raccourcis|*.exe;*.lnk;*.url|Applications (*.exe)|*.exe|Raccourcis (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Le fichier sélectionné n\u0027a pas pu être épinglé comme application."
 }

@@ -900,5 +900,8 @@
   "SignOut": "Sair",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Desligar",
-  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema."
+  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema.",
+  "PinApplication": "Fixar aplicativo…",
+  "PinApplicationFilter": "Aplicativos e atalhos|*.exe;*.lnk;*.url|Aplicativos (*.exe)|*.exe|Atalhos (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Não foi possível fixar o arquivo selecionado como aplicativo."
 }

@@ -19,15 +19,51 @@ internal static class AppShortcutResolver
     private static readonly Lazy<IReadOnlyList<Shortcut>> Index = new(BuildIndex);
     private static readonly ConcurrentDictionary<string, string> NameCache = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>What to hand to ShellExecute. Target may be a .lnk or shell:AppsFolder\{AUMID}.</summary>
+    /// <summary>What to hand to ShellExecute. Target may be a .lnk, .url, or shell:AppsFolder\{AUMID}.</summary>
     internal sealed record LaunchSpec(string Target, string Arguments, string WorkingDirectory);
 
-    internal static LaunchSpec Resolve(string? executablePath, string? appUserModelId, string? displayName = null)
+    internal static LaunchSpec Resolve(
+        string? executablePath,
+        string? appUserModelId,
+        string? displayName = null,
+        string? launchArguments = null,
+        string? shortcutPath = null)
     {
-        // Packaged apps are activated by AUMID; no shortcut needed.
-        if (!string.IsNullOrWhiteSpace(appUserModelId)
-            && appUserModelId.EndsWith("!App", StringComparison.OrdinalIgnoreCase))
-            return new LaunchSpec($"shell:AppsFolder\\{appUserModelId}", string.Empty, string.Empty);
+        // Pre-resolved AppsFolder targets launch directly.
+        if (!string.IsNullOrWhiteSpace(executablePath)
+            && executablePath.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase))
+            return new LaunchSpec(executablePath.Trim(), string.Empty, string.Empty);
+
+        // Packaged apps are activated by AUMID (<PackageFamilyName>!<EntryId>), not just !App; no shortcut needed.
+        if (!string.IsNullOrWhiteSpace(appUserModelId))
+        {
+            var trimmedAumid = appUserModelId.Trim();
+            var bang = trimmedAumid.IndexOf('!');
+            if (bang > 0 && bang < trimmedAumid.Length - 1)
+                return new LaunchSpec($"shell:AppsFolder\\{trimmedAumid}", string.Empty, string.Empty);
+        }
+
+        // Internet/Steam .url shortcuts carry their own URI target.
+        if (!string.IsNullOrWhiteSpace(shortcutPath)
+            && shortcutPath.EndsWith(".url", StringComparison.OrdinalIgnoreCase)
+            && File.Exists(shortcutPath))
+            return new LaunchSpec(shortcutPath, string.Empty, string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(executablePath)
+            && executablePath.EndsWith(".url", StringComparison.OrdinalIgnoreCase))
+            return new LaunchSpec(executablePath, string.Empty, string.Empty);
+
+        // Argument-bearing pins (e.g. Edge/Chrome PWA shortcuts using msedge_proxy.exe / chrome_proxy.exe,
+        // or browser profile shortcuts) must keep their shortcut/arguments rather than resolving to plain Edge/Chrome.
+        if (!string.IsNullOrWhiteSpace(launchArguments))
+        {
+            if (!string.IsNullOrWhiteSpace(shortcutPath)
+                && shortcutPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(shortcutPath))
+                return new LaunchSpec(shortcutPath, string.Empty, string.Empty);
+
+            return new LaunchSpec(Normalize(executablePath) ?? executablePath ?? string.Empty, launchArguments, string.Empty);
+        }
 
         var shortcuts = Index.Value;
         var exe = Normalize(executablePath);

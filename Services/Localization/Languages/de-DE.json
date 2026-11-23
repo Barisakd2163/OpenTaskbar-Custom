@@ -900,5 +900,8 @@
   "SignOut": "Abmelden",
   "RestartComputer": "Neustart",
   "ShutDownComputer": "Herunterfahren",
-  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden."
+  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden.",
+  "PinApplication": "Anwendung anheften…",
+  "PinApplicationFilter": "Anwendungen \u0026 Verknüpfungen|*.exe;*.lnk;*.url|Anwendungen (*.exe)|*.exe|Verknüpfungen (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Die ausgewählte Datei konnte nicht als Anwendung angeheftet werden."
 }
