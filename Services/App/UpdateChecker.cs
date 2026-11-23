@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 
@@ -217,7 +218,7 @@ public static class UpdateChecker
             {
                 LaunchUpdaterAndRestart(tempExe, targetPath);
             }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException)
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException or ArgumentException)
             {
                 AppLog.Error($"Update launch failed: {ex.Message}");
                 return (false, "ErrorUpdateFailed", null);
@@ -236,36 +237,65 @@ public static class UpdateChecker
         digest is { Length: 71 } && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
         && digest[7..].All(Uri.IsHexDigit);
 
+    // UTF-8 without BOM: a leading BOM corrupts "@echo off" on line 1 of .cmd scripts.
+    internal static readonly UTF8Encoding UpdaterScriptEncoding = new(encoderShouldEmitUTF8Identifier: false);
+
+    internal static string EscapeBatchValue(string value, string? paramName = null)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException("Updater path must not be empty.", paramName ?? nameof(value));
+        }
+
+        if (value.IndexOfAny(['\r', '\n', '"', '\0']) >= 0 || value.Any(char.IsControl))
+        {
+            throw new ArgumentException("Updater path contains unsupported control or quote characters.", paramName ?? nameof(value));
+        }
+
+        return value.Replace("%", "%%", StringComparison.Ordinal);
+    }
+
     internal static string GenerateUpdaterScript(string tempExe, string targetExe)
     {
-        return $"""
-        @echo off
-        set "SRC={tempExe}"
-        set "DST={targetExe}"
-        set ATTEMPTS=0
-        :wait_loop
-        timeout /t 1 /nobreak >nul
-        copy /y "%SRC%" "%DST%" >nul 2>&1
-        if not errorlevel 1 goto launch
-        set /a ATTEMPTS+=1
-        if %ATTEMPTS% lss 20 goto wait_loop
-        goto cleanup
+        var escapedTempExe = EscapeBatchValue(tempExe, nameof(tempExe));
+        var escapedTargetExe = EscapeBatchValue(targetExe, nameof(targetExe));
 
-        :launch
-        del /f /q "%SRC%" >nul 2>&1
-        start "" "%DST%"
+        return string.Join("\r\n",
+        [
+            "@echo off",
+            "chcp 65001 >nul",
+            $"set \"SRC={escapedTempExe}\"",
+            $"set \"DST={escapedTargetExe}\"",
+            "set ATTEMPTS=0",
+            ":wait_loop",
+            "timeout /t 1 /nobreak >nul",
+            "copy /y \"%SRC%\" \"%DST%\" >nul 2>&1",
+            "if not errorlevel 1 if exist \"%DST%\" goto launch",
+            "set /a ATTEMPTS+=1",
+            "if %ATTEMPTS% lss 30 goto wait_loop",
+            "goto cleanup",
+            string.Empty,
+            ":launch",
+            "del /f /q \"%SRC%\" >nul 2>&1",
+            "start \"\" \"%DST%\"",
+            string.Empty,
+            ":cleanup",
+            "del /f /q \"%~f0\" >nul 2>&1",
+            string.Empty
+        ]);
+    }
 
-        :cleanup
-        del /f /q "%~f0" >nul 2>&1
-        """;
+    internal static void WriteUpdaterScript(string scriptPath, string tempExe, string targetExe)
+    {
+        var script = GenerateUpdaterScript(tempExe, targetExe);
+        File.WriteAllText(scriptPath, script, UpdaterScriptEncoding);
     }
 
     internal static void LaunchUpdaterAndRestart(string tempExe, string targetPath)
     {
         var targetDir = Path.GetDirectoryName(targetPath) ?? AppContext.BaseDirectory;
         var scriptPath = Path.Combine(Path.GetDirectoryName(tempExe)!, "apply-update.cmd");
-        var script = GenerateUpdaterScript(tempExe, targetPath);
-        File.WriteAllText(scriptPath, script);
+        WriteUpdaterScript(scriptPath, tempExe, targetPath);
 
         var requiresElevation = !IsDirectoryWritable(targetDir);
         var startInfo = new ProcessStartInfo

@@ -77,6 +77,7 @@ public partial class App : Application
             return;
         }
         _ownsSingletonMutex = true;
+        new StartupRegistration().SyncOnStartup(IsDev, IsInspection);
 
         // Heal only after winning the singleton race: a second instance must never consume the live instance's
         // recovery journal.
