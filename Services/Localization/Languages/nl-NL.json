@@ -900,5 +900,13 @@
   "SignOut": "Afmelden",
   "RestartComputer": "Opnieuw opstarten",
   "ShutDownComputer": "Afsluiten",
-  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen."
+  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen.",
+  "WidgetShowDesktop": "Bureaublad weergeven",
+  "WidgetShowDesktopDescription": "Klik om het bureaublad te tonen, zweef tijdens het slepen van bestanden om het te onthullen of zet bestanden neer om ze naar het Bureaublad te verplaatsen.",
+  "WidgetShowDesktopShort": "Bureaublad",
+  "OpenDesktopFolder": "Map Bureaublad openen",
+  "ShowDesktopTooltip": "Bureaublad weergeven (klik) · Zet bestanden neer om te verplaatsen (Ctrl om te kopiëren)",
+  "MovedToDesktop": "Verplaatst naar Bureaublad",
+  "CopiedToDesktop": "Gekopieerd naar Bureaublad",
+  "ErrorDesktopDropFailed": "Kan de bestanden niet naar het Bureaublad overzetten."
 }

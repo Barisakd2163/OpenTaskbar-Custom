@@ -900,5 +900,13 @@
   "SignOut": "Cerrar sesi\u00F3n",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Apagar",
-  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema."
+  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema.",
+  "WidgetShowDesktop": "Mostrar escritorio",
+  "WidgetShowDesktopDescription": "Haz clic para mostrar el escritorio, mantén al arrastrar archivos para verlo o suelta archivos para moverlos al Escritorio.",
+  "WidgetShowDesktopShort": "Escritorio",
+  "OpenDesktopFolder": "Abrir carpeta Escritorio",
+  "ShowDesktopTooltip": "Mostrar escritorio (clic) · Suelta archivos para mover al Escritorio (Ctrl para copiar)",
+  "MovedToDesktop": "Movido al Escritorio",
+  "CopiedToDesktop": "Copiado al Escritorio",
+  "ErrorDesktopDropFailed": "No se pudieron transferir los archivos al Escritorio."
 }

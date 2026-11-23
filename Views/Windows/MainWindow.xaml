@@ -229,7 +229,8 @@
                     IsHitTestVisible="False" />
             <Border x:Name="DockFrame" Padding="{StaticResource DockPadding}"
                     Background="Transparent" BorderBrush="Transparent"
-                    BorderThickness="{DynamicResource DockBorderThickness}" CornerRadius="{DynamicResource DockRadius}">
+                    BorderThickness="{DynamicResource DockBorderThickness}" CornerRadius="{DynamicResource DockRadius}"
+                    AllowDrop="True" DragOver="DockFrame_DragOver" Drop="DockFrame_Drop">
                 <Grid x:Name="DockFrameRoot">
                     <Grid x:Name="DockLayoutRoot">
                         <Grid.ColumnDefinitions>
@@ -325,7 +326,7 @@
                                               HoverHeadroom="{StaticResource DockHeadroom}" ContentInset="{StaticResource DockScrollContentInset}"
                                               ScrollViewer.ScrollChanged="DockScrollViewer_ScrollChanged">
                             <StackPanel x:Name="DockContents" Orientation="Horizontal" HorizontalAlignment="Left"
-                                        VerticalAlignment="Center" AllowDrop="True"
+                                        VerticalAlignment="Center" Background="Transparent" AllowDrop="True"
                                         DragOver="DockContents_DragOver" Drop="DockContents_Drop">
                                 <ItemsControl x:Name="PinnedApps" ItemTemplate="{StaticResource DockAppIconTemplate}" Visibility="Collapsed">
                                     <ItemsControl.ItemsPanel>
@@ -399,12 +400,24 @@
                             </ItemsControl>
                             <Button x:Name="ShowDesktopButton" Style="{StaticResource DockButton}" Width="6"
                                     Click="ShowDesktop_Click" Cursor="Hand"
+                                    AllowDrop="True"
+                                    DragOver="ShowDesktopButton_DragOver"
+                                    DragLeave="ShowDesktopButton_DragLeave"
+                                    Drop="ShowDesktopButton_Drop"
+                                    MouseUp="ShowDesktopButton_MouseUp"
                                     PreviewMouseLeftButtonDown="ShellButton_PreviewMouseLeftButtonDown"
                                     PreviewMouseMove="ShellButton_PreviewMouseMove"
                                     PreviewMouseLeftButtonUp="ShellButton_PreviewMouseLeftButtonUp"
-                                    AutomationProperties.Name="{local:Loc ShowDesktop}" ToolTip="{local:Loc ShowDesktop}"
+                                    AutomationProperties.Name="{local:Loc ShowDesktop}" ToolTip="{local:Loc ShowDesktopTooltip}"
                                     ToolTipService.InitialShowDelay="650" Margin="3,0,0,0"
-                                    VerticalAlignment="Stretch" /> 
+                                    VerticalAlignment="Stretch">
+                                <Button.ContextMenu>
+                                    <ContextMenu Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+                                        <MenuItem Header="{local:Loc ShowDesktop}" Icon="{StaticResource IconMonitor}" Click="ShowDesktop_Click" />
+                                        <MenuItem Header="{local:Loc OpenDesktopFolder}" Icon="{StaticResource IconFolder}" Click="OpenDesktopFolder_Click" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                         </StackPanel>
                         <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
                         <Border x:Name="WidgetIsland" Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"

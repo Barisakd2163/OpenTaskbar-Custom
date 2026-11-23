@@ -900,5 +900,13 @@
   "SignOut": "Esci",
   "RestartComputer": "Riavvia",
   "ShutDownComputer": "Arresta",
-  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema."
+  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema.",
+  "WidgetShowDesktop": "Mostra desktop",
+  "WidgetShowDesktopDescription": "Fai clic per mostrare il desktop, resta sopra mentre trascini file per scoprirlo o rilascia file per spostarli sul Desktop.",
+  "WidgetShowDesktopShort": "Desktop",
+  "OpenDesktopFolder": "Apri cartella Desktop",
+  "ShowDesktopTooltip": "Mostra desktop (clic) · Rilascia file per spostarli sul Desktop (Ctrl per copiare)",
+  "MovedToDesktop": "Spostato sul Desktop",
+  "CopiedToDesktop": "Copiato sul Desktop",
+  "ErrorDesktopDropFailed": "Impossibile trasferire i file sul Desktop."
 }

@@ -900,5 +900,13 @@
   "SignOut": "Oturumu kapat",
   "RestartComputer": "Yeniden ba\u015Flat",
   "ShutDownComputer": "Kapat",
-  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131."
+  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131.",
+  "WidgetShowDesktop": "Masaüstünü göster",
+  "WidgetShowDesktopDescription": "Masaüstünü açıp kapatmak için tıklayın, dosya sürüklerken üzerinde bekleyip masaüstünü görün veya dosyaları doğrudan Masaüstüne bırakın.",
+  "WidgetShowDesktopShort": "Masaüstü",
+  "OpenDesktopFolder": "Masaüstü klasörünü aç",
+  "ShowDesktopTooltip": "Masaüstünü göster (tıkla) · Masaüstüne taşımak için dosya bırak (kopyalamak için Ctrl)",
+  "MovedToDesktop": "Masaüstüne taşındı",
+  "CopiedToDesktop": "Masaüstüne kopyalandı",
+  "ErrorDesktopDropFailed": "Dosyalar Masaüstüne aktarılamadı."
 }

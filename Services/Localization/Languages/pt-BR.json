@@ -900,5 +900,13 @@
   "SignOut": "Sair",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Desligar",
-  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema."
+  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema.",
+  "WidgetShowDesktop": "Mostrar área de trabalho",
+  "WidgetShowDesktopDescription": "Clique para alternar a área de trabalho, mantenha o ponteiro ao arrastar arquivos para revelá-la ou solte arquivos para movê-los para a Área de Trabalho.",
+  "WidgetShowDesktopShort": "Área de trabalho",
+  "OpenDesktopFolder": "Abrir pasta Área de Trabalho",
+  "ShowDesktopTooltip": "Mostrar área de trabalho (clique) · Solte arquivos para mover (Ctrl para copiar)",
+  "MovedToDesktop": "Movido para a Área de Trabalho",
+  "CopiedToDesktop": "Copiado para a Área de Trabalho",
+  "ErrorDesktopDropFailed": "Não foi possível transferir os arquivos para a Área de Trabalho."
 }

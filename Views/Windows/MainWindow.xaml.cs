@@ -3630,6 +3630,7 @@ public partial class MainWindow : Window
         PinnedTrayStrip.DetachHost();
         PinnedTrayStrip.LayoutChanged -= OnPinnedTrayStripLayoutChanged;
         TrayButton.PinToggled -= OnTrayIconPinToggled;
+        DisposeDragDrop();
         DisposeExtras();
         DisposeFeatures();
     }

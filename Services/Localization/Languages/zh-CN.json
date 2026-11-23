@@ -900,5 +900,13 @@
   "SignOut": "\u6CE8\u9500",
   "RestartComputer": "\u91CD\u542F",
   "ShutDownComputer": "\u5173\u673A",
-  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002"
+  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002",
+  "WidgetShowDesktop": "显示桌面",
+  "WidgetShowDesktopDescription": "点击切换桌面，拖放文件时悬停以显示桌面，或直接松开以将文件移动到桌面。",
+  "WidgetShowDesktopShort": "桌面",
+  "OpenDesktopFolder": "打开桌面文件夹",
+  "ShowDesktopTooltip": "显示桌面（点击）· 拖放文件移动到桌面（按住 Ctrl 复制）",
+  "MovedToDesktop": "已移动到桌面",
+  "CopiedToDesktop": "已复制到桌面",
+  "ErrorDesktopDropFailed": "无法将文件传输到桌面。"
 }

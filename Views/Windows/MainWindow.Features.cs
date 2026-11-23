@@ -118,6 +118,9 @@ public partial class MainWindow
     private void ShowDesktop_Click(object sender, RoutedEventArgs e) =>
         ReportResult(ShellShortcuts.ToggleShowDesktop());
 
+    private void OpenDesktopFolder_Click(object sender, RoutedEventArgs e) =>
+        ReportResult(DesktopFileTransfer.OpenDesktopFolder());
+
     // ---- Global hotkeys (#2) ----
 
     internal static (uint Modifiers, uint Key)? DescribeHotkey(HotkeyChoice choice) => choice switch

@@ -900,5 +900,13 @@
   "SignOut": "Se d\u00E9connecter",
   "RestartComputer": "Red\u00E9marrer",
   "ShutDownComputer": "Arr\u00EAter",
-  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me."
+  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me.",
+  "WidgetShowDesktop": "Afficher le bureau",
+  "WidgetShowDesktopDescription": "Cliquez pour afficher le bureau, survolez en glissant des fichiers pour le révéler ou déposez-les pour les déplacer sur le Bureau.",
+  "WidgetShowDesktopShort": "Bureau",
+  "OpenDesktopFolder": "Ouvrir le dossier Bureau",
+  "ShowDesktopTooltip": "Afficher le bureau (clic) · Déposez des fichiers vers le Bureau (Ctrl pour copier)",
+  "MovedToDesktop": "Déplacé sur le Bureau",
+  "CopiedToDesktop": "Copié sur le Bureau",
+  "ErrorDesktopDropFailed": "Impossible de transférer les fichiers vers le Bureau."
 }

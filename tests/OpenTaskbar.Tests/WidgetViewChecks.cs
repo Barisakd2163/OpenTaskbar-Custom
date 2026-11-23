@@ -589,7 +589,7 @@ internal static class WidgetViewChecks
 
                     // Categories are section labels with their widgets underneath, not tabs/filters.
                     Layout(settings);
-                    Check(selections.Length == 22, "All 22 widgets must be listed.");
+                    Check(selections.Length == 23, "All 23 widgets must be listed.");
                     Check(selections.Select(option => option.CategoryEnum).Distinct().OrderBy(c => c).SequenceEqual(
                             Enum.GetValues<DockWidgetCategory>().OrderBy(c => c)),
                         "All five widget categories must be represented.");
@@ -598,7 +598,7 @@ internal static class WidgetViewChecks
                     Check(selections.Count(option => option.CategoryEnum == DockWidgetCategory.SystemAndHardware) == 5,
                         "The system category must contain all 5 system widgets.");
                     var allCards = Descendants<WidgetCatalogItem>(list).ToArray();
-                    Check(allCards.Length == 22, "All 22 widgets must be visible at once without any category filter.");
+                    Check(allCards.Length == 23, "All 23 widgets must be visible at once without any category filter.");
                     Check(settings.FindName("WidgetCategoryAiRadio") is null,
                         "Widget categories must be labels, not a segmented tab filter.");
 
@@ -667,6 +667,7 @@ internal static class WidgetViewChecks
                 DockWidgetService.QuickSettingsId => "Wi-Fi · BT",
                 DockWidgetService.SystemStatsId => "CPU · RAM",
                 DockWidgetService.FocusId => "25:00",
+                DockWidgetService.ShowDesktopId => UiText.Get("ShowDesktop"),
                 DockWidgetService.WeatherId => "21°",
                 DockWidgetService.NetSpeedId => "↓ 12 MB/s · ↑ 2 MB/s",
                 DockWidgetService.BluetoothBatteryId => "53%",

@@ -900,5 +900,13 @@
   "SignOut": "\u30B5\u30A4\u30F3\u30A2\u30A6\u30C8",
   "RestartComputer": "\u518D\u8D77\u52D5",
   "ShutDownComputer": "\u30B7\u30E3\u30C3\u30C8\u30C0\u30A6\u30F3",
-  "ErrorSystemToolOpen": "\u30B7\u30B9\u30C6\u30E0 \u30C4\u30FC\u30EB\u3092\u958B\u3051\u307E\u305B\u3093\u3067\u3057\u305F\u3002"
+  "ErrorSystemToolOpen": "\u30B7\u30B9\u30C6\u30E0 \u30C4\u30FC\u30EB\u3092\u958B\u3051\u307E\u305B\u3093\u3067\u3057\u305F\u3002",
+  "WidgetShowDesktop": "デスクトップを表示",
+  "WidgetShowDesktopDescription": "クリックでデスクトップを切り替え、ドラッグ中にホバーして表示、またはファイルをドロップしてデスクトップに移動します。",
+  "WidgetShowDesktopShort": "デスクトップ",
+  "OpenDesktopFolder": "デスクトップ フォルダーを開く",
+  "ShowDesktopTooltip": "デスクトップを表示 (クリック) · ドロップでデスクトップへ移動 (Ctrl でコピー)",
+  "MovedToDesktop": "デスクトップに移動しました",
+  "CopiedToDesktop": "デスクトップにコピーしました",
+  "ErrorDesktopDropFailed": "ファイルをデスクトップに転送できませんでした。"
 }

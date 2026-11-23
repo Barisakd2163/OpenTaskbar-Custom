@@ -900,5 +900,13 @@
   "SignOut": "Abmelden",
   "RestartComputer": "Neustart",
   "ShutDownComputer": "Herunterfahren",
-  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden."
+  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden.",
+  "WidgetShowDesktop": "Desktop anzeigen",
+  "WidgetShowDesktopDescription": "Zum Umschalten klicken, beim Ziehen von Dateien kurz verweilen oder Dateien direkt auf den Desktop ablegen.",
+  "WidgetShowDesktopShort": "Desktop",
+  "OpenDesktopFolder": "Desktop-Ordner öffnen",
+  "ShowDesktopTooltip": "Desktop anzeigen (Klick) · Dateien zum Verschieben ablegen (Strg zum Kopieren)",
+  "MovedToDesktop": "Auf Desktop verschoben",
+  "CopiedToDesktop": "Auf Desktop kopiert",
+  "ErrorDesktopDropFailed": "Dateien konnten nicht auf den Desktop übertragen werden."
 }

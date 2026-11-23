@@ -160,14 +160,38 @@ public sealed class WidgetCoordinator : IDisposable
         widget.AvailabilityChanged += Widget_AvailabilityChanged;
         widget.ContentWidthChanged += Widget_AvailabilityChanged;
 
-        widget.ContextMenu = CreateWidgetContextMenu?.Invoke(slot.Id) ?? CreateDefaultWidgetMenu(slot.Id);
+        widget.ContextMenu = widget.BuildContextMenuItems() is { Count: > 0 } customItems
+            ? CreateWidgetMenuWithCustomItems(slot.Id, customItems)
+            : CreateWidgetContextMenu?.Invoke(slot.Id) ?? CreateDefaultWidgetMenu(slot.Id);
 
         _hoverCoordinator.Attach(widget);
         slot.Widget = widget;
         return widget;
     }
 
+    private ContextMenu CreateWidgetMenuWithCustomItems(string widgetId, IReadOnlyList<Control> customItems)
+    {
+        var menu = new ContextMenu();
+        foreach (var item in customItems)
+        {
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+        menu.Items.Add(CreateRemoveWidgetMenuItem(widgetId, menu));
+        ConfigureWidgetMenu?.Invoke(menu);
+        return menu;
+    }
+
     private ContextMenu CreateDefaultWidgetMenu(string widgetId)
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(CreateRemoveWidgetMenuItem(widgetId, menu));
+        ConfigureWidgetMenu?.Invoke(menu);
+        return menu;
+    }
+
+    private MenuItem CreateRemoveWidgetMenuItem(string widgetId, ContextMenu menu)
     {
         var removeItem = new MenuItem { Header = UiText.Get("RemoveWidget") };
         if (Application.Current?.TryFindResource("IconTrash") is Geometry icon)
@@ -175,10 +199,8 @@ public sealed class WidgetCoordinator : IDisposable
             removeItem.Icon = icon;
         }
         removeItem.Click += (_, _) => WidgetRemoveRequested?.Invoke(widgetId);
-        var menu = new ContextMenu();
-        menu.Items.Add(removeItem);
-        ConfigureWidgetMenu?.Invoke(menu);
-        return menu;
+        menu.Opened += (_, _) => removeItem.Header = UiText.Get("RemoveWidget");
+        return removeItem;
     }
 
     public void Apply(DockSettings settings)
