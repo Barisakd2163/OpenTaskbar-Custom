@@ -975,6 +975,9 @@ public partial class MainWindow
     private void ResetMagnification(bool immediate = false)
     {
         _hasMagnificationPointer = false;
+        // Clear stale hover-icon state even on the no-op path below: scroll/layout signals can call this
+        // repeatedly after the icons have already returned to rest, leaving dead keys behind otherwise.
+        _hoverIconStates.Clear();
         // Scroll/layout signals call this many times per gesture. Once everything is already at rest there is
         // nothing to clear; avoid rebuilding the reset list and re-arming no-op work on every frame (#127).
         if (!_magnificationLayoutActive
@@ -1010,7 +1013,6 @@ public partial class MainWindow
 
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
-            _hoverIconStates.Clear();
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
             _magnificationTargetsDirty = true;
@@ -1031,7 +1033,6 @@ public partial class MainWindow
             StopMagnificationRendering();
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
-            _hoverIconStates.Clear();
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
             return;
