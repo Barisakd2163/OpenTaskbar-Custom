@@ -2880,15 +2880,6 @@ public partial class MainWindow : Window
                     }
                 }
             }
-            else if (string.Equals(token, "peek", StringComparison.OrdinalIgnoreCase))
-            {
-                // Orders saved before Show Desktop existed keep it beside Start instead of appending it.
-                var startIndex = tokens.FindIndex(t => string.Equals(t, "start", StringComparison.OrdinalIgnoreCase));
-                var searchIndex = tokens.FindIndex(t => string.Equals(t, "search", StringComparison.OrdinalIgnoreCase));
-                var insertAt = startIndex >= 0 ? startIndex + 1 : 0;
-                if (searchIndex >= 0) insertAt = searchIndex + 1;
-                tokens.Insert(Math.Min(insertAt, tokens.Count), token);
-            }
             else
             {
                 tokens.Add(token);
