@@ -37,7 +37,8 @@
   .monitor-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 10px; }
   h2 { font-size: .95rem; font-weight: 650; margin: 0; }
   .desktop {
-    position: relative; min-height: 362px; padding: 14px 12px 58px;
+    --island-shoulder: 12px;
+    position: relative; min-height: 362px; padding: 0 calc(var(--island-shoulder) + 2px) 58px;
     border: 1px solid #172a24; border-radius: 18px; isolation: isolate;
     background:
       repeating-radial-gradient(ellipse at 5% 120%, transparent 0 10px, #a2c9aa28 11px 12px, transparent 13px 22px),
@@ -49,12 +50,20 @@
       radial-gradient(ellipse at 96% 122%, #e7ad72 16%, #b97961 40%, #714953 67%, #252c3b 100%);
   }
   .island {
+    position: relative;
     width: min(232px, 100%); margin: 0 auto; color: var(--white); background: var(--panel);
-    border: 1px solid #ffffff28; border-radius: 23px; overflow: hidden;
-    box-shadow: 0 14px 32px #10191658, inset 0 1px #ffffff10;
+    border-radius: 0 0 17px 17px;
+    box-shadow: 0 12px 26px -9px #10191678;
     transition: width var(--motion), border-radius var(--motion); touch-action: pan-y;
   }
-  .island[data-open="true"] { width: min(100%, 396px); border-radius: 24px; }
+  .island::before, .island::after {
+    content: ""; position: absolute; top: 0; pointer-events: none;
+    width: var(--island-shoulder); height: var(--island-shoulder);
+    background: radial-gradient(circle at left bottom, transparent calc(var(--island-shoulder) - 0.5px), var(--panel) var(--island-shoulder));
+  }
+  .island::before { right: 100%; }
+  .island::after { left: 100%; scale: -1 1; }
+  .island[data-open="true"] { width: min(100%, 396px); border-radius: 0 0 24px 24px; }
   .island :focus-visible { outline-color: var(--accent); outline-offset: -3px; }
   .toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 6px 14px; border: 0; color: inherit; background: transparent; text-align: left; }
   .identity { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: .85rem; }
