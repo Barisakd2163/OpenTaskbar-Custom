@@ -300,7 +300,7 @@ internal sealed class NativeJumpListSession : IDisposable
         using var link = item.Query(ShellLinkInterface);
         if (link is null) return false;
 
-        var path = new StringBuilder(260);
+        var path = new StringBuilder(4096);
         if (link.Method<GetLinkPath>(3)(link.Handle, path, path.Capacity, 0, SLgpRawPath) < 0 || path.Length == 0)
             return false;
 
@@ -312,11 +312,11 @@ internal sealed class NativeJumpListSession : IDisposable
             using var store = item.Query(PropertyStoreInterface);
             args = store is null ? string.Empty : ReadString(store, LinkArgumentsKey) ?? string.Empty;
         }
-        var directory = new StringBuilder(260);
+        var directory = new StringBuilder(4096);
         var workingDirectory = link.Method<GetLinkWorkingDirectory>(11)(link.Handle, directory, directory.Capacity) >= 0
             ? directory.ToString() : string.Empty;
 
-        Process.Start(BuildLaunchInfo(path.ToString(), args, workingDirectory));
+        using var _ = Process.Start(BuildLaunchInfo(path.ToString(), args, workingDirectory));
         AppLog.Info($"Jump List task launched directly: {path} {args}".TrimEnd());
         return true;
     }

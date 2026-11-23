@@ -383,17 +383,24 @@ public partial class SettingsWindow : Window
         var reloadedSelections = false;
         if (!_isInternalSave && !_isSaving && !ReferenceEquals(_preferences.Current, _applied))
         {
-            _autoSaveTimer.Stop();
-            var wasInitializing = _initializing;
-            _initializing = true;
-            try
+            if (_autoSaveTimer.IsEnabled)
             {
-                LoadAllSelections(_preferences.Current);
-                reloadedSelections = true;
+                _autoSaveTimer.Stop();
+                SaveSettings();
             }
-            finally
+            else
             {
-                _initializing = wasInitializing;
+                var wasInitializing = _initializing;
+                _initializing = true;
+                try
+                {
+                    LoadAllSelections(_preferences.Current);
+                    reloadedSelections = true;
+                }
+                finally
+                {
+                    _initializing = wasInitializing;
+                }
             }
         }
         var themeApplied = false;
@@ -1238,9 +1245,10 @@ public partial class SettingsWindow : Window
         foreach (var option in _widgetOptions.Where(o =>
                      DockWidgetService.TryGetDescriptor(o.Id, out var descriptor) && descriptor.SupportsLivePreview))
         {
+            OpenTaskbar.Widgets.DockWidget? widget = null;
             try
             {
-                var widget = WidgetCoordinator.CreateWidget(option.Id);
+                widget = WidgetCoordinator.CreateWidget(option.Id);
                 widget.ReportError = message => AppLog.Warning($"Widget preview '{option.Id}': {message}");
                 widget.ApplySettings(currentSettings);
                 widget.Activate();
@@ -1260,6 +1268,10 @@ public partial class SettingsWindow : Window
             }
             catch (Exception ex)
             {
+                if (widget is not null && !_livePreviewWidgets.Contains(widget))
+                {
+                    widget.Dispose();
+                }
                 AppLog.Warning($"Widget preview '{option.Id}' unavailable: {ex.Message}");
             }
         }
@@ -2066,7 +2078,7 @@ public partial class SettingsWindow : Window
         var (verifier, _, uuid, loginUrl) = CursorAuthService.StartLogin();
         try
         {
-            Process.Start(new ProcessStartInfo(loginUrl) { UseShellExecute = true });
+            using var _ = Process.Start(new ProcessStartInfo(loginUrl) { UseShellExecute = true });
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -2518,12 +2530,12 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         if (_preferences.Save(settings with { PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder }) is { } saveError)
         {
             AppLog.ReportError(saveError);
             return;
         }
+        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
 
         _applied = _preferences.Current;
         _initializing = true;
@@ -2581,7 +2593,6 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
         var targetThemePack = restoreTheme ? (importedThemeId ?? settings.ThemePack) : (preview.HasTheme ? _preferences.Current.ThemePack : settings.ThemePack);
         settings = settings with { ThemePack = targetThemePack, PinOrder = settings.PinOrder ?? _preferences.Current.PinOrder };
         _isSaving = true;
@@ -2597,6 +2608,7 @@ public partial class SettingsWindow : Window
         {
             _isSaving = false;
         }
+        var added = (Application.Current.MainWindow as MainWindow)?.ImportPins(pins) ?? 0;
 
         _applied = _preferences.Current;
         _initializing = true;

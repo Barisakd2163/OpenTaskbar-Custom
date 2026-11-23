@@ -69,13 +69,15 @@ public sealed class DockSettingsStore
                 settings = DockProfileService.EnsureDefaultProfile(settings);
             if (settings is null || !IsValid(settings))
             {
+                BackupInvalidSettingsFile();
                 return (CreateDefaultSettings(), "ErrorDockSettingsInvalid");
             }
 
             return (settings, null);
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException or FormatException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException or FormatException or NullReferenceException)
         {
+            BackupInvalidSettingsFile();
             return (CreateDefaultSettings(), "ErrorDockSettingsRead");
         }
         catch (IOException)
@@ -180,13 +182,15 @@ public sealed class DockSettingsStore
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         }
         var removedTokens = RemovedIds.Select(id => "widget:" + id).ToArray();
-        var profiles = settings.Profiles?.Select(profile => profile with
-        {
-            Widgets = Without(profile.Widgets, RemovedIds),
-            InstalledWidgets = Without(profile.InstalledWidgets, RemovedIds),
-            WidgetOrder = Without(profile.WidgetOrder, RemovedIds),
-            DockItemOrder = Without(profile.DockItemOrder, removedTokens)
-        }).ToArray();
+        var profiles = settings.Profiles?
+            .Where(profile => profile is not null)
+            .Select(profile => profile with
+            {
+                Widgets = Without(profile.Widgets, RemovedIds),
+                InstalledWidgets = Without(profile.InstalledWidgets, RemovedIds),
+                WidgetOrder = Without(profile.WidgetOrder, RemovedIds),
+                DockItemOrder = Without(profile.DockItemOrder, removedTokens)
+            }).ToArray();
 
         return settings with
         {
@@ -421,9 +425,9 @@ public sealed class DockSettingsStore
         && settings.StackFolders?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Any(string.IsNullOrWhiteSpace) != true
         && settings.WidgetOrder?.Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.WidgetOrder?.Count
-        && settings.Profiles?.All(IsValidProfile) != false
+        && settings.Profiles?.All(profile => profile is not null && IsValidProfile(profile)) != false
         && settings.Profiles?.Select(profile => profile.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.Profiles?.Count
-        && settings.AppGroups?.Any(group => string.IsNullOrWhiteSpace(group.Id)
+        && settings.AppGroups?.Any(group => group is null || string.IsNullOrWhiteSpace(group.Id)
             || string.IsNullOrWhiteSpace(group.Name) || group.ExecutablePaths is null) != true
         && settings.AppGroups?.Select(group => group.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == settings.AppGroups?.Count
         && settings.AppGroups?.Select(group => group.Name).Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == settings.AppGroups?.Count
@@ -433,6 +437,22 @@ public sealed class DockSettingsStore
         && (settings.DockCornerRadius is null || settings.DockCornerRadius is >= 0 and <= 48)
         && IsValidPinnedTrayIcons(settings.PinnedTrayIcons)
         && !HotkeysConflict(settings);
+
+    private void BackupInvalidSettingsFile()
+    {
+        try
+        {
+            if (!File.Exists(_path)) return;
+            var backupPath = $"{_path}.invalid-{DateTime.UtcNow:yyyyMMddHHmmss}";
+            if (!File.Exists(backupPath))
+            {
+                File.Copy(_path, backupPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
 
     private static bool IsValidPinnedTrayIcons(IReadOnlyList<string>? pinned) =>
         pinned is null

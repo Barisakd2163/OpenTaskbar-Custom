@@ -41,7 +41,7 @@ public static class ThemeManager
     private static double _settingsOpacity = 0.95;
     public static AppTheme EffectiveTheme { get; private set; } = AppTheme.Dark;
 
-    private static AppTheme WindowsTheme()
+    internal static AppTheme WindowsTheme()
     {
         try
         {
