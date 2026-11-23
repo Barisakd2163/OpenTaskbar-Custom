@@ -574,6 +574,10 @@ public partial class MainWindow
         }
         if (_secondaryDocks.Count > 0)
         {
+            if (_replacementSession?.IsActive == true)
+            {
+                TaskbarReplacementSession.EnforceSecondaryTraysHidden();
+            }
             _secondaryTimer ??= CreateSecondaryTimer();
             _secondaryTimer.Start();
         }
