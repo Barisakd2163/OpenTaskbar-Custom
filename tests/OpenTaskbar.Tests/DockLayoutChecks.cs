@@ -1004,7 +1004,49 @@ internal static class DockLayoutChecks
         Check(!string.IsNullOrWhiteSpace(UiText.Get("UpdateFailed")), "UpdateFailed must not be empty.");
         Check(!string.IsNullOrWhiteSpace(UiText.Get("UpdateInProgress")), "UpdateInProgress must not be empty.");
 
-        // Verify UpdateChecker release parser and asset URL extraction
+        // Release assets now carry architecture in the name. Mirror the real v0.3.3 asset order (x64 first,
+        // duplicate unversioned EXEs later) so a wrong "first .exe" pick is caught instead of passing by accident.
+        var dualArchReleaseJson = """
+        {
+            "tag_name": "v0.3.3",
+            "html_url": "https://github.com/alztrk/opentaskbar/releases/tag/v0.3.3",
+            "assets": [
+                { "name": "checksums.txt", "browser_download_url": "https://example/checksums.txt", "size": 388 },
+                {
+                    "name": "OpenTaskbar-v0.3.3-win-x64.exe",
+                    "browser_download_url": "https://example/OpenTaskbar-v0.3.3-win-x64.exe",
+                    "size": 172194045,
+                    "digest": "sha256:e4cf5203c619db512c7300f69fb0162797a6b823726d9a9bc8b9690d4f0110c6"
+                },
+                { "name": "OpenTaskbar-v0.3.3-win-x64.zip", "browser_download_url": "https://example/x64.zip", "size": 70078577 },
+                {
+                    "name": "OpenTaskbar-v0.3.3-win-x86.exe",
+                    "browser_download_url": "https://example/OpenTaskbar-v0.3.3-win-x86.exe",
+                    "size": 164497661,
+                    "digest": "sha256:bbf3698be014a38a440e3290fa68f95a47d7063990e634ae09e804c3ba52332e"
+                },
+                { "name": "OpenTaskbar-v0.3.3-win-x86.zip", "browser_download_url": "https://example/x86.zip", "size": 65974360 },
+                { "name": "OpenTaskbar-x64.exe", "browser_download_url": "https://example/OpenTaskbar-x64.exe", "size": 172194045 },
+                { "name": "OpenTaskbar-x86.exe", "browser_download_url": "https://example/OpenTaskbar-x86.exe", "size": 164497661 },
+                { "name": "release-manifest.json", "browser_download_url": "https://example/release-manifest.json", "size": 1244 }
+            ]
+        }
+        """;
+        var x64Release = UpdateChecker.ParseRelease(dualArchReleaseJson, new Version(0, 3, 2), "x64");
+        Check(x64Release?.DownloadUrl?.EndsWith("OpenTaskbar-v0.3.3-win-x64.exe", StringComparison.Ordinal) == true
+            && x64Release.Size == 172194045
+            && x64Release.Sha256?.EndsWith("0110c6", StringComparison.Ordinal) == true,
+            "x64 updater must pick the x64 EXE with its own size and digest.");
+        var x86Release = UpdateChecker.ParseRelease(dualArchReleaseJson, new Version(0, 3, 2), "x86");
+        Check(x86Release?.DownloadUrl?.EndsWith("OpenTaskbar-v0.3.3-win-x86.exe", StringComparison.Ordinal) == true
+            && x86Release.Size == 164497661
+            && x86Release.Sha256?.EndsWith("52332e", StringComparison.Ordinal) == true,
+            "x86 updater must pick the x86 EXE, never the x64 binary listed first.");
+        Check(UpdateChecker.IsValidSha256Digest(x64Release?.Sha256)
+            && UpdateChecker.IsValidSha256Digest(x86Release?.Sha256),
+            "GitHub asset digests must pass the updater's SHA-256 format check.");
+
+        // Old single-architecture releases and the legacy fixture must keep working.
         var testReleaseJson = """
         {
             "tag_name": "v0.3.0",
@@ -1018,14 +1060,14 @@ internal static class DockLayoutChecks
             ]
         }
         """;
-        var parsedNewer = UpdateChecker.ParseRelease(testReleaseJson, new Version(0, 2, 5));
+        var parsedNewer = UpdateChecker.ParseRelease(testReleaseJson, new Version(0, 2, 5), "x86");
         Check(parsedNewer is not null, "Newer version in release JSON must be recognized.");
         Check(parsedNewer!.Tag == "v0.3.0", "Parsed tag must match release tag.");
         Check(parsedNewer.DownloadUrl == "https://github.com/alztrk/opentaskbar/releases/download/v0.3.0/OpenTaskbar.exe",
-            "Parsed download URL must extract OpenTaskbar.exe asset.");
+            "Legacy OpenTaskbar.exe asset must still be selectable for old releases.");
         Check(parsedNewer.Size == 71373244, "Parsed asset size must match.");
 
-        var parsedOlder = UpdateChecker.ParseRelease(testReleaseJson, new Version(0, 3, 5));
+        var parsedOlder = UpdateChecker.ParseRelease(testReleaseJson, new Version(0, 3, 5), "x64");
         Check(parsedOlder is null, "Older version in release JSON must return null.");
 
         var noAssetJson = """
@@ -1180,6 +1222,7 @@ internal static class DockLayoutChecks
                 Check(val >= 1.0 && val <= DockMetrics.HoverScale + 0.02, "Spring scale must stay bounded during bloom.");
             }
             Check(settledUp && Math.Abs(val - DockMetrics.HoverScale) < 0.005, "Spring must converge cleanly to target scale.");
+            Check(vel == 0.0, "A settled spring must report zero velocity so the fisheye render loop can safely detach.");
 
             var settledDown = false;
             for (var f = 0; f < 60; f++)
@@ -1231,6 +1274,18 @@ internal static class DockLayoutChecks
                 var midRadius = DockFisheyeLayout.InfluenceRadiusForExpansion(50, 0.5);
                 Check(midRadius > constrainedRadius && midRadius < freeRadius,
                     "Influence radius must interpolate instead of switching abruptly with the budget.");
+            }
+
+            // #127: a 1 px overflow must not turn a nearly free dock into a zero-budget constrained one.
+            {
+                var free = DockFisheyeLayout.FreeExpansion(maximum: 1000, used: 840, scrollableOverflow: 0);
+                var onePixel = DockFisheyeLayout.FreeExpansion(maximum: 1000, used: 840, scrollableOverflow: 1);
+                var heavy = DockFisheyeLayout.FreeExpansion(maximum: 1000, used: 840, scrollableOverflow: 500);
+                Check(Math.Abs(free - onePixel) <= 0.5 && onePixel > 150,
+                    "One pixel of overflow must leave almost all free space available for magnification.");
+                Check(heavy == 0, "Genuine overflow larger than the free space must still disable expansion.");
+                var peak = DockFisheyeLayout.PeakExpansionNeed(50, DockMetrics.HoverScale);
+                Check(peak > 50 && peak < 80, "Reserved arch expansion must match the measured ~58 px snap size.");
             }
 
             // Constrained docks (zero expansion budget) must cap peak scale so adjacent icons never overlap.

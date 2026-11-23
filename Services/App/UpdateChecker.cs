@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
@@ -21,6 +22,14 @@ public static class UpdateChecker
 
     /// <summary>False when installed from the Microsoft Store (MSIX), where Store manages updates per Policy 10.2.5.</summary>
     public static bool SupportsInAppUpdates => !AppIdentity.IsPackaged;
+
+    /// <summary>Architecture token used by release assets (x64/x86); empty for other runtimes.</summary>
+    public static string CurrentArchitecture => RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X86 => "x86",
+        Architecture.X64 => "x64",
+        _ => string.Empty
+    };
 
     public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null, string? Sha256 = null);
 
@@ -56,7 +65,7 @@ public static class UpdateChecker
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellation);
-            return (ParseRelease(json, CurrentVersion), true);
+            return (ParseRelease(json, CurrentVersion, CurrentArchitecture), true);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
             or TimeoutException or JsonException or KeyNotFoundException or InvalidOperationException)
@@ -66,8 +75,12 @@ public static class UpdateChecker
         }
     }
 
-    /// <summary>Parses release json and returns a newer Release if available, or null.</summary>
-    public static Release? ParseRelease(string json, Version currentVersion)
+    /// <summary>
+    /// Parses release json and returns a newer Release if available, or null. <paramref name="architecture"/> is
+    /// "x64"/"x86" for portable builds so the matching EXE is selected; releases before the dual-architecture
+    /// pipeline only have a single "OpenTaskbar.exe" asset, which stays supported.
+    /// </summary>
+    public static Release? ParseRelease(string json, Version currentVersion, string? architecture = null)
     {
         using var document = JsonDocument.Parse(json);
         var tag = document.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() ?? string.Empty : string.Empty;
@@ -79,26 +92,51 @@ public static class UpdateChecker
         string? sha256 = null;
         if (document.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
         {
-            foreach (var asset in assets.EnumerateArray())
+            var selected = SelectAsset(assets, architecture);
+            if (selected is { } asset)
             {
-                var name = asset.TryGetProperty("name", out var n) ? n.GetString() : null;
-                if (string.Equals(name, "OpenTaskbar.exe", StringComparison.OrdinalIgnoreCase))
-                {
-                    downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
-                    size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
-                    sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
-                    break;
-                }
-                if (downloadUrl is null && name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
-                    size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
-                    sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
-                }
+                downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
+                size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
+                sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
             }
         }
 
         return Normalize(version) > Normalize(currentVersion) ? new Release(version, tag, url, downloadUrl, size, sha256) : null;
+    }
+
+    /// <summary>
+    /// Picks one EXE asset: architecture-specific first (e.g. OpenTaskbar-v0.3.3-win-x64.exe), then the legacy
+    /// single "OpenTaskbar.exe" for old releases, and only then any EXE as a last resort. Never gives an x86
+    /// machine the x64 binary just because it appears first in the GitHub asset array.
+    /// </summary>
+    private static JsonElement? SelectAsset(JsonElement assets, string? architecture)
+    {
+        JsonElement? firstExe = null;
+        JsonElement? legacy = null;
+        JsonElement? matching = null;
+        var suffix = string.IsNullOrEmpty(architecture) ? null : $"-{architecture}.exe";
+        var marker = string.IsNullOrEmpty(architecture) ? null : $"-win-{architecture}.";
+
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.TryGetProperty("name", out var n) ? n.GetString() : null;
+            if (string.IsNullOrEmpty(name)) continue;
+
+            if (string.Equals(name, "OpenTaskbar.exe", StringComparison.OrdinalIgnoreCase))
+                legacy ??= asset;
+
+            if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+            firstExe ??= asset;
+
+            if (matching is null && suffix is not null
+                && (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                    || name.Contains(marker!, StringComparison.OrdinalIgnoreCase)))
+            {
+                matching = asset;
+            }
+        }
+
+        return matching ?? legacy ?? firstExe;
     }
 
     /// <summary>Finds the currently running executable path on disk.</summary>

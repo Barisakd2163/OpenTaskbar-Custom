@@ -99,7 +99,7 @@ jobs:
         with:
           name: release-assets
           path: |
-            release/OpenTaskbar-*.exe
+            release/OpenTaskbar-*-win-*.exe
             release/OpenTaskbar-*.zip
             release/checksums.txt
             release/release-manifest.json
@@ -176,7 +176,7 @@ jobs:
           body_path: release/release-notes.md
           generate_release_notes: false
           files: |
-            release/OpenTaskbar-*.exe
+            release/OpenTaskbar-*-win-*.exe
             release/OpenTaskbar-*.zip
             release/checksums.txt
             release/release-manifest.json

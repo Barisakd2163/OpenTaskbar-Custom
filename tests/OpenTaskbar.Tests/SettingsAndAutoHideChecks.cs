@@ -541,6 +541,8 @@ internal static class SettingsAndAutoHideChecks
                     $"Non-Turkish custom city 'Tokyo' must not select Turkey (got '{countryBox.SelectedItem}').");
                 check(cityCombo.Text == "Tokyo" && cityBox.Text == "Tokyo" && preferences.Current.WeatherCity == "Tokyo",
                     $"Non-Turkish custom city 'Tokyo' must be preserved in weather controls (got combo='{cityCombo.Text}', box='{cityBox.Text}').");
+                check(countryBox is OpenTaskbar.Views.SearchableComboBox && cityCombo is OpenTaskbar.Views.SearchableComboBox,
+                    "Weather country and city pickers must use the custom searchable dropdown with a dedicated glyph column.");
 
                 // Bug #3: Trigger a preference edit while gap sliders are at 150px / 165px (>100); save must succeed and preserve percents.
                 var animationsToggle = (CheckBox)sw.FindName("AnimationsToggle");
@@ -746,11 +748,11 @@ internal static class SettingsAndAutoHideChecks
                 tabs.SelectedItem = widgetsTab;
                 PumpDispatcher(application.Dispatcher, 120);
 
-                var densityBoxesField = typeof(SettingsWindow).GetField("_widgetDensityBoxes",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-                var densityBoxes = (Dictionary<string, ComboBox>)densityBoxesField.GetValue(sw)!;
-                check(densityBoxes.ContainsKey("Clock") && densityBoxes.ContainsKey("Weather"),
-                    "Clock and Weather settings panels must include per-widget density dropdown rows.");
+                var densityBox = sw.FindName("DensityBox") as ComboBox
+                    ?? throw new InvalidOperationException("Widgets tab must expose the global widget density dropdown.");
+                check(typeof(SettingsWindow).GetField("_widgetDensityBoxes",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) is null,
+                    "Per-widget density dropdowns must be removed in favour of the global density setting.");
 
                 var optionsField = typeof(SettingsWindow).GetField("_widgetOptions",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
@@ -768,13 +770,13 @@ internal static class SettingsAndAutoHideChecks
                 var claudePreview = (OpenTaskbar.Widgets.DockWidget)claudeOption!.LivePreview!;
                 check(!claudePreview.IsCompact, "Claude live preview must start in Full density when global density is Auto.");
 
-                // Switch Claude per-widget density override to Compact -> live preview must update IsCompact immediately
-                var claudeDensityBox = densityBoxes["AiUsageClaude"];
-                claudeDensityBox.SelectedItem = claudeDensityBox.Items.OfType<ComboBoxItem>()
+                // Global density must be the only density control: Compact compacts every live preview.
+                densityBox.SelectedItem = densityBox.Items.OfType<ComboBoxItem>()
                     .First(i => (string)i.Tag == nameof(WidgetDensityMode.Compact));
                 PumpDispatcher(application.Dispatcher, 60);
-                check(claudePreview.IsCompact,
-                    "Setting per-widget density override to Compact must set IsCompact=true on the live preview widget.");
+                check(claudePreview.IsCompact && preferences.Current.GlobalWidgetDensity == WidgetDensityMode.Compact
+                        && preferences.Current.WidgetDensityOverrides is null,
+                    "Changing global density to Compact must compact live previews and clear legacy overrides.");
 
                 // Sync _aiRingBoxes across all AI cards when one ring box changes
                 var ringBoxesField = typeof(SettingsWindow).GetField("_aiRingBoxes",

@@ -900,5 +900,16 @@
   "SignOut": "Sair",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Desligar",
-  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema."
+  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema.",
+  "DateFormatMmDdYyyy": "MM/DD/YYYY (12/31/2026)",
+  "WeatherTemperatureUnit": "Temperature unit",
+  "DateFormatDdMmYy": "DD/MM/YY (31/12/26)",
+  "DateFormatDdMmYyyyDots": "DD.MM.YYYY (31.12.2026)",
+  "DateFormatSystem": "System default",
+  "DateFormatDdMmYyyy": "DD/MM/YYYY (31/12/2026)",
+  "WeatherWindSpeedMph": "{0} mph",
+  "ClockDateFormat": "Date format",
+  "TemperatureFahrenheit": "Fahrenheit (°F)",
+  "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
+  "TemperatureCelsius": "Celsius (°C)"
 }

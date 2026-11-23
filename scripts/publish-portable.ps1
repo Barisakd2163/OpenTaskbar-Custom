@@ -24,7 +24,7 @@ if ($running) {
         $proc.CloseMainWindow() | Out-Null
     }
     $closed = $running | ForEach-Object { $_.WaitForExit(2500) }
-    $stillRunning = Get-Process -Name OpenTaskbar -ErrorAction SilentlyContinue
+    $stillRunning = Get-Process -Name OpenTaskbar, OpenTaskbar-x64, OpenTaskbar-x86 -ErrorAction SilentlyContinue
     if ($stillRunning) {
         $stillRunning | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Milliseconds 300

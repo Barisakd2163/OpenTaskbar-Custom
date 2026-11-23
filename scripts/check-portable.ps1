@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Portable executable is missing: $executable"
 }
 
-# Our release only ships OpenTaskbar.exe, not the rest of the publish directory.
+# Our release only ships the single-file EXE, not the rest of the publish directory.
 # If a native DLL remains beside the EXE, the release package would be incomplete.
 $sidecarDlls = @(Get-ChildItem -LiteralPath $directory -Filter "*.dll" -File)
 if ($sidecarDlls.Count -gt 0) {

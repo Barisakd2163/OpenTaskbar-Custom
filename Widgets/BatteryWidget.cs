@@ -292,6 +292,13 @@ public sealed class BatteryWidget : DockWidget
         StopChargingAnimation();
     }
 
+    /// <summary>An indefinitely running wave keeps WPF's render clock alive even when the dock is slid off-screen.</summary>
+    public override void SetDockVisible(bool visible)
+    {
+        if (!visible) StopChargingAnimation();
+        else if (IsActive) UpdateLiquidGeometry(forceAnimationRestart: true);
+    }
+
     protected override void OnDisposed()
     {
         StopChargingAnimation();

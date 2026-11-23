@@ -119,6 +119,28 @@ internal static class V19WidgetRedesignChecks
             }
         }
 
+        // 4b. Temperature unit: Celsius stays bare, Fahrenheit converts instantly and uses mph for wind.
+        using (var fahrenheit = new WeatherWidget())
+        {
+            fahrenheit.ApplySettings(new DockSettings(Language: AppLanguage.English, WeatherUnit: TemperatureUnit.Fahrenheit));
+            fahrenheit.ApplyReport(new WeatherReport(
+                "Ankara", 10, 2, 20,
+                [new WeatherDay(new DateOnly(2026, 11, 18), 2, 10, 20)],
+                Humidity: 50,
+                WindSpeed: 10));
+            var inline = LogicalDescendants<TextBlock>(fahrenheit).Select(t => t.Text).ToList();
+            Check(inline.Contains("50°F") && inline.Contains("68°F / 50°F"),
+                "WeatherWidget must convert inline temperatures to Fahrenheit when the unit setting changes.");
+            var flyout = LogicalDescendants<TextBlock>(fahrenheit.BuildFlyoutContent()).Select(t => t.Text).ToList();
+            Check(flyout.Contains("68°F") && flyout.Contains("6 mph"),
+                "Weather flyout must convert feels-like and wind speed for Fahrenheit users.");
+
+            fahrenheit.ApplySettings(new DockSettings(Language: AppLanguage.English, WeatherUnit: TemperatureUnit.Celsius));
+            inline = LogicalDescendants<TextBlock>(fahrenheit).Select(t => t.Text).ToList();
+            Check(inline.Contains("10°") && inline.Contains("20° / 10°"),
+                "Switching back to Celsius must repaint the cached report without refetching.");
+        }
+
         // 5. ClockWidget: system timezone & calendar flyout with year/month nav and Today jump
         using (var clockWidget = new ClockWidget())
         {
@@ -129,6 +151,25 @@ internal static class V19WidgetRedesignChecks
             var cal = clockWidget.BuildCalendar(host);
             var buttons = LogicalDescendants<Button>(cal).ToList();
             Check(buttons.Count >= 6, "Calendar flyout must provide year/month navigation and Today controls.");
+
+            // Explicit date formats override the culture default while DateStyle controls visibility.
+            clockWidget.ApplySettings(new DockSettings(
+                Language: AppLanguage.English,
+                DateStyle: ClockDateStyle.ShortDateOnly,
+                DateFormat: ClockDateFormat.DdMmYy));
+            clockWidget.RenderPreview();
+            var dateText = (TextBlock)clockWidget.FindName("DateText")!;
+            Check(dateText.Text.Length == 8 && dateText.Text[2] == '/' && dateText.Text[5] == '/'
+                  && dateText.Text.Replace("/", "").All(char.IsDigit),
+                "DD/MM/YY date format must render as a two-digit numeric date.");
+
+            clockWidget.ApplySettings(new DockSettings(
+                Language: AppLanguage.English,
+                DateStyle: ClockDateStyle.ShortDateOnly,
+                DateFormat: ClockDateFormat.YyyyMmDd));
+            clockWidget.RenderPreview();
+            Check(dateText.Text.Length == 10 && dateText.Text[4] == '-' && dateText.Text[7] == '-',
+                "YYYY-MM-DD date format must render as an ISO-style numeric date.");
         }
 
         // 6. FocusWidget: distinct Focus flyout with 15/25/50 presets

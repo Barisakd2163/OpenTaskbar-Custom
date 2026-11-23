@@ -26,6 +26,13 @@ public sealed class DockAutoHideController : IDisposable
     private readonly DispatcherTimer _revealedGuardTimer;
     private readonly char[] _classNameBuffer = new char[64];
     private bool _disposed;
+    // The 200 ms guard must still catch missed MouseLeave/pointer exits, but walking every application window on
+    // every tick costs 3-5 ms. Re-scan only when the tracker reports a change, the foreground changes, or once
+    // a second as a fallback when WinEvent notifications are unavailable (#128 finding 4).
+    private bool _overlapDirty = true;
+    private nint _lastScannedForeground;
+    private long _lastOverlapScanMs;
+    private const long OverlapFallbackScanMs = 1000;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
 
@@ -126,10 +133,21 @@ public sealed class DockAutoHideController : IDisposable
         }
         if (Mode == AutoHideMode.Smart)
         {
-            RefreshSmartOverlap(GetForegroundWindow());
+            var foreground = GetForegroundWindow();
+            var fallbackDue = Environment.TickCount64 - _lastOverlapScanMs >= OverlapFallbackScanMs;
+            if (_overlapDirty || foreground != _lastScannedForeground || fallbackDue)
+            {
+                RefreshSmartOverlap(foreground);
+                _overlapDirty = false;
+                _lastScannedForeground = foreground;
+                _lastOverlapScanMs = Environment.TickCount64;
+            }
         }
         EvaluateState();
     }
+
+    /// <summary>Marks the smart-overlap scan stale after a window list or position change.</summary>
+    public void InvalidateWindowOverlap() => _overlapDirty = true;
 
     public void SetMode(AutoHideMode mode)
     {

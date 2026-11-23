@@ -109,6 +109,8 @@ public sealed class WeatherWidget : DockWidget
     protected override void OnSettingsChanged()
     {
         if (IsActive && _loadedFor != LocationKey && _loadingFor != LocationKey) _ = LoadAsync();
+        // Unit changes are converted locally, so repaint immediately instead of waiting for the next fetch.
+        Render();
     }
 
     protected override void OnTick(DateTime now)
@@ -341,7 +343,9 @@ public sealed class WeatherWidget : DockWidget
         }
         AddDetailTile(feelsLabel, FormatDegrees(report.ApparentTemperature));
         AddDetailTile(UiText.Get("WeatherHumidity"), (report.Humidity / 100.0).ToString("P0", culture));
-        AddDetailTile(UiText.Get("WeatherWind"), UiText.Format("WeatherWindSpeed", Math.Round(report.WindSpeed).ToString(culture)));
+        var windSpeed = UsesFahrenheit ? report.WindSpeed * 0.621371 : report.WindSpeed;
+        var windText = UsesFahrenheit ? "WeatherWindSpeedMph" : "WeatherWindSpeed";
+        AddDetailTile(UiText.Get("WeatherWind"), UiText.Format(windText, Math.Round(windSpeed).ToString(culture)));
         root.Children.Add(metricsGrid);
 
         // Next 3 days forecast rows.
@@ -453,5 +457,12 @@ public sealed class WeatherWidget : DockWidget
         return stack;
     }
 
-    private string FormatDegrees(double value) => $"{Math.Round(value).ToString(Settings.Language.Culture)}°";
+    private bool UsesFahrenheit => Settings.WeatherUnit == TemperatureUnit.Fahrenheit;
+
+    private string FormatDegrees(double celsius)
+    {
+        var value = UsesFahrenheit ? celsius * 9.0 / 5.0 + 32 : celsius;
+        var suffix = UsesFahrenheit ? "°F" : "°";
+        return $"{Math.Round(value).ToString(Settings.Language.Culture)}{suffix}";
+    }
 }

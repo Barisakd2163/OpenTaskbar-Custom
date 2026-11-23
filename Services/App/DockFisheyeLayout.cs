@@ -84,6 +84,18 @@ public static class DockFisheyeLayout
         return noOverlapMax + (configuredMaxScale - noOverlapMax) * fraction;
     }
 
+    /// <summary>Extra surface width needed by a fully expanded five-icon arch.</summary>
+    public static double PeakExpansionNeed(double cellSize, double maxScale) =>
+        FullArchWeightSum * Math.Max(0.0, maxScale - 1.0) * Math.Max(1.0, cellSize) * SlotExpansionFactor;
+
+    /// <summary>
+    /// Free space left for magnification after subtracting real content overflow. A dock that overflows by a
+    /// pixel still has virtually all of the screen free, so the old "ScrollableWidth <= 0.5 ? full : zero" gate
+    /// made the peak scale jump between 1.1x and 1.5x. This keeps the budget continuous (#127).
+    /// </summary>
+    public static double FreeExpansion(double maximum, double used, double scrollableOverflow) =>
+        Math.Max(0.0, maximum - used - Math.Max(0.0, scrollableOverflow - 0.5));
+
     /// <summary>How much of the configured magnification the current expansion budget can afford, from 0 to 1.</summary>
     public static double ComputeExpansionFraction(double cellSize, double configuredMaxScale, double availableExpansion)
     {

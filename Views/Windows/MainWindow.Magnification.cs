@@ -359,22 +359,23 @@ public partial class MainWindow
         _restSurfaceWidth = CaptureRestSurfaceWidth();
         _restScrollMaxWidth = MagnificationLayoutBusy ? _restScrollMaxWidth : DockScrollViewer.MaxWidth;
 
+        // Subtract real overflow instead of treating any 1 px as "no room at all": the peak scale now degrades
+        // gradually with free space rather than flipping between 1.1x and 1.5x (#127).
+        var overflow = DockScrollViewer.ScrollableWidth;
         if (!IsFullWidth
             && _dockWidthOverride is null
-            && DockScrollViewer.ScrollableWidth <= 0.5
             && _restSurfaceWidth > 0
             && _dockArea.Width > 0)
         {
             _canExpandSurface = true;
-            _availableExpansion = Math.Max(0.0, maximumSurfaceWidth - _restSurfaceWidth);
+            _availableExpansion = DockFisheyeLayout.FreeExpansion(maximumSurfaceWidth, _restSurfaceWidth, overflow);
         }
         else if ((IsFullWidth || _dockWidthOverride is not null)
-            && DockScrollViewer.ScrollableWidth <= 0.5
             && double.IsFinite(_restScrollMaxWidth)
             && DockContents.ActualWidth > 0)
         {
             _canExpandSurface = false;
-            _availableExpansion = Math.Max(0.0, _restScrollMaxWidth - DockContents.ActualWidth);
+            _availableExpansion = DockFisheyeLayout.FreeExpansion(_restScrollMaxWidth, DockContents.ActualWidth, overflow);
         }
         else
         {
@@ -603,9 +604,22 @@ public partial class MainWindow
 
         var mouseAxis = IsVertical ? mousePos.Y : mousePos.X;
         var overMagnifiedTarget = _magnificationLayoutActive && IsPointerOverMagnifiedTarget(source);
+        // While expanded, the centred dock shifts content by ~delta/2 and edge icons grow past their rest slot.
+        // Test against the *expanded* span with hysteresis so the pointer over the visibly magnified first/last
+        // app is not treated as outside and reset. Non-magnified spans stay rest-based (#90).
+        var spanMargin = 0.0;
+        if (_magnificationLayoutActive)
+        {
+            var surfaceDelta = _restSurfaceWidth > 0 && double.IsFinite(DockSurface.ActualWidth)
+                ? Math.Max(0.0, DockSurface.ActualWidth - _restSurfaceWidth)
+                : 0.0;
+            spanMargin = surfaceDelta / 2.0
+                + Math.Max(0.0, Profile.Icon * (_sessionMaxScale - 1.0)) / 2.0
+                + 4.0;
+        }
         if (_magnificationTargets.Count == 0
-            || (!overMagnifiedTarget && (mouseAxis < _magnifiedSpanMin
-                || mouseAxis > _magnifiedSpanMax
+            || (!overMagnifiedTarget && (mouseAxis < _magnifiedSpanMin - spanMargin
+                || mouseAxis > _magnifiedSpanMax + spanMargin
                 || IsAxisInNonMagnifiedRestSpan(mouseAxis))))
         {
             ResetMagnification();
@@ -838,7 +852,12 @@ public partial class MainWindow
 
                 if (_canExpandSurface && _restSurfaceWidth > 0)
                 {
-                    var surfaceDelta = Math.Max(totalActualExtra, appliedDelta);
+                    // Reserve the whole arch expansion once per hover instead of tracking the live sum of slot
+                    // extras: a centred dock re-measures icons under the pointer on every width change, which
+                    // produced 18-19 px of wobble and 58 px end snaps (#127). The constant reserve is written
+                    // once, so there is no per-frame full-dock layout/changing blur either (#128 finding 5).
+                    var surfaceDelta = Math.Min(_availableExpansion,
+                        DockFisheyeLayout.PeakExpansionNeed(Profile.Cell, _sessionMaxScale));
                     var surfaceWidth = _restSurfaceWidth + surfaceDelta;
                     if (Math.Abs(DockSurface.Width - surfaceWidth) >= 0.25)
                     {
@@ -956,6 +975,14 @@ public partial class MainWindow
     private void ResetMagnification(bool immediate = false)
     {
         _hasMagnificationPointer = false;
+        // Scroll/layout signals call this many times per gesture. Once everything is already at rest there is
+        // nothing to clear; avoid rebuilding the reset list and re-arming no-op work on every frame (#127).
+        if (!_magnificationLayoutActive
+            && _magnificationScaleTargets.Count == 0
+            && _magnifiedIcons.Count == 0)
+        {
+            return;
+        }
         var iconsToReset = _magnificationScaleTargets.Keys
             .Concat(_magnifiedIcons)
             .Concat(_magnificationTargets.Select(t => t.Icon))

@@ -32,8 +32,15 @@ public sealed class StartupRegistration
             return SetEnabledPackaged(enabled);
 
         var executable = Environment.ProcessPath;
+        // Portable builds can be named OpenTaskbar-x64.exe / OpenTaskbar-v1.2.3-win-x86.exe while ZIP installs
+        // keep OpenTaskbar.exe. All of them are valid startup targets; only unrelated executables are rejected.
+        var name = executable is null ? null : Path.GetFileNameWithoutExtension(executable);
+        const string BaseName = "OpenTaskbar";
+        var isOpenTaskbar = !string.IsNullOrEmpty(name)
+            && name.StartsWith(BaseName, StringComparison.OrdinalIgnoreCase)
+            && (name.Length == BaseName.Length || name[BaseName.Length] == '-');
         if (enabled && (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable)
-            || !string.Equals(Path.GetFileName(executable), "OpenTaskbar.exe", StringComparison.OrdinalIgnoreCase)
+            || !isOpenTaskbar
             || executable.Length + 2 > 260)) return "StartupPathError";
         try
         {

@@ -162,6 +162,9 @@ public class DockWidget : UserControl, IDisposable
 
     protected virtual void OnActivated() { }
     protected virtual void OnDeactivated() { }
+
+    /// <summary>Called when auto-hide reveals or hides the dock; widgets with idle animations should pause here.</summary>
+    public virtual void SetDockVisible(bool visible) { }
     protected virtual void OnDisposed() { }
     protected virtual void OnSettingsChanged() { }
     protected virtual void OnLanguageChanged() { }

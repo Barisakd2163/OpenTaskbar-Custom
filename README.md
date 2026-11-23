@@ -132,7 +132,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 
 ### Portable Release
 
-Download `OpenTaskbar.exe` from [GitHub Releases](https://github.com/alztrk/opentaskbar/releases) and launch it directly. No installer or administrator privileges required.
+Download the `OpenTaskbar-*-win-x64.exe` or `OpenTaskbar-*-win-x86.exe` asset for your architecture from [GitHub Releases](https://github.com/alztrk/opentaskbar/releases) and launch it directly. No installer or administrator privileges required. The in-app updater automatically picks the matching architecture.
 
 ### Build from Source
 

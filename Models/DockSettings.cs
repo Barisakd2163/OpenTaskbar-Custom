@@ -47,6 +47,13 @@ public enum HotkeyChoice { Disabled, AltSpace, CtrlSpace, CtrlAltSpace, CtrlAltD
 public enum StartButtonAction { WindowsStart, Launcher }
 public enum StartButtonPlacement { Start, End, Hidden, InWidgets }
 public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden }
+
+/// <summary>Explicit numeric date layouts available on the date &amp; time widget. System follows the UI culture.</summary>
+public enum ClockDateFormat { System, DdMmYyyy, DdMmYy, MmDdYyyy, YyyyMmDd, DdMmYyyyDots }
+
+/// <summary>Temperature scale used by the weather widget. Values stay in Celsius internally and convert when rendered.</summary>
+public enum TemperatureUnit { Celsius, Fahrenheit }
+
 public enum SecondaryAppScope { CurrentMonitorOnly, AllMonitors }
 public enum WidgetDensityMode { Auto, Compact, Full }
 /// <summary>How the dock's horizontal width is determined. Auto fits content; Fixed/Pin modes pin it; Fill spans edge-to-edge.</summary>
@@ -237,7 +244,10 @@ public sealed record DockSettings(
     // Appended at the end so older settings files and positional constructor calls keep working.
     DockHeightMode DockHeightMode = DockHeightMode.Auto,
     int DockHeightPixels = 48,
-    int DockHeightPercent = 7)
+    int DockHeightPercent = 7,
+    // Appended at the end so older settings files and positional constructor calls keep working.
+    TemperatureUnit WeatherUnit = TemperatureUnit.Celsius,
+    ClockDateFormat DateFormat = ClockDateFormat.System)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

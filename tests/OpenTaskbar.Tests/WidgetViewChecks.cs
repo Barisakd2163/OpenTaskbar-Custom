@@ -63,6 +63,27 @@ internal static class WidgetViewChecks
             checks += BluetoothBatteryChecks.Run(app);
             checks += SystemStatsAvailabilityChecks.Run(app);
             checks += V19WidgetRedesignChecks.Run(app);
+
+            // Weather pickers use a custom ComboBox template: glyph in its own column and live filtering.
+            {
+                var picker = new OpenTaskbar.Views.SearchableComboBox();
+                var countries = new[] { "Turkey", "Japan", "Germany" };
+                picker.ItemsSource = countries;
+                var host = new Window { Content = picker, Width = 260, Height = 80, ShowInTaskbar = false };
+                host.Show();
+                picker.ApplyTemplate();
+                var editor = picker.Template.FindName("PART_EditableTextBox", picker) as TextBox
+                    ?? throw new InvalidOperationException("SearchableComboBox must expose a dedicated editable text part.");
+                picker.IsDropDownOpen = true;
+                editor.Text = "tur";
+                var visible = System.Windows.Data.CollectionViewSource.GetDefaultView(picker.ItemsSource)
+                    .Cast<object>().ToArray();
+                Check(visible.Length == 1 && Equals(visible[0], "Turkey"),
+                    "SearchableComboBox must filter its items while the user types.");
+                picker.IsDropDownOpen = false;
+                host.Close();
+            }
+
             checks += PinnedTrayChecks.RunUi(app);
             checks += AiUsageChecks.RunUiChecks(app);
 

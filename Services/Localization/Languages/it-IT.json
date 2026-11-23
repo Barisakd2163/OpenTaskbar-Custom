@@ -900,5 +900,16 @@
   "SignOut": "Esci",
   "RestartComputer": "Riavvia",
   "ShutDownComputer": "Arresta",
-  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema."
+  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema.",
+  "DateFormatMmDdYyyy": "MM/DD/YYYY (12/31/2026)",
+  "WeatherTemperatureUnit": "Temperature unit",
+  "DateFormatDdMmYy": "DD/MM/YY (31/12/26)",
+  "DateFormatDdMmYyyyDots": "DD.MM.YYYY (31.12.2026)",
+  "DateFormatSystem": "System default",
+  "DateFormatDdMmYyyy": "DD/MM/YYYY (31/12/2026)",
+  "WeatherWindSpeedMph": "{0} mph",
+  "ClockDateFormat": "Date format",
+  "TemperatureFahrenheit": "Fahrenheit (°F)",
+  "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
+  "TemperatureCelsius": "Celsius (°C)"
 }

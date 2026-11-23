@@ -410,7 +410,8 @@ public sealed class DockSettingsStore
         && HotkeyBinding.IsValidCustomString(settings.CustomLauncherHotkey)
         && HotkeyBinding.IsValidCustomString(settings.CustomDockHotkey)
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
-        && Enum.IsDefined(settings.DateStyle)
+        && Enum.IsDefined(settings.DateStyle) && Enum.IsDefined(settings.DateFormat)
+        && Enum.IsDefined(settings.WeatherUnit)
         && (settings.StatsMeters & ~SystemMeters.All) == 0
         && (settings.AiUsageProviders & ~AiProviders.All) == 0
         && Enum.IsDefined(settings.AiUsageRing)

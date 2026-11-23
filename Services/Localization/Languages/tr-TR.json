@@ -900,5 +900,16 @@
   "SignOut": "Oturumu kapat",
   "RestartComputer": "Yeniden ba\u015Flat",
   "ShutDownComputer": "Kapat",
-  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131."
+  "ErrorSystemToolOpen": "Sistem arac\u0131 a\u00E7\u0131lamad\u0131.",
+  "DateFormatMmDdYyyy": "AA/GG/YYYY (12/31/2026)",
+  "WeatherTemperatureUnit": "Sıcaklık birimi",
+  "DateFormatDdMmYy": "GG/AA/YY (31/12/26)",
+  "DateFormatDdMmYyyyDots": "GG.AA.YYYY (31.12.2026)",
+  "DateFormatSystem": "Sistem varsayılanı",
+  "DateFormatDdMmYyyy": "GG/AA/YYYY (31/12/2026)",
+  "WeatherWindSpeedMph": "{0} mph",
+  "ClockDateFormat": "Tarih biçimi",
+  "TemperatureFahrenheit": "Fahrenhayt (°F)",
+  "DateFormatYyyyMmDd": "YYYY-AA-GG (2026-12-31)",
+  "TemperatureCelsius": "Santigrat (°C)"
 }

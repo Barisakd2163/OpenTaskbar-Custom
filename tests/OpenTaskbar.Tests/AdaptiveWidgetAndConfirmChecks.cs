@@ -158,17 +158,15 @@ internal static class AdaptiveWidgetAndConfirmChecks
         check(autoCandidates.All(widget => !widget.IsCompact),
             "Auto density must expand widgets when enough space returns.");
 
-        var overridden = settings with
-        {
-            WidgetDensityOverrides = new Dictionary<string, WidgetDensityMode>
-            {
-                ["Focus"] = WidgetDensityMode.Compact,
-                ["Clock"] = WidgetDensityMode.Full
-            }
-        };
-        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, overridden);
-        check(focus.IsCompact && !clock.IsCompact,
-            "Per-widget Compact/Full choices must override Auto.");
+        var globallyCompact = settings with { GlobalWidgetDensity = WidgetDensityMode.Compact };
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 2000, appsContentWidth: 400, globallyCompact);
+        check(focus.IsCompact && clock.IsCompact,
+            "Global Compact density must compact every eligible widget.");
+
+        var globallyFull = settings with { GlobalWidgetDensity = WidgetDensityMode.Full };
+        coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, globallyFull);
+        check(!focus.IsCompact && !clock.IsCompact,
+            "Global Full density must keep every widget full.");
 
         coordinator.UpdateAdaptiveDensity(maxTotalWidth: 650, appsContentWidth: 720, settings, widgetScale: 1.35);
         check(autoCandidates[0].IsCompact,

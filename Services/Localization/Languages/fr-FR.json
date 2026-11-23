@@ -900,5 +900,16 @@
   "SignOut": "Se d\u00E9connecter",
   "RestartComputer": "Red\u00E9marrer",
   "ShutDownComputer": "Arr\u00EAter",
-  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me."
+  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me.",
+  "DateFormatMmDdYyyy": "MM/DD/YYYY (12/31/2026)",
+  "WeatherTemperatureUnit": "Temperature unit",
+  "DateFormatDdMmYy": "DD/MM/YY (31/12/26)",
+  "DateFormatDdMmYyyyDots": "DD.MM.YYYY (31.12.2026)",
+  "DateFormatSystem": "System default",
+  "DateFormatDdMmYyyy": "DD/MM/YYYY (31/12/2026)",
+  "WeatherWindSpeedMph": "{0} mph",
+  "ClockDateFormat": "Date format",
+  "TemperatureFahrenheit": "Fahrenheit (°F)",
+  "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
+  "TemperatureCelsius": "Celsius (°C)"
 }

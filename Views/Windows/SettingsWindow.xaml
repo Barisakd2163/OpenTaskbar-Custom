@@ -502,24 +502,44 @@
                                             </ComboBox>
                                             <TextBlock Text="{local:Loc ClockDateStyleLabel}" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
                                         </DockPanel></Border>
+                                        <Border Style="{StaticResource CompactSettingsRow}"><DockPanel>
+                                            <ComboBox x:Name="DateFormatBox" views:IconGlyph.Glyph="{StaticResource IconCalendar}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="210" Width="Auto" VerticalAlignment="Center"
+                                                      AutomationProperties.Name="{local:Loc ClockDateFormat}" SelectionChanged="SegmentChoice_SelectionChanged">
+                                                <ComboBoxItem Content="{local:Loc DateFormatSystem}" Tag="System" />
+                                                <ComboBoxItem Content="{local:Loc DateFormatDdMmYyyy}" Tag="DdMmYyyy" />
+                                                <ComboBoxItem Content="{local:Loc DateFormatDdMmYy}" Tag="DdMmYy" />
+                                                <ComboBoxItem Content="{local:Loc DateFormatMmDdYyyy}" Tag="MmDdYyyy" />
+                                                <ComboBoxItem Content="{local:Loc DateFormatYyyyMmDd}" Tag="YyyyMmDd" />
+                                                <ComboBoxItem Content="{local:Loc DateFormatDdMmYyyyDots}" Tag="DdMmYyyyDots" />
+                                            </ComboBox>
+                                            <TextBlock Text="{local:Loc ClockDateFormat}" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
+                                        </DockPanel></Border>
                                     </StackPanel>
                                 </Border>
                                 <Border x:Name="WeatherOptions" Visibility="Collapsed" Background="Transparent" BorderThickness="0">
                                     <StackPanel>
                                         <Button x:Name="CollapseWeatherOptionsButton" Visibility="Collapsed" Click="CollapseWeatherOptions_Click" />
                                         <Border Style="{StaticResource CompactSettingsRow}"><DockPanel>
-                                            <ComboBox x:Name="WeatherCountryBox" views:IconGlyph.Glyph="{StaticResource IconGlobe}" DockPanel.Dock="Right" MinWidth="130" MaxWidth="170" Width="Auto" Height="32" VerticalAlignment="Center" IsEditable="True"
+                                            <views:SearchableComboBox x:Name="WeatherCountryBox" views:IconGlyph.Glyph="{StaticResource IconGlobe}" DockPanel.Dock="Right" MinWidth="170" MaxWidth="240" Width="Auto" VerticalAlignment="Center"
                                                       AutomationProperties.Name="{local:Loc Country}"
                                                       SelectionChanged="WeatherCountryBox_SelectionChanged"
                                                       KeyUp="WeatherCountryBox_KeyUp" />
                                             <TextBlock Text="{local:Loc Country}" Style="{StaticResource SettingsRowLabel}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0" />
                                         </DockPanel></Border>
                                         <Border x:Name="WeatherCityContainer" Visibility="Collapsed" Style="{StaticResource CompactSettingsRow}"><DockPanel>
-                                            <ComboBox x:Name="WeatherCityCombo" views:IconGlyph.Glyph="{StaticResource IconSearch}" DockPanel.Dock="Right" MinWidth="130" MaxWidth="170" Width="Auto" Height="32" VerticalAlignment="Center" IsEditable="True"
+                                            <views:SearchableComboBox x:Name="WeatherCityCombo" views:IconGlyph.Glyph="{StaticResource IconSearch}" DockPanel.Dock="Right" MinWidth="170" MaxWidth="240" Width="Auto" VerticalAlignment="Center"
                                                       AutomationProperties.Name="{local:Loc WeatherCity}"
                                                       SelectionChanged="WeatherCityCombo_SelectionChanged"
                                                       KeyUp="WeatherCityCombo_KeyUp" />
                                             <TextBlock Text="{local:Loc WeatherCity}" Style="{StaticResource SettingsRowLabel}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource CompactSettingsRow}"><DockPanel>
+                                            <ComboBox x:Name="WeatherUnitBox" DockPanel.Dock="Right" MinWidth="150" MaxWidth="190" Width="Auto" VerticalAlignment="Center"
+                                                      AutomationProperties.Name="{local:Loc WeatherTemperatureUnit}" SelectionChanged="SegmentChoice_SelectionChanged">
+                                                <ComboBoxItem Content="{local:Loc TemperatureCelsius}" Tag="Celsius" />
+                                                <ComboBoxItem Content="{local:Loc TemperatureFahrenheit}" Tag="Fahrenheit" />
+                                            </ComboBox>
+                                            <TextBlock Text="{local:Loc WeatherTemperatureUnit}" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
                                         </DockPanel></Border>
                                         <TextBox x:Name="WeatherCityBox" Visibility="Collapsed" />
                                         <TextBlock x:Name="WeatherCityHintBlock" Text="{local:Loc WeatherCityHint}" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,6,0,0" TextWrapping="Wrap" />

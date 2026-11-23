@@ -900,5 +900,16 @@
   "SignOut": "\uB85C\uADF8\uC544\uC6C3",
   "RestartComputer": "\uB2E4\uC2DC \uC2DC\uC791",
   "ShutDownComputer": "\uC885\uB8CC",
-  "ErrorSystemToolOpen": "\uC2DC\uC2A4\uD15C \uB3C4\uAD6C\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
+  "ErrorSystemToolOpen": "\uC2DC\uC2A4\uD15C \uB3C4\uAD6C\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+  "DateFormatMmDdYyyy": "MM/DD/YYYY (12/31/2026)",
+  "WeatherTemperatureUnit": "Temperature unit",
+  "DateFormatDdMmYy": "DD/MM/YY (31/12/26)",
+  "DateFormatDdMmYyyyDots": "DD.MM.YYYY (31.12.2026)",
+  "DateFormatSystem": "System default",
+  "DateFormatDdMmYyyy": "DD/MM/YYYY (31/12/2026)",
+  "WeatherWindSpeedMph": "{0} mph",
+  "ClockDateFormat": "Date format",
+  "TemperatureFahrenheit": "Fahrenheit (°F)",
+  "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
+  "TemperatureCelsius": "Celsius (°C)"
 }

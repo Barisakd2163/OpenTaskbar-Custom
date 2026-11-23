@@ -120,7 +120,7 @@ public partial class ClockWidget : DockWidget
         if (_flyoutLiveTime is not null) _flyoutLiveTime.Text = timeString;
 
         var compact = IsCompact && !IsHoverExpanded;
-        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.Language}|{compact}";
+        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.DateFormat}|{Settings.Language}|{compact}";
         if (renderKey == _lastRenderKey) return;
 
         _lastRenderKey = renderKey;
@@ -136,21 +136,33 @@ public partial class ClockWidget : DockWidget
             {
                 case ClockDateStyle.DayAndShortDate:
                     DayOfWeekText.Visibility = Visibility.Visible;
-                    DateText.Text = now.ToString(culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM"), culture);
+                    DateText.Text = FormatDate(now, culture);
                     DayOfWeekText.Text = now.ToString("ddd", culture);
                     break;
                 case ClockDateStyle.ShortDateOnly:
-                    DayOfWeekText.Visibility = Visibility.Collapsed;
-                    DateText.Text = now.ToString("MMM d", culture);
-                    break;
                 case ClockDateStyle.NumericDate:
                     DayOfWeekText.Visibility = Visibility.Collapsed;
-                    DateText.Text = now.ToString("d", culture);
+                    DateText.Text = FormatDate(now, culture);
                     break;
             }
         }
         ClockButton.ToolTip = now.ToString("D", culture);
     }
+
+    private string FormatDate(DateTime now, CultureInfo culture) => Settings.DateFormat switch
+    {
+        ClockDateFormat.DdMmYyyy => now.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
+        ClockDateFormat.DdMmYy => now.ToString("dd/MM/yy", CultureInfo.InvariantCulture),
+        ClockDateFormat.MmDdYyyy => now.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture),
+        ClockDateFormat.YyyyMmDd => now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        ClockDateFormat.DdMmYyyyDots => now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+        _ => Settings.DateStyle switch
+        {
+            ClockDateStyle.ShortDateOnly => now.ToString("MMM d", culture),
+            ClockDateStyle.NumericDate => now.ToString("d", culture),
+            _ => now.ToString(culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM"), culture)
+        }
+    };
 
     public override UIElement? BuildPreviewFlyoutContent()
     {
