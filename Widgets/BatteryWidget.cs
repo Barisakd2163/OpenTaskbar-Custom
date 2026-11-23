@@ -54,7 +54,6 @@ public sealed class BatteryWidget : DockWidget
     private int _renderedPercent = -1;
     private bool _renderedCharging;
     private bool _renderedPresent;
-    private bool _dockVisible = true;
     private int _chargingPulseGeneration;
 
     internal Func<BatteryStatus> BatteryReader { get; set; } = SystemStats.SampleBattery;
@@ -299,10 +298,8 @@ public sealed class BatteryWidget : DockWidget
         StopChargingAnimation();
     }
 
-    public override void SetDockVisible(bool visible)
+    protected override void OnDockVisibilityChanged(bool visible)
     {
-        if (_dockVisible == visible) return;
-        _dockVisible = visible;
         UpdateLiquidGeometry(forceAnimationRestart: false);
     }
 
@@ -453,7 +450,7 @@ public sealed class BatteryWidget : DockWidget
 
         var shouldAnimate = _renderedCharging
             && IsActive
-            && _dockVisible
+            && IsDockVisible
             && Settings.EffectiveAnimationsEnabled
             && SystemParameters.ClientAreaAnimation;
 

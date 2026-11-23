@@ -41,6 +41,7 @@ public class DockWidget : UserControl, IDisposable
     public event EventHandler? ContentWidthChanged;
 
     protected bool IsActive { get; private set; }
+    protected bool IsDockVisible { get; private set; } = true;
     protected DockSettings Settings { get; private set; } = new();
     public virtual bool SupportsCompactMode => false;
     public virtual int ShrinkPriority => 100;
@@ -140,6 +141,15 @@ public class DockWidget : UserControl, IDisposable
     {
         if (IsActive) OnTick(now);
     }
+
+    public void SetDockVisible(bool visible)
+    {
+        if (IsDockVisible == visible) return;
+        IsDockVisible = visible;
+        if (IsActive) OnDockVisibilityChanged(visible);
+    }
+
+    protected virtual void OnDockVisibilityChanged(bool visible) { }
 
     /// <summary>
     /// True when this widget can paint a meaningful frame without activating background services.

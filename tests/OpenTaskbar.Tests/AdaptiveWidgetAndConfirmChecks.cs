@@ -330,6 +330,11 @@ internal static class AdaptiveWidgetAndConfirmChecks
             battery.SetCompactState(false);
             check(widthEvents == 4 && card.MinWidth == 96 && percent.FontSize == 13,
                 "BatteryWidget exiting compact mode must restore full sizing.");
+
+            battery.Activate();
+            battery.SetDockVisible(false);
+            battery.SetDockVisible(true);
+            battery.Deactivate();
         }
 
         // 2. ClockWidget: compact & hover expansion while inactive (!IsActive Settings preview behavior)
