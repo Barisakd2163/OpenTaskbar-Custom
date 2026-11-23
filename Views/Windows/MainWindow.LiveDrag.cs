@@ -15,7 +15,7 @@ namespace OpenTaskbar;
 public partial class MainWindow
 {
     private static readonly Duration LiveDragSlide = new(TimeSpan.FromMilliseconds(160));
-    private const double LiveDragInsertionHysteresis = 6;
+    private const double LiveDragInsertionHysteresis = 12;
     private LiveDockDrag? _liveDrag;
 
     private sealed record LiveDockSlot(FrameworkElement Element, double Start, double Size, TranslateTransform Translate);

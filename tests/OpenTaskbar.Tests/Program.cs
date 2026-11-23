@@ -120,13 +120,17 @@ void LiveDragMathChecks()
     Check(DockItemOrdering.InsertionIndex(slots, 10) == 0, "Pointer in the first half of item 0 inserts before it.");
     Check(DockItemOrdering.InsertionIndex(slots, 60) == 1, "Pointer past item 1's center inserts after it.");
     Check(DockItemOrdering.InsertionIndex(slots, 200) == 5, "Pointer past the last center appends at the end.");
-    Check(DockItemOrdering.InsertionIndex(slots, 58, currentIndex: 2, hysteresis: 6) == 2,
+    Check(DockItemOrdering.InsertionIndex(slots, 60, currentIndex: 2, hysteresis: 12) == 2,
+        "Holding the pointer on a target center must not pull the item back across the same boundary.");
+    Check(DockItemOrdering.InsertionIndex(slots, 60, currentIndex: 1, hysteresis: 12) == 1,
+        "Holding the pointer on a target center must not push the item across the same boundary.");
+    Check(DockItemOrdering.InsertionIndex(slots, 58, currentIndex: 2, hysteresis: 12) == 2,
         "Small pointer jitter near a slot center must not reverse a live insertion.");
-    Check(DockItemOrdering.InsertionIndex(slots, 53, currentIndex: 2, hysteresis: 6) == 1,
+    Check(DockItemOrdering.InsertionIndex(slots, 47, currentIndex: 2, hysteresis: 12) == 1,
         "Moving back beyond the hysteresis band must reverse the live insertion.");
-    Check(DockItemOrdering.InsertionIndex(slots, 63, currentIndex: 1, hysteresis: 6) == 1,
+    Check(DockItemOrdering.InsertionIndex(slots, 63, currentIndex: 1, hysteresis: 12) == 1,
         "Small pointer jitter on the forward side must preserve the live insertion.");
-    Check(DockItemOrdering.InsertionIndex(slots, 67, currentIndex: 1, hysteresis: 6) == 2,
+    Check(DockItemOrdering.InsertionIndex(slots, 73, currentIndex: 1, hysteresis: 12) == 2,
         "Moving forward beyond the hysteresis band must advance the live insertion.");
 
     // Dragging item 1 to insertion index 4 opens the gap by shifting items 2 and 3 left.
