@@ -77,6 +77,7 @@ public partial class App : Application
             return;
         }
         _ownsSingletonMutex = true;
+        new StartupRegistration().SyncOnStartup(IsDev, IsInspection);
 
 #if !DEBUG
         if (!IsDev && !IsInspection && StartupRegistration.RefreshPortableTarget() is { } startupError)

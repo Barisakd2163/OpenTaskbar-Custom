@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
@@ -34,6 +36,7 @@ internal static class SettingsAndAutoHideChecks
         CheckForegroundLocationForceRepublish(application, Check);
         CheckSettingsWindowCornerAndBorder(application, Check);
         CheckSettingsWindowPreviewDensityAndAntigravityGroups(application, Check);
+        CheckStartupRegistrationSyncAndParsing(Check);
         return checks;
     }
 
@@ -315,11 +318,14 @@ internal static class SettingsAndAutoHideChecks
             // overlap state dirty; the guard timer coalesces that work on its next tick.
             var bgQueries = 0;
             controller.BackgroundWindowsProvider = () => { bgQueries++; return []; };
+            controller.CheckForegroundWindow(hwnd);
+            bgQueries = 0;
             PumpDispatcher(application.Dispatcher, 650);
             check(bgQueries == 0,
                 $"Idle guard ticks must not repeatedly invoke BackgroundWindowsProvider before the fallback scan (got {bgQueries}).");
             controller.InvalidateWindowOverlap();
-            PumpUntil(application.Dispatcher, () => bgQueries > 0, 500);
+            controller.CheckForegroundWindow(hwnd);
+            PumpUntil(application.Dispatcher, () => bgQueries > 0, 1500);
             check(bgQueries == 1,
                 $"InvalidateWindowOverlap must trigger one coalesced BackgroundWindowsProvider scan (got {bgQueries}).");
             controller.BackgroundWindowsProvider = null;
@@ -836,6 +842,225 @@ internal static class SettingsAndAutoHideChecks
         finally
         {
             if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    private static void CheckStartupRegistrationSyncAndParsing(Action<bool, string> check)
+    {
+        // 1. Run\OpenTaskbar command-line unquoting and argument splitting.
+        var (emptyExe, emptyArgs) = StartupRegistration.ParseRunCommand(null);
+        check(emptyExe is null && emptyArgs == string.Empty, "Null startup command must parse to null executable.");
+        check(StartupRegistration.ParseRunCommand("   ").ExecutablePath is null
+            && StartupRegistration.ParseRunCommand("\"\"").ExecutablePath is null
+            && StartupRegistration.ParseRunCommand("\"   \"").ExecutablePath is null,
+            "Whitespace and empty-quoted startup commands must parse to null executable.");
+
+        var (quotedExe, quotedArgs) = StartupRegistration.ParseRunCommand("\"C:\\Program Files\\OpenTaskbar\\OpenTaskbar.exe\"");
+        check(quotedExe == @"C:\Program Files\OpenTaskbar\OpenTaskbar.exe" && quotedArgs == string.Empty,
+            $"Quoted path with spaces must unquote cleanly (got exe='{quotedExe}', args='{quotedArgs}').");
+
+        var (unicodeExe, unicodeArgs) = StartupRegistration.ParseRunCommand(
+            "  \"C:\\Users\\Ömer Şahin\\Masaüstü\\100% Yeni\\OpenTaskbar.exe\"  --settings --tag \"v0.3.3\"  ");
+        check(unicodeExe == @"C:\Users\Ömer Şahin\Masaüstü\100% Yeni\OpenTaskbar.exe"
+            && unicodeArgs == "--settings --tag \"v0.3.3\"",
+            $"Quoted Unicode path with arguments must preserve path and args (got exe='{unicodeExe}', args='{unicodeArgs}').");
+
+        var (unquotedExe, unquotedArgs) = StartupRegistration.ParseRunCommand(@"C:\Apps\OpenTaskbar\OpenTaskbar.exe --silent");
+        check(unquotedExe == @"C:\Apps\OpenTaskbar\OpenTaskbar.exe" && unquotedArgs == "--silent",
+            $"Unquoted command with args must separate executable and args (got exe='{unquotedExe}', args='{unquotedArgs}').");
+
+        var (unquotedSpacedExe, unquotedSpacedArgs) = StartupRegistration.ParseRunCommand(
+            @"C:\Program Files\OpenTaskbar\OpenTaskbar.exe --flag other.exe");
+        check(unquotedSpacedExe == @"C:\Program Files\OpenTaskbar\OpenTaskbar.exe" && unquotedSpacedArgs == "--flag other.exe",
+            $"Unquoted path with spaces must stop at the executable boundary (got exe='{unquotedSpacedExe}', args='{unquotedSpacedArgs}').");
+
+        var (unclosedExe, unclosedArgs) = StartupRegistration.ParseRunCommand("\"C:\\Apps\\OpenTaskbar.exe");
+        check(unclosedExe == @"C:\Apps\OpenTaskbar.exe" && unclosedArgs == string.Empty,
+            $"Unclosed leading quote must degrade cleanly (got exe='{unclosedExe}', args='{unclosedArgs}').");
+
+        var (nonExe, nonExeArgs) = StartupRegistration.ParseRunCommand(@"C:\Apps\launch.cmd /c run");
+        check(nonExe == @"C:\Apps\launch.cmd" && nonExeArgs == "/c run",
+            $"Non-.exe unquoted command must split on first whitespace (got exe='{nonExe}', args='{nonExeArgs}').");
+
+        // 2. StartupApproved\Run REG_BINARY enabled/disabled detection (odd first byte = disabled by Task Manager).
+        check(StartupRegistration.IsStartupApprovedEnabled(null), "Missing StartupApproved entry must be treated as enabled.");
+        check(StartupRegistration.IsStartupApprovedEnabled([]), "Empty StartupApproved entry must be treated as enabled.");
+        check(StartupRegistration.IsStartupApprovedEnabled([0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            "0x02 StartupApproved entry must be treated as enabled.");
+        check(StartupRegistration.IsStartupApprovedEnabled([0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            && StartupRegistration.IsStartupApprovedEnabled([0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            "Even first bytes in StartupApproved must be treated as enabled.");
+        check(!StartupRegistration.IsStartupApprovedEnabled([0x03, 0, 0, 0, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]),
+            "0x03 StartupApproved entry (Task Manager disabled) must be treated as disabled.");
+        check(!StartupRegistration.IsStartupApprovedEnabled([0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            && !StartupRegistration.IsStartupApprovedEnabled([0x07, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            "Odd first bytes in StartupApproved must be treated as disabled.");
+
+        // 3. Pure Read() and SyncOnStartup decision logic (no real HKCU mutation).
+        var enabledBytes = new byte[] { 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        var disabledBytes = new byte[] { 0x03, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+        check(StartupRegistration.IsRegisteredAndActive("\"C:\\Apps\\OpenTaskbar.exe\"", null, _ => true),
+            "Existing Run target with no StartupApproved override must read as enabled.");
+        check(StartupRegistration.IsRegisteredAndActive("\"C:\\Apps\\OpenTaskbar.exe\"", enabledBytes, _ => true),
+            "Existing Run target with enabled StartupApproved entry must read as enabled.");
+        check(!StartupRegistration.IsRegisteredAndActive("\"C:\\Apps\\OpenTaskbar.exe\"", disabledBytes, _ => true),
+            "Run target disabled in StartupApproved must read as disabled.");
+        check(!StartupRegistration.IsRegisteredAndActive("\"C:\\Apps\\OpenTaskbar.exe\"", null, _ => false),
+            "Run target whose executable no longer exists on disk must read as disabled.");
+        check(!StartupRegistration.IsRegisteredAndActive("OpenTaskbar.exe", null, _ => true),
+            "Relative Run target path must not read as enabled.");
+
+        check(!StartupRegistration.ShouldUpdateRunRegistration(null, null, @"C:\Apps\v2\OpenTaskbar.exe"),
+            "Sync must not create a Run entry when startup is disabled.");
+        check(!StartupRegistration.ShouldUpdateRunRegistration("\"C:\\Apps\\v1\\OpenTaskbar.exe\"", disabledBytes, @"C:\Apps\v2\OpenTaskbar.exe"),
+            "Sync must not overwrite a Run entry disabled in StartupApproved.");
+        check(!StartupRegistration.ShouldUpdateRunRegistration("\"C:\\Apps\\v2\\OpenTaskbar.exe\"", enabledBytes, @"c:\apps\v2\opentaskbar.exe"),
+            "Sync must skip rewriting Run when the normalized path already matches case-insensitively.");
+        check(StartupRegistration.ShouldUpdateRunRegistration("\"C:\\Apps\\v1\\OpenTaskbar.exe\"", null, @"C:\Apps\v2\OpenTaskbar.exe"),
+            "Sync must update an active Run entry that points to an older OpenTaskbar.exe location.");
+
+        // 4. Executable path validation, long-path bound (>260 up to 1024), and directory boundary checks.
+        check(!StartupRegistration.IsUnderDirectory(@"C:\Temp2\OpenTaskbar.exe", @"C:\Temp"),
+            "IsUnderDirectory must not match sibling prefix directories like C:\\Temp2 against C:\\Temp.");
+        check(StartupRegistration.IsUnderDirectory(@"C:\Temp\Sub\OpenTaskbar.exe", @"C:\Temp\"),
+            "IsUnderDirectory must match nested paths under the target directory.");
+
+        var longAllowedPath = @"C:\" + new string('a', 100) + @"\" + new string('b', 100) + @"\" + new string('c', 100) + @"\OpenTaskbar.exe";
+        var tooLongPath = @"C:\" + new string('a', StartupRegistration.MaxCommandLength) + @"\OpenTaskbar.exe";
+        check(longAllowedPath.Length > 260 && longAllowedPath.Length + 2 <= StartupRegistration.MaxCommandLength
+            && StartupRegistration.IsValidStartupExecutable(longAllowedPath, @"C:\Temp", _ => true),
+            "Startup executable validation must allow valid paths longer than 260 chars up to MaxCommandLength.");
+        check(!StartupRegistration.IsValidStartupExecutable(tooLongPath, @"C:\Temp", _ => true),
+            "Startup executable validation must reject paths exceeding MaxCommandLength.");
+        check(!StartupRegistration.IsValidStartupExecutable(@"C:\Program Files\dotnet\dotnet.exe", @"C:\Temp", _ => true),
+            "Startup executable validation must reject dotnet.exe.");
+
+        // 5. Temp-folder executable checks and .lnk startup shortcut retargeting.
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"ot-startup-sync-{Guid.NewGuid():N}");
+        try
+        {
+            var oldDir = Path.Combine(tempRoot, "v0.3.2");
+            var newDir = Path.Combine(tempRoot, "v0.3.3 Masaüstü");
+            var otherDir = Path.Combine(tempRoot, "Other");
+            var startupDir = Path.Combine(tempRoot, "Startup");
+            Directory.CreateDirectory(oldDir);
+            Directory.CreateDirectory(newDir);
+            Directory.CreateDirectory(otherDir);
+            Directory.CreateDirectory(startupDir);
+
+            var oldExe = Path.Combine(oldDir, "OpenTaskbar.exe");
+            var deletedDir = Path.Combine(tempRoot, "v0.3.1-deleted");
+            Directory.CreateDirectory(deletedDir);
+            var deletedExe = Path.Combine(deletedDir, "OpenTaskbar.exe");
+            var newExe = Path.Combine(newDir, "OpenTaskbar.exe");
+            var dotnetExe = Path.Combine(otherDir, "dotnet.exe");
+            var companionExe = Path.Combine(otherDir, "Companion.exe");
+            File.WriteAllText(oldExe, string.Empty);
+            File.WriteAllText(deletedExe, string.Empty);
+            File.WriteAllText(newExe, string.Empty);
+            File.WriteAllText(dotnetExe, string.Empty);
+            File.WriteAllText(companionExe, string.Empty);
+
+            check(!StartupRegistration.IsValidStartupExecutable(newExe, Path.GetTempPath()),
+                "Sync executable validation must reject OpenTaskbar.exe running under Path.GetTempPath().");
+            check(StartupRegistration.IsValidStartupExecutable(newExe, disallowedRootDirectory: null),
+                "Explicit SetEnabled validation must accept an existing OpenTaskbar.exe path.");
+            check(!StartupRegistration.IsValidStartupExecutable(dotnetExe, disallowedRootDirectory: null),
+                "Startup executable validation must reject an existing dotnet.exe file.");
+
+            var staleLink = Path.Combine(startupDir, "OpenTaskbar.lnk");
+            var deletedTargetLink = Path.Combine(startupDir, "OpenTaskbar Old.lnk");
+            var currentLink = Path.Combine(startupDir, "OpenTaskbar - Current.lnk");
+            var companionLink = Path.Combine(startupDir, "OpenTaskbar Companion.lnk");
+            var unrelatedLink = Path.Combine(startupDir, "OtherApp.lnk");
+
+            CreateTestShortcut(staleLink, oldExe, oldDir, "--settings");
+            CreateTestShortcut(deletedTargetLink, deletedExe, deletedDir, string.Empty);
+            Directory.Delete(deletedDir, recursive: true);
+            CreateTestShortcut(currentLink, newExe, newDir, string.Empty);
+            CreateTestShortcut(companionLink, companionExe, otherDir, string.Empty);
+            CreateTestShortcut(unrelatedLink, oldExe, oldDir, string.Empty);
+
+            var updated = StartupRegistration.SyncStartupFolderShortcuts(startupDir, newExe);
+            check(updated == 2, $"Startup shortcut sync must retarget exactly 2 stale OpenTaskbar*.lnk shortcuts (got {updated}).");
+
+            var (staleTarget, staleWorkDir, staleArgs) = ReadTestShortcut(staleLink);
+            check(string.Equals(StartupRegistration.TryNormalizePath(staleTarget), StartupRegistration.TryNormalizePath(newExe), StringComparison.OrdinalIgnoreCase)
+                && string.Equals(StartupRegistration.TryNormalizePath(staleWorkDir), StartupRegistration.TryNormalizePath(newDir), StringComparison.OrdinalIgnoreCase)
+                && staleArgs == "--settings",
+                $"Stale OpenTaskbar.lnk must update TargetPath and WorkingDirectory while keeping Arguments (got target='{staleTarget}', wd='{staleWorkDir}', args='{staleArgs}').");
+
+            var (healedTarget, healedWorkDir, _) = ReadTestShortcut(deletedTargetLink);
+            check(string.Equals(StartupRegistration.TryNormalizePath(healedTarget), StartupRegistration.TryNormalizePath(newExe), StringComparison.OrdinalIgnoreCase)
+                && string.Equals(StartupRegistration.TryNormalizePath(healedWorkDir), StartupRegistration.TryNormalizePath(newDir), StringComparison.OrdinalIgnoreCase),
+                $"Stale shortcut pointing to a deleted old OpenTaskbar.exe must also be retargeted (got target='{healedTarget}', wd='{healedWorkDir}').");
+
+            var (companionTarget, _, _) = ReadTestShortcut(companionLink);
+            check(string.Equals(StartupRegistration.TryNormalizePath(companionTarget), StartupRegistration.TryNormalizePath(companionExe), StringComparison.OrdinalIgnoreCase),
+                $"OpenTaskbar Companion.lnk pointing to Companion.exe must remain untouched (got '{companionTarget}').");
+
+            var (unrelatedTarget, _, _) = ReadTestShortcut(unrelatedLink);
+            check(string.Equals(StartupRegistration.TryNormalizePath(unrelatedTarget), StartupRegistration.TryNormalizePath(oldExe), StringComparison.OrdinalIgnoreCase),
+                $"Unrelated OtherApp.lnk must remain untouched (got '{unrelatedTarget}').");
+
+            var secondPass = StartupRegistration.SyncStartupFolderShortcuts(startupDir, newExe);
+            check(secondPass == 0, $"Second startup shortcut sync pass must be a no-op (got {secondPass}).");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+
+        static void CreateTestShortcut(string shortcutPath, string targetPath, string workingDirectory, string arguments)
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell")
+                ?? throw new InvalidOperationException("WScript.Shell ProgID unavailable.");
+            object? shell = null;
+            object? link = null;
+            try
+            {
+                shell = Activator.CreateInstance(shellType)
+                    ?? throw new InvalidOperationException("Failed to instantiate WScript.Shell.");
+                link = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, [shortcutPath])
+                    ?? throw new InvalidOperationException("Failed to create test shortcut.");
+                var linkType = link.GetType();
+                linkType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, link, [targetPath]);
+                linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link, [workingDirectory]);
+                if (arguments.Length > 0)
+                    linkType.InvokeMember("Arguments", BindingFlags.SetProperty, null, link, [arguments]);
+                linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
+            }
+            finally
+            {
+                if (link is not null && Marshal.IsComObject(link)) _ = Marshal.FinalReleaseComObject(link);
+                if (shell is not null && Marshal.IsComObject(shell)) _ = Marshal.FinalReleaseComObject(shell);
+            }
+        }
+
+        static (string TargetPath, string WorkingDirectory, string Arguments) ReadTestShortcut(string shortcutPath)
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell")
+                ?? throw new InvalidOperationException("WScript.Shell ProgID unavailable.");
+            object? shell = null;
+            object? link = null;
+            try
+            {
+                shell = Activator.CreateInstance(shellType)
+                    ?? throw new InvalidOperationException("Failed to instantiate WScript.Shell.");
+                link = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, [shortcutPath])
+                    ?? throw new InvalidOperationException("Failed to open test shortcut.");
+                var linkType = link.GetType();
+                var target = linkType.InvokeMember("TargetPath", BindingFlags.GetProperty, null, link, null) as string ?? string.Empty;
+                var workDir = linkType.InvokeMember("WorkingDirectory", BindingFlags.GetProperty, null, link, null) as string ?? string.Empty;
+                var args = linkType.InvokeMember("Arguments", BindingFlags.GetProperty, null, link, null) as string ?? string.Empty;
+                return (target, workDir, args);
+            }
+            finally
+            {
+                if (link is not null && Marshal.IsComObject(link)) _ = Marshal.FinalReleaseComObject(link);
+                if (shell is not null && Marshal.IsComObject(shell)) _ = Marshal.FinalReleaseComObject(shell);
+            }
         }
     }
 

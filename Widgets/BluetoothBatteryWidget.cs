@@ -263,7 +263,8 @@ public sealed class BluetoothBatteryWidget : DockWidget
             return;
 
         var source = PresentationSource.FromVisual(this) as HwndSource;
-        if (source is null && Application.Current?.MainWindow is { } mainWin)
+        var application = Application.Current;
+        if (source is null && application?.Dispatcher.CheckAccess() == true && application.MainWindow is { } mainWin)
         {
             source = PresentationSource.FromVisual(mainWin) as HwndSource;
         }

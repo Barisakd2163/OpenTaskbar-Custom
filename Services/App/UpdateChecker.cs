@@ -3,8 +3,8 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 
@@ -23,34 +23,10 @@ public static class UpdateChecker
     /// <summary>False when installed from the Microsoft Store (MSIX), where Store manages updates per Policy 10.2.5.</summary>
     public static bool SupportsInAppUpdates => !AppIdentity.IsPackaged;
 
-    /// <summary>Architecture token used by release assets (x64/x86); empty for other runtimes.</summary>
-    public static string CurrentArchitecture => RuntimeInformation.ProcessArchitecture switch
-    {
-        Architecture.X86 => "x86",
-        Architecture.X64 => "x64",
-        _ => string.Empty
-    };
-
     public sealed record Release(Version Version, string Tag, string Url, string? DownloadUrl = null, long? Size = null, string? Sha256 = null);
-
-    private const long MaxDownloadBytes = 350L * 1024 * 1024;
-    private static readonly HashSet<string> AllowedDownloadHosts = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "github.com",
-        "objects.githubusercontent.com",
-        "release-assets.githubusercontent.com",
-        "github-releases.githubusercontent.com"
-    };
 
     private static readonly HttpClient ApiClient = CreateApiClient();
     private static readonly HttpClient DownloadClient = CreateDownloadClient();
-
-    internal static bool IsAllowedDownloadUrl(string? url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
-        return string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            && AllowedDownloadHosts.Contains(uri.Host);
-    }
 
     private static HttpClient CreateApiClient()
     {
@@ -91,11 +67,9 @@ public static class UpdateChecker
         }
     }
 
-    /// <summary>
-    /// Parses release json and returns a newer Release if available, or null. <paramref name="architecture"/> is
-    /// "x64"/"x86" for portable builds so the matching EXE is selected; releases before the dual-architecture
-    /// pipeline only have a single "OpenTaskbar.exe" asset, which stays supported.
-    /// </summary>
+    private static string CurrentArchitecture => Environment.Is64BitProcess ? "x64" : "x86";
+
+    /// <summary>Parses release json and returns a newer Release if available, or null.</summary>
     public static Release? ParseRelease(string json, Version currentVersion, string? architecture = null)
     {
         using var document = JsonDocument.Parse(json);
@@ -106,26 +80,17 @@ public static class UpdateChecker
         string? downloadUrl = null;
         long? size = null;
         string? sha256 = null;
-
-        if (document.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+        if (document.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array
+            && SelectAsset(assets, architecture) is { } asset)
         {
-            var selected = SelectAsset(assets, architecture);
-            if (selected is { } asset)
-            {
-                downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
-                size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
-                sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
-            }
+            downloadUrl = asset.TryGetProperty("browser_download_url", out var bdu) ? bdu.GetString() : null;
+            size = asset.TryGetProperty("size", out var sz) ? sz.GetInt64() : null;
+            sha256 = asset.TryGetProperty("digest", out var dg) ? dg.GetString() : null;
         }
 
         return Normalize(version) > Normalize(currentVersion) ? new Release(version, tag, url, downloadUrl, size, sha256) : null;
     }
 
-    /// <summary>
-    /// Picks one EXE asset: architecture-specific first (e.g. OpenTaskbar-v0.3.3-win-x64.exe), then the legacy
-    /// single "OpenTaskbar.exe" for old releases, and only then any EXE as a last resort. Never gives an x86
-    /// machine the x64 binary just because it appears first in the GitHub asset array.
-    /// </summary>
     private static JsonElement? SelectAsset(JsonElement assets, string? architecture)
     {
         JsonElement? firstExe = null;
@@ -138,19 +103,13 @@ public static class UpdateChecker
         {
             var name = asset.TryGetProperty("name", out var n) ? n.GetString() : null;
             if (string.IsNullOrEmpty(name)) continue;
-
-            if (string.Equals(name, "OpenTaskbar.exe", StringComparison.OrdinalIgnoreCase))
-                legacy ??= asset;
-
+            if (string.Equals(name, "OpenTaskbar.exe", StringComparison.OrdinalIgnoreCase)) legacy ??= asset;
             if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
             firstExe ??= asset;
-
             if (matching is null && suffix is not null
                 && (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
                     || name.Contains(marker!, StringComparison.OrdinalIgnoreCase)))
-            {
                 matching = asset;
-            }
         }
 
         return matching ?? legacy ?? firstExe;
@@ -199,11 +158,6 @@ public static class UpdateChecker
             return (false, "ErrorUpdateBinaryMissing", null);
         }
 
-        if (!IsAllowedDownloadUrl(release.DownloadUrl))
-        {
-            return (false, "ErrorUpdateExecutableInvalid", null);
-        }
-
         // GitHub release asset digests are the minimum integrity requirement for unattended replacement.
         // Older releases without a digest can still be installed manually from the release page.
         if (!IsValidSha256Digest(release.Sha256))
@@ -211,9 +165,7 @@ public static class UpdateChecker
             return (false, "ErrorUpdateExecutableInvalid", null);
         }
 
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var baseDir = string.IsNullOrWhiteSpace(localAppData) ? Path.GetTempPath() : localAppData;
-        var tempDir = Path.Combine(baseDir, "OpenTaskbar", "updates", Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), "OpenTaskbar", "update");
         Directory.CreateDirectory(tempDir);
         var tempExe = Path.Combine(tempDir, "OpenTaskbar.exe");
         var partFile = tempExe + ".part";
@@ -230,34 +182,10 @@ public static class UpdateChecker
                 return (false, "ErrorUpdateHttp", statusCode);
             }
 
-            if (!IsAllowedDownloadUrl(response.RequestMessage?.RequestUri?.AbsoluteUri))
-            {
-                AppLog.Warning("Update redirect targeted a disallowed host.");
-                return (false, "ErrorUpdateExecutableInvalid", null);
-            }
-
-            if (response.Content.Headers.ContentLength is > MaxDownloadBytes)
-            {
-                return (false, "ErrorUpdateSizeInvalid", null);
-            }
-
             await using (var contentStream = await response.Content.ReadAsStreamAsync(cancellation))
             await using (var fileStream = new FileStream(partFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
             {
-                var buffer = new byte[81920];
-                long totalWritten = 0;
-                while (true)
-                {
-                    var read = await contentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellation);
-                    if (read == 0) break;
-                    totalWritten += read;
-                    if (totalWritten > MaxDownloadBytes)
-                    {
-                        TryDelete(partFile);
-                        return (false, "ErrorUpdateSizeInvalid", null);
-                    }
-                    await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellation);
-                }
+                await contentStream.CopyToAsync(fileStream, cancellation);
             }
 
             var fileInfo = new FileInfo(partFile);
@@ -303,7 +231,7 @@ public static class UpdateChecker
             {
                 LaunchUpdaterAndRestart(tempExe, targetPath);
             }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException)
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException or ArgumentException)
             {
                 AppLog.Error($"Update launch failed: {ex.Message}");
                 return (false, "ErrorUpdateFailed", null);
@@ -322,57 +250,70 @@ public static class UpdateChecker
         digest is { Length: 71 } && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
         && digest[7..].All(Uri.IsHexDigit);
 
-    // Inside set "VAR=..." only a quote, percent/delayed-expansion marker or line break can break quoting.
-    // Rejecting &|^<> as well would make self-update fail on legal Windows paths such as "Tom & Jerry".
-    private static readonly char[] UnsafeBatchChars = ['"', '%', '!', '\r', '\n'];
+    // UTF-8 without BOM: a leading BOM corrupts "@echo off" on line 1 of .cmd scripts.
+    internal static readonly UTF8Encoding UpdaterScriptEncoding = new(encoderShouldEmitUTF8Identifier: false);
 
-    private static void EnsureSafeBatchPath(string path)
+    internal static string EscapeBatchValue(string value, string? paramName = null)
     {
-        if (string.IsNullOrWhiteSpace(path) || path.IndexOfAny(UnsafeBatchChars) >= 0)
-            throw new InvalidOperationException("Unsafe path for updater script.");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException("Updater path must not be empty.", paramName ?? nameof(value));
+        }
+
+        if (value.IndexOfAny(['\r', '\n', '"', '\0']) >= 0 || value.Any(char.IsControl))
+        {
+            throw new ArgumentException("Updater path contains unsupported control or quote characters.", paramName ?? nameof(value));
+        }
+
+        return value.Replace("%", "%%", StringComparison.Ordinal);
     }
 
     internal static string GenerateUpdaterScript(string tempExe, string targetExe)
     {
-        EnsureSafeBatchPath(tempExe);
-        EnsureSafeBatchPath(targetExe);
-        return $"""
-        @echo off
-        set "SRC={tempExe}"
-        set "DST={targetExe}"
-        set ATTEMPTS=0
-        :wait_loop
-        timeout /t 1 /nobreak >nul
-        copy /y "%SRC%" "%DST%" >nul 2>&1
-        if not errorlevel 1 goto launch
-        set /a ATTEMPTS+=1
-        if %ATTEMPTS% lss 20 goto wait_loop
-        goto cleanup
+        var escapedTempExe = EscapeBatchValue(tempExe, nameof(tempExe));
+        var escapedTargetExe = EscapeBatchValue(targetExe, nameof(targetExe));
 
-        :launch
-        del /f /q "%SRC%" >nul 2>&1
-        start "" "%DST%"
+        return string.Join("\r\n",
+        [
+            "@echo off",
+            "chcp 65001 >nul",
+            $"set \"SRC={escapedTempExe}\"",
+            $"set \"DST={escapedTargetExe}\"",
+            "set ATTEMPTS=0",
+            ":wait_loop",
+            "timeout /t 1 /nobreak >nul",
+            "copy /y \"%SRC%\" \"%DST%\" >nul 2>&1",
+            "if not errorlevel 1 if exist \"%DST%\" goto launch",
+            "set /a ATTEMPTS+=1",
+            "if %ATTEMPTS% lss 30 goto wait_loop",
+            "goto cleanup",
+            string.Empty,
+            ":launch",
+            "del /f /q \"%SRC%\" >nul 2>&1",
+            "start \"\" \"%DST%\"",
+            string.Empty,
+            ":cleanup",
+            "del /f /q \"%~f0\" >nul 2>&1",
+            string.Empty
+        ]);
+    }
 
-        :cleanup
-        del /f /q "%~f0" >nul 2>&1
-        """;
+    internal static void WriteUpdaterScript(string scriptPath, string tempExe, string targetExe)
+    {
+        var script = GenerateUpdaterScript(tempExe, targetExe);
+        File.WriteAllText(scriptPath, script, UpdaterScriptEncoding);
     }
 
     internal static void LaunchUpdaterAndRestart(string tempExe, string targetPath)
     {
-        EnsureSafeBatchPath(tempExe);
-        EnsureSafeBatchPath(targetPath);
         var targetDir = Path.GetDirectoryName(targetPath) ?? AppContext.BaseDirectory;
         var scriptPath = Path.Combine(Path.GetDirectoryName(tempExe)!, "apply-update.cmd");
-        EnsureSafeBatchPath(scriptPath);
-        var script = GenerateUpdaterScript(tempExe, targetPath);
-        File.WriteAllText(scriptPath, script);
+        WriteUpdaterScript(scriptPath, tempExe, targetPath);
 
         var requiresElevation = !IsDirectoryWritable(targetDir);
-        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
         var startInfo = new ProcessStartInfo
         {
-            FileName = cmdPath,
+            FileName = "cmd.exe",
             UseShellExecute = requiresElevation,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,

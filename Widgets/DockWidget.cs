@@ -177,8 +177,6 @@ public class DockWidget : UserControl, IDisposable
     protected virtual void OnActivated() { }
     protected virtual void OnDeactivated() { }
 
-    /// <summary>Called when auto-hide reveals or hides the dock; widgets with idle animations should pause here.</summary>
-    public virtual void SetDockVisible(bool visible) { }
     protected virtual void OnDisposed() { }
     protected virtual void OnSettingsChanged() { }
     protected virtual void OnLanguageChanged() { }
@@ -186,7 +184,17 @@ public class DockWidget : UserControl, IDisposable
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (IsActive) OnLanguageChanged();
+        if (!IsActive) return;
+        if (Dispatcher.CheckAccess())
+        {
+            OnLanguageChanged();
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            if (IsActive && !_disposed) OnLanguageChanged();
+        });
     }
 
     protected void Report(string? error)

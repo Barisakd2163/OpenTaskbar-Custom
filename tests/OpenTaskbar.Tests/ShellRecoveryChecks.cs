@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using OpenTaskbar.Services;
 
@@ -108,7 +109,78 @@ internal static class ShellRecoveryChecks
         Check(!HwndLease.Invalid.IsValid && !HwndLease.Capture(0).IsValid,
             "Invalid/zero handles must never produce a usable shell lease.");
 
+        RunUpdaterScriptChecks(Check);
+
         return checks;
+    }
+
+    private static void RunUpdaterScriptChecks(Action<bool, string> check)
+    {
+        const string tempExe = @"C:\Users\Kullanıcı\AppData\Local\Temp\100%Update\OpenTaskbar.exe";
+        const string targetExe = @"C:\Users\Kullanıcı\Masaüstü\Özel İÖÜŞÇĞ 50%\OpenTaskbar.exe";
+
+        var script = UpdateChecker.GenerateUpdaterScript(tempExe, targetExe);
+        check(script.StartsWith("@echo off\r\nchcp 65001 >nul\r\n", StringComparison.Ordinal),
+            "Updater script must switch cmd.exe to UTF-8 (chcp 65001 >nul) immediately after @echo off.");
+        check(script.Contains(@"set ""SRC=C:\Users\Kullanıcı\AppData\Local\Temp\100%%Update\OpenTaskbar.exe""", StringComparison.Ordinal),
+            "Updater script must escape % as %% and preserve Unicode characters in SRC.");
+        check(script.Contains(@"set ""DST=C:\Users\Kullanıcı\Masaüstü\Özel İÖÜŞÇĞ 50%%\OpenTaskbar.exe""", StringComparison.Ordinal),
+            "Updater script must escape % as %% and preserve Turkish/Unicode paths (Masaüstü\\Özel) in DST.");
+        check(script.Contains("if not errorlevel 1 if exist \"%DST%\" goto launch", StringComparison.Ordinal),
+            "Updater script must verify copy succeeded and destination exists before deleting SRC and launching.");
+        check(script.Contains("if %ATTEMPTS% lss 30 goto wait_loop", StringComparison.Ordinal),
+            "Updater script must retry copy up to 30 attempts.");
+
+        static bool ThrowsArgumentException(Action action)
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+        }
+
+        foreach (var bad in new[]
+        {
+            "",
+            "   ",
+            "C:\\Users\\test\r\\OpenTaskbar.exe",
+            "C:\\Users\\test\n\\OpenTaskbar.exe",
+            "C:\\Users\\test\"&calc\\OpenTaskbar.exe",
+            "C:\\Users\\test\0\\OpenTaskbar.exe"
+        })
+        {
+            check(ThrowsArgumentException(() => UpdateChecker.GenerateUpdaterScript(bad, targetExe)),
+                $"Updater script generation must reject unsafe tempExe input: {bad.Replace("\r", "\\r").Replace("\n", "\\n")}");
+            check(ThrowsArgumentException(() => UpdateChecker.GenerateUpdaterScript(tempExe, bad)),
+                $"Updater script generation must reject unsafe targetExe input: {bad.Replace("\r", "\\r").Replace("\n", "\\n")}");
+        }
+
+        check(UpdateChecker.UpdaterScriptEncoding.GetPreamble().Length == 0,
+            "Updater script encoding must be UTF-8 without BOM.");
+
+        var scriptPath = Path.Combine(Path.GetTempPath(), $"opentaskbar-updater-check-{Guid.NewGuid():N}.cmd");
+        try
+        {
+            UpdateChecker.WriteUpdaterScript(scriptPath, tempExe, targetExe);
+            var rawBytes = File.ReadAllBytes(scriptPath);
+            var hasUtf8Bom = rawBytes.Length >= 3 && rawBytes[0] == 0xEF && rawBytes[1] == 0xBB && rawBytes[2] == 0xBF;
+            check(!hasUtf8Bom, "Written updater .cmd file must not start with a UTF-8 BOM.");
+            check(rawBytes.AsSpan().StartsWith("@echo off"u8),
+                "Written updater .cmd file must start directly with ASCII '@echo off' bytes.");
+
+            var decoded = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(rawBytes);
+            check(decoded == script && decoded.Contains(@"Masaüstü\Özel", StringComparison.Ordinal),
+                "Written updater .cmd file must round-trip Turkish/Unicode paths cleanly as valid UTF-8.");
+        }
+        finally
+        {
+            if (File.Exists(scriptPath)) File.Delete(scriptPath);
+        }
     }
 
     // Redirects AppLog to a throwaway file so telemetry from the simulated path can be asserted without

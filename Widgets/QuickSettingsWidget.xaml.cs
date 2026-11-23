@@ -20,20 +20,20 @@ namespace OpenTaskbar.Widgets;
 public partial class QuickSettingsWidget : DockWidget
 {
     private readonly record struct RadioRenderState(bool Visible, bool On, bool HasRadio, AppLanguage Language);
+    private static RadioAccessStatus? _radioAccessStatus;
 
     private const string NightLightStateRegPath =
         @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\windows.data.bluelightreduction.bluelightreductionstate";
 
     private Radio? _wifi;
     private Radio? _bluetooth;
-    private bool _radioAccess;
+    private bool _radiosEnumerated;
     private bool _nightLightOn;
     private int _activationVersion;
     private readonly HashSet<Radio> _pendingRadioChanges = [];
     private RadioRenderState? _lastWifiState;
     private RadioRenderState? _lastBluetoothState;
     private bool? _lastNightLightState;
-    private readonly TwoStepConfirm _confirm;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 20;
@@ -43,7 +43,6 @@ public partial class QuickSettingsWidget : DockWidget
     public QuickSettingsWidget()
     {
         InitializeComponent();
-        _confirm = new TwoStepConfirm(Dispatcher);
         Render();
     }
 
@@ -68,21 +67,14 @@ public partial class QuickSettingsWidget : DockWidget
         _lastWifiState = null;
         _lastBluetoothState = null;
         _lastNightLightState = null;
+        _radiosEnumerated = false;
         _nightLightOn = ReadWindowsNightLightEnabled();
 
         try
         {
-            var access = await Radio.RequestAccessAsync() == RadioAccessStatus.Allowed;
-            if (!IsActive || activationVersion != _activationVersion) return;
-            _radioAccess = access;
-            if (!_radioAccess)
-            {
-                RenderForActivation(activationVersion);
-                return;
-            }
-
             var radios = await Radio.GetRadiosAsync();
             if (!IsActive || activationVersion != _activationVersion) return;
+            _radiosEnumerated = radios.Count > 0;
             _wifi = radios.FirstOrDefault(radio => radio.Kind == RadioKind.WiFi);
             _bluetooth = radios.FirstOrDefault(radio => radio.Kind == RadioKind.Bluetooth);
             if (_wifi is not null) _wifi.StateChanged += Radio_StateChanged;
@@ -92,7 +84,7 @@ public partial class QuickSettingsWidget : DockWidget
         {
             if (activationVersion != _activationVersion) return;
             AppLog.Warning($"Radio access unavailable: {ex.Message}");
-            _radioAccess = false;
+            _radiosEnumerated = false;
         }
 
         RenderForActivation(activationVersion);
@@ -113,7 +105,6 @@ public partial class QuickSettingsWidget : DockWidget
 
     protected override void OnDeactivated()
     {
-        _confirm.Disarm();
         _activationVersion++;
         _pendingRadioChanges.Clear();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
@@ -124,6 +115,7 @@ public partial class QuickSettingsWidget : DockWidget
         _lastWifiState = null;
         _lastBluetoothState = null;
         _lastNightLightState = null;
+        _radiosEnumerated = false;
     }
 
     protected override void OnTick(DateTime now)
@@ -157,7 +149,7 @@ public partial class QuickSettingsWidget : DockWidget
 
     private void RenderRadio(Radio? radio, Border pill, ToggleButton toggle, string nameKey, ref RadioRenderState? lastState)
     {
-        var visible = !(_radioAccess && radio is null && IsActive);
+        var visible = !(_radiosEnumerated && radio is null && IsActive);
         var on = radio?.State == RadioState.On;
         var hasRadio = radio is not null;
         var lang = UiText.Current.Language;
@@ -202,19 +194,26 @@ public partial class QuickSettingsWidget : DockWidget
         }
     }
 
-    private async void ToggleRadio(Radio? radio)
+    private async void ToggleRadio(Radio radio)
     {
-        if (radio is null)
-        {
-            Report(ShellShortcuts.OpenQuickSettings(this));
-            Render();
-            return;
-        }
-
         if (!_pendingRadioChanges.Add(radio)) return;
         var activationVersion = _activationVersion;
         try
         {
+            var access = _radioAccessStatus;
+            if (access is null)
+            {
+                access = await Radio.RequestAccessAsync();
+                _radioAccessStatus = access;
+            }
+            if (!IsActive || activationVersion != _activationVersion) return;
+            if (access != RadioAccessStatus.Allowed)
+            {
+                AppLog.Warning($"Radio {radio.Kind} access denied: {access}");
+                Report(ShellShortcuts.OpenQuickSettings(this));
+                return;
+            }
+
             var target = radio.State == RadioState.On ? RadioState.Off : RadioState.On;
             var result = await radio.SetStateAsync(target);
             if (!IsActive || activationVersion != _activationVersion) return;
@@ -239,10 +238,10 @@ public partial class QuickSettingsWidget : DockWidget
     }
 
     private void WifiToggle_Click(object sender, RoutedEventArgs e) =>
-        ConfirmAndToggle(_wifi, WifiPill, WifiToggle, "WiFi");
+        ToggleRadioFromQuickSettings(_wifi, WifiToggle, "WiFi");
 
     private void BluetoothToggle_Click(object sender, RoutedEventArgs e) =>
-        ConfirmAndToggle(_bluetooth, BluetoothPill, BluetoothToggle, "Bluetooth");
+        ToggleRadioFromQuickSettings(_bluetooth, BluetoothToggle, "Bluetooth");
 
     private void NightLightToggle_Click(object sender, RoutedEventArgs e)
     {
@@ -267,44 +266,17 @@ public partial class QuickSettingsWidget : DockWidget
         }
     }
 
-    private void ConfirmAndToggle(Radio? radio, Border pill, ToggleButton toggle, string nameKey)
+    private void ToggleRadioFromQuickSettings(Radio? radio, ToggleButton toggle, string nameKey)
     {
         if (radio is null)
         {
-            _confirm.Disarm();
+            AppLog.Info($"Radio {nameKey} unavailable; opening Windows Quick Settings.");
             Report(ShellShortcuts.OpenQuickSettings(this));
-            Render();
             return;
         }
 
         toggle.IsChecked = radio.State == RadioState.On;
-        if (!_confirm.ConsumeOrArm(
-            pill,
-            onArm: () =>
-            {
-                pill.BorderThickness = new Thickness(1.5);
-                pill.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
-                var confirmText = UiText.Format("RadioConfirmToggle", UiText.Get(nameKey));
-                toggle.ToolTip = confirmText;
-                AutomationProperties.SetName(toggle, confirmText);
-            },
-            onDisarm: () =>
-            {
-                pill.BorderThickness = new Thickness(1);
-                if (pill == WifiPill) _lastWifiState = null;
-                else _lastBluetoothState = null;
-                if (IsActive) Render();
-            }))
-        {
-            return;
-        }
-
         ToggleRadio(radio);
     }
 
-    protected override void OnDisposed()
-    {
-        _confirm.Dispose();
-        base.OnDisposed();
-    }
 }

@@ -19,7 +19,6 @@ internal static class AdaptiveWidgetAndConfirmChecks
             checks++;
         }
 
-        CheckTwoStepConfirm(application.Dispatcher, Check);
         CheckPreviewDimensions(application, Check);
         CheckDensityPersistence(Check);
         CheckDockItemOrderPersistence(Check);
@@ -29,34 +28,6 @@ internal static class AdaptiveWidgetAndConfirmChecks
         CheckEnhancedAudioCenter(application, Check);
         CheckWidgetCompactModes(Check);
         return checks;
-    }
-
-    private static void CheckTwoStepConfirm(Dispatcher dispatcher, Action<bool, string> check)
-    {
-        long fakeNow = 1000;
-        var armed = 0;
-        var disarmed = 0;
-        var key = new object();
-        using var confirm = new TwoStepConfirm(dispatcher, windowMs: 2500, clockMs: () => fakeNow);
-
-        var first = confirm.ConsumeOrArm(key, () => armed++, () => disarmed++);
-        check(!first && armed == 1 && confirm.IsArmed(key),
-            "First click must arm confirmation without executing immediately.");
-
-        fakeNow += 1200;
-        var second = confirm.ConsumeOrArm(key, () => armed++, () => disarmed++);
-        check(second && armed == 1 && disarmed == 1 && !confirm.IsArmed(key),
-            "Second click within confirmation window must execute and disarm.");
-
-        fakeNow += 100;
-        var rearmed = confirm.ConsumeOrArm(key, () => armed++, () => disarmed++);
-        check(!rearmed && armed == 2 && confirm.IsArmed(key),
-            "Subsequent click after execution must require arming again.");
-
-        fakeNow += 3000;
-        check(!confirm.IsArmed(key), "Confirmation arm state must expire after the window elapses.");
-        var expiredClick = confirm.ConsumeOrArm(key, () => armed++, () => disarmed++);
-        check(!expiredClick && armed == 3, "Click after expiration must re-arm rather than execute.");
     }
 
     private static void CheckPreviewDimensions(Application application, Action<bool, string> check)

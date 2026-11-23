@@ -788,7 +788,7 @@ public partial class MainWindow : Window
         {
             ReportError(result.ErrorKey);
         }
-        else if (result.SkippedCount > 0) ReportError("SkippedPins", true, result.SkippedCount);
+        else if (result.SkippedCount > 0) ReportError("SkippedPins", false, result.SkippedCount);
     }
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
@@ -1614,6 +1614,10 @@ public partial class MainWindow : Window
             ?? VisibleSnapshot.FirstOrDefault(window => MatchesWindow(app, window));
     }
 
+    private TrackedWindow? FindWindowForExecutable(string executablePath) =>
+        VisibleSnapshot.FirstOrDefault(window =>
+            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
+
     private TrackedWindow? FindNextWindowForApp(DockApp app)
     {
         var matchingWindows = VisibleSnapshot.Where(window => MatchesWindow(app, window)).ToList();
@@ -2081,27 +2085,6 @@ public partial class MainWindow : Window
         }
 
         PinRunningApp(app);
-    }
-
-    private void PinApplication_Click(object sender, RoutedEventArgs e)
-    {
-        var label = UiText.Get("PinApplication");
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = label,
-            Filter = $"{label} (*.exe)|*.exe",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-        if (dialog.ShowDialog(this) != true) return;
-
-        var path = dialog.FileName;
-        if (!Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
-        {
-            ReportError("ErrorTaskbarPin");
-            return;
-        }
-        PinRunningApp(new DockApp(Path.GetFileNameWithoutExtension(path), path));
     }
 
     internal void PinRunningApp(DockApp app, int insertIndex = -1)

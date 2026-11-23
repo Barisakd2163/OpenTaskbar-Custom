@@ -1866,13 +1866,4 @@ public static class WindowsTaskbarPinImporter
     }
     }
 
-    private static string ReadStringProperty(Type shortcutType, object shortcut, string propertyName)
-    {
-        return shortcutType.InvokeMember(
-            propertyName,
-            BindingFlags.GetProperty,
-            binder: null,
-            target: shortcut,
-            args: null) as string ?? string.Empty;
-    }
 }
