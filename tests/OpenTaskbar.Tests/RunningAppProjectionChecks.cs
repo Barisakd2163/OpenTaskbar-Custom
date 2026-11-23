@@ -75,6 +75,16 @@ internal static class RunningAppProjectionChecks
             "A zero foreground handle must clear every active app indicator.");
         Check(windows.Count == 6, "Projection must not mutate the snapshot it reads.");
 
+        const string spotifyAumid = "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify";
+        const string spotifyExe = @"C:\Program Files\WindowsApps\SpotifyAB.SpotifyMusic_1.0_x64__zpdnekdrzrea0\Spotify.exe";
+        Check(AppShortcutResolver.IsPackagedAppUserModelId(spotifyAumid),
+            "Store apps with non-!App entrypoints (such as !Spotify) must be recognized as packaged AUMIDs.");
+        Check(!AppShortcutResolver.IsPackagedAppUserModelId("com.squirrel.Discord.Discord"),
+            "Win32 Squirrel AUMIDs must not be treated as Store packaged AUMIDs.");
+        var spotifyLaunch = AppShortcutResolver.Resolve(spotifyExe, spotifyAumid, "Spotify");
+        Check(string.Equals(spotifyLaunch.Target, $"shell:AppsFolder\\{spotifyAumid}", StringComparison.OrdinalIgnoreCase),
+            "Packaged Store apps like Spotify must resolve to shell:AppsFolder\\{AUMID}.");
+
         return checks;
     }
 }
