@@ -3,50 +3,96 @@
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
               xmlns:local="clr-namespace:OpenTaskbar.Services">
-    <!-- Pure info widget: no flyout or click action, so keep the default arrow instead of the card style's Hand. -->
     <Button x:Name="StatsCardButton" Style="{StaticResource WidgetCardButton}" Padding="10,0"
-            Cursor="Arrow"
+            Click="StatsCardButton_Click"
             AutomationProperties.Name="{local:Loc WidgetSystemStats}">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <ContentControl Style="{StaticResource WidgetIcon}" Content="{StaticResource IconCpu}"
-                            Width="15" Height="15" Margin="0,0,8,0" VerticalAlignment="Center"
+        <StackPanel x:Name="MetricsPanel" Orientation="Horizontal" VerticalAlignment="Center">
+            <ContentControl x:Name="StatsIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconCpu}"
+                            Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center"
                             Foreground="{DynamicResource TextSecondary}" />
 
             <!-- CPU metric -->
-            <StackPanel x:Name="CpuButton" VerticalAlignment="Center" Orientation="Vertical">
-                <TextBlock x:Name="CpuLabel" Text="CPU" FontSize="10" LineHeight="11"
+            <StackPanel x:Name="CpuButton" VerticalAlignment="Center" Orientation="Vertical" MinWidth="36">
+                <TextBlock x:Name="CpuLabel" Text="CPU" FontSize="9.5" FontWeight="SemiBold" LineHeight="11"
                            Foreground="{DynamicResource TextSecondary}" />
-                <TextBlock x:Name="CpuValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           MinWidth="34" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <TextBlock x:Name="CpuValueText" Text="—" FontSize="12" FontWeight="SemiBold" LineHeight="14"
+                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <Border x:Name="CpuBarTrack" Height="2.5" CornerRadius="1.25" Margin="0,2,0,0"
+                        Background="{DynamicResource WidgetTrack}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="CpuBarFillCol" Width="0*" />
+                            <ColumnDefinition x:Name="CpuBarEmptyCol" Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="CpuBarFill" Grid.Column="0" CornerRadius="1.25"
+                                Background="{DynamicResource WidgetBlue}" />
+                    </Grid>
+                </Border>
             </StackPanel>
 
             <!-- RAM metric -->
-            <Border x:Name="RamDivider" Width="1" Height="18" Background="{DynamicResource StrokeSubtle}"
-                    Margin="9,0" VerticalAlignment="Center" />
-            <StackPanel x:Name="MemoryButton" VerticalAlignment="Center" Orientation="Vertical">
-                <TextBlock x:Name="RamLabel" Text="RAM" FontSize="10" LineHeight="11"
+            <Border x:Name="RamDivider" Width="1" Height="20" Background="{DynamicResource StrokeSubtle}"
+                    Margin="8,0" VerticalAlignment="Center" />
+            <StackPanel x:Name="MemoryButton" VerticalAlignment="Center" Orientation="Vertical" MinWidth="36">
+                <TextBlock x:Name="RamLabel" Text="RAM" FontSize="9.5" FontWeight="SemiBold" LineHeight="11"
                            Foreground="{DynamicResource TextSecondary}" />
-                <TextBlock x:Name="RamValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           MinWidth="34" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <TextBlock x:Name="RamValueText" Text="—" FontSize="12" FontWeight="SemiBold" LineHeight="14"
+                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <Border x:Name="RamBarTrack" Height="2.5" CornerRadius="1.25" Margin="0,2,0,0"
+                        Background="{DynamicResource WidgetTrack}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="RamBarFillCol" Width="0*" />
+                            <ColumnDefinition x:Name="RamBarEmptyCol" Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="RamBarFill" Grid.Column="0" CornerRadius="1.25"
+                                Background="{DynamicResource WidgetAccent}" />
+                    </Grid>
+                </Border>
             </StackPanel>
 
             <!-- GPU metric (shown once validated) -->
-            <Border x:Name="GpuDivider" Width="1" Height="18" Background="{DynamicResource StrokeSubtle}"
-                    Margin="9,0" VerticalAlignment="Center" Visibility="Collapsed" />
-            <StackPanel x:Name="GpuButton" VerticalAlignment="Center" Orientation="Vertical" Visibility="Collapsed">
-                <TextBlock x:Name="GpuLabel" Text="GPU" FontSize="10" LineHeight="11"
+            <Border x:Name="GpuDivider" Width="1" Height="20" Background="{DynamicResource StrokeSubtle}"
+                    Margin="8,0" VerticalAlignment="Center" Visibility="Collapsed" />
+            <StackPanel x:Name="GpuButton" VerticalAlignment="Center" Orientation="Vertical" MinWidth="36"
+                        Visibility="Collapsed">
+                <TextBlock x:Name="GpuLabel" Text="GPU" FontSize="9.5" FontWeight="SemiBold" LineHeight="11"
                            Foreground="{DynamicResource TextSecondary}" />
-                <TextBlock x:Name="GpuValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           MinWidth="34" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <TextBlock x:Name="GpuValueText" Text="—" FontSize="12" FontWeight="SemiBold" LineHeight="14"
+                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <Border x:Name="GpuBarTrack" Height="2.5" CornerRadius="1.25" Margin="0,2,0,0"
+                        Background="{DynamicResource WidgetTrack}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="GpuBarFillCol" Width="0*" />
+                            <ColumnDefinition x:Name="GpuBarEmptyCol" Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="GpuBarFill" Grid.Column="0" CornerRadius="1.25"
+                                Background="{DynamicResource AccentBrush}" />
+                    </Grid>
+                </Border>
             </StackPanel>
 
-            <!-- Optional temperature (validated sensor slot; kept for Settings.StatsMeters and tests) -->
-            <Border x:Name="GpuTempDivider" Width="1" Height="18" Background="{DynamicResource StrokeSubtle}"
-                    Margin="9,0" VerticalAlignment="Center" Visibility="Collapsed" />
-            <StackPanel x:Name="GpuTemperatureButton" VerticalAlignment="Center" Orientation="Vertical" Visibility="Collapsed">
-                <TextBlock Text="GPU°" FontSize="10" LineHeight="11" Foreground="{DynamicResource TextSecondary}" />
-                <TextBlock x:Name="GpuTempValueText" Text="—" FontSize="12.5" FontWeight="SemiBold" LineHeight="14"
-                           MinWidth="26" Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+            <!-- GPU temperature (validated sensor slot) -->
+            <Border x:Name="GpuTempDivider" Width="1" Height="20" Background="{DynamicResource StrokeSubtle}"
+                    Margin="8,0" VerticalAlignment="Center" Visibility="Collapsed" />
+            <StackPanel x:Name="GpuTemperatureButton" VerticalAlignment="Center" Orientation="Vertical" MinWidth="32"
+                        Visibility="Collapsed">
+                <TextBlock x:Name="GpuTempLabel" Text="GPU°" FontSize="9.5" FontWeight="SemiBold" LineHeight="11"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock x:Name="GpuTempValueText" Text="—" FontSize="12" FontWeight="SemiBold" LineHeight="14"
+                           Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
+                <Border x:Name="GpuTempBarTrack" Height="2.5" CornerRadius="1.25" Margin="0,2,0,0"
+                        Background="{DynamicResource WidgetTrack}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="GpuTempBarFillCol" Width="0*" />
+                            <ColumnDefinition x:Name="GpuTempBarEmptyCol" Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="GpuTempBarFill" Grid.Column="0" CornerRadius="1.25"
+                                Background="{DynamicResource WidgetGreen}" />
+                    </Grid>
+                </Border>
             </StackPanel>
         </StackPanel>
     </Button>

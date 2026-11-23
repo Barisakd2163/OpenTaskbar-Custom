@@ -936,5 +936,16 @@
   "MovedToDesktop": "바탕 화면으로 이동됨",
   "CopiedToDesktop": "바탕 화면으로 복사됨",
   "PinApplicationFilter": "애플리케이션 및 바로 가기|*.exe;*.lnk;*.url|애플리케이션 (*.exe)|*.exe|바로 가기 (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "선택한 파일을 애플리케이션으로 고정할 수 없습니다."
+  "ErrorPinApplicationUnsupported": "선택한 파일을 애플리케이션으로 고정할 수 없습니다.",
+  "StatsUptime": "작동 시간",
+  "StatsUptimeDaysFormat": "{0}일 {1}시간 {2}분",
+  "StatsUptimeHoursFormat": "{0}시간 {1}분",
+  "StatsUptimeMinutesFormat": "{0}분",
+  "StatsLogicalCores": "{0}코어",
+  "StatsMemoryUsed": "사용 중 {0}",
+  "StatsMemoryAvailable": "사용 가능 {0}",
+  "StatsTopProcesses": "상위 프로세스",
+  "StatsTopProcessesEmpty": "프로세스 데이터가 없습니다",
+  "StatsSamplingProcesses": "프로세스 확인 중…",
+  "ResourceMonitor": "리소스 모니터"
 }

@@ -936,5 +936,16 @@
   "MovedToDesktop": "Movido al Escritorio",
   "CopiedToDesktop": "Copiado al Escritorio",
   "PinApplicationFilter": "Aplicaciones y accesos directos|*.exe;*.lnk;*.url|Aplicaciones (*.exe)|*.exe|Accesos directos (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "No se pudo anclar el archivo seleccionado como aplicación."
+  "ErrorPinApplicationUnsupported": "No se pudo anclar el archivo seleccionado como aplicación.",
+  "StatsUptime": "Tiempo activo",
+  "StatsUptimeDaysFormat": "{0}d {1}h {2}m",
+  "StatsUptimeHoursFormat": "{0}h {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} núcleos",
+  "StatsMemoryUsed": "En uso {0}",
+  "StatsMemoryAvailable": "{0} disponible",
+  "StatsTopProcesses": "Procesos principales",
+  "StatsTopProcessesEmpty": "No hay datos de procesos",
+  "StatsSamplingProcesses": "Leyendo procesos…",
+  "ResourceMonitor": "Monitor de recursos"
 }

@@ -936,5 +936,16 @@
   "MovedToDesktop": "Verplaatst naar Bureaublad",
   "CopiedToDesktop": "Gekopieerd naar Bureaublad",
   "PinApplicationFilter": "Apps en snelkoppelingen|*.exe;*.lnk;*.url|Apps (*.exe)|*.exe|Snelkoppelingen (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Het geselecteerde bestand kon niet als app worden vastgemaakt."
+  "ErrorPinApplicationUnsupported": "Het geselecteerde bestand kon niet als app worden vastgemaakt.",
+  "StatsUptime": "Actieve tijd",
+  "StatsUptimeDaysFormat": "{0}d {1}u {2}m",
+  "StatsUptimeHoursFormat": "{0}u {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} cores",
+  "StatsMemoryUsed": "Gebruikt {0}",
+  "StatsMemoryAvailable": "{0} beschikbaar",
+  "StatsTopProcesses": "Topprocessen",
+  "StatsTopProcessesEmpty": "Geen procesgegevens beschikbaar",
+  "StatsSamplingProcesses": "Processen ophalen…",
+  "ResourceMonitor": "Broncontrole"
 }

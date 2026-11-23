@@ -936,5 +936,16 @@
   "MovedToDesktop": "デスクトップに移動しました",
   "CopiedToDesktop": "デスクトップにコピーしました",
   "PinApplicationFilter": "アプリケーションとショートカット|*.exe;*.lnk;*.url|アプリケーション (*.exe)|*.exe|ショートカット (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "選択したファイルをアプリケーションとしてピン留めできませんでした。"
+  "ErrorPinApplicationUnsupported": "選択したファイルをアプリケーションとしてピン留めできませんでした。",
+  "StatsUptime": "稼働時間",
+  "StatsUptimeDaysFormat": "{0}日 {1}時間 {2}分",
+  "StatsUptimeHoursFormat": "{0}時間 {1}分",
+  "StatsUptimeMinutesFormat": "{0}分",
+  "StatsLogicalCores": "{0} コア",
+  "StatsMemoryUsed": "使用中 {0}",
+  "StatsMemoryAvailable": "利用可能 {0}",
+  "StatsTopProcesses": "上位プロセス",
+  "StatsTopProcessesEmpty": "プロセス情報がありません",
+  "StatsSamplingProcesses": "プロセスを取得中…",
+  "ResourceMonitor": "リソース モニター"
 }

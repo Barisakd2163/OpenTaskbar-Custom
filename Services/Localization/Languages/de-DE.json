@@ -936,5 +936,16 @@
   "MovedToDesktop": "Auf Desktop verschoben",
   "CopiedToDesktop": "Auf Desktop kopiert",
   "PinApplicationFilter": "Anwendungen & Verknüpfungen|*.exe;*.lnk;*.url|Anwendungen (*.exe)|*.exe|Verknüpfungen (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Die ausgewählte Datei konnte nicht als Anwendung angeheftet werden."
+  "ErrorPinApplicationUnsupported": "Die ausgewählte Datei konnte nicht als Anwendung angeheftet werden.",
+  "StatsUptime": "Betriebszeit",
+  "StatsUptimeDaysFormat": "{0}T {1}Std {2}Min",
+  "StatsUptimeHoursFormat": "{0}Std {1}Min",
+  "StatsUptimeMinutesFormat": "{0}Min",
+  "StatsLogicalCores": "{0} Kerne",
+  "StatsMemoryUsed": "Belegt {0}",
+  "StatsMemoryAvailable": "{0} verfügbar",
+  "StatsTopProcesses": "Top-Prozesse",
+  "StatsTopProcessesEmpty": "Keine Prozessdaten verfügbar",
+  "StatsSamplingProcesses": "Prozesse werden gelesen…",
+  "ResourceMonitor": "Ressourcenmonitor"
 }

@@ -936,5 +936,16 @@
   "MovedToDesktop": "Переміщено на Робочий стіл",
   "CopiedToDesktop": "Скопійовано на Робочий стіл",
   "PinApplicationFilter": "Програми та ярлики|*.exe;*.lnk;*.url|Програми (*.exe)|*.exe|Ярлики (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Не вдалося закріпити вибраний файл як програму."
+  "ErrorPinApplicationUnsupported": "Не вдалося закріпити вибраний файл як програму.",
+  "StatsUptime": "Час роботи",
+  "StatsUptimeDaysFormat": "{0}д {1}г {2}хв",
+  "StatsUptimeHoursFormat": "{0}г {1}хв",
+  "StatsUptimeMinutesFormat": "{0}хв",
+  "StatsLogicalCores": "{0} ядер",
+  "StatsMemoryUsed": "Зайнято {0}",
+  "StatsMemoryAvailable": "Доступно {0}",
+  "StatsTopProcesses": "Топ процесів",
+  "StatsTopProcessesEmpty": "Немає даних про процеси",
+  "StatsSamplingProcesses": "Збір даних про процеси…",
+  "ResourceMonitor": "Монітор ресурсів"
 }

@@ -936,5 +936,16 @@
   "MovedToDesktop": "Перемещено на Рабочий стол",
   "CopiedToDesktop": "Скопировано на Рабочий стол",
   "PinApplicationFilter": "Приложения и ярлыки|*.exe;*.lnk;*.url|Приложения (*.exe)|*.exe|Ярлыки (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Не удалось закрепить выбранный файл как приложение."
+  "ErrorPinApplicationUnsupported": "Не удалось закрепить выбранный файл как приложение.",
+  "StatsUptime": "Время работы",
+  "StatsUptimeDaysFormat": "{0}д {1}ч {2}м",
+  "StatsUptimeHoursFormat": "{0}ч {1}м",
+  "StatsUptimeMinutesFormat": "{0}м",
+  "StatsLogicalCores": "{0} ядер",
+  "StatsMemoryUsed": "Занято {0}",
+  "StatsMemoryAvailable": "Доступно {0}",
+  "StatsTopProcesses": "Топ процессов",
+  "StatsTopProcessesEmpty": "Нет данных о процессах",
+  "StatsSamplingProcesses": "Сбор данных о процессах…",
+  "ResourceMonitor": "Монитор ресурсов"
 }

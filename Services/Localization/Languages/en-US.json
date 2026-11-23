@@ -936,5 +936,16 @@
   "MovedToDesktop": "Moved to Desktop",
   "CopiedToDesktop": "Copied to Desktop",
   "PinApplicationFilter": "Applications & shortcuts|*.exe;*.lnk;*.url|Applications (*.exe)|*.exe|Shortcuts (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "The selected file could not be pinned as an application."
+  "ErrorPinApplicationUnsupported": "The selected file could not be pinned as an application.",
+  "StatsUptime": "Uptime",
+  "StatsUptimeDaysFormat": "{0}d {1}h {2}m",
+  "StatsUptimeHoursFormat": "{0}h {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} cores",
+  "StatsMemoryUsed": "Used {0}",
+  "StatsMemoryAvailable": "{0} available",
+  "StatsTopProcesses": "Top processes",
+  "StatsTopProcessesEmpty": "No process data available",
+  "StatsSamplingProcesses": "Sampling processes…",
+  "ResourceMonitor": "Resource Monitor"
 }

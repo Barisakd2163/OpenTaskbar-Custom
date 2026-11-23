@@ -936,5 +936,16 @@
   "MovedToDesktop": "Movido para a Área de Trabalho",
   "CopiedToDesktop": "Copiado para a Área de Trabalho",
   "PinApplicationFilter": "Aplicativos e atalhos|*.exe;*.lnk;*.url|Aplicativos (*.exe)|*.exe|Atalhos (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Não foi possível fixar o arquivo selecionado como aplicativo."
+  "ErrorPinApplicationUnsupported": "Não foi possível fixar o arquivo selecionado como aplicativo.",
+  "StatsUptime": "Tempo ativo",
+  "StatsUptimeDaysFormat": "{0}d {1}h {2}m",
+  "StatsUptimeHoursFormat": "{0}h {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} núcleos",
+  "StatsMemoryUsed": "Em uso {0}",
+  "StatsMemoryAvailable": "{0} disponível",
+  "StatsTopProcesses": "Principais processos",
+  "StatsTopProcessesEmpty": "Sem dados de processos",
+  "StatsSamplingProcesses": "Lendo processos…",
+  "ResourceMonitor": "Monitor de Recursos"
 }

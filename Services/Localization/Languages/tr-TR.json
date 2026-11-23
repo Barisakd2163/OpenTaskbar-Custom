@@ -936,5 +936,16 @@
   "MovedToDesktop": "Masaüstüne taşındı",
   "CopiedToDesktop": "Masaüstüne kopyalandı",
   "PinApplicationFilter": "Uygulamalar ve kısayollar|*.exe;*.lnk;*.url|Uygulamalar (*.exe)|*.exe|Kısayollar (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Seçilen dosya uygulama olarak sabitlenemedi."
+  "ErrorPinApplicationUnsupported": "Seçilen dosya uygulama olarak sabitlenemedi.",
+  "StatsUptime": "Çalışma süresi",
+  "StatsUptimeDaysFormat": "{0}g {1}s {2}dk",
+  "StatsUptimeHoursFormat": "{0}s {1}dk",
+  "StatsUptimeMinutesFormat": "{0}dk",
+  "StatsLogicalCores": "{0} çekirdek",
+  "StatsMemoryUsed": "Kullanılan {0}",
+  "StatsMemoryAvailable": "{0} kullanılabilir",
+  "StatsTopProcesses": "En yoğun işlemler",
+  "StatsTopProcessesEmpty": "İşlem verisi bulunamadı",
+  "StatsSamplingProcesses": "İşlemler ölçülüyor…",
+  "ResourceMonitor": "Kaynak İzleyicisi"
 }

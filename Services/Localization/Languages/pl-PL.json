@@ -936,5 +936,16 @@
   "MovedToDesktop": "Przeniesiono na Pulpit",
   "CopiedToDesktop": "Skopiowano na Pulpit",
   "PinApplicationFilter": "Aplikacje i skróty|*.exe;*.lnk;*.url|Aplikacje (*.exe)|*.exe|Skróty (*.lnk;*.url)|*.lnk;*.url",
-  "ErrorPinApplicationUnsupported": "Nie można przypiąć wybranego pliku jako aplikacji."
+  "ErrorPinApplicationUnsupported": "Nie można przypiąć wybranego pliku jako aplikacji.",
+  "StatsUptime": "Czas działania",
+  "StatsUptimeDaysFormat": "{0}d {1}g {2}m",
+  "StatsUptimeHoursFormat": "{0}g {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} rdzeni",
+  "StatsMemoryUsed": "Użyte {0}",
+  "StatsMemoryAvailable": "Dostępne {0}",
+  "StatsTopProcesses": "Najważniejsze procesy",
+  "StatsTopProcessesEmpty": "Brak danych o procesach",
+  "StatsSamplingProcesses": "Odczyt procesów…",
+  "ResourceMonitor": "Monitor zasobów"
 }
