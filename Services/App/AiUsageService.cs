@@ -158,7 +158,7 @@ public static class AiUsageService
         if (string.IsNullOrWhiteSpace(command)) return null;
         var pathEnv = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrWhiteSpace(pathEnv)) return null;
-        string[] extensions = [".exe", ".cmd", ".bat", ""];
+        string[] extensions = [".exe", ".cmd", ".bat"];
         foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             try
@@ -254,11 +254,13 @@ public static class AiUsageService
     // Windows not show its initial window if the target has a window subsystem.
     internal static ProcessStartInfo HiddenCliStartInfo(string executable, params string[] arguments)
     {
-        var startInfo = new ProcessStartInfo(executable)
+        var resolved = Path.IsPathRooted(executable) ? executable : (FindExecutableOnPath(executable) ?? executable);
+        var startInfo = new ProcessStartInfo(resolved)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -731,7 +733,11 @@ public static class AiUsageService
                 try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
                 return null;
             }
-            var stdout = stdoutTask.GetAwaiter().GetResult();
+            if (!stdoutTask.Wait(1000))
+            {
+                return null;
+            }
+            var stdout = stdoutTask.Result;
             if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return null;
             using var document = JsonDocument.Parse(stdout);
             return ParseOpenCodeCredential(document.RootElement);

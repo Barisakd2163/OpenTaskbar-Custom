@@ -207,10 +207,26 @@ public static class ThemePacks
         ThemePack? pack = null;
         if (requested is not null)
         {
-            var (loaded, error, problems) = ThemePack.Load(Path.Combine(Root, requested));
-            if (error is not null) AppLog.Warning($"Theme pack '{requested}' could not be loaded: {error}");
-            foreach (var problem in problems) AppLog.Warning($"Theme pack '{requested}': {problem}");
-            pack = loaded;
+            if (!ThemePackTransfer.IsSafeId(requested))
+            {
+                AppLog.Warning($"Theme pack '{requested}' rejected: invalid identifier.");
+            }
+            else
+            {
+                var rootFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Root)) + Path.DirectorySeparatorChar;
+                var candidate = Path.GetFullPath(Path.Combine(Root, requested));
+                if (!candidate.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    AppLog.Warning($"Theme pack '{requested}' rejected: path escapes theme root.");
+                }
+                else
+                {
+                    var (loaded, error, problems) = ThemePack.Load(candidate);
+                    if (error is not null) AppLog.Warning($"Theme pack '{requested}' could not be loaded: {error}");
+                    foreach (var problem in problems) AppLog.Warning($"Theme pack '{requested}': {problem}");
+                    pack = loaded;
+                }
+            }
         }
 
         var changed = reload || !string.Equals(Current?.Id, pack?.Id, StringComparison.OrdinalIgnoreCase);
