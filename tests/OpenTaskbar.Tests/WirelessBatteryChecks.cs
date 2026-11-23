@@ -386,6 +386,26 @@ internal static class WirelessBatteryChecks
         var partialPoll = partialAggregator.PollAsync().GetAwaiter().GetResult();
         check(partialPoll.Count == 1 && partialPoll[0].BatteryLevel == 91,
             "Aggregator soft sub-timeout must preserve partial readings collected before cancellation.");
+
+        // Concurrent PollAsync calls must be serialized by _pollGate (max in-flight concurrency == 1).
+        var inFlight = 0;
+        var maxInFlight = 0;
+        var serializedProvider = new DelegateBatteryProvider(
+            WirelessBatterySource.LogitechHidPlusPlus,
+            async ct =>
+            {
+                var current = Interlocked.Increment(ref inFlight);
+                if (current > maxInFlight) Interlocked.Exchange(ref maxInFlight, current);
+                await Task.Delay(40, ct).ConfigureAwait(false);
+                Interlocked.Decrement(ref inFlight);
+                return [];
+            });
+        var serializedAggregator = new WirelessBatteryAggregator(
+            bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+            providers: [serializedProvider],
+            clock: () => fakeNow);
+        Task.WhenAll(serializedAggregator.PollAsync(), serializedAggregator.PollAsync()).GetAwaiter().GetResult();
+        check(maxInFlight == 1, $"Concurrent PollAsync calls must be serialized (maxInFlight={maxInFlight}).");
     }
 
     private static void CheckAllLocaleCatalogs(Action<bool, string> check)

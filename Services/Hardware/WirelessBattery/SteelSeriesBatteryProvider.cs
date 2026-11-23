@@ -21,6 +21,25 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
     public const byte StatusCharging = 0x02;
     public const byte StatusDischarging = 0x08;
 
+    private const long MaxCorePropsBytes = 65_536;
+    private const int MaxLoopbackResponseBytes = 256 * 1024;
+
+    private static readonly SocketsHttpHandler LoopbackHandler = new()
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = static (_, _, _, _) => true
+        }
+    };
+
+    private static readonly HttpClient LoopbackClient = new(LoopbackHandler)
+    {
+        Timeout = TimeSpan.FromSeconds(1)
+    };
+
     public WirelessBatterySource Source => WirelessBatterySource.SteelSeriesHid;
 
     public async Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken)
@@ -237,29 +256,15 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
         {
             var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
             var corePropsPath = Path.Combine(programData, "SteelSeries", "SteelSeries Engine 3", "coreProps.json");
-            if (!File.Exists(corePropsPath)) return [];
+            var corePropsInfo = new FileInfo(corePropsPath);
+            if (!corePropsInfo.Exists || corePropsInfo.Length is <= 0 or > MaxCorePropsBytes)
+                return [];
 
             var json = await File.ReadAllTextAsync(corePropsPath, cancellationToken).ConfigureAwait(false);
             if (!TryParseCorePropsLoopbackUri(json, out var baseUri) || baseUri is null)
                 return [];
 
             var allowedPort = baseUri.Port;
-            using var handler = new HttpClientHandler
-            {
-                AllowAutoRedirect = false,
-                UseProxy = false
-            };
-
-            if (string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
-            {
-                handler.ServerCertificateCustomValidationCallback = (request, _, _, _) =>
-                    request?.RequestUri is { Host: "127.0.0.1" } uri && uri.Port == allowedPort;
-            }
-
-            using var client = new HttpClient(handler)
-            {
-                Timeout = TimeSpan.FromSeconds(1)
-            };
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromMilliseconds(950));
@@ -272,10 +277,11 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
                     if (!string.Equals(targetUri.Host, "127.0.0.1", StringComparison.Ordinal) || targetUri.Port != allowedPort)
                         continue;
 
-                    using var response = await client.GetAsync(targetUri, cts.Token).ConfigureAwait(false);
+                    using var response = await LoopbackClient.GetAsync(targetUri, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode) continue;
 
-                    var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+                    var body = await ReadBoundedStringAsync(response.Content, MaxLoopbackResponseBytes, cts.Token).ConfigureAwait(false);
+                    if (body is null) continue;
                     var parsed = ParseGgBatteryJson(body, DateTimeOffset.UtcNow);
                     if (parsed.Count > 0) return parsed;
                 }
@@ -289,6 +295,25 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
         }
 
         return [];
+    }
+
+    private static async Task<string?> ReadBoundedStringAsync(HttpContent content, int maxBytes, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > 0 and var len && len > maxBytes)
+            return null;
+
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var ms = new MemoryStream();
+        var chunk = new byte[8192];
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk.AsMemory(0, chunk.Length), cancellationToken).ConfigureAwait(false);
+            if (read == 0) break;
+            if (ms.Length + read > maxBytes) return null;
+            ms.Write(chunk, 0, read);
+        }
+
+        return System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     internal static IReadOnlyList<WirelessDeviceReading> ParseGgBatteryJson(string json, DateTimeOffset sampledAt)
