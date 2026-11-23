@@ -272,7 +272,17 @@ public sealed class TrayShellButton : Button
             {
                 if (!TrayHost.CanForwardInputToWindow(icon.HWnd)) return;
                 e.Handled = true;
-                ForwardClick(icon, System.Windows.Input.MouseButton.Right);
+                ForwardClick(icon, System.Windows.Input.MouseButton.Right, () =>
+                {
+                    var menu = open.ContextMenu ??= BuildLiveFallbackMenu(name, icon, toggleKey, matchedKey is not null, () =>
+                    {
+                        var currentIcons = TrayHost.Current is { IsRunning: true } host ? host.AppIcons() : icons;
+                        _flyout.Show(this, BuildLiveContent(currentIcons), animate: false);
+                    });
+                    menu.PlacementTarget = open;
+                    menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+                    menu.IsOpen = true;
+                });
             };
 
             var appRow = new DockPanel { Margin = new Thickness(0, 1, 0, 1) };
@@ -416,13 +426,20 @@ public sealed class TrayShellButton : Button
         return pinButton;
     }
 
-    private void ForwardClick(ManagedShell.WindowsTray.NotifyIcon icon, System.Windows.Input.MouseButton button)
+    private void ForwardClick(
+        ManagedShell.WindowsTray.NotifyIcon icon,
+        System.Windows.Input.MouseButton button,
+        Action? onForwardFailure = null)
     {
         if (button == System.Windows.Input.MouseButton.Left)
         {
             _flyout.Close();
             // Let the flyout finish closing before the app takes the foreground for its window.
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => TrayHost.Click(icon, button));
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            {
+                if (TrayHost.TryClick(icon, button)) return;
+                OpenLiveIcon(icon);
+            });
         }
         else
         {
@@ -430,9 +447,19 @@ public sealed class TrayShellButton : Button
             _flyout.RetainForExternalContextMenu(icon.HWnd);
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
             {
-                TrayHost.Click(icon, button);
+                if (!TrayHost.TryClick(icon, button)) onForwardFailure?.Invoke();
             });
         }
+    }
+
+    private void OpenLiveIcon(ManagedShell.WindowsTray.NotifyIcon icon)
+    {
+        var path = icon.Path?.Trim();
+        if (string.IsNullOrEmpty(path)) return;
+
+        var name = TrayPinIdentity.CleanTitle(icon.Title, path, UiText.Get("TrayApps"));
+        Report(TrayIcons.Open(new TrayApp(name, path, icon.Icon as System.Windows.Media.Imaging.BitmapSource,
+            icon.GUID == Guid.Empty ? null : icon.GUID, icon.UID, IconSource.Live)));
     }
 
     internal UIElement BuildContent(IReadOnlyList<TrayApp> apps)
