@@ -10,8 +10,8 @@ namespace OpenTaskbar.Services;
 public static class VirtualDesktops
 {
     private const string Key = @"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops";
+    [ThreadStatic]
     private static IVirtualDesktopManager? _manager;
-    private static bool _managerFailed;
 
     /// <summary>1-based index of the current desktop and the desktop count; (1, 1) when only one desktop exists.</summary>
     public static (int Current, int Count) Read()
@@ -47,7 +47,6 @@ public static class VirtualDesktops
     /// <summary>True when the window is on the current desktop, or when that cannot be determined.</summary>
     public static bool IsOnCurrentDesktop(nint window)
     {
-        if (_managerFailed) return true;
         try
         {
             _manager ??= (IVirtualDesktopManager)new VirtualDesktopManagerClass();
@@ -56,7 +55,7 @@ public static class VirtualDesktops
         catch (Exception ex) when (ex is COMException or InvalidCastException)
         {
             AppLog.Warning($"IVirtualDesktopManager unavailable: {ex.Message}");
-            _managerFailed = true;
+            _manager = null;
             return true;
         }
     }

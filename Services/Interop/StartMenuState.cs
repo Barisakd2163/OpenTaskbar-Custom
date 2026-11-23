@@ -123,10 +123,16 @@ internal sealed class StartMenuState : IDisposable
         if (objectId != ObjectWindow || windowHandle == 0 || !IsStartMenuWindow(windowHandle)) return;
         if (eventType == EventObjectUncloaked)
         {
+            if (!GetWindowRect(windowHandle, out var rect) || (rect.Right - rect.Left) <= 100 || (rect.Bottom - rect.Top) <= 100)
+                return;
             _startWindow = windowHandle;
             StartMenuOpened?.Invoke(windowHandle);
+            OnStartMenuCloakChanged(cloaked: false);
+            return;
         }
-        OnStartMenuCloakChanged(cloaked: eventType == EventObjectCloaked);
+
+        if (windowHandle == _startWindow || !IsStartMenuOpenNow())
+            OnStartMenuCloakChanged(cloaked: true);
     }
 
     internal static bool IsStartMenuProcessName(string? processName) =>
@@ -215,4 +221,17 @@ internal sealed class StartMenuState : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint windowHandle, out NativeRect rect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 }

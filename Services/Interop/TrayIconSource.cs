@@ -26,6 +26,7 @@ public sealed class TrayIconSource : IDisposable
     private static readonly Lazy<TrayIconSource> SharedInstance = new(static () => new TrayIconSource());
 
     private readonly object _gate = new();
+    private readonly object _watchLock = new();
     private readonly CancellationTokenSource _lifetime = new();
     private IReadOnlyList<TrayApp> _snapshot = [];
     private Task<IReadOnlyList<TrayApp>>? _pending;
@@ -34,7 +35,7 @@ public sealed class TrayIconSource : IDisposable
     private bool _disposed;
 
     private RegistryKey? _watchKey;
-    private ManualResetEvent? _changeEvent;
+    private AutoResetEvent? _changeEvent;
     private RegisteredWaitHandle? _waitHandle;
     private bool _watcherArmed;
 
@@ -162,34 +163,55 @@ public sealed class TrayIconSource : IDisposable
     {
         try
         {
-            var icons = LiveIconsProvider?.Invoke();
-            if (icons is null)
+            var customIcons = LiveIconsProvider?.Invoke();
+            if (customIcons is null)
             {
-                var host = TrayHost.Current;
-                icons = host is { IsRunning: true } ? host.AppIcons() : [];
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher is not null && !dispatcher.CheckAccess())
+                {
+                    if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+                        return [];
+                    return dispatcher.Invoke(ReadLiveAppsCore);
+                }
             }
-
-            var seen = new HashSet<TrayIconRef>(TrayIconRefComparer.Instance);
-            var apps = new List<TrayApp>(icons.Count);
-            foreach (var icon in icons)
-            {
-                var path = icon.Path?.Trim() ?? string.Empty;
-                // Path-less system icons (volume, network, ...) have no launchable executable and are shown through
-                // the live flyout; the merged snapshot is the registry/fallback representation.
-                if (path.Length == 0) continue;
-                var identity = new TrayIconRef(icon.GUID, path, icon.UID, IconSource.Live);
-                if (!seen.Add(identity)) continue;
-                var name = TrayPinIdentity.CleanTitle(icon.Title, path, Path.GetFileNameWithoutExtension(path));
-                apps.Add(new TrayApp(name, path, icon.Icon as BitmapSource,
-                    identity.Guid, identity.Uid, IconSource.Live));
-            }
-            return apps;
+            return ReadLiveAppsCore(customIcons);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or ArgumentException)
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or ArgumentException
+            or TaskCanceledException or OperationCanceledException)
         {
             AppLog.Warning($"Live tray icon enumeration failed: {ex.Message}");
             return [];
         }
+    }
+
+    private IReadOnlyList<TrayApp> ReadLiveAppsCore() => ReadLiveAppsCore(null);
+
+    private IReadOnlyList<TrayApp> ReadLiveAppsCore(IReadOnlyList<NotifyIcon>? icons)
+    {
+        if (icons is null)
+        {
+            var host = TrayHost.Current;
+            icons = host is { IsRunning: true } ? host.AppIcons() : [];
+        }
+
+        var seen = new HashSet<TrayIconRef>(TrayIconRefComparer.Instance);
+        var apps = new List<TrayApp>(icons.Count);
+        foreach (var icon in icons)
+        {
+            var path = icon.Path?.Trim() ?? string.Empty;
+            // Path-less system icons (volume, network, ...) have no launchable executable and are shown through
+            // the live flyout; the merged snapshot is the registry/fallback representation.
+            if (path.Length == 0) continue;
+            var identity = new TrayIconRef(icon.GUID, path, icon.UID, IconSource.Live);
+            if (!seen.Add(identity)) continue;
+            var name = TrayPinIdentity.CleanTitle(icon.Title, path, Path.GetFileNameWithoutExtension(path));
+            var bitmap = icon.Icon as BitmapSource;
+            if (bitmap is { CanFreeze: true, IsFrozen: false })
+                bitmap.Freeze();
+            apps.Add(new TrayApp(name, path, bitmap,
+                identity.Guid, identity.Uid, IconSource.Live));
+        }
+        return apps;
     }
 
     private static IReadOnlyList<TrayApp> Merge(IReadOnlyList<TrayApp> live, IReadOnlyList<TrayApp> fallback)
@@ -243,35 +265,38 @@ public sealed class TrayIconSource : IDisposable
 
     private void StartWatching()
     {
-        if (_disposed || _watcherArmed) return;
-        try
+        lock (_watchLock)
         {
-            var key = Registry.CurrentUser.OpenSubKey(SettingsKey);
-            if (key is null)
+            if (_disposed || _watcherArmed) return;
+            try
             {
-                ShellTelemetry.Result("TrayRegistryWatcher", "missing-key", success: false, verified: false);
-                return;
+                var key = Registry.CurrentUser.OpenSubKey(SettingsKey);
+                if (key is null)
+                {
+                    ShellTelemetry.Result("TrayRegistryWatcher", "missing-key", success: false, verified: false);
+                    return;
+                }
+
+                var changeEvent = new AutoResetEvent(false);
+                var status = RegNotifyChangeKeyValue(key.Handle, true, RegistryNotifyFilter,
+                    changeEvent.SafeWaitHandle, true);
+                if (status != 0) throw new Win32Exception(status);
+
+                _watchKey = key;
+                _changeEvent = changeEvent;
+                _waitHandle = ThreadPool.RegisterWaitForSingleObject(changeEvent, OnRegistryChanged, null,
+                    Timeout.Infinite, executeOnlyOnce: false);
+                _watcherArmed = true;
+                ShellTelemetry.Result("TrayRegistryWatcher", "watch", true, true,
+                    ("key", SettingsKey));
             }
-
-            var changeEvent = new ManualResetEvent(false);
-            var status = RegNotifyChangeKeyValue(key.Handle, true, RegistryNotifyFilter,
-                changeEvent.SafeWaitHandle, true);
-            if (status != 0) throw new Win32Exception(status);
-
-            _watchKey = key;
-            _changeEvent = changeEvent;
-            _waitHandle = ThreadPool.RegisterWaitForSingleObject(changeEvent, OnRegistryChanged, null,
-                Timeout.Infinite, executeOnlyOnce: false);
-            _watcherArmed = true;
-            ShellTelemetry.Result("TrayRegistryWatcher", "watch", true, true,
-                ("key", SettingsKey));
-        }
-        catch (Exception ex) when (ex is Win32Exception or UnauthorizedAccessException or IOException
-            or ObjectDisposedException or ArgumentException)
-        {
-            StopWatching();
-            ShellTelemetry.Result("TrayRegistryWatcher", "watch", success: false, verified: false,
-                ("error", ex.Message));
+            catch (Exception ex) when (ex is Win32Exception or UnauthorizedAccessException or IOException
+                or ObjectDisposedException or ArgumentException)
+            {
+                StopWatchingLocked();
+                ShellTelemetry.Result("TrayRegistryWatcher", "watch", success: false, verified: false,
+                    ("error", ex.Message));
+            }
         }
     }
 
@@ -284,31 +309,41 @@ public sealed class TrayIconSource : IDisposable
 
     private void ArmWatcherAgain()
     {
-        try
+        lock (_watchLock)
         {
-            var key = _watchKey;
-            var changeEvent = _changeEvent;
-            if (key is null || changeEvent is null)
+            if (!_watcherArmed || _disposed) return;
+            try
             {
-                _watcherArmed = false;
-                return;
+                var key = _watchKey;
+                var changeEvent = _changeEvent;
+                if (key is null || changeEvent is null)
+                {
+                    _watcherArmed = false;
+                    return;
+                }
+                var status = RegNotifyChangeKeyValue(key.Handle, true, RegistryNotifyFilter,
+                    changeEvent.SafeWaitHandle, true);
+                if (status != 0) throw new Win32Exception(status);
             }
-            // RegNotifyChangeKeyValue is one-shot; the event must be reset before re-arming or the wait fires in a loop.
-            changeEvent.Reset();
-            var status = RegNotifyChangeKeyValue(key.Handle, true, RegistryNotifyFilter,
-                changeEvent.SafeWaitHandle, true);
-            if (status != 0) throw new Win32Exception(status);
-        }
-        catch (Exception ex) when (ex is Win32Exception or UnauthorizedAccessException or IOException
-            or ObjectDisposedException or ArgumentException)
-        {
-            StopWatching();
-            ShellTelemetry.Result("TrayRegistryWatcher", "rearm", success: false, verified: false,
-                ("error", ex.Message));
+            catch (Exception ex) when (ex is Win32Exception or UnauthorizedAccessException or IOException
+                or ObjectDisposedException or ArgumentException)
+            {
+                StopWatchingLocked();
+                ShellTelemetry.Result("TrayRegistryWatcher", "rearm", success: false, verified: false,
+                    ("error", ex.Message));
+            }
         }
     }
 
     private void StopWatching()
+    {
+        lock (_watchLock)
+        {
+            StopWatchingLocked();
+        }
+    }
+
+    private void StopWatchingLocked()
     {
         _watcherArmed = false;
         var wait = _waitHandle;

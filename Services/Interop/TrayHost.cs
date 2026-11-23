@@ -201,14 +201,17 @@ internal sealed class TrayHost : IDisposable
             Marshal.StructureToPtr(copyData, hCopyData, fDeleteOld: false);
 
             // A hung Explorer must never freeze the dock's UI dispatcher indefinitely.
-            var result = SendMessageTimeout(
+            var delivered = SendMessageTimeout(
                 explorerTray,
                 (uint)NativeMethods.WM.COPYDATA,
                 unchecked((nint)(int)amd.abd.hWnd),
                 hCopyData,
                 SMTOAbortIfHung,
                 1000,
-                out _);
+                out var msgResult);
+
+            if (delivered == 0)
+                return nint.Zero;
 
             var lockedResult = NativeMethods.SHLockShared(sharedNew, explorerPid);
             if (lockedResult != nint.Zero)
@@ -225,7 +228,7 @@ internal sealed class TrayHost : IDisposable
             }
 
             handled = true;
-            return result;
+            return msgResult;
         }
         finally
         {

@@ -1021,7 +1021,7 @@ public static class ShellShortcuts
     private static bool IsControlCenterVisible()
     {
         var hwnd = FindWindow("ControlCenterWindow", null);
-        return hwnd != 0 && IsWindowVisible(hwnd);
+        return hwnd != 0 && IsWindowVisible(hwnd) && !IsWindowCloaked(hwnd);
     }
 
     private static void ScheduleControlCenterReposition(FrameworkElement anchor)
@@ -1062,7 +1062,7 @@ public static class ShellShortcuts
                 await Task.Delay(25, cancellation);
                 if (cancellation.IsCancellationRequested) return;
                 var hwnd = FindWindow("ControlCenterWindow", null);
-                if (hwnd == 0 || !IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
+                if (hwnd == 0 || !IsWindowVisible(hwnd) || IsWindowCloaked(hwnd) || !GetWindowRect(hwnd, out var rect)) continue;
                 var width = rect.Right - rect.Left;
                 var height = rect.Bottom - rect.Top;
                 if (width < 80 || height < 80) continue;

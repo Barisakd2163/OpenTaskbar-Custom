@@ -134,11 +134,7 @@ public static class WindowsTaskbarPinImporter
                 {
                     skippedCount++;
                 }
-                catch (IOException)
-                {
-                    skippedCount++;
-                }
-                catch (UnauthorizedAccessException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
                 {
                     skippedCount++;
                 }
@@ -388,24 +384,28 @@ public static class WindowsTaskbarPinImporter
 
     public static string? RemovePin(string shortcutPath)
     {
-        var pinDirectory = Path.GetFullPath(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Microsoft",
-            "Internet Explorer",
-            "Quick Launch",
-            "User Pinned",
-            "TaskBar"));
-        var fullPath = Path.GetFullPath(shortcutPath);
-        if (!string.Equals(Path.GetDirectoryName(fullPath), pinDirectory, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(Path.GetExtension(fullPath), ".lnk", StringComparison.OrdinalIgnoreCase))
-        {
-            return "ErrorTaskbarPinPath";
-        }
-
         try
         {
+            var pinDirectory = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft",
+                "Internet Explorer",
+                "Quick Launch",
+                "User Pinned",
+                "TaskBar"));
+            var fullPath = Path.GetFullPath(shortcutPath);
+            if (!string.Equals(Path.GetDirectoryName(fullPath), pinDirectory, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(Path.GetExtension(fullPath), ".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                return "ErrorTaskbarPinPath";
+            }
+
             File.Delete(fullPath);
             return null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return "ErrorTaskbarPinPath";
         }
         catch (IOException)
         {

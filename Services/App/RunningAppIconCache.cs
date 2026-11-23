@@ -107,14 +107,18 @@ public sealed class RunningAppIconCache
         return icon;
     }
 
+    private int _generation;
+
     /// <summary>Clears cached icon bitmaps so a DPI or display change reloads icons cleanly.</summary>
     public void Clear()
     {
+        Interlocked.Increment(ref _generation);
         _resourceIcons.Clear();
         _fileIcons.Clear();
         _appIcons.Clear();
         _appIconMisses.Clear();
         _windows.Clear();
+        _loading.Clear();
     }
 
     /// <summary>Drops entries for windows and executables that are no longer tracked, so the caches stay bounded.</summary>
@@ -204,12 +208,14 @@ public sealed class RunningAppIconCache
     private void StartLoad(string id, Func<BitmapSource?> load, Action<BitmapSource?> store)
     {
         if (!_loading.Add(id)) return;
+        var generation = Volatile.Read(ref _generation);
         var context = SynchronizationContext.Current;
         _offload!(load).ContinueWith(task =>
         {
             var result = task.IsCompletedSuccessfully ? task.Result : null;
             void Apply()
             {
+                if (generation != Volatile.Read(ref _generation)) return;
                 _loading.Remove(id);
                 store(result);
                 IconLoaded?.Invoke();

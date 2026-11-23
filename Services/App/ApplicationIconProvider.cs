@@ -462,6 +462,10 @@ public static class ApplicationIconProvider
             bitmap.Freeze();
             return bitmap;
         }
+        catch (Exception ex) when (ex is ExternalException or COMException or ArgumentException)
+        {
+            return null;
+        }
         finally
         {
             DestroyIcon(iconCopy);

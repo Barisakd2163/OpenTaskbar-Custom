@@ -39,6 +39,7 @@ public sealed record IconPackManifest(
 
 public sealed class IconPack
 {
+    private const long MaxManifestBytes = 1024 * 1024;
     public const string ManifestFileName = "pack.json";
     public const string StartKey = "@start";
     public const string RecycleBinKey = "@recyclebin";
@@ -72,7 +73,17 @@ public sealed class IconPack
     public string Directory { get; }
     public IconPackManifest Manifest { get; }
     public string DisplayName => string.IsNullOrWhiteSpace(Manifest.Name) ? Id : Manifest.Name!;
-    public IconPackFallback Fallback => Manifest.Fallback ?? new IconPackFallback();
+    public IconPackFallback Fallback
+    {
+        get
+        {
+            var fb = Manifest.Fallback;
+            if (fb is null) return new IconPackFallback();
+            var radius = double.IsFinite(fb.CornerRadius) ? Math.Clamp(fb.CornerRadius, 0.0, 1.0) : 0.5;
+            var scale = double.IsFinite(fb.IconScale) ? Math.Clamp(fb.IconScale, 0.1, 1.0) : 0.64;
+            return fb with { CornerRadius = radius, IconScale = scale };
+        }
+    }
 
     public static (IconPack? Pack, string? Error) Load(string directory)
     {
@@ -80,7 +91,9 @@ public sealed class IconPack
         var manifestPath = Path.Combine(directory, ManifestFileName);
         try
         {
-            if (!File.Exists(manifestPath)) return (null, $"{manifestPath} not found.");
+            var info = new FileInfo(manifestPath);
+            if (!info.Exists) return (null, $"{manifestPath} not found.");
+            if (info.Length > MaxManifestBytes) return (null, $"{manifestPath} exceeds size limit.");
             var manifest = JsonSerializer.Deserialize<IconPackManifest>(File.ReadAllText(manifestPath), JsonOptions);
             if (manifest is null) return (null, $"{manifestPath} is empty.");
             return (new IconPack(id, directory, manifest), null);
