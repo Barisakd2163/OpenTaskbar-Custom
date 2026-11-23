@@ -62,6 +62,11 @@ public sealed class WindowThumbnailPreview : IDisposable
     internal TimeSpan PeekDelay { get => _peekTimer.Interval; set => _peekTimer.Interval = value; }
     internal nint PeekedWindow => _peekedWindow;
     internal Border? GetOverlayCardForTesting(nint handle) => _cards.TryGetValue(handle, out var pair) ? pair.Overlay : null;
+    internal Button? GetCloseButtonForTesting(nint handle) => _cards.TryGetValue(handle, out var pair)
+        && pair.Overlay.Child is StackPanel { Children: { Count: > 0 } cardChildren }
+        && cardChildren[0] is Border { Child: DockPanel header }
+        ? header.Children.OfType<Button>().FirstOrDefault()
+        : null;
 
     public WindowThumbnailPreview(Style closeButtonStyle)
     {

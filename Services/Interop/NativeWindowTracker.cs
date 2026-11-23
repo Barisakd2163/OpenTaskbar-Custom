@@ -26,7 +26,8 @@ public sealed class NativeWindowTracker : IDisposable
     private const int WindowOwner = 4;
     private const int GwlExStyle = -20;
     private const uint GaRootOwner = 3;
-    private const uint WmClose = 0x0010;
+    private const uint WmSysCommand = 0x0112;
+    private const nuint ScClose = 0xF060;
     private const int ShowRestore = 9;
     private const int ShowMinimize = 6;
     private const uint ProcessQueryLimitedInformation = 0x1000;
@@ -591,7 +592,8 @@ public sealed class NativeWindowTracker : IDisposable
 
     public static bool RequestClose(nint windowHandle)
     {
-        return IsWindow(windowHandle) && PostMessage(windowHandle, WmClose, 0, 0);
+        // Use the same system command as a title-bar close button and modern Task Manager.
+        return IsWindow(windowHandle) && PostMessage(windowHandle, WmSysCommand, (nint)ScClose, 0);
     }
 
     public void Dispose()

@@ -737,7 +737,51 @@ internal static class FeatureAndMemoryChecks
             Check(closeCount == 1 && preview.SourceHandle == hwnd2 && clickCount == 0 && preview.PeekedWindow == 0,
                 "Middle-click must close only the hovered preview window and end peek.");
 
+            var closeTarget = new Window
+            {
+                Width = 1,
+                Height = 1,
+                Left = -10000,
+                Top = -10000,
+                ShowInTaskbar = false,
+                ShowActivated = false
+            };
+            var closeTargetClosed = false;
+            closeTarget.Closed += (_, _) => closeTargetClosed = true;
+            try
+            {
+                closeTarget.SourceInitialized += (_, _) =>
+                {
+                    if (PresentationSource.FromVisual(closeTarget) is not System.Windows.Interop.HwndSource source) return;
+                    source.AddHook((nint _, int message, nint wParam, nint _, ref bool handled) =>
+                    {
+                        if (message == 0x0112 && (wParam.ToInt64() & 0xFFF0) == 0xF060)
+                        {
+                            handled = true;
+                            closeTarget.Close();
+                        }
+                        return 0;
+                    });
+                };
+                closeTarget.Show();
+                var closeTargetHandle = new System.Windows.Interop.WindowInteropHelper(closeTarget).Handle;
+                preview.CloseRequested += (_, _) => NativeWindowTracker.RequestClose(preview.SourceHandle);
+                Check(preview.ShowForWindows([new TrackedWindow(closeTargetHandle, "Close target", null)], anchor, null),
+                    "The preview must open for a closeable test window.");
+                var closeButton = preview.GetCloseButtonForTesting(closeTargetHandle);
+                Check(closeButton is not null, "Each preview card must expose its close button.");
+                closeButton!.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                PumpDispatcher(app.Dispatcher, 100);
+                Check(closeTargetClosed && closeCount == 2,
+                    "Clicking a preview card's close button must request and close its source window.");
+            }
+            finally
+            {
+                if (!closeTargetClosed) closeTarget.Close();
+            }
+
             preview.PeekAction = (_, _, _) => throw new ExternalException("simulated DWM failure");
+            (card1, _) = ShowBoth();
             Enter(card1);
             PumpDispatcher(app.Dispatcher, 90);
             Check(preview.PeekedWindow == 0,
