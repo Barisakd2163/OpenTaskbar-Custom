@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added transition and error states to Wi-Fi and Bluetooth controls, waited for Windows to confirm radio changes (#161), and added direct Night Light control and an expanded list of Windows quick settings.
+
 ## 0.3.3 - 2026-11-22
 
 - Added pinning of selected background tray icons directly onto the dock, with stable identities across restarts (#114).

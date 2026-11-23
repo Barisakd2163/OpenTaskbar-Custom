@@ -1,48 +1,67 @@
-using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Security;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Microsoft.Win32;
-using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 using Windows.Devices.Radios;
 
 namespace OpenTaskbar.Widgets;
 
-/// <summary>
-/// V19 Quick Settings widget: compact direct toggles for Wi-Fi, Bluetooth, and Night Light
-/// backed by real Windows Radio APIs and Windows Night Light state.
-/// </summary>
 public partial class QuickSettingsWidget : DockWidget
 {
-    private readonly record struct RadioRenderState(bool Visible, bool On, bool HasRadio, AppLanguage Language);
-    private static RadioAccessStatus? _radioAccessStatus;
+    private enum Setting { Wifi, Bluetooth, NightLight }
+    private enum ChangeResult { Applied, Unavailable, Denied, Failed }
 
-    private const string NightLightStateRegPath =
-        @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\windows.data.bluelightreduction.bluelightreductionstate";
+    private static readonly IReadOnlyDictionary<Setting, string> SettingNames = new Dictionary<Setting, string>
+    {
+        [Setting.Wifi] = "WiFi",
+        [Setting.Bluetooth] = "Bluetooth",
+        [Setting.NightLight] = "NightLight"
+    };
 
-    private Radio? _wifi;
-    private Radio? _bluetooth;
-    private bool _radiosEnumerated;
-    private bool _nightLightOn;
-    private int _activationVersion;
-    private readonly HashSet<Radio> _pendingRadioChanges = [];
-    private RadioRenderState? _lastWifiState;
-    private RadioRenderState? _lastBluetoothState;
-    private bool? _lastNightLightState;
+    private static readonly (string Label, string Uri)[] SettingsPages =
+    [
+        ("QuickAirplaneMode", "ms-settings:network-airplanemode"),
+        ("QuickCellular", "ms-settings:network-cellular"),
+        ("Hotspot", "ms-settings:network-mobilehotspot"),
+        ("LauncherVpn", "ms-settings:network-vpn"),
+        ("QuickBrightness", "ms-settings:display"),
+        ("QuickRotationLock", "ms-settings:screenrotation"),
+        ("Volume", "ms-settings:sound"),
+        ("QuickNearbySharing", "ms-settings:crossdevice"),
+        ("LauncherAccessibility", "ms-settings:easeofaccess-display")
+    ];
+
+    // Primary and secondary docks share the same physical controls.
+    private static readonly Dictionary<Setting, bool> PendingTargets = [];
+    private static event Action? TransitionChanged;
+    private static Task<RadioAccessStatus>? _radioAccess;
+
+    private readonly DockFlyout _flyout = new();
+    private readonly Dictionary<Setting, (Button Button, TextBlock State)> _panelToggles = [];
+    private readonly Dictionary<Setting, ChangeResult> _errors = [];
+    private IReadOnlyList<Radio> _radios = [];
+    private CancellationTokenSource? _activation;
+    private bool? _nightLightOn;
+    private bool _loadingRadios;
+
+    internal Func<bool?> ReadNightLight { get; init; } = NightLightControl.Read;
+    internal Func<bool, bool> WriteNightLight { get; init; } = NightLightControl.Set;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 20;
-    public override double FullWidthEstimate => 112;
-    public override double CompactWidthEstimate => 82;
+    public override double FullWidthEstimate => 141;
+    public override double CompactWidthEstimate => 108;
 
     public QuickSettingsWidget()
     {
         InitializeComponent();
+        _flyout.Closed += (_, _) => _panelToggles.Clear();
         Render();
     }
 
@@ -51,232 +70,351 @@ public partial class QuickSettingsWidget : DockWidget
 
     private void ApplyDensityLayout()
     {
-        var compact = IsCompact && !IsHoverExpanded;
-        NightLightPill.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        BluetoothPill.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 4, 0);
+        NightLightPill.Visibility = IsCompact && !IsHoverExpanded ? Visibility.Collapsed : Visibility.Visible;
         RaiseContentWidthChanged();
     }
 
-    // V19: Direct controls do not open a generic hover flyout.
-    public override UIElement? BuildHoverFlyoutContent() => null;
-
     protected override async void OnActivated()
     {
-        var activationVersion = ++_activationVersion;
-        UiText.Current.PropertyChanged += UiText_PropertyChanged;
-        _lastWifiState = null;
-        _lastBluetoothState = null;
-        _lastNightLightState = null;
-        _radiosEnumerated = false;
-        _nightLightOn = ReadWindowsNightLightEnabled();
-
+        _activation = new CancellationTokenSource();
+        var token = _activation.Token;
+        TransitionChanged += RefreshState;
+        _loadingRadios = true;
+        RefreshState();
         try
         {
-            var radios = await Radio.GetRadiosAsync();
-            if (!IsActive || activationVersion != _activationVersion) return;
-            _radiosEnumerated = radios.Count > 0;
-            _wifi = radios.FirstOrDefault(radio => radio.Kind == RadioKind.WiFi);
-            _bluetooth = radios.FirstOrDefault(radio => radio.Kind == RadioKind.Bluetooth);
-            if (_wifi is not null) _wifi.StateChanged += Radio_StateChanged;
-            if (_bluetooth is not null) _bluetooth.StateChanged += Radio_StateChanged;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(8));
+            var radios = await Radio.GetRadiosAsync().AsTask(timeout.Token);
+            if (token.IsCancellationRequested) return;
+
+            _radios = radios.Where(radio => radio.Kind is RadioKind.WiFi or RadioKind.Bluetooth).ToArray();
+            foreach (var radio in _radios)
+                radio.StateChanged += Radio_StateChanged;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidOperationException
+            or OperationCanceledException)
         {
-            if (activationVersion != _activationVersion) return;
-            AppLog.Warning($"Radio access unavailable: {ex.Message}");
-            _radiosEnumerated = false;
+            AppLog.Warning($"Quick settings radio discovery failed ({ex.GetType().Name}).");
         }
-
-        RenderForActivation(activationVersion);
-    }
-
-    private void RenderForActivation(int activationVersion)
-    {
-        if (Dispatcher.CheckAccess())
+        finally
         {
-            if (IsActive && activationVersion == _activationVersion) Render();
-            return;
-        }
-        Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
-        {
-            if (IsActive && activationVersion == _activationVersion) Render();
-        });
-    }
-
-    protected override void OnDeactivated()
-    {
-        _activationVersion++;
-        _pendingRadioChanges.Clear();
-        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
-        if (_wifi is not null) _wifi.StateChanged -= Radio_StateChanged;
-        if (_bluetooth is not null) _bluetooth.StateChanged -= Radio_StateChanged;
-        _wifi = null;
-        _bluetooth = null;
-        _lastWifiState = null;
-        _lastBluetoothState = null;
-        _lastNightLightState = null;
-        _radiosEnumerated = false;
-    }
-
-    protected override void OnTick(DateTime now)
-    {
-        // Keep Night Light indicator synchronized with Windows settings.
-        if (now.Second % 5 == 0)
-        {
-            var current = ReadWindowsNightLightEnabled();
-            if (current != _nightLightOn)
+            if (!token.IsCancellationRequested)
             {
-                _nightLightOn = current;
-                RenderNightLight();
+                _loadingRadios = false;
+                Render();
             }
         }
     }
 
-    private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => Render();
+    protected override void OnDeactivated()
+    {
+        _activation?.Cancel();
+        _activation?.Dispose();
+        _activation = null;
+        TransitionChanged -= RefreshState;
+        foreach (var radio in _radios)
+            radio.StateChanged -= Radio_StateChanged;
+        _radios = [];
+        _nightLightOn = null;
+        _loadingRadios = false;
+        _errors.Clear();
+        _flyout.Close();
+        Render();
+    }
+
+    protected override void OnTick(DateTime now)
+    {
+        if (now.Second % 5 == 0) RefreshState();
+    }
+
+    protected override void OnLanguageChanged()
+    {
+        _flyout.Close();
+        Render();
+    }
 
     private void Radio_StateChanged(Radio sender, object args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive) Render();
+            if (IsActive && _radios.Contains(sender)) Render();
         });
+
+    private void RefreshState()
+    {
+        try
+        {
+            _nightLightOn = ReadNightLight();
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or SecurityException)
+        {
+            _nightLightOn = null;
+        }
+        Render();
+    }
+
+    private Radio[] RadiosFor(Setting setting) =>
+        _radios.Where(radio => radio.Kind == (setting == Setting.Wifi ? RadioKind.WiFi : RadioKind.Bluetooth)).ToArray();
+
+    private static bool? RadioIsOn(IReadOnlyList<Radio> radios)
+    {
+        if (radios.Any(radio => radio.State == RadioState.On)) return true;
+        return radios.Any(radio => radio.State == RadioState.Off) ? false : null;
+    }
 
     private void Render()
     {
-        RenderRadio(_wifi, WifiPill, WifiToggle, "WiFi", ref _lastWifiState);
-        RenderRadio(_bluetooth, BluetoothPill, BluetoothToggle, "Bluetooth", ref _lastBluetoothState);
-        RenderNightLight();
+        RenderSetting(Setting.Wifi, WifiToggle, WifiPill, RadioIsOn(RadiosFor(Setting.Wifi)));
+        RenderSetting(Setting.Bluetooth, BluetoothToggle, BluetoothPill, RadioIsOn(RadiosFor(Setting.Bluetooth)));
+        RenderSetting(Setting.NightLight, NightLightToggle, NightLightPill, _nightLightOn);
+        MoreButton.IsEnabled = IsActive;
     }
 
-    private void RenderRadio(Radio? radio, Border pill, ToggleButton toggle, string nameKey, ref RadioRenderState? lastState)
+    private void RenderSetting(Setting setting, ToggleButton button, Border pill, bool? on)
     {
-        var visible = !(_radiosEnumerated && radio is null && IsActive);
-        var on = radio?.State == RadioState.On;
-        var hasRadio = radio is not null;
-        var lang = UiText.Current.Language;
-        var nextState = new RadioRenderState(visible, on, hasRadio, lang);
-        if (lastState == nextState) return;
-        lastState = nextState;
+        var pending = PendingTargets.TryGetValue(setting, out var target);
+        var label = UiText.Get(SettingNames[setting]);
+        var stateKey = pending ? (target ? "QuickTurningOn" : "QuickTurningOff")
+            : _loadingRadios && setting != Setting.NightLight ? "QuickLoading"
+            : on switch { true => "QuickOn", false => "QuickOff", null => "QuickUnavailable" };
+        var state = UiText.Get(stateKey);
+        if (!pending && _errors.TryGetValue(setting, out var error))
+            state += " · " + UiText.Get(ErrorKey(error));
 
-        pill.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        toggle.IsChecked = on;
-        ApplyChipVisual(pill, toggle, on);
+        var enabled = IsActive && !pending && on.HasValue;
+        button.IsChecked = on == true;
+        button.IsEnabled = enabled;
+        button.ToolTip = $"{label} · {state}";
+        ToolTipService.SetShowOnDisabled(button, true);
+        AutomationProperties.SetName(button, label);
+        AutomationProperties.SetItemStatus(button, state);
+        ApplyChipVisual(pill, button, on == true);
 
-        var name = UiText.Get(nameKey);
-        var toggleLabel = hasRadio ? UiText.Format("RadioToggle", name) : UiText.Format("RadioSettings", name);
-        toggle.ToolTip = toggleLabel;
-        AutomationProperties.SetName(toggle, toggleLabel);
+        if (_panelToggles.TryGetValue(setting, out var panel))
+        {
+            panel.State.Text = state;
+            panel.Button.IsEnabled = enabled;
+            AutomationProperties.SetItemStatus(panel.Button, state);
+        }
     }
 
-    private void RenderNightLight()
+    private static void ApplyChipVisual(Border pill, ToggleButton button, bool on)
     {
-        if (_lastNightLightState == _nightLightOn) return;
-        _lastNightLightState = _nightLightOn;
-        NightLightToggle.IsChecked = _nightLightOn;
-        ApplyChipVisual(NightLightPill, NightLightToggle, _nightLightOn);
-        var label = UiText.Get("NightLight");
-        NightLightToggle.ToolTip = label;
-        AutomationProperties.SetName(NightLightToggle, label);
-    }
-
-    private static void ApplyChipVisual(Border pill, ToggleButton toggle, bool isOn)
-    {
-        if (isOn)
+        if (on)
         {
             pill.SetResourceReference(Border.BackgroundProperty, "WidgetSelectedFill");
             pill.SetResourceReference(Border.BorderBrushProperty, "WidgetSelectedStroke");
-            toggle.SetResourceReference(ForegroundProperty, "WidgetSelectedForeground");
+            button.SetResourceReference(ForegroundProperty, "WidgetSelectedForeground");
         }
         else
         {
             pill.Background = Brushes.Transparent;
             pill.BorderBrush = Brushes.Transparent;
-            toggle.SetResourceReference(ForegroundProperty, "TextSecondary");
+            button.SetResourceReference(ForegroundProperty, "TextSecondary");
         }
     }
 
-    private async void ToggleRadio(Radio radio)
+    private void WifiToggle_Click(object sender, RoutedEventArgs e) => Toggle(Setting.Wifi);
+    private void BluetoothToggle_Click(object sender, RoutedEventArgs e) => Toggle(Setting.Bluetooth);
+    private void NightLightToggle_Click(object sender, RoutedEventArgs e) => Toggle(Setting.NightLight);
+
+    private async void Toggle(Setting setting)
     {
-        if (!_pendingRadioChanges.Add(radio)) return;
-        var activationVersion = _activationVersion;
-        try
+        var activation = _activation;
+        if (activation is null) return;
+        if (PendingTargets.ContainsKey(setting))
         {
-            var access = _radioAccessStatus;
-            if (access is null)
-            {
-                access = await Radio.RequestAccessAsync();
-                _radioAccessStatus = access;
-            }
-            if (!IsActive || activationVersion != _activationVersion) return;
-            if (access != RadioAccessStatus.Allowed)
-            {
-                AppLog.Warning($"Radio {radio.Kind} access denied: {access}");
-                Report(ShellShortcuts.OpenQuickSettings(this));
-                return;
-            }
-
-            var target = radio.State == RadioState.On ? RadioState.Off : RadioState.On;
-            var result = await radio.SetStateAsync(target);
-            if (!IsActive || activationVersion != _activationVersion) return;
-            if (result != RadioAccessStatus.Allowed)
-            {
-                AppLog.Warning($"Radio {radio.Kind} state change denied: {result}");
-                Report(ShellShortcuts.OpenQuickSettings(this));
-            }
-        }
-        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            AppLog.Warning($"Radio {radio.Kind} state change failed: {ex.Message}");
-            if (IsActive && activationVersion == _activationVersion)
-                Report(ShellShortcuts.OpenQuickSettings(this));
-        }
-        finally
-        {
-            _pendingRadioChanges.Remove(radio);
-        }
-
-        if (IsActive && activationVersion == _activationVersion) Render();
-    }
-
-    private void WifiToggle_Click(object sender, RoutedEventArgs e) =>
-        ToggleRadioFromQuickSettings(_wifi, WifiToggle, "WiFi");
-
-    private void BluetoothToggle_Click(object sender, RoutedEventArgs e) =>
-        ToggleRadioFromQuickSettings(_bluetooth, BluetoothToggle, "Bluetooth");
-
-    private void NightLightToggle_Click(object sender, RoutedEventArgs e)
-    {
-        // Keep the visual toggle faithful to real Windows Night Light state; open Windows Night Light settings
-        // so the user controls the authoritative OS setting without fake client-only switches.
-        NightLightToggle.IsChecked = _nightLightOn;
-        Report(ShellShortcuts.OpenUri("ms-settings:nightlight"));
-    }
-
-    private static bool ReadWindowsNightLightEnabled()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(NightLightStateRegPath);
-            if (key?.GetValue("Data") is not byte[] data || data.Length < 25) return false;
-            // Windows CloudStore Night Light binary blob: byte 18 is 0x15 when enabled (length >= 43) and 0x13 when disabled.
-            return data[18] == 0x15;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void ToggleRadioFromQuickSettings(Radio? radio, ToggleButton toggle, string nameKey)
-    {
-        if (radio is null)
-        {
-            AppLog.Info($"Radio {nameKey} unavailable; opening Windows Quick Settings.");
-            Report(ShellShortcuts.OpenQuickSettings(this));
+            Render();
             return;
         }
 
-        toggle.IsChecked = radio.State == RadioState.On;
-        ToggleRadio(radio);
+        if (setting == Setting.NightLight) RefreshState();
+        var radios = setting == Setting.NightLight ? [] : RadiosFor(setting);
+        var on = setting == Setting.NightLight ? _nightLightOn : RadioIsOn(radios);
+        if (!on.HasValue)
+        {
+            Render();
+            return;
+        }
+
+        var target = !on.Value;
+        PendingTargets.Add(setting, target);
+        var token = activation.Token;
+        var result = ChangeResult.Failed;
+        _errors.Remove(setting);
+        try
+        {
+            TransitionChanged?.Invoke();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(8));
+            result = setting == Setting.NightLight
+                ? await SetNightLightAsync(target, timeout.Token)
+                : await SetRadiosAsync(radios, target, timeout.Token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidOperationException
+            or IOException or SecurityException or OperationCanceledException)
+        {
+            AppLog.Warning($"Quick settings {setting} change failed ({ex.GetType().Name}).");
+            if (ex is UnauthorizedAccessException or SecurityException) result = ChangeResult.Denied;
+        }
+        finally
+        {
+            PendingTargets.Remove(setting);
+            if (!token.IsCancellationRequested && result != ChangeResult.Applied)
+                _errors[setting] = result;
+            TransitionChanged?.Invoke();
+        }
+
+        if (!token.IsCancellationRequested && result != ChangeResult.Applied)
+            Report(ErrorKey(result));
     }
 
+    private static string ErrorKey(ChangeResult result) => result switch
+    {
+        ChangeResult.Denied => "QuickPermissionDenied",
+        ChangeResult.Unavailable => "QuickUnavailable",
+        _ => "QuickChangeFailed"
+    };
+
+    private static async Task<ChangeResult> SetRadiosAsync(Radio[] radios, bool on, CancellationToken token)
+    {
+        // Share permission discovery while Wi-Fi and Bluetooth requests overlap. A denial is not cached.
+        var pendingAccess = _radioAccess ??= RequestRadioAccessAsync();
+        RadioAccessStatus access;
+        try
+        {
+            access = await pendingAccess;
+        }
+        finally
+        {
+            if (ReferenceEquals(_radioAccess, pendingAccess) && !pendingAccess.IsCompletedSuccessfully)
+                _radioAccess = null;
+        }
+
+        if (access != RadioAccessStatus.Allowed)
+        {
+            if (ReferenceEquals(_radioAccess, pendingAccess)) _radioAccess = null;
+            return ChangeResult.Denied;
+        }
+        token.ThrowIfCancellationRequested();
+
+        var target = on ? RadioState.On : RadioState.Off;
+        var controllable = radios.Where(radio => radio.State is RadioState.On or RadioState.Off).ToArray();
+        if (controllable.Length == 0) return ChangeResult.Unavailable;
+
+        foreach (var radio in controllable)
+        {
+            if (radio.State == target) continue;
+            if (await radio.SetStateAsync(target).AsTask(token) != RadioAccessStatus.Allowed)
+                return ChangeResult.Denied;
+        }
+
+        // Allowed is permission to change the radio. Drivers may apply it later or override it.
+        bool Confirmed() => controllable.All(radio =>
+        {
+            var state = radio.State;
+            return state == target || (!on && state == RadioState.Disabled);
+        });
+        while (!Confirmed())
+            await Task.Delay(100, token);
+        return ChangeResult.Applied;
+    }
+
+    private static async Task<RadioAccessStatus> RequestRadioAccessAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        return await Radio.RequestAccessAsync().AsTask(timeout.Token);
+    }
+
+    private async Task<ChangeResult> SetNightLightAsync(bool on, CancellationToken token)
+    {
+        var written = await Task.Run(() => WriteNightLight(on), token);
+        if (!written) return ChangeResult.Unavailable;
+
+        // Give the shell a chance to reconcile CloudStore before checking the persisted state.
+        await Task.Delay(300, token);
+        return ReadNightLight() == on ? ChangeResult.Applied : ChangeResult.Failed;
+    }
+
+    private void MoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsActive) _flyout.Toggle(MoreButton, BuildSettingsPanel, focusable: true);
+    }
+
+    private UIElement BuildSettingsPanel()
+    {
+        var windows11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+        var panel = new StackPanel { MinWidth = 236, MaxWidth = 312 };
+        foreach (var (setting, labelKey) in SettingNames)
+        {
+            var label = UiText.Get(labelKey);
+            var row = new StackPanel();
+            row.Children.Add(DockFlyout.Heading(label));
+            var state = DockFlyout.Caption(string.Empty);
+            row.Children.Add(state);
+            var toggle = DockFlyout.FlatButton(row, (_, _) => Toggle(setting));
+            toggle.HorizontalContentAlignment = HorizontalAlignment.Left;
+            AutomationProperties.SetName(toggle, label);
+            panel.Children.Add(toggle);
+            _panelToggles.Add(setting, (toggle, state));
+        }
+        Render();
+        panel.Children.Add(DockFlyout.Heading(UiText.Get("QuickWindowsShortcuts")));
+
+        void AddAction(string labelKey, Func<string?> action)
+        {
+            var label = UiText.Get(labelKey);
+            var text = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap };
+            var button = DockFlyout.FlatButton(text, (_, _) =>
+            {
+                _flyout.Close(restoreFocus: false);
+                Report(action());
+            }, label);
+            button.HorizontalContentAlignment = HorizontalAlignment.Left;
+            panel.Children.Add(button);
+        }
+
+        AddAction("QuickAvailableNetworks", () => ShellShortcuts.OpenAvailableNetworks(MoreButton));
+        AddAction("Display", () => ShellShortcuts.OpenProjection(MoreButton));
+        AddAction("QuickCast", ShellShortcuts.OpenCast);
+        AddAction("QuickBluetoothSettings", () => ShellShortcuts.OpenUri("ms-settings:bluetooth"));
+        AddAction("QuickNightLightSettings", () => ShellShortcuts.OpenUri("ms-settings:nightlight"));
+        foreach (var (label, uri) in SettingsPages)
+            AddAction(label, () => ShellShortcuts.OpenUri(uri));
+        AddAction("QuickEnergySaver", () => ShellShortcuts.OpenUri(windows11 ? "ms-settings:powersleep" : "ms-settings:batterysaver"));
+        AddAction("QuickNotificationMode", () => ShellShortcuts.OpenUri(windows11 ? "ms-settings:notifications" : "ms-settings:quiethours"));
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621))
+        {
+            AddAction("QuickLiveCaptions", () => ShellShortcuts.OpenUri("ms-settings:easeofaccess-closedcaptioning"));
+            AddAction("QuickStudioEffects", () => ShellShortcuts.OpenQuickSettings(MoreButton));
+        }
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100))
+            AddAction("QuickHearingDevices", () => ShellShortcuts.OpenUri("ms-settings:easeofaccess-hearingaids"));
+        AddAction("NotificationCenter", () => windows11
+            ? ShellShortcuts.OpenNotificationCenter(MoreButton)
+            : ShellShortcuts.OpenQuickSettings(MoreButton));
+
+        var scroll = new ScrollViewer
+        {
+            Content = panel,
+            MaxHeight = 330,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        var root = new DockPanel();
+        var nativeLabel = UiText.Get("QuickOpenWindowsPanel");
+        var nativeText = new TextBlock { Text = nativeLabel, TextWrapping = TextWrapping.Wrap };
+        var native = DockFlyout.FlatButton(nativeText, (_, _) =>
+        {
+            _flyout.Close(restoreFocus: false);
+            Report(ShellShortcuts.OpenQuickSettings(MoreButton));
+        }, nativeLabel);
+        DockPanel.SetDock(native, Dock.Bottom);
+        root.Children.Add(native);
+        root.MaxWidth = 330;
+        root.Children.Add(scroll);
+        return root;
+    }
 }

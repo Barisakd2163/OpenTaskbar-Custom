@@ -59,6 +59,7 @@ internal static class WidgetViewChecks
             checks += FeatureAndMemoryChecks.Run(app);
             checks += SettingsAndAutoHideChecks.Run(app);
             checks += AdaptiveWidgetAndConfirmChecks.Run(app);
+            checks += QuickSettingsChecks.RunUi();
             checks += NetSpeedChecks.Run(app);
             checks += BluetoothBatteryChecks.Run(app);
             checks += SystemStatsAvailabilityChecks.Run(app);

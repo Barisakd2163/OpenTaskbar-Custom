@@ -23,6 +23,7 @@ public static partial class ShellShortcuts
     public const ushort VkTab = 0x09;
     public const ushort VkD = 0x44;
     private const ushort VkA = 0x41;
+    private const ushort VkK = 0x4B;
     private const ushort VkN = 0x4E;
     private const ushort VkP = 0x50;
     private const ushort VkS = 0x53;
@@ -41,6 +42,8 @@ public static partial class ShellShortcuts
         positions => ShellFlyoutPositionJournal.Write(positions),
         () => ShellFlyoutPositionJournal.Delete());
     public static Func<bool>? IsMediaWidgetActive { get; set; }
+
+    public static string? OpenCast() => SendWindowsShortcut(VkK);
 
     /// <summary>
     /// Cancels every pending anchoring pass and puts Start, Search and Control Center back where Windows had them.
