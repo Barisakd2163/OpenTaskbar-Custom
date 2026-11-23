@@ -3,6 +3,7 @@
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime"
                     xmlns:svc="clr-namespace:OpenTaskbar.Services"
                     xmlns:views="clr-namespace:OpenTaskbar.Views"
+                    xmlns:widgets="clr-namespace:OpenTaskbar.Widgets"
                     xmlns:models="clr-namespace:OpenTaskbar.Models">
     <Style x:Key="WidgetIcon" TargetType="ContentControl">
         <Setter Property="Width" Value="16" />
@@ -352,6 +353,7 @@
         <Setter Property="SmallChange" Value="2" />
         <Setter Property="LargeChange" Value="10" />
         <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="widgets:SliderTrackDrag.IsEnabled" Value="True" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -393,6 +395,7 @@
     </Style>
 
     <Style x:Key="MediaProgressSlider" TargetType="Slider" BasedOn="{StaticResource WidgetSlider}">
+        <Setter Property="widgets:SliderTrackDrag.IsEnabled" Value="False" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
