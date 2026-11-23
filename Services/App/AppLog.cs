@@ -59,6 +59,20 @@ public static class AppLog
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+        finally
+        {
+            if (_writer is null)
+            {
+                try
+                {
+                    var stream = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                    var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: stream.Length == 0);
+                    _writer = new StreamWriter(stream, encoding) { AutoFlush = true };
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
     }
 
     public static void Info(string message) => Write("INFO", message);

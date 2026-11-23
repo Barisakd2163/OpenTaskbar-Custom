@@ -126,12 +126,15 @@ public partial class App : Application
 
     private void SystemEvents_UserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
+        if (e.Category is not (UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.VisualStyle))
+            return;
         if (Preferences.Current.Theme != OpenTaskbar.Models.AppTheme.System || Dispatcher.HasShutdownStarted) return;
-        // SystemEvents uses a different thread; replay the current preferences on the UI dispatcher.
+        // SystemEvents uses a different thread; re-apply only if the resolved system light/dark mode actually changed.
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (Dispatcher.HasShutdownStarted || Preferences.Current.Theme != OpenTaskbar.Models.AppTheme.System) return;
-            if (Preferences.Save(Preferences.Current) is { } error) AppLog.Warning(error);
+            if (OpenTaskbar.Services.ThemeManager.WindowsTheme() == OpenTaskbar.Services.ThemeManager.EffectiveTheme) return;
+            OpenTaskbar.Services.ThemeManager.Apply(OpenTaskbar.Models.AppTheme.System, Preferences.Current);
         }));
     }
 

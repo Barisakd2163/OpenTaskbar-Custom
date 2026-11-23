@@ -117,8 +117,7 @@ public static class CountryCityService
             AppLog.Warning($"Country list fetch failed, using fallback: {ex.Message}");
         }
 
-        _cachedCountries = FallbackCountries;
-        return _cachedCountries;
+        return FallbackCountries;
     }
 
     public static async Task<IReadOnlyList<string>> GetCitiesAsync(string country, CancellationToken cancellation = default)
@@ -140,6 +139,7 @@ public static class CountryCityService
                     var cities = new List<string>();
                     foreach (var cityEl in data.EnumerateArray())
                     {
+                        if (cityEl.ValueKind != JsonValueKind.String) continue;
                         var cityName = cityEl.GetString();
                         if (!string.IsNullOrWhiteSpace(cityName)) cities.Add(cityName);
                     }
@@ -152,7 +152,7 @@ public static class CountryCityService
                 }
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException or InvalidOperationException)
         {
             AppLog.Warning($"City list fetch for {country} failed: {ex.Message}");
         }

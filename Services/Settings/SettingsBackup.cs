@@ -57,10 +57,10 @@ public static class SettingsBackup
             settings = DockSettingsStore.MigrateLegacyAiUsage(settings);
             settings = DockProfileService.EnsureDefaultProfile(settings);
             if (!DockSettingsStore.Validate(settings)) return (null, [], "ErrorSettingsFileInvalid");
-            var pins = (backup.Pins ?? []).Where(pin => !string.IsNullOrWhiteSpace(pin.ExecutablePath)).ToList();
+            var pins = (backup.Pins ?? []).Where(pin => pin is not null && !string.IsNullOrWhiteSpace(pin.ExecutablePath)).ToList();
             return (settings, pins, null);
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or NullReferenceException)
         {
             AppLog.Warning($"Settings import failed: {ex.Message}");
             return (null, [], "ErrorSettingsFileInvalid");

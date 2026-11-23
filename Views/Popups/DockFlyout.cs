@@ -335,6 +335,11 @@ public sealed class DockFlyout
             {
                 AppLog.Warning($"Failed to set mouse hook: {ex.Message}");
             }
+            if (_mouseHook == 0)
+            {
+                _popup.StaysOpen = false;
+                _mouseHookDelegate = null;
+            }
         }
     }
 

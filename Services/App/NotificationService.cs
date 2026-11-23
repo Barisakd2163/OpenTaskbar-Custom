@@ -75,8 +75,9 @@ public static class NotificationService
             xml.LoadXml(xmlString);
 
             var toast = new ToastNotification(xml);
-            toast.Activated += (_, _) =>
+            toast.Activated += (s, _) =>
             {
+                lock (_activeToasts) _activeToasts.Remove(s);
                 AppLog.Info("Update toast activated.");
                 UpdateRequested?.Invoke();
             };
