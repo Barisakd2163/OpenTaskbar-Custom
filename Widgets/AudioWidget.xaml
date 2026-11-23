@@ -11,7 +11,7 @@
                             Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,7,0"
                             Foreground="{DynamicResource TextPrimary}" />
             <TextBlock x:Name="VolumeText" Style="{StaticResource WidgetText}" Text="—"
-                       FontSize="12.5" FontWeight="SemiBold" MinWidth="34" VerticalAlignment="Center"
+                       FontSize="12.5" FontWeight="SemiBold" MinWidth="38" VerticalAlignment="Center"
                        Foreground="{DynamicResource TextPrimary}" Typography.NumeralAlignment="Tabular" />
         </StackPanel>
     </Button>
