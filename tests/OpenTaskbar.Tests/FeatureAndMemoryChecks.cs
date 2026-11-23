@@ -296,9 +296,14 @@ internal static class FeatureAndMemoryChecks
         var timer = typeof(WidgetCoordinator).GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)
             ?.GetValue(coordinator) as DispatcherTimer
             ?? throw new InvalidOperationException("Missing WidgetCoordinator polling timer.");
+        var availabilityChanges = 0;
+        coordinator.AvailabilityChanged += () => availabilityChanges++;
 
         var settings = new DockSettings(Widgets: ["Clock", "Focus"], FocusModeEnabled: false);
         coordinator.Apply(settings);
+        Check(availabilityChanges == 1,
+            "Applying multiple active widgets must batch dock availability changes into one layout notification.");
+        availabilityChanges = 0;
         var widgets = coordinator.ActiveWidgets;
         Check(widgets.Count == 2 && widgets.GetValueOrDefault("Clock") is ClockWidget
             && widgets.GetValueOrDefault("Focus") is FocusWidget,
@@ -307,11 +312,16 @@ internal static class FeatureAndMemoryChecks
 
         var focused = settings with { FocusModeEnabled = true };
         coordinator.Apply(focused);
+        Check(availabilityChanges == 1,
+            "Deactivating multiple widgets must batch dock availability changes into one layout notification.");
+        availabilityChanges = 0;
         CheckWidgetState(active: false, Visibility.Collapsed, "While Focus Mode is enabled");
         Check(focused.Widgets is ["Clock", "Focus"] && settings.Widgets is ["Clock", "Focus"],
             "Enabling Focus Mode must preserve the configured Clock and Focus widgets.");
 
         coordinator.Apply(focused with { FocusModeEnabled = false });
+        Check(availabilityChanges == 1,
+            "Reactivating multiple widgets must batch dock availability changes into one layout notification.");
         CheckWidgetState(active: true, Visibility.Visible, "After disabling Focus Mode");
         var restored = coordinator.ActiveWidgets;
         Check(restored.Count == widgets.Count

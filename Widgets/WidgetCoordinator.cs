@@ -64,6 +64,8 @@ public sealed class WidgetCoordinator : IDisposable
     private Point _dragStartPoint;
     private DockWidget? _draggedWidget;
     private bool _disposed;
+    private bool _batchingApply;
+    private bool _availabilityChangePending;
 
     public Action<IReadOnlyList<string>>? OrderChanged { get; set; }
     public Action<DockSettings>? WidgetSettingsUpdated { get; set; }
@@ -219,46 +221,59 @@ public sealed class WidgetCoordinator : IDisposable
     {
         if (_disposed) return;
 
-        if (settings.WidgetOrder is { Count: > 0 } order)
+        _batchingApply = true;
+        try
         {
-            ApplyOrder(order);
-        }
-
-        var anyActive = false;
-        var stripNeedsSync = false;
-        foreach (var slot in _widgets)
-        {
-            if (!settings.FocusModeEnabled && slot.IsEnabled(settings))
+            if (settings.WidgetOrder is { Count: > 0 } order)
             {
-                var wasCreated = slot.Widget is null;
-                var widget = EnsureWidget(slot);
-                if (wasCreated) stripNeedsSync = true;
-                widget.ApplySettings(settings);
-                widget.Activate();
-                anyActive = true;
+                ApplyOrder(order);
             }
-            else if (slot.Widget is { } widget)
+
+            var anyActive = false;
+            var stripNeedsSync = false;
+            foreach (var slot in _widgets)
             {
-                widget.ApplySettings(settings);
-                widget.Deactivate();
+                if (!settings.FocusModeEnabled && slot.IsEnabled(settings))
+                {
+                    var wasCreated = slot.Widget is null;
+                    var widget = EnsureWidget(slot);
+                    if (wasCreated) stripNeedsSync = true;
+                    widget.ApplySettings(settings);
+                    widget.Activate();
+                    anyActive = true;
+                }
+                else if (slot.Widget is { } widget)
+                {
+                    widget.ApplySettings(settings);
+                    widget.Deactivate();
+                }
+            }
+
+            if (stripNeedsSync)
+            {
+                PlaceWidgets();
+            }
+
+            HasActiveWidgets = anyActive;
+
+            if (anyActive)
+            {
+                Timer_Tick(null, EventArgs.Empty);
+                _timer.Start();
+            }
+            else
+            {
+                _timer.Stop();
             }
         }
-
-        if (stripNeedsSync)
+        finally
         {
-            PlaceWidgets();
-        }
-
-        HasActiveWidgets = anyActive;
-
-        if (anyActive)
-        {
-            Timer_Tick(null, EventArgs.Empty);
-            _timer.Start();
-        }
-        else
-        {
-            _timer.Stop();
+            _batchingApply = false;
+            if (_availabilityChangePending)
+            {
+                _availabilityChangePending = false;
+                AvailabilityChanged?.Invoke();
+            }
         }
     }
 
@@ -543,7 +558,16 @@ public sealed class WidgetCoordinator : IDisposable
         WidgetsPlaced?.Invoke();
     }
 
-    private void Widget_AvailabilityChanged(object? sender, EventArgs e) => AvailabilityChanged?.Invoke();
+    private void Widget_AvailabilityChanged(object? sender, EventArgs e)
+    {
+        if (_batchingApply)
+        {
+            _availabilityChangePending = true;
+            return;
+        }
+
+        AvailabilityChanged?.Invoke();
+    }
 
     private void Timer_Tick(object? sender, EventArgs e)
     {
