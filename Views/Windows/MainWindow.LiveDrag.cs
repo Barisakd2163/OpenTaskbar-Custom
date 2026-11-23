@@ -68,12 +68,10 @@ public partial class MainWindow
 
     private void DockContents_LiveDragLeave(object sender, DragEventArgs e)
     {
-        if (_liveDrag is not { } drag) return;
+        if (_liveDrag is null) return;
         // DragLeave also fires crossing from one item to the next; only a real exit leaves the bounds.
         if (new Rect(DockContents.RenderSize).Contains(e.GetPosition(DockContents))) return;
-        drag.InsertionIndex = -1;
-        drag.Offset = 0;
-        foreach (var slot in drag.Slots) Slide(slot.Translate, 0);
+        CancelLiveDrag();
     }
 
     private void BeginLiveDrag(string token, double pointer)
