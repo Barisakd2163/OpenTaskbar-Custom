@@ -456,7 +456,7 @@ public partial class SettingsWindow : Window
             chrome.GlassFrameThickness = new Thickness(0);
             return;
         }
-        var glass = SettingsBackdrop.TryEnable(this, ThemeManager.EffectiveTheme);
+        var glass = SettingsBackdrop.TryEnableTransparent(this, ThemeManager.EffectiveTheme);
         SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, glass ? "SettingsGlassMaterial" : "SettingsBackground");
         chrome.GlassFrameThickness = glass ? new Thickness(-1) : new Thickness(0);
     }
