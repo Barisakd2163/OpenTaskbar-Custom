@@ -50,6 +50,17 @@ internal static class TaskbarWindowChecks
         Check(!TaskbarWindowRules.IsHiddenImmersiveFrame("MozillaWindowClass", 0),
             "Normal application classes must never be treated as immersive frames.");
 
+        const string systemApps = @"C:\Windows\SystemApps";
+        Check(!TaskbarWindowRules.IsExcludedWindowsSystemApp(
+                @"C:\Windows\SystemApps\Microsoft.Windows.ImmersiveControlPanel\SystemSettings.exe", systemApps),
+            "Windows Settings must remain eligible for running app previews.");
+        Check(TaskbarWindowRules.IsExcludedWindowsSystemApp(
+                @"C:\Windows\SystemApps\ShellExperienceHost.exe", systemApps),
+            "Other internal Windows system apps must stay excluded.");
+        Check(!TaskbarWindowRules.IsExcludedWindowsSystemApp(
+                @"C:\Windows\System32\SystemSettings.exe", systemApps),
+            "SystemSettings.exe outside SystemApps must not be classified by its filename alone.");
+
         return checks;
     }
 }

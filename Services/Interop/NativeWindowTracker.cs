@@ -440,7 +440,8 @@ public sealed class NativeWindowTracker : IDisposable
         }
         // A first lookup can fail for a just-starting process; retry it instead of hiding the app forever.
         var executablePath = previous?.ExecutablePath ?? GetExecutablePath(windowHandle);
-        if (IsWindowsSystemApp(executablePath) || IsExplorerShellWindow(executablePath, windowHandle, context.ClassBuffer))
+        if (TaskbarWindowRules.IsExcludedWindowsSystemApp(executablePath, WindowsSystemAppsDirectory)
+            || IsExplorerShellWindow(executablePath, windowHandle, context.ClassBuffer))
         {
             context.QuietFound.Add(windowHandle);
             return true;
@@ -792,12 +793,6 @@ public sealed class NativeWindowTracker : IDisposable
         {
             CloseHandle(processHandle);
         }
-    }
-
-    private static bool IsWindowsSystemApp(string? executablePath)
-    {
-        return executablePath is not null
-            && executablePath.StartsWith(WindowsSystemAppsDirectory, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsExplorerShellWindow(string? executablePath, nint windowHandle, char[] classBuffer)

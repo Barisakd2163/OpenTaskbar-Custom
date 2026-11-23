@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace OpenTaskbar.Services;
 
 /// <summary>
@@ -13,6 +15,14 @@ internal static class TaskbarWindowRules
     internal const long WindowEdge = 0x00000100;
     internal const int CloakedShell = 0x00000002;
     internal const string DeletedFromTaskbarProperty = "ITaskList_Deleted";
+
+    internal static bool IsExcludedWindowsSystemApp(string? executablePath, string systemAppsDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath)) return false;
+        var directory = Path.TrimEndingDirectorySeparator(systemAppsDirectory) + Path.DirectorySeparatorChar;
+        return executablePath.StartsWith(directory, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(Path.GetFileName(executablePath), "SystemSettings.exe", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Mirrors the shell's own eligibility check: an owned window needs WS_EX_APPWINDOW to opt in, tool and
