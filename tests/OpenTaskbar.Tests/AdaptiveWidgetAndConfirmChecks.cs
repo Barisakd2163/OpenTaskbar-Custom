@@ -433,6 +433,11 @@ internal static class AdaptiveWidgetAndConfirmChecks
 
         using (var media = new MediaWidget())
         {
+            var timeline = (FrameworkElement)media.FindName("TimelineControls")!;
+            var unavailable = (TextBlock)media.FindName("TimelineUnavailableText")!;
+            check(timeline.Visibility == Visibility.Collapsed && unavailable.Visibility == Visibility.Visible
+                && unavailable.Text == UiText.Get("MediaDurationUnavailable"),
+                "MediaWidget must show a localized status instead of an inactive timeline before a duration is available.");
             var events = 0;
             media.ContentWidthChanged += (_, _) => events++;
             var fullW = MeasureWidth(media);

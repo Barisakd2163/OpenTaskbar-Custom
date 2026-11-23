@@ -213,6 +213,7 @@
   "FocusSkip": "Skip to next phase",
   "FocusReset": "Reset",
   "MediaPrevious": "Previous",
+  "MediaDurationUnavailable": "Duration unavailable",
   "MediaPlayPause": "Play / pause",
   "MediaNext": "Next",
   "Cpu": "Processor",

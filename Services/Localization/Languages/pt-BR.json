@@ -179,6 +179,7 @@
   "FocusSkip": "Pular",
   "FocusReset": "Redefinir",
   "MediaPrevious": "Faixa anterior",
+  "MediaDurationUnavailable": "Duração indisponível",
   "MediaPlayPause": "Reproduzir / Pausar",
   "MediaNext": "Próxima faixa",
   "Cpu": "CPU",

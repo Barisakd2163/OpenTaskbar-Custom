@@ -26,6 +26,7 @@ namespace OpenTaskbar.Widgets;
 public partial class MediaWidget : DockWidget
 {
     private const int AlbumArtDecodePixels = 68;
+    private const long BrowserTimelineRefreshIntervalMs = 950;
     private const long VolumeSessionRetryIntervalMs = 3000;
     private static readonly Color DefaultArtTint = Color.FromRgb(0x52, 0x6D, 0x84);
 
@@ -38,6 +39,11 @@ public partial class MediaWidget : DockWidget
     private int _activationVersion;
     private int _refreshVersion;
     private readonly MediaTimeline _timeline = new();
+    private string? _mediaTitle;
+    private bool _hasWindowsTimeline;
+    private bool _usingBrowserTimeline;
+    private bool _readingBrowserTimeline;
+    private long _lastBrowserTimelineRead;
     private bool _canSeek;
     private bool _updatingProgress;
     private bool _draggingProgress;
@@ -661,6 +667,10 @@ public partial class MediaWidget : DockWidget
         _session = session;
         CloseVolumePopover();
         _timeline.Reset();
+        _mediaTitle = null;
+        _hasWindowsTimeline = false;
+        _usingBrowserTimeline = false;
+        _lastBrowserTimelineRead = 0;
         _draggingProgress = false;
         _seekingProgress = false;
         _canSeek = false;
@@ -717,9 +727,26 @@ public partial class MediaWidget : DockWidget
             var end = timeline.EndTime > start ? timeline.EndTime : timeline.MaxSeekTime;
             var reportedRate = playback.PlaybackRate.GetValueOrDefault();
             var rate = reportedRate > 0 && double.IsFinite(reportedRate) ? reportedRate : 1;
-            _timeline.Update(new(start, end, timeline.Position, timeline.LastUpdatedTime),
-                playing ? rate : 0,
-                DateTimeOffset.UtcNow, Stopwatch.GetTimestamp());
+            _hasWindowsTimeline = end > start;
+            if (_hasWindowsTimeline)
+            {
+                _usingBrowserTimeline = false;
+                _timeline.Update(new(start, end, timeline.Position, timeline.LastUpdatedTime),
+                    playing ? rate : 0, DateTimeOffset.UtcNow, Stopwatch.GetTimestamp());
+            }
+            else
+            {
+                _canSeek = false;
+                _draggingProgress = false;
+                if (!_usingBrowserTimeline) _timeline.Reset();
+                var tick = Environment.TickCount64;
+                if (!_readingBrowserTimeline && _mediaTitle is { } mediaTitle
+                    && tick - _lastBrowserTimelineRead >= BrowserTimelineRefreshIntervalMs)
+                {
+                    _lastBrowserTimelineRead = tick;
+                    _ = RefreshBrowserTimelineAsync(session.SourceAppUserModelId, mediaTitle, _refreshVersion);
+                }
+            }
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
@@ -729,15 +756,44 @@ public partial class MediaWidget : DockWidget
         if (!_draggingProgress && !_seekingProgress) UpdateProgressUI();
     }
 
+    private async Task RefreshBrowserTimelineAsync(string sourceAppId, string title, int version)
+    {
+        _readingBrowserTimeline = true;
+        try
+        {
+            var sample = await Task.Run(() => LibreWolfMediaTimeline.Read(sourceAppId, title));
+            if (!IsActive || _hasWindowsTimeline || version != _refreshVersion) return;
+
+            _usingBrowserTimeline = sample.HasValue;
+            if (sample is { } timeline)
+            {
+                // Accessibility reports the actual position on every read and does not report a playback rate.
+                _timeline.Update(new(TimeSpan.Zero, timeline.Duration, timeline.Position, default),
+                    0, DateTimeOffset.UtcNow, Stopwatch.GetTimestamp());
+            }
+            else
+            {
+                _timeline.Reset();
+            }
+            if (!_seekingProgress) UpdateProgressUI();
+        }
+        finally
+        {
+            _readingBrowserTimeline = false;
+        }
+    }
+
     private void UpdateProgressUI()
     {
         var duration = _timeline.Duration;
         var available = duration > 0;
         var elapsed = _timeline.PositionAt(Stopwatch.GetTimestamp());
-        var elapsedText = available ? FormatTime(TimeSpan.FromSeconds(elapsed)) : "—";
-        var totalText = available ? FormatTime(TimeSpan.FromSeconds(duration)) : "—";
+        var elapsedText = available ? FormatTime(TimeSpan.FromSeconds(elapsed)) : string.Empty;
+        var totalText = available ? FormatTime(TimeSpan.FromSeconds(duration)) : string.Empty;
 
         _updatingProgress = true;
+        TimelineControls.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        TimelineUnavailableText.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         ProgressSlider.Maximum = available ? duration : 100;
         ProgressSlider.Value = elapsed;
         ProgressSlider.IsEnabled = available;
@@ -757,6 +813,12 @@ public partial class MediaWidget : DockWidget
         var version = ++_refreshVersion;
         var activationVersion = _activationVersion;
         var session = _session;
+        _mediaTitle = null;
+        if (_usingBrowserTimeline)
+        {
+            _usingBrowserTimeline = false;
+            _timeline.Reset();
+        }
         if (session is null)
         {
             HasData = false;
@@ -777,6 +839,7 @@ public partial class MediaWidget : DockWidget
                 return;
             }
 
+            _mediaTitle = title;
             TitleText.Text = title;
             ArtistText.Text = string.IsNullOrWhiteSpace(properties!.Artist) ? properties.AlbumTitle : properties.Artist;
             Card.ToolTip = string.IsNullOrWhiteSpace(ArtistText.Text) ? title : $"{title}\n{ArtistText.Text}";

@@ -122,6 +122,28 @@ internal static class MediaVolumeChecks
         Check(timeline.Duration == 0 && timeline.PositionAt(Timestamp(46)) == 0,
             "An unavailable timeline must clear the previous item's position and duration.");
 
+        Check(LibreWolfMediaTimeline.MatchesDocument("https://music.youtube.com/watch", "Artist | Track", "Track", out var music) && music
+            && LibreWolfMediaTimeline.MatchesDocument("https://music.youtube.com.example/watch", "Artist | Track", "Track", out var other) && !other
+            && !LibreWolfMediaTimeline.MatchesDocument("https://music.youtube.com:444/watch", "Artist | Track", "Track", out _)
+            && !LibreWolfMediaTimeline.MatchesDocument("https://music.youtube.com/watch", "Different track", "Expected track", out _),
+            "Only an exact YouTube Music origin may use its named player control, and the browser tab must match the current title.");
+        var browserRange = LibreWolfMediaTimeline.ReadRange(0, 294, 281);
+        Check(browserRange is { } browserTimeline && browserTimeline.Duration == TimeSpan.FromSeconds(294)
+            && browserTimeline.Position == TimeSpan.FromSeconds(281),
+            "The browser timeline must use the accessible progress bar's actual position and duration.");
+        Check(LibreWolfMediaTimeline.ReadRange(0, 0, 0) is null
+            && LibreWolfMediaTimeline.ReadRange(0, double.PositiveInfinity, 20) is null
+            && LibreWolfMediaTimeline.ReadRange(0, 60, 70) is null,
+            "Missing, unbounded or inconsistent browser timeline ranges must remain unavailable.");
+        Check(LibreWolfMediaTimeline.ReadClockRange(0, 32.835, 10.62, "0:10 / 0:32")
+            == LibreWolfMediaTimeline.ReadRange(0, 32.835, 10.62)
+            && LibreWolfMediaTimeline.ReadClockRange(0, 64800, 12400, "0:12 / 1:04")
+                == LibreWolfMediaTimeline.ReadRange(0, 64.8, 12.4),
+            "Generic videos must report consistent time labels and ranges in seconds or milliseconds.");
+        Check(LibreWolfMediaTimeline.ReadClockRange(0, 100, 38, "38%") is null
+            && LibreWolfMediaTimeline.ReadClockRange(0, 30, 10, "0:27 / 0:30") is null,
+            "Volume sliders and inconsistent time labels must not be used for progress.");
+
         return checks;
     }
 }

@@ -179,6 +179,7 @@
   "FocusSkip": "次のフェーズへ",
   "FocusReset": "リセット",
   "MediaPrevious": "前へ",
+  "MediaDurationUnavailable": "再生時間を取得できません",
   "MediaPlayPause": "再生 / 一時停止",
   "MediaNext": "次へ",
   "Cpu": "プロセッサー",

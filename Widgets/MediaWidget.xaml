@@ -42,20 +42,25 @@
             <Grid x:Name="ProgressPanel" Grid.Column="2" MinWidth="138" Margin="0,0,8,0" VerticalAlignment="Center"
                   PreviewMouseLeftButtonDown="ProgressSlider_PreviewMouseLeftButtonDown"
                   PreviewMouseLeftButtonUp="ProgressSlider_PreviewMouseLeftButtonUp">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="ElapsedText" Grid.Column="0" Style="{StaticResource WidgetCaption}" FontSize="9.5"
-                           Text="0:00" Margin="0,0,6,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
-                <Slider x:Name="ProgressSlider" Grid.Column="1" Style="{StaticResource MediaProgressSlider}" Minimum="0" Maximum="100" Value="0"
-                        VerticalAlignment="Center"
-                        w:SliderTrackDrag.IsEnabled="True"
-                        LostMouseCapture="ProgressSlider_LostMouseCapture"
-                        ValueChanged="ProgressSlider_ValueChanged" />
-                <TextBlock x:Name="TotalText" Grid.Column="2" Style="{StaticResource WidgetCaption}" FontSize="9.5"
-                           Text="0:00" Margin="6,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                <Grid x:Name="TimelineControls" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ElapsedText" Grid.Column="0" Style="{StaticResource WidgetCaption}" FontSize="9.5"
+                               Margin="0,0,6,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                    <Slider x:Name="ProgressSlider" Grid.Column="1" Style="{StaticResource MediaProgressSlider}" Maximum="100"
+                            VerticalAlignment="Center" IsEnabled="False"
+                            w:SliderTrackDrag.IsEnabled="True"
+                            LostMouseCapture="ProgressSlider_LostMouseCapture"
+                            ValueChanged="ProgressSlider_ValueChanged" />
+                    <TextBlock x:Name="TotalText" Grid.Column="2" Style="{StaticResource WidgetCaption}" FontSize="9.5"
+                               Margin="6,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                </Grid>
+                <TextBlock x:Name="TimelineUnavailableText" Style="{StaticResource WidgetCaption}"
+                           Text="{local:Loc MediaDurationUnavailable}" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
             </Grid>
 
             <!-- 4. Playback controls: Previous, Play/Pause, Next -->

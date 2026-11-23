@@ -179,6 +179,7 @@
   "FocusSkip": "Overslaan",
   "FocusReset": "Resetten",
   "MediaPrevious": "Vorige",
+  "MediaDurationUnavailable": "Duur niet beschikbaar",
   "MediaPlayPause": "Afspelen / Pauzeren",
   "MediaNext": "Volgende",
   "Cpu": "CPU",

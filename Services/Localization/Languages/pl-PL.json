@@ -179,6 +179,7 @@
   "FocusSkip": "Pomiń",
   "FocusReset": "Resetuj",
   "MediaPrevious": "Poprzedni",
+  "MediaDurationUnavailable": "Czas trwania niedostępny",
   "MediaPlayPause": "Odtwórz / Wstrzymaj",
   "MediaNext": "Następny",
   "Cpu": "CPU",

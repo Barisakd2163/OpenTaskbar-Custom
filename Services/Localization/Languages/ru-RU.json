@@ -179,6 +179,7 @@
   "FocusSkip": "Пропустить",
   "FocusReset": "Сброс",
   "MediaPrevious": "Предыдущий трек",
+  "MediaDurationUnavailable": "Длительность недоступна",
   "MediaPlayPause": "Воспроизведение / Пауза",
   "MediaNext": "Следующий трек",
   "Cpu": "ЦП",
