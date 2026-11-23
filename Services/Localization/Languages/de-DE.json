@@ -900,5 +900,16 @@
   "SignOut": "Abmelden",
   "RestartComputer": "Neustart",
   "ShutDownComputer": "Herunterfahren",
-  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden."
+  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden.",
+  "StatsUptime": "Betriebszeit",
+  "StatsUptimeDaysFormat": "{0}T {1}Std {2}Min",
+  "StatsUptimeHoursFormat": "{0}Std {1}Min",
+  "StatsUptimeMinutesFormat": "{0}Min",
+  "StatsLogicalCores": "{0} Kerne",
+  "StatsMemoryUsed": "Belegt {0}",
+  "StatsMemoryAvailable": "{0} verfügbar",
+  "StatsTopProcesses": "Top-Prozesse",
+  "StatsTopProcessesEmpty": "Keine Prozessdaten verfügbar",
+  "StatsSamplingProcesses": "Prozesse werden gelesen…",
+  "ResourceMonitor": "Ressourcenmonitor"
 }

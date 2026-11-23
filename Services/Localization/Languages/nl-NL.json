@@ -900,5 +900,16 @@
   "SignOut": "Afmelden",
   "RestartComputer": "Opnieuw opstarten",
   "ShutDownComputer": "Afsluiten",
-  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen."
+  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen.",
+  "StatsUptime": "Actieve tijd",
+  "StatsUptimeDaysFormat": "{0}d {1}u {2}m",
+  "StatsUptimeHoursFormat": "{0}u {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} cores",
+  "StatsMemoryUsed": "Gebruikt {0}",
+  "StatsMemoryAvailable": "{0} beschikbaar",
+  "StatsTopProcesses": "Topprocessen",
+  "StatsTopProcessesEmpty": "Geen procesgegevens beschikbaar",
+  "StatsSamplingProcesses": "Processen ophalen…",
+  "ResourceMonitor": "Broncontrole"
 }

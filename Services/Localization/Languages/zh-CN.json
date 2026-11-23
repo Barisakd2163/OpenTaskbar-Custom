@@ -900,5 +900,16 @@
   "SignOut": "\u6CE8\u9500",
   "RestartComputer": "\u91CD\u542F",
   "ShutDownComputer": "\u5173\u673A",
-  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002"
+  "ErrorSystemToolOpen": "\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u5DE5\u5177\u3002",
+  "StatsUptime": "运行时间",
+  "StatsUptimeDaysFormat": "{0}天 {1}时 {2}分",
+  "StatsUptimeHoursFormat": "{0}时 {1}分",
+  "StatsUptimeMinutesFormat": "{0}分",
+  "StatsLogicalCores": "{0} 核心",
+  "StatsMemoryUsed": "已用 {0}",
+  "StatsMemoryAvailable": "可用 {0}",
+  "StatsTopProcesses": "高占用进程",
+  "StatsTopProcessesEmpty": "暂无进程数据",
+  "StatsSamplingProcesses": "正在读取进程…",
+  "ResourceMonitor": "资源监视器"
 }

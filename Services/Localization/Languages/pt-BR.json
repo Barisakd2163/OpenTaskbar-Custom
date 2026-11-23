@@ -900,5 +900,16 @@
   "SignOut": "Sair",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Desligar",
-  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema."
+  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema.",
+  "StatsUptime": "Tempo ativo",
+  "StatsUptimeDaysFormat": "{0}d {1}h {2}m",
+  "StatsUptimeHoursFormat": "{0}h {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} núcleos",
+  "StatsMemoryUsed": "Em uso {0}",
+  "StatsMemoryAvailable": "{0} disponível",
+  "StatsTopProcesses": "Principais processos",
+  "StatsTopProcessesEmpty": "Sem dados de processos",
+  "StatsSamplingProcesses": "Lendo processos…",
+  "ResourceMonitor": "Monitor de Recursos"
 }

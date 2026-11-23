@@ -900,5 +900,16 @@
   "SignOut": "Se d\u00E9connecter",
   "RestartComputer": "Red\u00E9marrer",
   "ShutDownComputer": "Arr\u00EAter",
-  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me."
+  "ErrorSystemToolOpen": "Impossible d'ouvrir l'outil syst\u00E8me.",
+  "StatsUptime": "Temps de fonctionnement",
+  "StatsUptimeDaysFormat": "{0}j {1}h {2}min",
+  "StatsUptimeHoursFormat": "{0}h {1}min",
+  "StatsUptimeMinutesFormat": "{0}min",
+  "StatsLogicalCores": "{0} cœurs",
+  "StatsMemoryUsed": "Utilisée {0}",
+  "StatsMemoryAvailable": "{0} disponible",
+  "StatsTopProcesses": "Processus principaux",
+  "StatsTopProcessesEmpty": "Aucune donnée de processus",
+  "StatsSamplingProcesses": "Analyse des processus…",
+  "ResourceMonitor": "Moniteur de ressources"
 }

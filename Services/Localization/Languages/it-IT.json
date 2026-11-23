@@ -900,5 +900,16 @@
   "SignOut": "Esci",
   "RestartComputer": "Riavvia",
   "ShutDownComputer": "Arresta",
-  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema."
+  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema.",
+  "StatsUptime": "Tempo di attività",
+  "StatsUptimeDaysFormat": "{0}g {1}h {2}m",
+  "StatsUptimeHoursFormat": "{0}h {1}m",
+  "StatsUptimeMinutesFormat": "{0}m",
+  "StatsLogicalCores": "{0} core",
+  "StatsMemoryUsed": "Usata {0}",
+  "StatsMemoryAvailable": "{0} disponibile",
+  "StatsTopProcesses": "Processi principali",
+  "StatsTopProcessesEmpty": "Nessun dato sui processi",
+  "StatsSamplingProcesses": "Lettura processi…",
+  "ResourceMonitor": "Monitoraggio risorse"
 }

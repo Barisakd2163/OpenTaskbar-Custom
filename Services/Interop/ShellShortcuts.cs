@@ -1181,6 +1181,28 @@ public static class ShellShortcuts
     public static string? OpenTaskManager() => Start(
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "Taskmgr.exe"), "ErrorTaskManagerOpen");
 
+    /// <summary>
+    /// Resource Monitor by its full System32 path so a program named perfmon elsewhere on the search path is never started.
+    /// </summary>
+    public static string? OpenResourceMonitor()
+    {
+        var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "perfmon.exe");
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo(target, "/res") { UseShellExecute = true });
+            return null;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
+        {
+            return null;
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            AppLog.Warning($"Cannot open {target} /res: {ex.Message}");
+            return UiText.Get("ErrorSystemToolOpen");
+        }
+    }
+
     private static string? Start(string target, string failureKey)
     {
         try
