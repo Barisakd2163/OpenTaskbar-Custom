@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Відкрити папку «Робочий стіл»",
   "ShowDesktopTooltip": "Показати робочий стіл (клік) · Перетягніть файли для переміщення (Ctrl — копіювати)",
   "MovedToDesktop": "Переміщено на Робочий стіл",
-  "CopiedToDesktop": "Скопійовано на Робочий стіл"
+  "CopiedToDesktop": "Скопійовано на Робочий стіл",
+  "PinApplicationFilter": "Програми та ярлики|*.exe;*.lnk;*.url|Програми (*.exe)|*.exe|Ярлики (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Не вдалося закріпити вибраний файл як програму."
 }

@@ -719,15 +719,21 @@ public partial class MainWindow
         var added = 0;
         foreach (var pin in pins)
         {
-            var aumid = WindowsTaskbarPinImporter.GetAppsFolderAumid(pin.ExecutablePath);
-            if ((aumid is null && !File.Exists(pin.ExecutablePath))
-                || _pinnedApps.Any(app => string.Equals(app.ExecutablePath, pin.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
+            var isPackagedShell = pin.ExecutablePath.StartsWith(WindowsTaskbarPinImporter.AppsFolderPrefix, StringComparison.OrdinalIgnoreCase);
+            var aumid = isPackagedShell
+                ? pin.ExecutablePath[WindowsTaskbarPinImporter.AppsFolderPrefix.Length..].Trim()
+                : ApplicationIconProvider.TryResolvePackagedAppUserModelId(pin.ExecutablePath);
+            var pinKey = DockApp.BuildDockKey(pin.ExecutablePath, pin.Arguments, aumid);
+
+            if ((!isPackagedShell && !File.Exists(pin.ExecutablePath))
+                || _pinnedApps.Any(app => string.Equals(app.DockKey, pinKey, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
 
-            if (aumid is not null && WindowsTaskbarPinImporter.TryResolvePackagedApp(aumid) is null) continue;
-            var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(pin.Name, pin.ExecutablePath, pin.Arguments, aumid);
+            if (AppShortcutResolver.IsPackagedAppUserModelId(aumid)
+                && WindowsTaskbarPinImporter.TryResolvePackagedApp(aumid!) is null) continue;
+            var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(pin.Name, pin.ExecutablePath, pin.Arguments, appUserModelId: aumid);
             if (error is not null || shortcutPath is null)
             {
                 AppLog.Warning($"Import pin {pin.ExecutablePath}: {error}");

@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "바탕 화면 폴더 열기",
   "ShowDesktopTooltip": "바탕 화면 표시 (클릭) · 파일을 놓아 바탕 화면으로 이동 (Ctrl로 복사)",
   "MovedToDesktop": "바탕 화면으로 이동됨",
-  "CopiedToDesktop": "바탕 화면으로 복사됨"
+  "CopiedToDesktop": "바탕 화면으로 복사됨",
+  "PinApplicationFilter": "애플리케이션 및 바로 가기|*.exe;*.lnk;*.url|애플리케이션 (*.exe)|*.exe|바로 가기 (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "선택한 파일을 애플리케이션으로 고정할 수 없습니다."
 }

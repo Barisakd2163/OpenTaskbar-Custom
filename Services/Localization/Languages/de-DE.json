@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Desktop-Ordner öffnen",
   "ShowDesktopTooltip": "Desktop anzeigen (Klick) · Dateien zum Verschieben ablegen (Strg zum Kopieren)",
   "MovedToDesktop": "Auf Desktop verschoben",
-  "CopiedToDesktop": "Auf Desktop kopiert"
+  "CopiedToDesktop": "Auf Desktop kopiert",
+  "PinApplicationFilter": "Anwendungen & Verknüpfungen|*.exe;*.lnk;*.url|Anwendungen (*.exe)|*.exe|Verknüpfungen (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Die ausgewählte Datei konnte nicht als Anwendung angeheftet werden."
 }

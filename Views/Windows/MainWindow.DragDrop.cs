@@ -406,7 +406,7 @@ public partial class MainWindow
     {
         if (e.Data.GetData(typeof(DockApp)) is DockApp app)
         {
-            token = "app:" + app.ExecutablePath;
+            token = "app:" + app.DockKey;
             return true;
         }
         if (e.Data.GetData(typeof(DockAppGroup)) is DockAppGroup group)

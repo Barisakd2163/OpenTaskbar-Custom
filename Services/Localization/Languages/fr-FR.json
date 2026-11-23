@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Ouvrir le dossier Bureau",
   "ShowDesktopTooltip": "Afficher le bureau (clic) · Déposez des fichiers vers le Bureau (Ctrl pour copier)",
   "MovedToDesktop": "Déplacé sur le Bureau",
-  "CopiedToDesktop": "Copié sur le Bureau"
+  "CopiedToDesktop": "Copié sur le Bureau",
+  "PinApplicationFilter": "Applications et raccourcis|*.exe;*.lnk;*.url|Applications (*.exe)|*.exe|Raccourcis (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Le fichier sélectionné n'a pas pu être épinglé comme application."
 }

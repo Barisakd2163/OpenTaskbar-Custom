@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Otwórz folder Pulpit",
   "ShowDesktopTooltip": "Pokaż pulpit (klik) · Upuść pliki, aby przenieść na Pulpit (Ctrl, aby skopiować)",
   "MovedToDesktop": "Przeniesiono na Pulpit",
-  "CopiedToDesktop": "Skopiowano na Pulpit"
+  "CopiedToDesktop": "Skopiowano na Pulpit",
+  "PinApplicationFilter": "Aplikacje i skróty|*.exe;*.lnk;*.url|Aplikacje (*.exe)|*.exe|Skróty (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Nie można przypiąć wybranego pliku jako aplikacji."
 }

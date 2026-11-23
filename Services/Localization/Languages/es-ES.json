@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Abrir carpeta Escritorio",
   "ShowDesktopTooltip": "Mostrar escritorio (clic) · Suelta archivos para mover al Escritorio (Ctrl para copiar)",
   "MovedToDesktop": "Movido al Escritorio",
-  "CopiedToDesktop": "Copiado al Escritorio"
+  "CopiedToDesktop": "Copiado al Escritorio",
+  "PinApplicationFilter": "Aplicaciones y accesos directos|*.exe;*.lnk;*.url|Aplicaciones (*.exe)|*.exe|Accesos directos (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "No se pudo anclar el archivo seleccionado como aplicación."
 }

@@ -41,7 +41,8 @@ internal static class RunningAppProjection
         ISet<string> excludedPaths,
         nint foreground,
         bool notificationBadgesEnabled,
-        Func<string, bool> fileExists)
+        Func<string, bool> fileExists,
+        ISet<string>? excludedAppUserModelIds = null)
     {
         var groups = new Dictionary<string, List<TrackedWindow>>(StringComparer.OrdinalIgnoreCase);
         var order = new List<string>();
@@ -49,7 +50,12 @@ internal static class RunningAppProjection
         {
             var window = windows[i];
             var path = window.ExecutablePath;
-            if (string.IsNullOrEmpty(path) || excludedPaths.Contains(path) || !fileExists(path)) continue;
+            if (string.IsNullOrEmpty(path)
+                || excludedPaths.Contains(path)
+                || (!string.IsNullOrWhiteSpace(window.AppUserModelId)
+                    && excludedAppUserModelIds?.Contains(window.AppUserModelId) == true)
+                || !fileExists(path))
+                continue;
             // Windows groups taskbar buttons by AppUserModelID, not by executable: a single app can
             // spawn helper processes with different executables (e.g. FortiClient tray/popup helpers).
             // Use the AUMID as the grouping key when present, falling back to the executable path.

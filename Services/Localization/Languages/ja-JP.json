@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "デスクトップ フォルダーを開く",
   "ShowDesktopTooltip": "デスクトップを表示 (クリック) · ドロップでデスクトップへ移動 (Ctrl でコピー)",
   "MovedToDesktop": "デスクトップに移動しました",
-  "CopiedToDesktop": "デスクトップにコピーしました"
+  "CopiedToDesktop": "デスクトップにコピーしました",
+  "PinApplicationFilter": "アプリケーションとショートカット|*.exe;*.lnk;*.url|アプリケーション (*.exe)|*.exe|ショートカット (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "選択したファイルをアプリケーションとしてピン留めできませんでした。"
 }

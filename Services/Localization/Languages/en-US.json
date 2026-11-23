@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Open Desktop folder",
   "ShowDesktopTooltip": "Show desktop (click) · Drop files to move to Desktop (Ctrl to copy)",
   "MovedToDesktop": "Moved to Desktop",
-  "CopiedToDesktop": "Copied to Desktop"
+  "CopiedToDesktop": "Copied to Desktop",
+  "PinApplicationFilter": "Applications & shortcuts|*.exe;*.lnk;*.url|Applications (*.exe)|*.exe|Shortcuts (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "The selected file could not be pinned as an application."
 }

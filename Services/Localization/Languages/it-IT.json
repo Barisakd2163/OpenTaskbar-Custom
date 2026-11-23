@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Apri cartella Desktop",
   "ShowDesktopTooltip": "Mostra desktop (clic) · Rilascia file per spostarli sul Desktop (Ctrl per copiare)",
   "MovedToDesktop": "Spostato sul Desktop",
-  "CopiedToDesktop": "Copiato sul Desktop"
+  "CopiedToDesktop": "Copiato sul Desktop",
+  "PinApplicationFilter": "Applicazioni e collegamenti|*.exe;*.lnk;*.url|Applicazioni (*.exe)|*.exe|Collegamenti (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Impossibile aggiungere il file selezionato come applicazione."
 }

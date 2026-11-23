@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Masaüstü klasörünü aç",
   "ShowDesktopTooltip": "Masaüstünü göster (tıkla) · Masaüstüne taşımak için dosya bırak (kopyalamak için Ctrl)",
   "MovedToDesktop": "Masaüstüne taşındı",
-  "CopiedToDesktop": "Masaüstüne kopyalandı"
+  "CopiedToDesktop": "Masaüstüne kopyalandı",
+  "PinApplicationFilter": "Uygulamalar ve kısayollar|*.exe;*.lnk;*.url|Uygulamalar (*.exe)|*.exe|Kısayollar (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Seçilen dosya uygulama olarak sabitlenemedi."
 }

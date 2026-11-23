@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Открыть папку «Рабочий стол»",
   "ShowDesktopTooltip": "Показать рабочий стол (клик) · Перетащите файлы для перемещения (Ctrl — копировать)",
   "MovedToDesktop": "Перемещено на Рабочий стол",
-  "CopiedToDesktop": "Скопировано на Рабочий стол"
+  "CopiedToDesktop": "Скопировано на Рабочий стол",
+  "PinApplicationFilter": "Приложения и ярлыки|*.exe;*.lnk;*.url|Приложения (*.exe)|*.exe|Ярлыки (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Не удалось закрепить выбранный файл как приложение."
 }

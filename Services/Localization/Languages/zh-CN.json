@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "打开桌面文件夹",
   "ShowDesktopTooltip": "显示桌面（点击）· 拖放文件移动到桌面（按住 Ctrl 复制）",
   "MovedToDesktop": "已移动到桌面",
-  "CopiedToDesktop": "已复制到桌面"
+  "CopiedToDesktop": "已复制到桌面",
+  "PinApplicationFilter": "应用程序和快捷方式|*.exe;*.lnk;*.url|应用程序 (*.exe)|*.exe|快捷方式 (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "无法将所选文件固定为应用程序。"
 }

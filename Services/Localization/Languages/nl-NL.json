@@ -934,5 +934,7 @@
   "OpenDesktopFolder": "Map Bureaublad openen",
   "ShowDesktopTooltip": "Bureaublad weergeven (klik) · Zet bestanden neer om te verplaatsen (Ctrl om te kopiëren)",
   "MovedToDesktop": "Verplaatst naar Bureaublad",
-  "CopiedToDesktop": "Gekopieerd naar Bureaublad"
+  "CopiedToDesktop": "Gekopieerd naar Bureaublad",
+  "PinApplicationFilter": "Apps en snelkoppelingen|*.exe;*.lnk;*.url|Apps (*.exe)|*.exe|Snelkoppelingen (*.lnk;*.url)|*.lnk;*.url",
+  "ErrorPinApplicationUnsupported": "Het geselecteerde bestand kon niet als app worden vastgemaakt."
 }

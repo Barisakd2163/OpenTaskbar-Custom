@@ -188,6 +188,149 @@ internal static class RunningAppChecks
                     System.IO.Path.Combine(fakeRoot, "WindowsApps"));
                 Check(resolvedPin is { DisplayName: "WhatsApp" } && string.Equals(resolvedPin.Value.ExecutablePath, mainExe, StringComparison.OrdinalIgnoreCase),
                     "TryResolvePackagedApp must resolve DisplayName and ExecutablePath from WindowsApps + AppxManifest.xml.");
+
+                // Issue #147: Packaged/UWP app whose AppxManifest.xml has no readable .exe must resolve to shell:AppsFolder\<AUMID>.
+                var uwpDir = System.IO.Path.Combine(fakeRoot, "WindowsApps", "Microsoft.OutlookForWindows_1.2025.1.0_x64__8wekyb3d8bbwe");
+                System.IO.Directory.CreateDirectory(uwpDir);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(uwpDir, "AppxManifest.xml"), """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+                      <Identity Name="Microsoft.OutlookForWindows" Publisher="CN=Microsoft" Version="1.2025.1.0" />
+                      <Properties><DisplayName>Outlook (new)</DisplayName></Properties>
+                      <Applications>
+                        <Application Id="Microsoft.OutlookforWindows" Executable="$targetnametoken$.exe" />
+                      </Applications>
+                    </Package>
+                    """);
+                const string outlookAumid = "Microsoft.OutlookForWindows_8wekyb3d8bbwe!Microsoft.OutlookforWindows";
+                var resolvedUwp = WindowsTaskbarPinImporter.TryResolvePackagedApp(
+                    outlookAumid,
+                    System.IO.Path.Combine(fakeRoot, "WindowsApps"));
+                Check(resolvedUwp is { DisplayName: "Outlook (new)" }
+                      && string.Equals(resolvedUwp.Value.ExecutablePath, $"shell:AppsFolder\\{outlookAumid}", StringComparison.OrdinalIgnoreCase),
+                    "TryResolvePackagedApp must emit shell:AppsFolder\\<AUMID> when AppxManifest.xml has no readable executable.");
+
+                // Issue #147: ExtractAumidsFromTaskbandBytes captures real system/Store AUMIDs without false positives.
+                const string settingsAumid = "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
+                const string telegramAumid = "TelegramMessengerLLP.TelegramDesktop_t4vj0pshhgkwm!Telegram.TelegramDesktop.Store";
+                var blobText = $"\0Microsoft.Windows.Explorer\0{settingsAumid}\0{outlookAumid}\0{telegramAumid}\0FakePrefixMicrosoft.Windows.Explorer\0Microsoft.Windows.Explorer.Extra\0bad_short!App\0";
+                var blobBytes = System.Text.Encoding.Unicode.GetBytes(blobText);
+                var oddBlob = new byte[1 + blobBytes.Length + 2];
+                Buffer.BlockCopy(blobBytes, 0, oddBlob, 1, blobBytes.Length);
+                var extractedAll = WindowsTaskbarPinImporter.ExtractAumidsFromTaskbandBytes(oddBlob);
+                Check(extractedAll.Count == 4
+                      && extractedAll.Contains("Microsoft.Windows.Explorer", StringComparer.OrdinalIgnoreCase)
+                      && extractedAll.Contains(settingsAumid, StringComparer.OrdinalIgnoreCase)
+                      && extractedAll.Contains(outlookAumid, StringComparer.OrdinalIgnoreCase)
+                      && extractedAll.Contains(telegramAumid, StringComparer.OrdinalIgnoreCase),
+                    "ExtractAumidsFromTaskbandBytes must capture File Explorer and Store/System AUMIDs without false positives.");
+
+                // Issue #147: Non-!App AUMIDs in AppShortcutResolver must route to shell:AppsFolder\<AUMID>.
+                var outlookSpec = AppShortcutResolver.Resolve(null, outlookAumid, "Outlook");
+                Check(string.Equals(outlookSpec.Target, $"shell:AppsFolder\\{outlookAumid}", StringComparison.OrdinalIgnoreCase),
+                    "AppShortcutResolver must resolve non-!App packaged AUMIDs (Outlook) to shell:AppsFolder\\<AUMID>.");
+                var telegramSpec = AppShortcutResolver.Resolve(null, telegramAumid, "Telegram");
+                Check(string.Equals(telegramSpec.Target, $"shell:AppsFolder\\{telegramAumid}", StringComparison.OrdinalIgnoreCase),
+                    "AppShortcutResolver must resolve non-!App packaged AUMIDs (Telegram Store) to shell:AppsFolder\\<AUMID>.");
+                var settingsSpec = AppShortcutResolver.Resolve($"shell:AppsFolder\\{settingsAumid}", null, "Settings");
+                Check(string.Equals(settingsSpec.Target, $"shell:AppsFolder\\{settingsAumid}", StringComparison.OrdinalIgnoreCase),
+                    "AppShortcutResolver must preserve pre-resolved shell:AppsFolder\\<AUMID> targets.");
+
+                // Issue #147: PWA shortcuts must preserve their .lnk / arguments rather than resolving to plain Edge/Chrome.
+                var fakeProxy = System.IO.Path.Combine(fakeRoot, "msedge_proxy.exe");
+                var pwaLinkA = System.IO.Path.Combine(fakeRoot, "YouTube.lnk");
+                var pwaLinkB = System.IO.Path.Combine(fakeRoot, "Spotify.lnk");
+                System.IO.File.WriteAllBytes(fakeProxy, []);
+                System.IO.File.WriteAllBytes(pwaLinkA, []);
+                System.IO.File.WriteAllBytes(pwaLinkB, []);
+                const string pwaArgsA = "--profile-directory=Default --app-id=aaaaaaaa";
+                const string pwaArgsB = "--profile-directory=Default --app-id=bbbbbbbb";
+                var pwaSpecWithLink = AppShortcutResolver.Resolve(fakeProxy, "MSEdge._crx_aaaaaaaa", "YouTube", pwaArgsA, pwaLinkA);
+                Check(string.Equals(pwaSpecWithLink.Target, pwaLinkA, StringComparison.OrdinalIgnoreCase),
+                    "AppShortcutResolver must preserve the PWA .lnk shortcut instead of redirecting to plain Edge/Chrome.");
+                var pwaSpecNoLink = AppShortcutResolver.Resolve(fakeProxy, "MSEdge._crx_aaaaaaaa", "YouTube", pwaArgsA, null);
+                Check(string.Equals(pwaSpecNoLink.Target, fakeProxy, StringComparison.OrdinalIgnoreCase)
+                      && pwaSpecNoLink.Arguments == pwaArgsA,
+                    "AppShortcutResolver must preserve executable and launch arguments when no .lnk file is present.");
+
+                // Issue #147: Multi-arg PWA deduplication and distinct dock keys.
+                var dedup = new WindowsTaskbarPinImporter.PinDeduplicator();
+                var pwaPinA = WindowsTaskbarPinImporter.ResolveShortcutEntry(
+                    "YouTube", pwaLinkA, fakeProxy, pwaArgsA, null,
+                    new WindowsTaskbarPinImporter.ShellLinkMetadata(fakeProxy, pwaArgsA, null, "MSEdge._crx_aaaaaaaa", null));
+                var pwaPinB = WindowsTaskbarPinImporter.ResolveShortcutEntry(
+                    "Spotify", pwaLinkB, fakeProxy, pwaArgsB, null,
+                    new WindowsTaskbarPinImporter.ShellLinkMetadata(fakeProxy, pwaArgsB, null, "MSEdge._crx_bbbbbbbb", null));
+                var pwaPinADup = WindowsTaskbarPinImporter.ResolveShortcutEntry(
+                    "YouTube Copy", pwaLinkA, fakeProxy, "  --profile-directory=Default   --app-id=aaaaaaaa ", null,
+                    new WindowsTaskbarPinImporter.ShellLinkMetadata(fakeProxy, pwaArgsA, null, "MSEdge._crx_aaaaaaaa", null));
+                Check(pwaPinA is not null && pwaPinB is not null && pwaPinADup is not null,
+                    "ResolveShortcutEntry must resolve distinct argument-bearing PWA shortcuts.");
+                Check(dedup.TryAddShortcut(pwaPinA!) && dedup.TryAddShortcut(pwaPinB!) && !dedup.TryAddShortcut(pwaPinADup!),
+                    "PinDeduplicator must keep distinct PWAs sharing msedge_proxy.exe while deduplicating identical normalized args/AUMID.");
+
+                var dockPwaA = new DockApp("YouTube", fakeProxy) { LaunchArguments = pwaArgsA, AppUserModelId = "MSEdge._crx_aaaaaaaa" };
+                var dockPwaB = new DockApp("Spotify", fakeProxy) { LaunchArguments = pwaArgsB, AppUserModelId = "MSEdge._crx_bbbbbbbb" };
+                var pwaSettings = new DockSettings(PinOrder: [dockPwaB.DockKey, dockPwaA.DockKey]);
+                var visiblePwaKeys = OpenTaskbar.MainWindow.GetVisiblePinnedPaths([dockPwaA, dockPwaB], pwaSettings);
+                Check(visiblePwaKeys.Count == 2
+                      && string.Equals(visiblePwaKeys[0], dockPwaB.DockKey, StringComparison.OrdinalIgnoreCase)
+                      && string.Equals(visiblePwaKeys[1], dockPwaA.DockKey, StringComparison.OrdinalIgnoreCase),
+                    "Distinct PWAs sharing msedge_proxy.exe must have distinct dock keys and preserve PinOrder.");
+                Check(ReferenceEquals(OpenTaskbar.MainWindow.FindVisibleDockApp([dockPwaA, dockPwaB], [], pwaSettings, dockPwaA.DockKey), dockPwaA)
+                      && ReferenceEquals(OpenTaskbar.MainWindow.FindVisibleDockApp([dockPwaA, dockPwaB], [], pwaSettings, dockPwaB.DockKey), dockPwaB),
+                    "FindVisibleDockApp must resolve each PWA independently without colliding on ExecutablePath.");
+
+                // Issue #147: File Explorer empty-TargetPath .lnk resolution via CLSID / AUMID, and packaged .lnk via IPropertyStore.
+                var explorerViaClsid = WindowsTaskbarPinImporter.ResolveShortcutEntry(
+                    "File Explorer", System.IO.Path.Combine(fakeRoot, "File Explorer.lnk"),
+                    string.Empty, string.Empty, string.Empty,
+                    new WindowsTaskbarPinImporter.ShellLinkMetadata(null, null, null, null, "::{52205fd8-5dfb-447d-801a-d0b52f2e83e1}"));
+                Check(explorerViaClsid is not null
+                      && explorerViaClsid.ExecutablePath.EndsWith(@"\explorer.exe", StringComparison.OrdinalIgnoreCase)
+                      && explorerViaClsid.AppUserModelId is null,
+                    "File Explorer shortcuts with empty TargetPath and Explorer CLSID must resolve to explorer.exe.");
+                var explorerViaAumid = WindowsTaskbarPinImporter.ResolveShortcutEntry(
+                    "Dosya Gezgini", System.IO.Path.Combine(fakeRoot, "Dosya Gezgini.lnk"),
+                    string.Empty, string.Empty, string.Empty,
+                    new WindowsTaskbarPinImporter.ShellLinkMetadata(null, null, null, "Microsoft.Windows.Explorer", null));
+                Check(explorerViaAumid is not null
+                      && explorerViaAumid.ExecutablePath.EndsWith(@"\explorer.exe", StringComparison.OrdinalIgnoreCase),
+                    "File Explorer shortcuts identified by Microsoft.Windows.Explorer AUMID must resolve to explorer.exe.");
+                var packagedViaLnk = WindowsTaskbarPinImporter.ResolveShortcutEntry(
+                    "Outlook", System.IO.Path.Combine(fakeRoot, "Outlook.lnk"),
+                    string.Empty, string.Empty, string.Empty,
+                    new WindowsTaskbarPinImporter.ShellLinkMetadata(null, null, null, outlookAumid, null),
+                    System.IO.Path.Combine(fakeRoot, "WindowsApps"));
+                Check(packagedViaLnk is not null
+                      && string.Equals(packagedViaLnk.ExecutablePath, $"shell:AppsFolder\\{outlookAumid}", StringComparison.OrdinalIgnoreCase)
+                      && string.Equals(packagedViaLnk.AppUserModelId, outlookAumid, StringComparison.OrdinalIgnoreCase),
+                    "Packaged Store .lnk shortcuts with empty TargetPath must resolve via PKEY_AppUserModel_ID.");
+
+                // Issue #147: .url shortcut parsing and AUMID-aware running window matching/exclusion.
+                var urlFile = System.IO.Path.Combine(fakeRoot, "Game.url");
+                System.IO.File.WriteAllText(urlFile, "[InternetShortcut]\r\nURL=steam://rungameid/730\r\nIconFile=C:\\Icons\\cs.ico\r\nIconIndex=0\r\n");
+                var urlPin = WindowsTaskbarPinImporter.TryResolveUrlShortcut(urlFile);
+                Check(urlPin is { DisplayName: "Game", IconLocation: @"C:\Icons\cs.ico,0" }
+                      && string.Equals(urlPin.ShortcutPath, urlFile, StringComparison.OrdinalIgnoreCase),
+                    "TryResolveUrlShortcut must parse URL and IconLocation from .url shortcuts.");
+
+                var pinnedOutlook = new DockApp("Outlook", $"shell:AppsFolder\\{outlookAumid}") { AppUserModelId = outlookAumid };
+                var outlookWindow = new TrackedWindow(42, "Inbox - Outlook", FrameHost, AppUserModelId: outlookAumid);
+                var otherUwpWindow = new TrackedWindow(43, "Settings", FrameHost, AppUserModelId: settingsAumid);
+                Check(OpenTaskbar.MainWindow.MatchesWindow(pinnedOutlook, outlookWindow)
+                      && !OpenTaskbar.MainWindow.MatchesWindow(pinnedOutlook, otherUwpWindow),
+                    "MatchesWindow must match shell:AppsFolder pins to hosted windows by AUMID without colliding on ApplicationFrameHost.exe.");
+                var projectedWithAumidExclude = RunningAppProjection.Project(
+                    [outlookWindow, otherUwpWindow],
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { pinnedOutlook.ExecutablePath },
+                    foreground: 42,
+                    notificationBadgesEnabled: false,
+                    static _ => true,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { outlookAumid });
+                Check(projectedWithAumidExclude.Count == 1
+                      && string.Equals(projectedWithAumidExclude[0].AppUserModelId, settingsAumid, StringComparison.OrdinalIgnoreCase),
+                    "RunningAppProjection must exclude already-pinned packaged apps by AUMID while keeping other hosted UWP apps.");
             }
             finally
             {
