@@ -538,7 +538,7 @@ public sealed class PinnedTrayStrip : StackPanel
                 if (_clickActions.TryGetValue(button, out var action))
                     action(MouseButton.Left);
             };
-            button.PreviewMouseRightButtonUp += (_, e) =>
+            button.MouseRightButtonUp += (_, e) =>
             {
                 e.Handled = true;
                 if (_clickActions.TryGetValue(button, out var action))
