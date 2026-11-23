@@ -8,10 +8,15 @@
 #define ABS_AUTOHIDE    0x0000001
 #define ABS_ALWAYSONTOP 0x0000002
 
+#define WATCHDOG_PATH_CAPACITY 1024
+#define HEARTBEAT_TIMEOUT_MS 4000
+#define HEARTBEAT_MISSES_REQUIRED 3
+
 static void AttachToDefaultDesktop(void) {
     HDESK hDesk = OpenDesktopW(L"Default", 0, FALSE, GENERIC_ALL);
     if (hDesk) {
         SetThreadDesktop(hDesk);
+        CloseDesktop(hDesk);
     }
 }
 
@@ -32,11 +37,14 @@ static BOOL CALLBACK EnumSecondaryTrays(HWND hwnd, LPARAM lParam) {
 // atomic (written via a temp file) and PID-checked so a recycled HWND can never be moved by a stale entry.
 // Returns FALSE when an entry belongs to another process now, so the journal is kept for a later recovery pass.
 static BOOL RestoreFlyoutPositions(void) {
-    WCHAR localAppData[MAX_PATH];
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) return TRUE;
+    WCHAR localAppData[WATCHDOG_PATH_CAPACITY];
+    DWORD envLen = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, WATCHDOG_PATH_CAPACITY);
+    if (envLen == 0 || envLen >= WATCHDOG_PATH_CAPACITY) return TRUE;
 
-    WCHAR path[MAX_PATH];
-    wsprintfW(path, L"%s\\OpenTaskbar\\flyout-positions.txt", localAppData);
+    WCHAR path[WATCHDOG_PATH_CAPACITY];
+    if (_snwprintf_s(path, WATCHDOG_PATH_CAPACITY, _TRUNCATE, L"%s\\OpenTaskbar\\flyout-positions.txt", localAppData) < 0) {
+        return TRUE;
+    }
     FILE *file = _wfopen(path, L"r");
     if (!file) return TRUE;
 
@@ -78,12 +86,13 @@ static void RestoreNativeTaskbars(void) {
 
     // 1. Read journal if available to recover original auto-hide/always-on-top state. Keep it until the
     //    taskbar is actually visible; deleting it on an Explorer restart would destroy the only recovery clue.
-    WCHAR journalPath[MAX_PATH] = {0};
+    WCHAR journalPath[WATCHDOG_PATH_CAPACITY] = {0};
     BOOL hasJournal = FALSE;
-    WCHAR localAppData[MAX_PATH];
+    WCHAR localAppData[WATCHDOG_PATH_CAPACITY];
     DWORD state = 0;
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) > 0) {
-        wsprintfW(journalPath, L"%s\\OpenTaskbar\\taskbar-state.txt", localAppData);
+    DWORD envLen = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, WATCHDOG_PATH_CAPACITY);
+    if (envLen > 0 && envLen < WATCHDOG_PATH_CAPACITY
+        && _snwprintf_s(journalPath, WATCHDOG_PATH_CAPACITY, _TRUNCATE, L"%s\\OpenTaskbar\\taskbar-state.txt", localAppData) >= 0) {
         FILE *jf = _wfopen(journalPath, L"r");
         if (jf) {
             unsigned int readVal = 0;
@@ -170,34 +179,76 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     WCHAR eventName[256];
-    wsprintfW(eventName, L"Local\\OpenTaskbar.CleanExit.%d.%s", parentPid, token);
+    if (_snwprintf_s(eventName, 256, _TRUNCATE, L"Local\\OpenTaskbar.CleanExit.%d.%s", parentPid, token) < 0) {
+        CloseHandle(hProcess);
+        return 1;
+    }
     HANDLE hCleanExit = OpenEventW(SYNCHRONIZE, FALSE, eventName);
 
-    HANDLE waitHandles[2];
-    DWORD waitCount = 0;
-
-    if (hCleanExit) {
-        waitHandles[0] = hCleanExit;
-        waitHandles[1] = hProcess;
-        waitCount = 2;
-    } else {
-        waitHandles[0] = hProcess;
-        waitCount = 1;
+    WCHAR heartbeatName[256];
+    HANDLE hHeartbeat = NULL;
+    if (_snwprintf_s(heartbeatName, 256, _TRUNCATE, L"Local\\OpenTaskbar.Heartbeat.%d.%s", parentPid, token) >= 0) {
+        hHeartbeat = OpenEventW(SYNCHRONIZE, FALSE, heartbeatName);
     }
 
-    DWORD waitResult = WaitForMultipleObjects(waitCount, waitHandles, FALSE, INFINITE);
+    HANDLE waitHandles[3];
+    DWORD waitCount = 0;
+    DWORD cleanExitIndex = (DWORD)-1;
+    DWORD processIndex = (DWORD)-1;
+    DWORD heartbeatIndex = (DWORD)-1;
+
+    if (hCleanExit) {
+        cleanExitIndex = waitCount;
+        waitHandles[waitCount++] = hCleanExit;
+    }
+    processIndex = waitCount;
+    waitHandles[waitCount++] = hProcess;
+    if (hHeartbeat) {
+        heartbeatIndex = waitCount;
+        waitHandles[waitCount++] = hHeartbeat;
+    }
 
     BOOL cleanExit = FALSE;
-    if (waitCount == 2) {
-        if (waitResult == WAIT_OBJECT_0) {
-            cleanExit = TRUE;
-        } else if (waitResult == WAIT_OBJECT_0 + 1) {
-            if (WaitForSingleObject(hCleanExit, 0) == WAIT_OBJECT_0) {
+    if (hHeartbeat) {
+        int heartbeatMisses = 0;
+        while (TRUE) {
+            DWORD waitResult = WaitForMultipleObjects(waitCount, waitHandles, FALSE, HEARTBEAT_TIMEOUT_MS);
+            if (waitResult == WAIT_OBJECT_0 + cleanExitIndex) {
                 cleanExit = TRUE;
+                break;
+            }
+            if (waitResult == WAIT_OBJECT_0 + processIndex) {
+                if (hCleanExit && WaitForSingleObject(hCleanExit, 0) == WAIT_OBJECT_0) {
+                    cleanExit = TRUE;
+                }
+                break;
+            }
+            if (waitResult == WAIT_OBJECT_0 + heartbeatIndex) {
+                heartbeatMisses = 0;
+                continue;
+            }
+            if (waitResult == WAIT_TIMEOUT) {
+                if (++heartbeatMisses >= HEARTBEAT_MISSES_REQUIRED) {
+                    break;
+                }
+                continue;
+            }
+            break;
+        }
+    } else {
+        DWORD waitResult = WaitForMultipleObjects(waitCount, waitHandles, FALSE, INFINITE);
+        if (hCleanExit) {
+            if (waitResult == WAIT_OBJECT_0 + cleanExitIndex) {
+                cleanExit = TRUE;
+            } else if (waitResult == WAIT_OBJECT_0 + processIndex) {
+                if (WaitForSingleObject(hCleanExit, 0) == WAIT_OBJECT_0) {
+                    cleanExit = TRUE;
+                }
             }
         }
     }
 
+    if (hHeartbeat) CloseHandle(hHeartbeat);
     if (hCleanExit) CloseHandle(hCleanExit);
     CloseHandle(hProcess);
 
