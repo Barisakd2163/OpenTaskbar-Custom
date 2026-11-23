@@ -16,6 +16,7 @@ public partial class MainWindow
 {
     private static readonly Duration LiveDragSlide = new(TimeSpan.FromMilliseconds(160));
     private LiveDockDrag? _liveDrag;
+    private bool _appReorderDragActive;
 
     private sealed record LiveDockSlot(FrameworkElement Element, double Start, double Size, TranslateTransform Translate);
 

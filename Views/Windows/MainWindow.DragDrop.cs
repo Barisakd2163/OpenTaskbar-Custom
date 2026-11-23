@@ -56,6 +56,8 @@ public partial class MainWindow
 
     private void AnimateAppDrag(Button button, DockApp app)
     {
+        _previewHoverTimer.Stop();
+        _pendingPreviewButton = null;
         var icon = GetButtonIcon(button);
         var (scale, translate) = icon != null ? GetIconTransforms(icon) : (null, null);
         var animDuration = TimeSpan.FromMilliseconds(130);
@@ -70,12 +72,14 @@ public partial class MainWindow
                 new DoubleAnimation(-4 * BounceDirection, animDuration) { EasingFunction = easeOut });
         }
 
+        _appReorderDragActive = true;
         try
         {
             DragDrop.DoDragDrop(button, app, DragDropEffects.Move);
         }
         finally
         {
+            _appReorderDragActive = false;
             CancelLiveDrag();
             button.Opacity = 1.0;
             ResetDisplacements();
