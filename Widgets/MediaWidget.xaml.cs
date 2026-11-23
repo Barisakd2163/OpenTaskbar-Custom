@@ -793,7 +793,6 @@ public partial class MediaWidget : DockWidget
 
         _updatingProgress = true;
         TimelineControls.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
-        TimelineUnavailableText.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         ProgressSlider.Maximum = available ? duration : 100;
         ProgressSlider.Value = elapsed;
         ProgressSlider.IsEnabled = available;

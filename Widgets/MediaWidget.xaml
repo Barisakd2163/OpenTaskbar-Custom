@@ -58,9 +58,6 @@
                     <TextBlock x:Name="TotalText" Grid.Column="2" Style="{StaticResource WidgetCaption}" FontSize="9.5"
                                Margin="6,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
                 </Grid>
-                <TextBlock x:Name="TimelineUnavailableText" Style="{StaticResource WidgetCaption}"
-                           Text="{local:Loc MediaDurationUnavailable}" HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
             </Grid>
 
             <!-- 4. Playback controls: Previous, Play/Pause, Next -->
