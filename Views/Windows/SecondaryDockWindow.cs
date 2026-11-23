@@ -468,8 +468,17 @@ public sealed class SecondaryDockWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(nint window, out NativeRect rect);
     [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern nint GetWindowLongPtr(nint window, int index);
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetWindowLongPtr(nint window, int index, nint value);
+    // GetWindowLongPtrW/SetWindowLongPtrW do not exist on 32-bit Windows; there they are macros for GetWindowLongW/SetWindowLongW.
+    private static nint GetWindowLongPtr(nint window, int index) =>
+        IntPtr.Size == 8 ? GetWindowLongPtr64(window, index) : GetWindowLong32(window, index);
+
+    private static nint SetWindowLongPtr(nint window, int index, nint value) =>
+        IntPtr.Size == 8 ? SetWindowLongPtr64(window, index, value) : SetWindowLong32(window, index, (int)value);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern nint GetWindowLongPtr64(nint window, int index);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong32(nint window, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetWindowLongPtr64(nint window, int index, nint value);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")] private static extern int SetWindowLong32(nint window, int index, int value);
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);

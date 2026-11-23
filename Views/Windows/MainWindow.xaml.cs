@@ -3652,8 +3652,15 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
 
+    // GetWindowLongPtrW does not exist on 32-bit Windows; there it is a macro for GetWindowLongW.
+    internal static nint GetWindowLongPtr(nint windowHandle, int index) =>
+        IntPtr.Size == 8 ? GetWindowLongPtr64(windowHandle, index) : GetWindowLong32(windowHandle, index);
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-    internal static extern nint GetWindowLongPtr(nint windowHandle, int index);
+    private static extern nint GetWindowLongPtr64(nint windowHandle, int index);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong32(nint windowHandle, int index);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -3666,8 +3673,14 @@ public partial class MainWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(nint windowHandle);
 
+    private static nint SetWindowLongPtr(nint windowHandle, int index, nint value) =>
+        IntPtr.Size == 8 ? SetWindowLongPtr64(windowHandle, index, value) : SetWindowLong32(windowHandle, index, (int)value);
+
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-    private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint value);
+    private static extern nint SetWindowLongPtr64(nint windowHandle, int index, nint value);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong32(nint windowHandle, int index, int value);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
