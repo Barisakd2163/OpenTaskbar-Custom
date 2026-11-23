@@ -4,7 +4,7 @@
 
 - Read playback progress from the matching LibreWolf tab when Windows omits the timeline and the browser exposes a verifiable player position and duration. Show an unavailable-duration status when neither source has a usable timeline.
 
-- Added transition and error states to Wi-Fi and Bluetooth controls, waited for Windows to confirm radio changes (#161), and added direct Night Light control and an expanded list of Windows quick settings.
+- Added transition and error states to Wi-Fi and Bluetooth controls, waited for Windows to confirm radio changes (#161), and placed direct Night Light control and Windows quick settings shortcuts side by side in the dock.
 
 ## 0.3.3 - 2026-11-22
 

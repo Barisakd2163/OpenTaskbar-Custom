@@ -458,11 +458,11 @@ internal static class AdaptiveWidgetAndConfirmChecks
             qs.SetCompactState(true);
             var compactW = MeasureWidth(qs);
             var nightLight = (FrameworkElement)qs.FindName("NightLightPill")!;
-            check(events == 1 && nightLight.Visibility == Visibility.Collapsed && compactW < fullW,
-                "QuickSettingsWidget compact mode must hide NightLightPill, shrink width, and raise ContentWidthChanged.");
+            check(events == 1 && nightLight.Visibility == Visibility.Visible && compactW < fullW,
+                "QuickSettingsWidget compact mode must keep controls visible, shrink width, and raise ContentWidthChanged.");
             qs.SetHoverExpanded(true);
             check(events == 2 && nightLight.Visibility == Visibility.Visible && MeasureWidth(qs) > compactW,
-                "QuickSettingsWidget hover expansion must restore NightLightPill and raise ContentWidthChanged.");
+                "QuickSettingsWidget hover expansion must restore spacing and raise ContentWidthChanged.");
         }
 
         using (var stats = new SystemStatsWidget())

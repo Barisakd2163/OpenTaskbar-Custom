@@ -2,9 +2,11 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using System.Windows.Threading;
-using OpenTaskbar;
+using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Views;
 using OpenTaskbar.Widgets;
 
 internal static class QuickSettingsChecks
@@ -47,7 +49,15 @@ internal static class QuickSettingsChecks
             }
         };
 
-        var host = new Window { Content = widget, Width = 300, Height = 100, ShowInTaskbar = false };
+        var scroll = new DockScrollViewer
+        {
+            Content = widget,
+            MaxWidth = 320,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        scroll.SetResourceReference(FrameworkElement.StyleProperty, "DockScrollViewerStyle");
+        var host = new Window { Content = scroll, SizeToContent = SizeToContent.WidthAndHeight, ShowInTaskbar = false };
         host.Show();
         try
         {
@@ -74,13 +84,37 @@ internal static class QuickSettingsChecks
                 && AutomationProperties.GetItemStatus(toggle).Contains(UiText.Get("QuickChangeFailed"), StringComparison.Ordinal),
                 "An unconfirmed write must restore the actual state and advertise the failure.");
 
-            var more = widget.FindName("MoreButton") as Button
-                ?? throw new InvalidOperationException("Quick settings must expose its list button.");
-            more.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            PumpUntil(() => DockFlyout.IsAnyOpen);
-            Check(more.IsEnabled && DockFlyout.IsAnyOpen,
-                "The dock list must open after a failed system toggle.");
-            return 5;
+            var strip = widget.FindName("ControlsStrip") as StackPanel
+                ?? throw new InvalidOperationException("Quick Settings must expose its inline controls.");
+            var shortcuts = strip.Children.OfType<Button>().ToArray();
+            Check(shortcuts.Length >= 17 && shortcuts.All(button => button.IsEnabled
+                && button.Content is ContentControl { Content: Geometry }
+                && !string.IsNullOrWhiteSpace(AutomationProperties.GetName(button))),
+                "All inline shortcuts must have a visible icon and an accessible name.");
+
+            host.UpdateLayout();
+            var first = strip.Children[0];
+            var last = shortcuts[^1];
+            var firstOrigin = first.TranslatePoint(default, strip);
+            var lastOrigin = last.TranslatePoint(default, strip);
+            Check(widget.FindName("MoreButton") is null && strip.Orientation == Orientation.Horizontal
+                && firstOrigin.X < lastOrigin.X && Math.Abs(firstOrigin.Y - lastOrigin.Y) <= 2,
+                "All Quick Settings controls must share a row with no flyout trigger.");
+            scroll.ScrollToRightEnd();
+            host.UpdateLayout();
+            Check(scroll.HorizontalOffset > 0 && scroll.HorizontalOffset >= scroll.ScrollableWidth - 1,
+                "A narrow dock must scroll to reveal the last Quick Settings shortcut.");
+
+            scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+            widget.ApplySettings(new DockSettings(Edge: DockEdge.Left));
+            host.UpdateLayout();
+            firstOrigin = first.TranslatePoint(default, strip);
+            lastOrigin = last.TranslatePoint(default, strip);
+            Check(strip.Orientation == Orientation.Vertical && firstOrigin.Y < lastOrigin.Y
+                && Math.Abs(firstOrigin.X - lastOrigin.X) <= 2 && lastOrigin.Y + last.ActualHeight <= strip.ActualHeight + 1,
+                $"A side dock must fit the upright controls in one column. First: {firstOrigin}, last: {lastOrigin}, strip: {strip.ActualHeight}.");
+            return 8;
         }
         finally
         {

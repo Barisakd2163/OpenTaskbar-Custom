@@ -68,7 +68,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Real-Time Hardware Meters:** CPU usage, RAM usage, GPU usage, and GPU temperature (NVIDIA) rings with customizable thresholds.
 - **Media Controls:** Now Playing track information, artist metadata, track seek bar, and volume slider.
 - **Clock, Calendar and Weather:** Unified date and time capsule with detailed optical glass weather and multi-day forecast flyout.
-- **Quick Settings and Connectivity:** Direct Wi-Fi, Bluetooth, and Night Light controls show when Windows is applying a change. The expanded widget links to Windows settings and the device-specific Quick Settings or Action Center panel. Audio offers output/input selection and a per-app volume mixer.
+- **Quick Settings and Connectivity:** Wi-Fi, Bluetooth, Night Light, and Windows shortcuts sit together along the dock. Direct controls show when Windows is applying a change. Audio offers output/input selection and a per-app volume mixer.
 - **Productivity Widgets:** Focus Pomodoro timer, Stopwatch, Countdown timer, Storage drive usage, Network Speed, and Day Progress bar.
 - **System Tray Management:** Background tray apps manager with native tray context menus, window restore, and confirmed process termination.
 - **Interactive Catalog:** Built-in widget catalog grouped under inline category headings with live widget previews and expandable configuration drawers with instant auto-save.

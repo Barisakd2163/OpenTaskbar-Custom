@@ -5,8 +5,10 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
+using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 using Windows.Devices.Radios;
 
@@ -24,26 +26,17 @@ public partial class QuickSettingsWidget : DockWidget
         [Setting.NightLight] = "NightLight"
     };
 
-    private static readonly (string Label, string Uri)[] SettingsPages =
-    [
-        ("QuickAirplaneMode", "ms-settings:network-airplanemode"),
-        ("QuickCellular", "ms-settings:network-cellular"),
-        ("Hotspot", "ms-settings:network-mobilehotspot"),
-        ("LauncherVpn", "ms-settings:network-vpn"),
-        ("QuickBrightness", "ms-settings:display"),
-        ("QuickRotationLock", "ms-settings:screenrotation"),
-        ("Volume", "ms-settings:sound"),
-        ("QuickNearbySharing", "ms-settings:crossdevice"),
-        ("LauncherAccessibility", "ms-settings:easeofaccess-display")
-    ];
+    private const double ButtonSize = 27;
+    private const double FullGap = 4;
+    private const double CompactGap = 2;
+    private const double FullPadding = 8;
+    private const double CompactPadding = 4;
 
     // Primary and secondary docks share the same physical controls.
     private static readonly Dictionary<Setting, bool> PendingTargets = [];
     private static event Action? TransitionChanged;
     private static Task<RadioAccessStatus>? _radioAccess;
 
-    private readonly DockFlyout _flyout = new();
-    private readonly Dictionary<Setting, (Button Button, TextBlock State)> _panelToggles = [];
     private readonly Dictionary<Setting, ChangeResult> _errors = [];
     private IReadOnlyList<Radio> _radios = [];
     private CancellationTokenSource? _activation;
@@ -55,22 +48,55 @@ public partial class QuickSettingsWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 20;
-    public override double FullWidthEstimate => 141;
-    public override double CompactWidthEstimate => 108;
+    public override double FullWidthEstimate => EstimateWidth(FullGap, FullPadding);
+    public override double CompactWidthEstimate => EstimateWidth(CompactGap, CompactPadding);
 
     public QuickSettingsWidget()
     {
         InitializeComponent();
-        _flyout.Closed += (_, _) => _panelToggles.Clear();
+        AddShortcuts();
+        ApplyDensityLayout();
         Render();
     }
 
     protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
     protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+    protected override void OnSettingsChanged()
+    {
+        var orientation = Settings.Edge == DockEdge.Bottom ? Orientation.Horizontal : Orientation.Vertical;
+        if (ControlsStrip.Orientation == orientation) return;
+        ControlsStrip.Orientation = orientation;
+        ApplyDensityLayout();
+    }
+
+    private double EstimateWidth(double gap, double padding)
+    {
+        var buttonCount = ControlsStrip.Children.Count;
+        var contentWidth = Settings.Edge == DockEdge.Bottom
+            ? ButtonSize * buttonCount + WifiPill.BorderThickness.Left * 2 * SettingNames.Count + gap * (buttonCount - 1)
+            : ButtonSize + WifiPill.BorderThickness.Left * 2;
+        return contentWidth + (Settings.Edge == DockEdge.Bottom ? 2 * padding : 0);
+    }
 
     private void ApplyDensityLayout()
     {
-        NightLightPill.Visibility = IsCompact && !IsHoverExpanded ? Visibility.Collapsed : Visibility.Visible;
+        var compact = IsCompact && !IsHoverExpanded;
+        var gap = compact ? CompactGap : FullGap;
+        var padding = compact ? CompactPadding : FullPadding;
+        var horizontal = ControlsStrip.Orientation == Orientation.Horizontal;
+        Card.Padding = horizontal ? new Thickness(padding, 0, padding, 0) : new Thickness(0, padding, 0, padding);
+        if (horizontal) Card.ClearValue(HeightProperty);
+        else Card.Height = double.NaN;
+
+        for (var i = 0; i < ControlsStrip.Children.Count; i++)
+        {
+            if (ControlsStrip.Children[i] is FrameworkElement item)
+            {
+                var trailingGap = i == ControlsStrip.Children.Count - 1 ? 0 : gap;
+                item.Margin = horizontal ? new Thickness(0, 0, trailingGap, 0) : new Thickness(0, 0, 0, trailingGap);
+                item.HorizontalAlignment = horizontal ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+            }
+        }
         RaiseContentWidthChanged();
     }
 
@@ -120,7 +146,6 @@ public partial class QuickSettingsWidget : DockWidget
         _nightLightOn = null;
         _loadingRadios = false;
         _errors.Clear();
-        _flyout.Close();
         Render();
     }
 
@@ -129,11 +154,7 @@ public partial class QuickSettingsWidget : DockWidget
         if (now.Second % 5 == 0) RefreshState();
     }
 
-    protected override void OnLanguageChanged()
-    {
-        _flyout.Close();
-        Render();
-    }
+    protected override void OnLanguageChanged() => Render();
 
     private void Radio_StateChanged(Radio sender, object args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
@@ -168,7 +189,7 @@ public partial class QuickSettingsWidget : DockWidget
         RenderSetting(Setting.Wifi, WifiToggle, WifiPill, RadioIsOn(RadiosFor(Setting.Wifi)));
         RenderSetting(Setting.Bluetooth, BluetoothToggle, BluetoothPill, RadioIsOn(RadiosFor(Setting.Bluetooth)));
         RenderSetting(Setting.NightLight, NightLightToggle, NightLightPill, _nightLightOn);
-        MoreButton.IsEnabled = IsActive;
+        ControlsStrip.IsEnabled = IsActive;
     }
 
     private void RenderSetting(Setting setting, ToggleButton button, Border pill, bool? on)
@@ -190,13 +211,6 @@ public partial class QuickSettingsWidget : DockWidget
         AutomationProperties.SetName(button, label);
         AutomationProperties.SetItemStatus(button, state);
         ApplyChipVisual(pill, button, on == true);
-
-        if (_panelToggles.TryGetValue(setting, out var panel))
-        {
-            panel.State.Text = state;
-            panel.Button.IsEnabled = enabled;
-            AutomationProperties.SetItemStatus(panel.Button, state);
-        }
     }
 
     private static void ApplyChipVisual(Border pill, ToggleButton button, bool on)
@@ -338,83 +352,54 @@ public partial class QuickSettingsWidget : DockWidget
         return ReadNightLight() == on ? ChangeResult.Applied : ChangeResult.Failed;
     }
 
-    private void MoreButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (IsActive) _flyout.Toggle(MoreButton, BuildSettingsPanel, focusable: true);
-    }
-
-    private UIElement BuildSettingsPanel()
+    private void AddShortcuts()
     {
         var windows11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-        var panel = new StackPanel { MinWidth = 236, MaxWidth = 312 };
-        foreach (var (setting, labelKey) in SettingNames)
-        {
-            var label = UiText.Get(labelKey);
-            var row = new StackPanel();
-            row.Children.Add(DockFlyout.Heading(label));
-            var state = DockFlyout.Caption(string.Empty);
-            row.Children.Add(state);
-            var toggle = DockFlyout.FlatButton(row, (_, _) => Toggle(setting));
-            toggle.HorizontalContentAlignment = HorizontalAlignment.Left;
-            AutomationProperties.SetName(toggle, label);
-            panel.Children.Add(toggle);
-            _panelToggles.Add(setting, (toggle, state));
-        }
-        Render();
-        panel.Children.Add(DockFlyout.Heading(UiText.Get("QuickWindowsShortcuts")));
 
-        void AddAction(string labelKey, Func<string?> action)
-        {
-            var label = UiText.Get(labelKey);
-            var text = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap };
-            var button = DockFlyout.FlatButton(text, (_, _) =>
-            {
-                _flyout.Close(restoreFocus: false);
-                Report(action());
-            }, label);
-            button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            panel.Children.Add(button);
-        }
+        AddShortcut("QuickAvailableNetworks", "IconSearch", ShellShortcuts.OpenAvailableNetworks);
+        AddSettingsLink("QuickBluetoothSettings", "IconSettings", "ms-settings:bluetooth");
+        AddSettingsLink("QuickNightLightSettings", "IconPalette", "ms-settings:nightlight");
+        AddSettingsLink("QuickAirplaneMode", "IconAirplane", "ms-settings:network-airplanemode");
+        AddSettingsLink("QuickCellular", "IconCellular", "ms-settings:network-cellular");
+        AddSettingsLink("Hotspot", "IconHotspot", "ms-settings:network-mobilehotspot");
+        AddSettingsLink("LauncherVpn", "IconShield", "ms-settings:network-vpn");
+        AddSettingsLink("QuickBrightness", "IconSun", "ms-settings:display");
+        AddSettingsLink("QuickRotationLock", "IconRotate", "ms-settings:screenrotation");
+        AddSettingsLink("Volume", "IconVolume", "ms-settings:sound");
+        AddSettingsLink("QuickNearbySharing", "IconLink", "ms-settings:crossdevice");
+        AddSettingsLink("LauncherAccessibility", "IconAccessibility", "ms-settings:easeofaccess-display");
+        AddSettingsLink("QuickEnergySaver", "IconBattery", windows11 ? "ms-settings:powersleep" : "ms-settings:batterysaver");
+        AddSettingsLink("QuickNotificationMode", "IconBellOff", windows11 ? "ms-settings:notifications" : "ms-settings:quiethours");
+        AddShortcut("Display", "IconDesktops", ShellShortcuts.OpenProjection);
+        AddShortcut("QuickCast", "IconCast", _ => ShellShortcuts.OpenCast());
 
-        AddAction("QuickAvailableNetworks", () => ShellShortcuts.OpenAvailableNetworks(MoreButton));
-        AddAction("Display", () => ShellShortcuts.OpenProjection(MoreButton));
-        AddAction("QuickCast", ShellShortcuts.OpenCast);
-        AddAction("QuickBluetoothSettings", () => ShellShortcuts.OpenUri("ms-settings:bluetooth"));
-        AddAction("QuickNightLightSettings", () => ShellShortcuts.OpenUri("ms-settings:nightlight"));
-        foreach (var (label, uri) in SettingsPages)
-            AddAction(label, () => ShellShortcuts.OpenUri(uri));
-        AddAction("QuickEnergySaver", () => ShellShortcuts.OpenUri(windows11 ? "ms-settings:powersleep" : "ms-settings:batterysaver"));
-        AddAction("QuickNotificationMode", () => ShellShortcuts.OpenUri(windows11 ? "ms-settings:notifications" : "ms-settings:quiethours"));
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621))
         {
-            AddAction("QuickLiveCaptions", () => ShellShortcuts.OpenUri("ms-settings:easeofaccess-closedcaptioning"));
-            AddAction("QuickStudioEffects", () => ShellShortcuts.OpenQuickSettings(MoreButton));
+            AddSettingsLink("QuickLiveCaptions", "IconCaptions", "ms-settings:easeofaccess-closedcaptioning");
+            AddShortcut("QuickStudioEffects", "IconTarget", ShellShortcuts.OpenQuickSettings);
         }
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100))
-            AddAction("QuickHearingDevices", () => ShellShortcuts.OpenUri("ms-settings:easeofaccess-hearingaids"));
-        AddAction("NotificationCenter", () => windows11
-            ? ShellShortcuts.OpenNotificationCenter(MoreButton)
-            : ShellShortcuts.OpenQuickSettings(MoreButton));
+            AddSettingsLink("QuickHearingDevices", "IconHeadphones", "ms-settings:easeofaccess-hearingaids");
+        if (windows11)
+            AddShortcut("NotificationCenter", "IconBell", ShellShortcuts.OpenNotificationCenter);
+        AddShortcut("QuickOpenWindowsPanel", "IconSliders", ShellShortcuts.OpenQuickSettings);
 
-        var scroll = new ScrollViewer
-        {
-            Content = panel,
-            MaxHeight = 330,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-        };
-        var root = new DockPanel();
-        var nativeLabel = UiText.Get("QuickOpenWindowsPanel");
-        var nativeText = new TextBlock { Text = nativeLabel, TextWrapping = TextWrapping.Wrap };
-        var native = DockFlyout.FlatButton(nativeText, (_, _) =>
-        {
-            _flyout.Close(restoreFocus: false);
-            Report(ShellShortcuts.OpenQuickSettings(MoreButton));
-        }, nativeLabel);
-        DockPanel.SetDock(native, Dock.Bottom);
-        root.Children.Add(native);
-        root.MaxWidth = 330;
-        root.Children.Add(scroll);
-        return root;
+        void AddSettingsLink(string labelKey, string iconKey, string uri) =>
+            AddShortcut(labelKey, iconKey, _ => ShellShortcuts.OpenUri(uri));
+    }
+
+    private void AddShortcut(string labelKey, string iconKey, Func<FrameworkElement, string?> action)
+    {
+        var icon = new ContentControl();
+        icon.SetResourceReference(StyleProperty, "WidgetIcon");
+        icon.SetResourceReference(ContentControl.ContentProperty, iconKey);
+
+        var button = new Button { Content = icon, Width = ButtonSize, Height = ButtonSize };
+        button.SetResourceReference(StyleProperty, "WidgetIconButton");
+        var label = new Binding($"[{labelKey}]") { Source = UiText.Current };
+        button.SetBinding(ToolTipProperty, label);
+        button.SetBinding(AutomationProperties.NameProperty, label);
+        button.Click += (_, _) => Report(action(button));
+        ControlsStrip.Children.Add(button);
     }
 }
