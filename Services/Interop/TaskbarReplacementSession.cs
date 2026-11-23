@@ -121,14 +121,18 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private void SetPhase(SessionState phase) => _state = (_state & SessionState.FullScreenSuppressed) | phase;
 
+    private bool _appBarRegistered;
+
     private void MarkRegistered()
     {
+        _appBarRegistered = true;
         if (!IsRunning || Phase is SessionState.Positioning or SessionState.ClearingReservation) return;
         SetPhase(SessionState.Registered);
     }
 
     private void MarkUnregistered()
     {
+        _appBarRegistered = false;
         if (!IsRunning || Phase is SessionState.Positioning or SessionState.ClearingReservation) return;
         SetPhase(SessionState.Hiding);
     }
@@ -668,6 +672,14 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         if (message == WmDisplayChange)
         {
+            if (_targetMonitor != 0)
+            {
+                var monitorInfo = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+                if (!GetMonitorInfo(_targetMonitor, ref monitorInfo))
+                {
+                    _targetMonitor = 0;
+                }
+            }
             _lastWindowPos = null;
             _reservation = null;
             _sideReservation = null;
@@ -704,7 +716,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             _hideRetryTimer?.Stop();
             _reconcileTimer?.Stop();
             _hideRetryPending = false;
-            if (IsRegisteredPhase)
+            if (_appBarRegistered)
             {
                 ZeroAndRemoveAppBar();
             }
@@ -738,7 +750,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             _hideRetryTimer?.Stop();
             _reconcileTimer?.Stop();
             _hideRetryPending = false;
-            if (IsRegisteredPhase)
+            if (_appBarRegistered)
             {
                 ZeroAndRemoveAppBar();
             }
@@ -1516,7 +1528,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     /// </summary>
     private void ZeroAndRemoveAppBar(Models.DockEdge? edgeOverride = null)
     {
-        if (!IsRegisteredPhase) return;
+        if (!_appBarRegistered && !IsRegisteredPhase) return;
         var edge = edgeOverride ?? _edge;
         var appBarEdge = edge switch
         {

@@ -983,6 +983,7 @@ public partial class MainWindow
 
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
+            _hoverIconStates.Clear();
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
             _magnificationTargetsDirty = true;
@@ -1003,6 +1004,7 @@ public partial class MainWindow
             StopMagnificationRendering();
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
+            _hoverIconStates.Clear();
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
             return;

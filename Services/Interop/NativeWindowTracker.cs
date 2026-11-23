@@ -52,6 +52,7 @@ public sealed class NativeWindowTracker : IDisposable
     private readonly HashSet<nint> _quietWindows = [];
     private readonly HashSet<nint> _snapshotHandles = [];
     private readonly Dictionary<nint, TrackedWindow> _previousByHandle = [];
+    private readonly Dictionary<nint, uint> _previousPidByHandle = [];
     private nint _windowHook;
     private nint _locationHook;
     private nint _nameChangeHook;
@@ -64,13 +65,15 @@ public sealed class NativeWindowTracker : IDisposable
     private int _refreshQueued;
     private int _urgentRefresh;
     private bool _disposed;
-    private int _scanGeneration;
+    private bool _scanInFlight;
+    private bool _rescanPending;
 
     /// <summary>Per-scan state: the background worker never touches the tracker's shared collections.</summary>
     private sealed class ScanContext
     {
         public nint ExcludedWindow;
         public Dictionary<nint, TrackedWindow> Previous = [];
+        public Dictionary<nint, uint> PreviousPids = [];
         public Dictionary<nint, uint> Notifications = [];
         public HashSet<nint> QuietFound = [];
         public List<TrackedWindow> Pending = [];
@@ -295,13 +298,21 @@ public sealed class NativeWindowTracker : IDisposable
     private void RefreshWindows()
     {
         if (_disposed) return;
+        if (_scanInFlight)
+        {
+            _rescanPending = true;
+            return;
+        }
+
         // The 50-128 ms EnumWindows + per-window COM scan used to run on the UI dispatcher. Run it on the
         // dedicated background STA worker instead and publish the result back here (#128 finding 6).
-        var generation = ++_scanGeneration;
+        _scanInFlight = true;
+        _rescanPending = false;
         var context = new ScanContext
         {
             ExcludedWindow = _excludedWindow,
             Previous = new Dictionary<nint, TrackedWindow>(_previousByHandle),
+            PreviousPids = new Dictionary<nint, uint>(_previousPidByHandle),
             Notifications = new Dictionary<nint, uint>(_notificationWindows)
         };
         foreach (var item in Snapshot) context.Previous[item.Handle] = item;
@@ -312,13 +323,21 @@ public sealed class NativeWindowTracker : IDisposable
             return context;
         }).ContinueWith(task =>
         {
+            _scanInFlight = false;
             if (task.IsFaulted)
             {
                 AppLog.Warning($"Window scan failed: {task.Exception?.GetBaseException().Message}");
-                return;
             }
-            if (_disposed || generation != _scanGeneration) return; // discard stale scan
-            ApplyScan(task.Result);
+            else if (!_disposed)
+            {
+                ApplyScan(task.Result);
+            }
+
+            if (!_disposed && _rescanPending)
+            {
+                _rescanPending = false;
+                RefreshWindows();
+            }
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
@@ -339,11 +358,14 @@ public sealed class NativeWindowTracker : IDisposable
 
         var next = context.Pending.ToArray();
         _previousByHandle.Clear();
+        _previousPidByHandle.Clear();
         _snapshotHandles.Clear();
         for (var i = 0; i < next.Length; i++)
         {
             var item = next[i];
             _previousByHandle[item.Handle] = item;
+            var pid = PidOf(item.Handle);
+            if (pid != 0) _previousPidByHandle[item.Handle] = pid;
             _snapshotHandles.Add(item.Handle);
         }
 
@@ -410,7 +432,12 @@ public sealed class NativeWindowTracker : IDisposable
         ReadOnlySpan<char> trimmedSpan = context.TitleBuffer.AsSpan(0, actualLength).Trim();
         if (trimmedSpan.IsEmpty) return true;
 
-        context.Previous.TryGetValue(windowHandle, out var previous);
+        TrackedWindow? previous = null;
+        if (context.Previous.TryGetValue(windowHandle, out var cached)
+            && (!context.PreviousPids.TryGetValue(windowHandle, out var cachedPid) || cachedPid == processId))
+        {
+            previous = cached;
+        }
         // A first lookup can fail for a just-starting process; retry it instead of hiding the app forever.
         var executablePath = previous?.ExecutablePath ?? GetExecutablePath(windowHandle);
         if (IsWindowsSystemApp(executablePath) || IsExplorerShellWindow(executablePath, windowHandle, context.ClassBuffer))
@@ -424,7 +451,7 @@ public sealed class NativeWindowTracker : IDisposable
         if (previous is not null)
         {
             var title = trimmedSpan.SequenceEqual(previous.Title) ? previous.Title : trimmedSpan.ToString();
-            context.Pending.Add(previous with { Title = title, HasNotification = hasNotification });
+            context.Pending.Add(previous with { Title = title, ExecutablePath = executablePath, HasNotification = hasNotification });
         }
         else
         {
