@@ -410,13 +410,18 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
                     var chunkAvailable = sliceRead - 4;
                     var needed = Math.Min(chunkAvailable, totalLen - nameBytes.Count);
                     if (needed <= 0) break;
+                    var hitNull = false;
                     for (var i = 0; i < needed; i++)
                     {
                         var b = resp[4 + i];
-                        if (b == 0) break;
+                        if (b == 0)
+                        {
+                            hitNull = true;
+                            break;
+                        }
                         nameBytes.Add(b);
                     }
-                    if (resp[4] == 0) break;
+                    if (hitNull) break;
                 }
 
                 if (nameBytes.Count > 0)

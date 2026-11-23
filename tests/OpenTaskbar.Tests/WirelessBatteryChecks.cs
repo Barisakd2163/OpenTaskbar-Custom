@@ -408,6 +408,26 @@ internal static class WirelessBatteryChecks
               && sameNamePoll.Any(r => r.Id == "bt:001122334455" && r.BatteryLevel == 80)
               && sameNamePoll.Any(r => r.Id == "bt:AABBCCDDEEFF" && r.BatteryLevel == 35),
             "PollAsync must preserve distinct same-name devices across cache merging.");
+
+        // Concurrent PollAsync calls must be serialized by _pollGate (max in-flight concurrency == 1).
+        var inFlight = 0;
+        var maxInFlight = 0;
+        var serializedProvider = new DelegateBatteryProvider(
+            WirelessBatterySource.LogitechHidPlusPlus,
+            async ct =>
+            {
+                var current = Interlocked.Increment(ref inFlight);
+                if (current > maxInFlight) Interlocked.Exchange(ref maxInFlight, current);
+                await Task.Delay(40, ct).ConfigureAwait(false);
+                Interlocked.Decrement(ref inFlight);
+                return [];
+            });
+        var serializedAggregator = new WirelessBatteryAggregator(
+            bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+            providers: [serializedProvider],
+            clock: () => fakeNow);
+        Task.WhenAll(serializedAggregator.PollAsync(), serializedAggregator.PollAsync()).GetAwaiter().GetResult();
+        check(maxInFlight == 1, $"Concurrent PollAsync calls must be serialized (maxInFlight={maxInFlight}).");
     }
 
     private static void CheckAllLocaleCatalogs(Action<bool, string> check)

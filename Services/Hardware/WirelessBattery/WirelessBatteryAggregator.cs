@@ -32,6 +32,7 @@ internal sealed class WirelessBatteryAggregator
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _providerTimeout;
     private readonly object _cacheLock = new();
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
     private readonly Dictionary<string, WirelessDeviceReading> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     internal WirelessBatteryAggregator(
@@ -79,31 +80,39 @@ internal sealed class WirelessBatteryAggregator
 
     public async Task<IReadOnlyList<WirelessDeviceReading>> PollAsync(CancellationToken cancellationToken = default)
     {
-        var tasks = new List<Task<IReadOnlyList<WirelessDeviceReading>>>(_providers.Count + 1)
+        await _pollGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            RunIsolatedAsync(_bluetoothReader, cancellationToken)
-        };
-
-        foreach (var provider in _providers)
-        {
-            tasks.Add(RunIsolatedAsync(provider.ProbeAsync, cancellationToken));
-        }
-
-        var batches = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var now = _clock();
-
-        var freshReadings = new List<WirelessDeviceReading>();
-        foreach (var batch in batches)
-        {
-            foreach (var reading in batch)
+            var tasks = new List<Task<IReadOnlyList<WirelessDeviceReading>>>(_providers.Count + 1)
             {
-                if (IsIgnoredWiredReading(reading)) continue;
-                freshReadings.Add(reading.SampledAt == default ? reading with { SampledAt = now } : reading);
-            }
-        }
+                RunIsolatedAsync(_bluetoothReader, cancellationToken)
+            };
 
-        var deduplicated = DeduplicateReadings(freshReadings);
-        return MergeWithCache(deduplicated, now);
+            foreach (var provider in _providers)
+            {
+                tasks.Add(RunIsolatedAsync(provider.ProbeAsync, cancellationToken));
+            }
+
+            var batches = await Task.WhenAll(tasks).ConfigureAwait(false);
+            var now = _clock();
+
+            var freshReadings = new List<WirelessDeviceReading>();
+            foreach (var batch in batches)
+            {
+                foreach (var reading in batch)
+                {
+                    if (IsIgnoredWiredReading(reading)) continue;
+                    freshReadings.Add(reading.SampledAt == default ? reading with { SampledAt = now } : reading);
+                }
+            }
+
+            var deduplicated = DeduplicateReadings(freshReadings);
+            return MergeWithCache(deduplicated, now);
+        }
+        finally
+        {
+            _pollGate.Release();
+        }
     }
 
     private async Task<IReadOnlyList<WirelessDeviceReading>> RunIsolatedAsync(
