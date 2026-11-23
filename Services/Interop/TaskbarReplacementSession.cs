@@ -428,6 +428,9 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             SetPhase(SessionState.Hiding);
             Volatile.Write(ref _current, this);
+            // Observe Explorer taskbar windows before changing their visibility so a secondary tray created
+            // during startup cannot slip between the initial enumeration and event-hook installation.
+            InstallTrayShowHook();
             var state = SetTaskbarState(ReplacementState, _handle);
             if (state == TaskbarStateResult.MissingTaskbar)
             {
@@ -472,7 +475,6 @@ public sealed class TaskbarReplacementSession : IDisposable
             };
             _fullScreenPollTimer.Tick += FullScreenPollTimer_Tick;
             _fullScreenPollTimer.Start();
-            InstallTrayShowHook();
             PositionDockWindow(throwOnFailure: true);
         }
         catch
@@ -1162,6 +1164,9 @@ public sealed class TaskbarReplacementSession : IDisposable
     private void FullScreenPollTimer_Tick(object? sender, EventArgs e)
     {
         if (!CanOperate) return;
+        // Explorer may recreate a secondary tray without a delivered WinEvent. Keep the native taskbar hidden
+        // throughout the active session, including when the event hook could not be installed.
+        EnforceSecondaryTraysHidden();
         SetFullScreenSuppression(IsAnyFullScreenOnDockMonitor());
     }
 
@@ -1851,6 +1856,11 @@ public sealed class TaskbarReplacementSession : IDisposable
             0,
             0,
             WineventOutOfContext | WineventSkipOwnProcess);
+        if (_trayShowHook == 0)
+        {
+            _trayShowHookDelegate = null;
+            AppLog.Warning("Taskbar show event hook unavailable; secondary taskbar polling remains active.");
+        }
     }
 
     private void UninstallTrayShowHook()
