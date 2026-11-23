@@ -21,6 +21,7 @@ public partial class AudioWidget : DockWidget
     private AudioEndpointMonitor.SharedHandle? _monitor;
     private bool _updating;
     private bool _updatingMic;
+    private int _wheelRemainder;
     private bool? _lastHasDevice;
     private int _lastLevel = -1;
     private bool _lastMuted;
@@ -801,6 +802,20 @@ public partial class AudioWidget : DockWidget
     private void ComboButton_Click(object sender, RoutedEventArgs e)
     {
         _flyout.Toggle(ComboButton, BuildFlyoutContent, animate: true, focusable: false);
+    }
+
+    private void AudioWidget_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Handled || e.Delta == 0 || _monitor?.HasDevice != true) return;
+
+        e.Handled = true;
+        _wheelRemainder += e.Delta;
+        var notches = _wheelRemainder / Mouse.MouseWheelDeltaForOneLine;
+        if (notches == 0) return;
+
+        _wheelRemainder -= notches * Mouse.MouseWheelDeltaForOneLine;
+        var level = Math.Clamp(_monitor.Volume + notches * 0.02f, 0f, 1f);
+        if (!_monitor.SetVolume(level)) Report(UiText.Get("ErrorVolumeChange"));
     }
 
 }

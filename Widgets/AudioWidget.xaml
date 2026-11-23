@@ -2,7 +2,8 @@
               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               xmlns:w="clr-namespace:OpenTaskbar.Widgets"
-              xmlns:local="clr-namespace:OpenTaskbar.Services">
+              xmlns:local="clr-namespace:OpenTaskbar.Services"
+              PreviewMouseWheel="AudioWidget_PreviewMouseWheel">
     <Button x:Name="ComboButton" Style="{StaticResource WidgetCardButton}" Padding="10,0"
             Click="ComboButton_Click"
             AutomationProperties.Name="{local:Loc WidgetAudio}">

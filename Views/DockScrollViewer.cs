@@ -3,7 +3,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Media3D;
 using OpenTaskbar.Services;
+using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar.Views;
 
@@ -347,6 +349,8 @@ public sealed class DockScrollViewer : ScrollViewer
 
     protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
     {
+        if (IsAudioWidgetSource(e.OriginalSource as DependencyObject)) return;
+
         if (ScrollByWheel(e.Delta, Keyboard.Modifiers, animate: true))
         {
             e.Handled = true;
@@ -390,6 +394,22 @@ public sealed class DockScrollViewer : ScrollViewer
         }
 
         base.OnPreviewMouseWheel(e);
+    }
+
+    private static bool IsAudioWidgetSource(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is AudioWidget) return true;
+            source = source switch
+            {
+                Visual or Visual3D => VisualTreeHelper.GetParent(source),
+                ContentElement content => ContentOperations.GetParent(content),
+                _ => LogicalTreeHelper.GetParent(source)
+            };
+        }
+
+        return false;
     }
 
     protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
