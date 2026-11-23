@@ -68,6 +68,7 @@ internal static class TaskbarRecoveryWatchdog
         }
         catch (ArgumentException)
         {
+            if (cleanExit.WaitOne(0)) return;
             RestoreCoordinator.Restore("watchdog-parent-gone");
             return;
         }
@@ -91,6 +92,7 @@ internal static class TaskbarRecoveryWatchdog
 
             if (processWaitHandle is null)
             {
+                if (cleanExit.WaitOne(0)) return;
                 RestoreCoordinator.Restore("watchdog-parent-exited");
                 return;
             }

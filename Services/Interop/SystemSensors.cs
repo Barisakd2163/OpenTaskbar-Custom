@@ -335,6 +335,7 @@ public sealed partial class SystemSensors : IDisposable
                     var info = Marshal.PtrToStructure<D3dkmtAdapterInfo>(buffer + i * infoSize);
                     try
                     {
+                        Marshal.StructureToPtr(default(D3dkmtAdapterPerfData), perfPtr, fDeleteOld: false);
                         var query = new D3dkmtQueryAdapterInfo
                         {
                             Adapter = info.Adapter,

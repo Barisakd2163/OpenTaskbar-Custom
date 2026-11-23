@@ -87,7 +87,19 @@ public sealed class WindowThumbnailPreview : IDisposable
 
     private void EnsureWindows()
     {
-        if (_window is not null && _closeButtonWindow is not null) return;
+        if (_window is not null && _closeButtonWindow is not null && !_windowClosed && !_closeWindowClosed) return;
+        if (_window is not null && !_windowClosed)
+        {
+            try { _window.Close(); } catch { }
+        }
+        if (_closeButtonWindow is not null && !_closeWindowClosed)
+        {
+            try { _closeButtonWindow.Close(); } catch { }
+        }
+        _window = null;
+        _closeButtonWindow = null;
+        _windowClosed = false;
+        _closeWindowClosed = false;
         var resources = Application.Current.Resources;
         var popupBrush = (Brush)resources["SurfacePopup"];
         var strokeBrush = (Brush)resources["StrokeSubtle"];

@@ -512,7 +512,7 @@ public static class AiUsageService
                 if (fileCred is { Token.Length: > 0 }) return fileCred;
                 if (path is null && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR"))
                     && ReadKeyringCredential("Claude Code-credentials", out _) is { } fallbackKeyringJson
-                    && ParseClaudeCredential(fallbackKeyringJson, targetPath) is { } fallbackKeyringCred
+                    && ParseClaudeCredential(fallbackKeyringJson, null) is { } fallbackKeyringCred
                     && (!string.IsNullOrWhiteSpace(fallbackKeyringCred.Token) || fileCred is null))
                     return fallbackKeyringCred;
                 return fileCred;
@@ -554,14 +554,24 @@ public static class AiUsageService
         return new(usableToken, Plan: plan, RefreshToken: string.IsNullOrWhiteSpace(refresh) ? null : refresh, FilePath: filePath);
     }
 
+    private static readonly SemaphoreSlim ClaudeRefreshLock = new(1, 1);
+
     private static async Task<Credential?> RefreshClaudeCredentialAsync(
         Credential credential,
         Func<string, CancellationToken, Task<string?>>? exchange,
         CancellationToken cancellation)
     {
         if (string.IsNullOrWhiteSpace(credential.RefreshToken)) return null;
+        await ClaudeRefreshLock.WaitAsync(cancellation).ConfigureAwait(false);
         try
         {
+            if (exchange is null)
+            {
+                var latest = ReadCredential(AiProviders.Claude, credential.FilePath, allowCliProbe: false);
+                if (latest is { Token.Length: > 0 } && !string.Equals(latest.RefreshToken, credential.RefreshToken, StringComparison.Ordinal))
+                    return latest;
+            }
+
             string? responseJson;
             if (exchange is not null)
             {
@@ -594,6 +604,8 @@ public static class AiUsageService
             var newExpiresAt = DateTimeOffset.UtcNow.AddSeconds(expiresIn).ToUnixTimeMilliseconds();
             if (!string.IsNullOrWhiteSpace(credential.FilePath))
                 WriteClaudeCredential(credential.FilePath, newAccess, newRefresh, newExpiresAt);
+            else if (exchange is null)
+                WriteClaudeKeyringCredential(newAccess, newRefresh, newExpiresAt);
             return credential with { Token = newAccess, RefreshToken = newRefresh };
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or TimeoutException
@@ -601,57 +613,112 @@ public static class AiUsageService
         {
             return null;
         }
+        finally
+        {
+            ClaudeRefreshLock.Release();
+        }
     }
 
-    private static void WriteClaudeCredential(string path, string accessToken, string refreshToken, long expiresAt)
+    private static string? UpdateClaudeCredentialJson(string existingJson, string accessToken, string refreshToken, long expiresAt)
     {
-        try
+        using var existing = JsonDocument.Parse(existingJson);
+        if (existing.RootElement.ValueKind != JsonValueKind.Object) return null;
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
         {
-            if (!File.Exists(path)) return;
-            using var existing = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (existing.RootElement.ValueKind != JsonValueKind.Object) return;
-            var tmpPath = path + ".tmp";
-            using (var stream = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            writer.WriteStartObject();
+            var wroteOauth = false;
+            foreach (var prop in existing.RootElement.EnumerateObject())
             {
-                writer.WriteStartObject();
-                var wroteOauth = false;
-                foreach (var prop in existing.RootElement.EnumerateObject())
+                if (prop.Name == "claudeAiOauth" && prop.Value.ValueKind == JsonValueKind.Object)
                 {
-                    if (prop.Name == "claudeAiOauth" && prop.Value.ValueKind == JsonValueKind.Object)
-                    {
-                        wroteOauth = true;
-                        writer.WritePropertyName("claudeAiOauth");
-                        writer.WriteStartObject();
-                        writer.WriteString("accessToken", accessToken);
-                        writer.WriteString("refreshToken", refreshToken);
-                        writer.WriteNumber("expiresAt", expiresAt);
-                        foreach (var child in prop.Value.EnumerateObject())
-                        {
-                            if (child.Name is "accessToken" or "access_token" or "refreshToken" or "refresh_token" or "expiresAt")
-                                continue;
-                            child.WriteTo(writer);
-                        }
-                        writer.WriteEndObject();
-                    }
-                    else prop.WriteTo(writer);
-                }
-                if (!wroteOauth)
-                {
+                    wroteOauth = true;
                     writer.WritePropertyName("claudeAiOauth");
                     writer.WriteStartObject();
                     writer.WriteString("accessToken", accessToken);
                     writer.WriteString("refreshToken", refreshToken);
                     writer.WriteNumber("expiresAt", expiresAt);
+                    foreach (var child in prop.Value.EnumerateObject())
+                    {
+                        if (child.Name is "accessToken" or "access_token" or "refreshToken" or "refresh_token" or "expiresAt")
+                            continue;
+                        child.WriteTo(writer);
+                    }
                     writer.WriteEndObject();
                 }
+                else prop.WriteTo(writer);
+            }
+            if (!wroteOauth)
+            {
+                writer.WritePropertyName("claudeAiOauth");
+                writer.WriteStartObject();
+                writer.WriteString("accessToken", accessToken);
+                writer.WriteString("refreshToken", refreshToken);
+                writer.WriteNumber("expiresAt", expiresAt);
                 writer.WriteEndObject();
             }
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
+    }
+
+    private static void WriteClaudeCredential(string path, string accessToken, string refreshToken, long expiresAt)
+    {
+        var tmpPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            if (!File.Exists(path)) return;
+            var updatedJson = UpdateClaudeCredentialJson(File.ReadAllText(path, Encoding.UTF8), accessToken, refreshToken, expiresAt);
+            if (updatedJson is null) return;
+            File.WriteAllText(tmpPath, updatedJson, Encoding.UTF8);
             File.Move(tmpPath, path, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             AppLog.Warning($"Could not persist refreshed credential: {ex.Message}");
+        }
+        finally
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+        }
+    }
+
+    private static void WriteClaudeKeyringCredential(string accessToken, string refreshToken, long expiresAt)
+    {
+        const string target = "Claude Code-credentials";
+        try
+        {
+            var existingJson = ReadKeyringCredential(target, out _);
+            if (string.IsNullOrWhiteSpace(existingJson)) return;
+            var updatedJson = UpdateClaudeCredentialJson(existingJson, accessToken, refreshToken, expiresAt);
+            if (string.IsNullOrWhiteSpace(updatedJson)) return;
+            var blob = Encoding.UTF8.GetBytes(updatedJson);
+            if (blob.Length > (1 << 16)) return;
+            var blobPtr = Marshal.AllocHGlobal(blob.Length);
+            var targetPtr = Marshal.StringToCoTaskMemUni(target);
+            try
+            {
+                Marshal.Copy(blob, 0, blobPtr, blob.Length);
+                var cred = new NativeCredential
+                {
+                    Type = 1,
+                    TargetName = targetPtr,
+                    CredentialBlobSize = (uint)blob.Length,
+                    CredentialBlob = blobPtr,
+                    Persist = 2
+                };
+                if (!CredWrite(ref cred, 0))
+                    AppLog.Warning($"Could not persist refreshed keyring credential: win32={Marshal.GetLastWin32Error()}");
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(blobPtr);
+                Marshal.FreeCoTaskMem(targetPtr);
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or SecurityException or OverflowException)
+        {
+            AppLog.Warning($"Could not persist refreshed keyring credential: {ex.Message}");
         }
     }
 
@@ -1638,6 +1705,10 @@ public static class AiUsageService
     [DllImport("advapi32.dll", EntryPoint = "CredReadW", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CredRead(string target, uint type, uint reservedFlag, out nint credentialPtr);
+
+    [DllImport("advapi32.dll", EntryPoint = "CredWriteW", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CredWrite(ref NativeCredential credential, uint flags);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern void CredFree(nint credentialPtr);
