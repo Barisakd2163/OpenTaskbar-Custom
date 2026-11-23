@@ -914,5 +914,18 @@
   "ClockDateFormat": "Date format",
   "TemperatureFahrenheit": "Fahrenheit (°F)",
   "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
-  "TemperatureCelsius": "Celsius (°C)"
+  "TemperatureCelsius": "Celsius (°C)",
+  "WirelessBatteryRename": "장치 이름 바꾸기",
+  "WirelessBatteryRenamePrompt": "{0}의 사용자 지정 이름을 입력하세요 (비워 두면 초기화):",
+  "WirelessBatteryHideDevice": "장치 숨기기",
+  "WirelessBatteryRestoreHidden": "숨김 복원 ({0})",
+  "WirelessBatteryCopyDiagnostics": "진단 ID 복사",
+  "WirelessBatteryDiagnosticsCopied": "진단 ID 복사됨",
+  "WirelessBatteryLowToast": "{0} 배터리가 부족합니다 ({1}%)",
+  "WirelessBatteryPollInterval": "주기: {0}초",
+  "WirelessBatteryAlertThreshold": "알림: {0}",
+  "WirelessBatteryAlertOff": "꺼짐",
+  "WirelessBatteryListenOnly": "수신 전용: {0}",
+  "WirelessBatteryListenOnlyOn": "켜짐",
+  "WirelessBatteryListenOnlyOff": "꺼짐"
 }

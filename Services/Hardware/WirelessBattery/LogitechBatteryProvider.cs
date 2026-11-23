@@ -32,18 +32,19 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
 
     public WirelessBatterySource Source => WirelessBatterySource.LogitechHidPlusPlus;
 
-    public async Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(
+        IReadOnlyList<HidInterfaceDescriptor> hidInterfaces,
+        CancellationToken cancellationToken)
     {
+        if (hidInterfaces.Count == 0 || !HasAnyLogitechVendor(hidInterfaces))
+            return [];
+
         try
         {
-            var interfaces = await Task.Run(
-                () => Win32HidTransport.EnumerateInterfaces((vid, _) => vid == LogitechVendorId),
-                CancellationToken.None).ConfigureAwait(false);
-
-            if (interfaces.Count == 0 || cancellationToken.IsCancellationRequested) return [];
+            if (cancellationToken.IsCancellationRequested) return [];
 
             var hidReadings = await Task.Run(
-                () => ProbeHidPlusPlusInterfaces(interfaces, cancellationToken),
+                () => ProbeHidPlusPlusInterfaces(hidInterfaces, cancellationToken),
                 CancellationToken.None).ConfigureAwait(false);
 
             if (hidReadings.Count > 0 || cancellationToken.IsCancellationRequested)
@@ -55,6 +56,16 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
         {
             return [];
         }
+    }
+
+    internal static bool HasAnyLogitechVendor(IReadOnlyList<HidInterfaceDescriptor> interfaces)
+    {
+        for (var i = 0; i < interfaces.Count; i++)
+        {
+            if (interfaces[i].VendorId == LogitechVendorId)
+                return true;
+        }
+        return false;
     }
 
     internal static bool IsMatchingInterface(HidInterfaceDescriptor descriptor) =>
@@ -239,6 +250,8 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
             .Where(IsMatchingInterface)
             .OrderByDescending(d => d.OutputReportLength)
             .ToList();
+
+        if (matching.Count == 0) return results;
 
         var now = DateTimeOffset.UtcNow;
         var startTick = Stopwatch.GetTimestamp();
@@ -445,6 +458,7 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
         0 or 1 or 2 => BluetoothDeviceKind.Keyboard,
         3 or 4 => BluetoothDeviceKind.Mouse,
         5 or 6 => BluetoothDeviceKind.Gamepad,
+        7 => BluetoothDeviceKind.Speaker,
         8 or 9 => BluetoothDeviceKind.Headphones,
         _ => BluetoothDeviceKind.Generic
     };
@@ -570,10 +584,12 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
 
             if (percentage is >= 0 and <= 100)
             {
-                var name = element.TryGetProperty("displayName", out var dn) ? dn.GetString()
-                    : element.TryGetProperty("name", out var n) ? n.GetString()
+                var name = element.TryGetProperty("displayName", out var dn) && dn.ValueKind == JsonValueKind.String ? dn.GetString()
+                    : element.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()
                     : "Logitech Wireless";
-                var id = element.TryGetProperty("deviceId", out var idProp) ? idProp.GetString() : name;
+                var id = element.TryGetProperty("deviceId", out var idProp) && idProp.ValueKind == JsonValueKind.String
+                    ? idProp.GetString()
+                    : name;
                 var charging = element.TryGetProperty("charging", out var ch) && ch.ValueKind == JsonValueKind.True
                     || element.TryGetProperty("isCharging", out var ich) && ich.ValueKind == JsonValueKind.True;
 
@@ -604,16 +620,33 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
         }
     }
 
-    private static BluetoothDeviceKind ClassifyLogitechKind(string name)
+    internal static BluetoothDeviceKind ClassifyLogitechKind(string name)
     {
         var classified = BluetoothBatteryWidget.ClassifyNode(name, string.Empty);
         if (classified != BluetoothDeviceKind.Generic) return classified;
-        if (name.Contains("PRO X", StringComparison.OrdinalIgnoreCase) && name.Contains("2", StringComparison.OrdinalIgnoreCase))
+        if (name.Contains("PRO X", StringComparison.OrdinalIgnoreCase)
+            && !name.Contains("Superlight", StringComparison.OrdinalIgnoreCase)
+            && (name.Contains("2", StringComparison.OrdinalIgnoreCase) || name.Contains("Wireless", StringComparison.OrdinalIgnoreCase)))
+        {
             return BluetoothDeviceKind.Headphones;
-        if (name.Contains("G733", StringComparison.OrdinalIgnoreCase) || name.Contains("G535", StringComparison.OrdinalIgnoreCase))
+        }
+        if (name.Contains("G733", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("G535", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("G435", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("G935", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Astro", StringComparison.OrdinalIgnoreCase))
+        {
             return BluetoothDeviceKind.Headphones;
-        if (name.Contains("G915", StringComparison.OrdinalIgnoreCase) || name.Contains("G715", StringComparison.OrdinalIgnoreCase))
+        }
+        if (name.Contains("G915", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("G715", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("G515", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("MX Keys", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("MX Mechanical", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("PRO X TKL", StringComparison.OrdinalIgnoreCase))
+        {
             return BluetoothDeviceKind.Keyboard;
+        }
         return BluetoothDeviceKind.Mouse;
     }
 }

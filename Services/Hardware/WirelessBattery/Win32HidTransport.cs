@@ -5,6 +5,15 @@ using Microsoft.Win32.SafeHandles;
 
 namespace OpenTaskbar.Services;
 
+internal sealed record HidBatteryValueCap(
+    bool IsFeatureReport,
+    byte ReportId,
+    ushort UsagePage,
+    ushort Usage,
+    ushort LinkCollection,
+    int LogicalMin,
+    int LogicalMax);
+
 internal sealed record HidInterfaceDescriptor(
     string DevicePath,
     ushort VendorId,
@@ -15,7 +24,8 @@ internal sealed record HidInterfaceDescriptor(
     ushort InputReportLength,
     ushort OutputReportLength,
     ushort FeatureReportLength,
-    string ProductName);
+    string ProductName,
+    IReadOnlyList<HidBatteryValueCap>? BatteryValueCaps = null);
 
 /// <summary>
 /// Clean-room Win32 SetupAPI + HidD/HidP + Overlapped I/O transport for reading wireless peripheral
@@ -37,8 +47,13 @@ internal static class Win32HidTransport
     internal const int ERROR_NOT_FOUND = 1168;
     internal const int ERROR_TIMEOUT = 1460;
     internal const int ERROR_INVALID_PARAMETER = 87;
+    internal const int ERROR_ACCESS_DENIED = 5;
     private const uint WAIT_OBJECT_0 = 0x00000000;
-    private const int HIDP_STATUS_SUCCESS = 0x00110000;
+    internal const int HIDP_STATUS_SUCCESS = 0x00110000;
+
+    internal const int HidP_Input = 0;
+    internal const int HidP_Output = 1;
+    internal const int HidP_Feature = 2;
 
     public static IReadOnlyList<HidInterfaceDescriptor> EnumerateInterfaces(Func<ushort, ushort, bool>? vidPidFilter = null)
     {
@@ -91,10 +106,13 @@ internal static class Win32HidTransport
                         continue;
 
                     HIDP_CAPS caps;
+                    IReadOnlyList<HidBatteryValueCap>? batteryCaps = null;
                     try
                     {
                         if (HidP_GetCaps(preparsedData, out caps) != HIDP_STATUS_SUCCESS)
                             continue;
+
+                        batteryCaps = ExtractStandardBatteryValueCaps(preparsedData, caps);
                     }
                     finally
                     {
@@ -112,7 +130,8 @@ internal static class Win32HidTransport
                         InputReportLength: caps.InputReportByteLength,
                         OutputReportLength: caps.OutputReportByteLength,
                         FeatureReportLength: caps.FeatureReportByteLength,
-                        ProductName: productName));
+                        ProductName: productName,
+                        BatteryValueCaps: batteryCaps));
                 }
                 finally
                 {
@@ -126,6 +145,78 @@ internal static class Win32HidTransport
         }
 
         return results;
+    }
+
+    private static IReadOnlyList<HidBatteryValueCap>? ExtractStandardBatteryValueCaps(nint preparsedData, HIDP_CAPS caps)
+    {
+        List<HidBatteryValueCap>? matches = null;
+        ExtractFromReportType(preparsedData, HidP_Feature, caps.NumberFeatureValueCaps, isFeature: true, ref matches);
+        ExtractFromReportType(preparsedData, HidP_Input, caps.NumberInputValueCaps, isFeature: false, ref matches);
+        return matches;
+    }
+
+    private static void ExtractFromReportType(
+        nint preparsedData,
+        int reportType,
+        ushort count,
+        bool isFeature,
+        ref List<HidBatteryValueCap>? matches)
+    {
+        if (count is 0 or > 64) return;
+        var length = count;
+        var valueCaps = new HIDP_VALUE_CAPS[length];
+        if (HidP_GetValueCaps(reportType, valueCaps, ref length, preparsedData) != HIDP_STATUS_SUCCESS)
+            return;
+
+        for (var i = 0; i < length && i < valueCaps.Length; i++)
+        {
+            var vc = valueCaps[i];
+            if (!TryMatchBatteryUsage(vc, out var usage))
+                continue;
+
+            matches ??= new List<HidBatteryValueCap>(2);
+            matches.Add(new HidBatteryValueCap(
+                IsFeatureReport: isFeature,
+                ReportId: vc.ReportID,
+                UsagePage: vc.UsagePage,
+                Usage: usage,
+                LinkCollection: vc.LinkCollection,
+                LogicalMin: vc.LogicalMin,
+                LogicalMax: vc.LogicalMax));
+        }
+    }
+
+    private static bool TryMatchBatteryUsage(HIDP_VALUE_CAPS vc, out ushort matchedUsage)
+    {
+        matchedUsage = 0;
+        ushort[] targetUsages = vc.UsagePage switch
+        {
+            0x0006 => [0x0020], // Generic Device Controls: Battery Strength
+            0x0084 => [0x0065, 0x00D0], // Power Device: Capacity / AC Present
+            0x0085 => [0x0064, 0x0065, 0x0066, 0x0044, 0x0045], // Battery System: Rel/Abs StateOfCharge, RemainingCapacity, Charging, Discharging
+            _ => []
+        };
+
+        if (targetUsages.Length == 0) return false;
+
+        foreach (var target in targetUsages)
+        {
+            if (vc.IsRange == 0)
+            {
+                if (vc.UsageOrUsageMin == target)
+                {
+                    matchedUsage = target;
+                    return true;
+                }
+            }
+            else if (target >= vc.UsageOrUsageMin && target <= vc.UsageMax)
+            {
+                matchedUsage = target;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static bool TryOpenSession(
@@ -166,9 +257,32 @@ internal static class Win32HidTransport
             return false;
         }
 
+        if (!featureOnly && IsSystemMouseOrKeyboardCollection(handle))
+        {
+            handle.Dispose();
+            win32Error = ERROR_ACCESS_DENIED;
+            return false;
+        }
+
         win32Error = 0;
         session = new HidDeviceSession(handle);
         return true;
+    }
+
+    private static bool IsSystemMouseOrKeyboardCollection(SafeFileHandle handle)
+    {
+        if (!HidD_GetPreparsedData(handle, out var preparsedData) || preparsedData == nint.Zero)
+            return false;
+        try
+        {
+            if (HidP_GetCaps(preparsedData, out var caps) != HIDP_STATUS_SUCCESS)
+                return false;
+            return caps.UsagePage == 0x0001 && caps.Usage is 0x0002 or 0x0006;
+        }
+        finally
+        {
+            HidD_FreePreparsedData(preparsedData);
+        }
     }
 
     private static string ReadProductString(SafeFileHandle handle)
@@ -186,6 +300,8 @@ internal static class Win32HidTransport
     {
         private readonly SafeFileHandle _handle;
         private bool _disposed;
+
+        public bool IsDisposed => _disposed;
 
         internal HidDeviceSession(SafeFileHandle handle)
         {
@@ -213,7 +329,6 @@ internal static class Win32HidTransport
                 timeoutMs: timeoutMs,
                 out var transferred,
                 out win32Error);
-
             return ok && transferred > 0;
         }
 
@@ -236,10 +351,12 @@ internal static class Win32HidTransport
                 timeoutMs: timeoutMs,
                 out var transferred,
                 out win32Error,
-                readDestination: destination);
+                destination);
 
-            if (!ok || transferred == 0) return false;
-            bytesRead = (int)Math.Min(transferred, (uint)destination.Length);
+            if (!ok || transferred == 0)
+                return false;
+
+            bytesRead = (int)Math.Min(transferred, (uint)length);
             return true;
         }
 
@@ -299,9 +416,11 @@ internal static class Win32HidTransport
                             }
                             else
                             {
-                                // The kernel IRP may still hold overlappedPtr/bufferPtr; defer freeing until hEvent signals.
+                                // The kernel IRP may still hold overlappedPtr/bufferPtr; defer freeing until hEvent signals,
+                                // and immediately close the wedged session handle so retry loops cannot issue more I/O on it.
                                 ownsResources = false;
                                 DeferCleanupUntilSignaled(hEvent, overlappedPtr, bufferPtr);
+                                Dispose();
                             }
 
                             win32Error = ERROR_TIMEOUT;
@@ -335,53 +454,74 @@ internal static class Win32HidTransport
             {
                 if (ownsResources)
                 {
+                    CloseHandle(hEvent);
                     Marshal.FreeHGlobal(overlappedPtr);
                     Marshal.FreeHGlobal(bufferPtr);
-                    CloseHandle(hEvent);
+                }
+            }
+        }
+
+        private sealed class DeferredCleanupState(DeferredRawEventWaitHandle handle, nint overlappedPtr, nint bufferPtr)
+        {
+            public readonly DeferredRawEventWaitHandle Handle = handle;
+            public readonly nint OverlappedPtr = overlappedPtr;
+            public readonly nint BufferPtr = bufferPtr;
+            public RegisteredWaitHandle? Registered;
+            private int _unregistered;
+
+            public void TryUnregister()
+            {
+                if (Registered is { } reg && Interlocked.Exchange(ref _unregistered, 1) == 0)
+                {
+                    try { reg.Unregister(null); } catch { }
                 }
             }
         }
 
         private static void DeferCleanupUntilSignaled(nint hEvent, nint overlappedPtr, nint bufferPtr)
         {
-            var waitHandle = new NativeEventWaitHandle(hEvent);
-            var cleanup = new PendingIoCleanup(overlappedPtr, bufferPtr, waitHandle);
-            cleanup.Registration = ThreadPool.RegisterWaitForSingleObject(
-                waitHandle,
-                static (state, _) => ((PendingIoCleanup)state!).Complete(),
-                cleanup,
-                millisecondsTimeOutInterval: Timeout.Infinite,
-                executeOnlyOnce: true);
-        }
-
-        private sealed class NativeEventWaitHandle : WaitHandle
-        {
-            public NativeEventWaitHandle(nint handle)
+            try
             {
-                SafeWaitHandle = new SafeWaitHandle(handle, ownsHandle: true);
+                var waitHandle = new DeferredRawEventWaitHandle(hEvent);
+                var state = new DeferredCleanupState(waitHandle, overlappedPtr, bufferPtr);
+                var registered = ThreadPool.RegisterWaitForSingleObject(
+                    waitHandle,
+                    static (rawState, _) =>
+                    {
+                        var ctx = (DeferredCleanupState)rawState!;
+                        ctx.TryUnregister();
+                        try { ctx.Handle.Dispose(); } catch { }
+                        CloseHandle(ctx.Handle.DangerousRawHandle);
+                        Marshal.FreeHGlobal(ctx.OverlappedPtr);
+                        Marshal.FreeHGlobal(ctx.BufferPtr);
+                    },
+                    state,
+                    Timeout.Infinite,
+                    executeOnlyOnce: true);
+                state.Registered = registered;
+                try
+                {
+                    if (waitHandle.WaitOne(0))
+                        state.TryUnregister();
+                }
+                catch
+                {
+                }
+            }
+            catch
+            {
+                // Intentionally leak unmanaged pointers rather than risking a kernel use-after-free on registration failure.
             }
         }
 
-        private sealed class PendingIoCleanup
+        private sealed class DeferredRawEventWaitHandle : WaitHandle
         {
-            private readonly nint _overlappedPtr;
-            private readonly nint _bufferPtr;
-            private readonly NativeEventWaitHandle _waitHandle;
-            public RegisteredWaitHandle? Registration;
+            public nint DangerousRawHandle { get; }
 
-            public PendingIoCleanup(nint overlappedPtr, nint bufferPtr, NativeEventWaitHandle waitHandle)
+            public DeferredRawEventWaitHandle(nint rawHandle)
             {
-                _overlappedPtr = overlappedPtr;
-                _bufferPtr = bufferPtr;
-                _waitHandle = waitHandle;
-            }
-
-            public void Complete()
-            {
-                try { Interlocked.Exchange(ref Registration, null)?.Unregister(null); } catch { }
-                Marshal.FreeHGlobal(_overlappedPtr);
-                Marshal.FreeHGlobal(_bufferPtr);
-                _waitHandle.Dispose();
+                DangerousRawHandle = rawHandle;
+                SafeWaitHandle = new SafeWaitHandle(rawHandle, ownsHandle: false);
             }
         }
 
@@ -423,6 +563,38 @@ internal static class Win32HidTransport
             return ok;
         }
 
+        public bool TryExtractUsageValue(
+            bool isFeatureReport,
+            ushort usagePage,
+            ushort linkCollection,
+            ushort usage,
+            byte[] reportBuffer,
+            out uint usageValue)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            usageValue = 0;
+            if (!HidD_GetPreparsedData(_handle, out var preparsedData) || preparsedData == nint.Zero)
+                return false;
+
+            try
+            {
+                var reportType = isFeatureReport ? HidP_Feature : HidP_Input;
+                return HidP_GetUsageValue(
+                    reportType,
+                    usagePage,
+                    linkCollection,
+                    usage,
+                    out usageValue,
+                    preparsedData,
+                    reportBuffer,
+                    (uint)reportBuffer.Length) == HIDP_STATUS_SUCCESS;
+            }
+            finally
+            {
+                HidD_FreePreparsedData(preparsedData);
+            }
+        }
+
         public bool TryTransactInterrupt(
             ReadOnlySpan<byte> request,
             Span<byte> response,
@@ -432,10 +604,15 @@ internal static class Win32HidTransport
             out int win32Error)
         {
             bytesRead = 0;
+            if (_disposed)
+            {
+                win32Error = ERROR_TIMEOUT;
+                return false;
+            }
             var clampedTimeout = Math.Clamp(timeoutMs, 100, 300);
             if (!TryWriteReport(request, clampedTimeout, out win32Error))
             {
-                if (!TrySetOutputReport(request, out win32Error))
+                if (_disposed || !TrySetOutputReport(request, out win32Error))
                     return false;
             }
 
@@ -443,6 +620,11 @@ internal static class Win32HidTransport
             var maxAttempts = 4;
             for (var attempt = 0; attempt < maxAttempts; attempt++)
             {
+                if (_disposed)
+                {
+                    win32Error = ERROR_TIMEOUT;
+                    return false;
+                }
                 var elapsedMs = (int)Stopwatch.GetElapsedTime(startTick).TotalMilliseconds;
                 var remainingMs = clampedTimeout - elapsedMs;
                 if (remainingMs < 40) break;
@@ -504,6 +686,45 @@ internal static class Win32HidTransport
         public ushort NumberFeatureButtonCaps;
         public ushort NumberFeatureValueCaps;
         public ushort NumberFeatureDataIndices;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HIDP_VALUE_CAPS
+    {
+        public ushort UsagePage;
+        public byte ReportID;
+        public byte IsAlias;
+        public ushort BitField;
+        public ushort LinkCollection;
+        public ushort LinkUsage;
+        public ushort LinkUsagePage;
+        public byte IsRange;
+        public byte IsStringRange;
+        public byte IsDesignatorRange;
+        public byte IsAbsolute;
+        public byte HasNull;
+        public byte Reserved;
+        public ushort BitSize;
+        public ushort ReportCount;
+        public ushort Reserved2_0;
+        public ushort Reserved2_1;
+        public ushort Reserved2_2;
+        public ushort Reserved2_3;
+        public ushort Reserved2_4;
+        public uint UnitsExp;
+        public uint Units;
+        public int LogicalMin;
+        public int LogicalMax;
+        public int PhysicalMin;
+        public int PhysicalMax;
+        public ushort UsageOrUsageMin;
+        public ushort UsageMax;
+        public ushort StringMin;
+        public ushort StringMax;
+        public ushort DesignatorMin;
+        public ushort DesignatorMax;
+        public ushort DataIndexMin;
+        public ushort DataIndexMax;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -579,6 +800,24 @@ internal static class Win32HidTransport
     private static extern int HidP_GetCaps(
         nint preparsedData,
         out HIDP_CAPS capabilities);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern int HidP_GetValueCaps(
+        int reportType,
+        [Out] HIDP_VALUE_CAPS[] valueCaps,
+        ref ushort valueCapsLength,
+        nint preparsedData);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern int HidP_GetUsageValue(
+        int reportType,
+        ushort usagePage,
+        ushort linkCollection,
+        ushort usage,
+        out uint usageValue,
+        nint preparsedData,
+        byte[] report,
+        uint reportLength);
 
     [DllImport("hid.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

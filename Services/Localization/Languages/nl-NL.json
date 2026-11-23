@@ -914,5 +914,18 @@
   "ClockDateFormat": "Date format",
   "TemperatureFahrenheit": "Fahrenheit (°F)",
   "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
-  "TemperatureCelsius": "Celsius (°C)"
+  "TemperatureCelsius": "Celsius (°C)",
+  "WirelessBatteryRename": "Apparaat hernoemen",
+  "WirelessBatteryRenamePrompt": "Voer een aangepaste naam in voor {0} (laat leeg om te herstellen):",
+  "WirelessBatteryHideDevice": "Apparaat verbergen",
+  "WirelessBatteryRestoreHidden": "Verborgen herstellen ({0})",
+  "WirelessBatteryCopyDiagnostics": "Diagnostische ID's kopiëren",
+  "WirelessBatteryDiagnosticsCopied": "Diagnostische ID's gekopieerd",
+  "WirelessBatteryLowToast": "Batterij van {0} bijna leeg ({1}%)",
+  "WirelessBatteryPollInterval": "Interval: {0}s",
+  "WirelessBatteryAlertThreshold": "Melding: {0}",
+  "WirelessBatteryAlertOff": "Uit",
+  "WirelessBatteryListenOnly": "Alleen luisteren: {0}",
+  "WirelessBatteryListenOnlyOn": "Aan",
+  "WirelessBatteryListenOnlyOff": "Uit"
 }

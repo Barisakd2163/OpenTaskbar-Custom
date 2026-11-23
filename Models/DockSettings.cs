@@ -245,6 +245,11 @@ public sealed record DockSettings(
     DockHeightMode DockHeightMode = DockHeightMode.Auto,
     int DockHeightPixels = 48,
     int DockHeightPercent = 7,
+    int WirelessBatteryPollSeconds = 30,
+    int WirelessBatteryLowThreshold = 0,
+    IReadOnlyList<string>? IgnoredWirelessDevices = null,
+    IReadOnlyDictionary<string, string>? WirelessDeviceAliases = null,
+    bool WirelessBatteryListenOnly = false,
     // Appended at the end so older settings files and positional constructor calls keep working.
     TemperatureUnit WeatherUnit = TemperatureUnit.Celsius,
     ClockDateFormat DateFormat = ClockDateFormat.System)

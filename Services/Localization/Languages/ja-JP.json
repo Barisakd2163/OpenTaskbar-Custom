@@ -914,5 +914,18 @@
   "ClockDateFormat": "Date format",
   "TemperatureFahrenheit": "Fahrenheit (°F)",
   "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
-  "TemperatureCelsius": "Celsius (°C)"
+  "TemperatureCelsius": "Celsius (°C)",
+  "WirelessBatteryRename": "デバイス名を変更",
+  "WirelessBatteryRenamePrompt": "{0} の表示名を入力してください（空欄でリセット）:",
+  "WirelessBatteryHideDevice": "デバイスを非表示",
+  "WirelessBatteryRestoreHidden": "非表示を復元 ({0})",
+  "WirelessBatteryCopyDiagnostics": "診断IDをコピー",
+  "WirelessBatteryDiagnosticsCopied": "診断IDをコピーしました",
+  "WirelessBatteryLowToast": "{0} のバッテリー残量が低下しています ({1}%)",
+  "WirelessBatteryPollInterval": "更新: {0}秒",
+  "WirelessBatteryAlertThreshold": "通知: {0}",
+  "WirelessBatteryAlertOff": "オフ",
+  "WirelessBatteryListenOnly": "受信のみ: {0}",
+  "WirelessBatteryListenOnlyOn": "オン",
+  "WirelessBatteryListenOnlyOff": "オフ"
 }

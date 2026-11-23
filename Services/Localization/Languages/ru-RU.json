@@ -914,5 +914,18 @@
   "ClockDateFormat": "Date format",
   "TemperatureFahrenheit": "Fahrenheit (°F)",
   "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
-  "TemperatureCelsius": "Celsius (°C)"
+  "TemperatureCelsius": "Celsius (°C)",
+  "WirelessBatteryRename": "Переименовать устройство",
+  "WirelessBatteryRenamePrompt": "Введите своё имя для {0} (оставьте пустым для сброса):",
+  "WirelessBatteryHideDevice": "Скрыть устройство",
+  "WirelessBatteryRestoreHidden": "Показать скрытые ({0})",
+  "WirelessBatteryCopyDiagnostics": "Копировать ID диагностики",
+  "WirelessBatteryDiagnosticsCopied": "ID диагностики скопированы",
+  "WirelessBatteryLowToast": "Низкий заряд батареи {0} ({1}%)",
+  "WirelessBatteryPollInterval": "Опрос: {0} с",
+  "WirelessBatteryAlertThreshold": "Уведомление: {0}",
+  "WirelessBatteryAlertOff": "Выкл.",
+  "WirelessBatteryListenOnly": "Только прослушивание: {0}",
+  "WirelessBatteryListenOnlyOn": "Вкл.",
+  "WirelessBatteryListenOnlyOff": "Выкл."
 }

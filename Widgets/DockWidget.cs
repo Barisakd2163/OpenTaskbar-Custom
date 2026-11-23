@@ -30,6 +30,7 @@ public class DockWidget : UserControl, IDisposable
     }
 
     public Action<string>? ReportError { get; set; }
+    public Action<DockSettings>? UpdateSettings { get; set; }
 
     /// <summary>Raised when the widget appears or disappears, so the dock can refit its widget area.</summary>
     public event EventHandler? AvailabilityChanged;

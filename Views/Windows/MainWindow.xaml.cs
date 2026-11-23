@@ -200,6 +200,11 @@ public partial class MainWindow : Window
         {
             OrderChanged = OnWidgetOrderChanged
         };
+        _widgetCoordinator.WidgetSettingsUpdated = updated =>
+        {
+            var err = _preferences.Save(updated);
+            if (err is not null) ReportError(err);
+        };
         _widgetCoordinator.WidgetRemoveRequested += RemoveDockWidget;
         _widgetCoordinator.DragEnded += CancelLiveDrag;
         TrayButton.Initialize(ReportError, CloseApplication, TerminateApplication);

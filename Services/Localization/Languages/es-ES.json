@@ -914,5 +914,18 @@
   "ClockDateFormat": "Date format",
   "TemperatureFahrenheit": "Fahrenheit (°F)",
   "DateFormatYyyyMmDd": "YYYY-MM-DD (2026-12-31)",
-  "TemperatureCelsius": "Celsius (°C)"
+  "TemperatureCelsius": "Celsius (°C)",
+  "WirelessBatteryRename": "Renombrar dispositivo",
+  "WirelessBatteryRenamePrompt": "Introduce un nombre personalizado para {0} (déjalo vacío para restablecer):",
+  "WirelessBatteryHideDevice": "Ocultar dispositivo",
+  "WirelessBatteryRestoreHidden": "Restaurar ocultos ({0})",
+  "WirelessBatteryCopyDiagnostics": "Copiar ID de diagnóstico",
+  "WirelessBatteryDiagnosticsCopied": "ID de diagnóstico copiados",
+  "WirelessBatteryLowToast": "Batería baja en {0} ({1}%)",
+  "WirelessBatteryPollInterval": "Sondeo: {0}s",
+  "WirelessBatteryAlertThreshold": "Alerta: {0}",
+  "WirelessBatteryAlertOff": "Desactivada",
+  "WirelessBatteryListenOnly": "Solo escuchar: {0}",
+  "WirelessBatteryListenOnlyOn": "Activado",
+  "WirelessBatteryListenOnlyOff": "Desactivado"
 }

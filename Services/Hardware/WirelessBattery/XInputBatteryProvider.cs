@@ -26,7 +26,9 @@ internal sealed class XInputBatteryProvider : IWirelessBatteryProvider
 
     public WirelessBatterySource Source => WirelessBatterySource.XInput;
 
-    public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(
+        IReadOnlyList<HidInterfaceDescriptor> hidInterfaces,
+        CancellationToken cancellationToken) =>
         Task.Run(() => ProbeControllers(cancellationToken), CancellationToken.None);
 
     internal static IReadOnlyList<WirelessDeviceReading> ProbeControllers(CancellationToken cancellationToken = default)
@@ -117,6 +119,21 @@ internal sealed class XInputBatteryProvider : IWirelessBatteryProvider
         BatteryLevelMedium => "Medium",
         _ => "Full"
     };
+
+    internal static string GetLocalizedLevelTextForBucket(int batteryPercent)
+    {
+        var (labelKey, fallback) = batteryPercent switch
+        {
+            <= 12 => ("WirelessBatteryLevelEmpty", "Empty"),
+            <= 30 => ("WirelessBatteryLevelLow", "Low"),
+            <= 75 => ("WirelessBatteryLevelMedium", "Medium"),
+            _ => ("WirelessBatteryLevelFull", "Full")
+        };
+
+        return UiText.TryGet(labelKey, out var text) && !string.IsNullOrWhiteSpace(text)
+            ? text
+            : fallback;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct XINPUT_GAMEPAD
