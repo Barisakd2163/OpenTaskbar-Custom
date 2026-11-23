@@ -285,6 +285,10 @@ public partial class MainWindow
             }
             while (_recycleBinQueryAgain);
         }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Recycle Bin refresh failed: {ex.Message}");
+        }
         finally
         {
             _recycleBinQueryRunning = false;
@@ -473,8 +477,15 @@ public partial class MainWindow
             button.Padding = new Thickness(4, 6, 4, 6);
             button.Margin = new Thickness(2);
             grid.Children.Add(button);
-            // Thumbnails can be slow (videos, network drives); fill them in after the flyout is shown.
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, () => image.Source = ApplicationIconProvider.GetForShellItem(path, flyoutIconPixels));
+            // Thumbnails can be slow (videos, network drives); load off the UI thread after the flyout is shown.
+            _ = Task.Run(() => ApplicationIconProvider.GetForShellItem(path, flyoutIconPixels)).ContinueWith(task =>
+            {
+                if (!task.IsCompletedSuccessfully || task.Result is not { } loadedIcon) return;
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+                {
+                    if (_stackFlyout.IsOpen) image.Source = loadedIcon;
+                });
+            }, TaskScheduler.Default);
         }
 
         root.Children.Add(grid);

@@ -388,7 +388,7 @@ public sealed class DockFlyout
                     if (_contextMenuProcessId != 0)
                     {
                         GetWindowThreadProcessId(effectiveHwnd, out var clickPid);
-                        if (clickPid == _contextMenuProcessId)
+                        if (clickPid == _contextMenuProcessId && IsPopupMenuWindow(effectiveHwnd, className))
                         {
                             return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
                         }
@@ -470,6 +470,24 @@ public sealed class DockFlyout
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong32(nint hWnd, int nIndex);
+
+    private static bool IsPopupMenuWindow(nint hwnd, string className)
+    {
+        if (string.Equals(className, "#32768", StringComparison.Ordinal)
+            || string.Equals(className, "Popup", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(className, "Xaml_WindowedPopupClass", StringComparison.Ordinal)
+            || className.Contains("DropDown", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        const int gwlStyle = -16;
+        const uint wsPopup = 0x80000000;
+        var style = unchecked((uint)GetWindowLong32(hwnd, gwlStyle));
+        return (style & wsPopup) != 0;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
