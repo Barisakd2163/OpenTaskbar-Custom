@@ -535,10 +535,14 @@ public partial class MainWindow
 
     private void RefreshDesktopFilter()
     {
+        if (_windowTracker is null) return;
         var (current, _) = VirtualDesktops.Read();
-        if (current == _currentDesktop || _windowTracker is null) return;
         _currentDesktop = current;
-        WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+        _filteredSource = null;
+        if (_preferences.Current.CurrentDesktopOnly)
+        {
+            WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+        }
     }
 
     // ---- Docks on other displays (#10) ----
