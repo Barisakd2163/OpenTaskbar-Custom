@@ -27,6 +27,8 @@ public partial class MainWindow
     // Frozen for the duration of one hover session so a mid-hover budget recapture cannot make the same hover
     // bloom small first and oversized later (or push icons past the dock edge).
     private double _sessionMaxScale = DockMetrics.HoverScale;
+    private double _sessionSurfaceDelta;
+    private double _lastAppliedSurfaceDelta;
     private readonly Dictionary<FrameworkElement, double> _magnificationScaleTargets = [];
     private readonly Dictionary<FrameworkElement, double> _magnificationVelocity = [];
     private readonly Dictionary<FrameworkElement, bool> _hoverIconStates = [];
@@ -361,12 +363,26 @@ public partial class MainWindow
 
         if (!IsFullWidth
             && _dockWidthOverride is null
-            && DockScrollViewer.ScrollableWidth <= 0.5
             && _restSurfaceWidth > 0
             && _dockArea.Width > 0)
         {
-            _canExpandSurface = true;
-            _availableExpansion = Math.Max(0.0, maximumSurfaceWidth - _restSurfaceWidth);
+            var freeScreen = Math.Max(0.0, maximumSurfaceWidth - _restSurfaceWidth);
+            if (DockScrollViewer.ScrollableWidth <= 0.5)
+            {
+                _canExpandSurface = true;
+                _availableExpansion = freeScreen;
+            }
+            else if (freeScreen > DockScrollViewer.ScrollableWidth + 1.0)
+            {
+                // A 1-5 px transient overflow must not collapse hover magnification from full scale to ~1.1x (#127).
+                _canExpandSurface = true;
+                _availableExpansion = Math.Max(0.0, freeScreen - DockScrollViewer.ScrollableWidth);
+            }
+            else
+            {
+                _canExpandSurface = false;
+                _availableExpansion = 0.0;
+            }
         }
         else if ((IsFullWidth || _dockWidthOverride is not null)
             && DockScrollViewer.ScrollableWidth <= 0.5
@@ -603,9 +619,14 @@ public partial class MainWindow
 
         var mouseAxis = IsVertical ? mousePos.Y : mousePos.X;
         var overMagnifiedTarget = _magnificationLayoutActive && IsPointerOverMagnifiedTarget(source);
+        // Expanded edge icons and surface expansion extend past the resting span; add hysteresis so hovering
+        // the visibly magnified first/last app does not snap-reset (#127).
+        var edgeHysteresis = _magnificationLayoutActive
+            ? ((_canExpandSurface ? _lastAppliedSurfaceDelta / 2.0 : 0.0) + 4.0)
+            : 0.0;
         if (_magnificationTargets.Count == 0
-            || (!overMagnifiedTarget && (mouseAxis < _magnifiedSpanMin
-                || mouseAxis > _magnifiedSpanMax
+            || (!overMagnifiedTarget && (mouseAxis < _magnifiedSpanMin - edgeHysteresis
+                || mouseAxis > _magnifiedSpanMax + edgeHysteresis
                 || IsAxisInNonMagnifiedRestSpan(mouseAxis))))
         {
             ResetMagnification();
@@ -839,7 +860,13 @@ public partial class MainWindow
                 if (_canExpandSurface && _restSurfaceWidth > 0)
                 {
                     var surfaceDelta = Math.Max(totalActualExtra, appliedDelta);
-                    var surfaceWidth = _restSurfaceWidth + surfaceDelta;
+                    if (_hasMagnificationPointer && surfaceDelta > _sessionSurfaceDelta)
+                    {
+                        _sessionSurfaceDelta = surfaceDelta;
+                    }
+                    var appliedSurfaceDelta = _hasMagnificationPointer ? _sessionSurfaceDelta : surfaceDelta;
+                    _lastAppliedSurfaceDelta = appliedSurfaceDelta;
+                    var surfaceWidth = _restSurfaceWidth + appliedSurfaceDelta;
                     if (Math.Abs(DockSurface.Width - surfaceWidth) >= 0.25)
                     {
                         DockSurface.BeginAnimation(WidthProperty, null);
@@ -847,7 +874,7 @@ public partial class MainWindow
                     }
                     if (double.IsFinite(_restScrollMaxWidth))
                     {
-                        var maxWidth = _restScrollMaxWidth + surfaceDelta;
+                        var maxWidth = _restScrollMaxWidth + appliedSurfaceDelta;
                         if (Math.Abs(DockScrollViewer.MaxWidth - maxWidth) >= 0.25)
                             DockScrollViewer.MaxWidth = maxWidth;
                     }
@@ -891,6 +918,8 @@ public partial class MainWindow
             }
 
             _magnificationLayoutActive = false;
+            _sessionSurfaceDelta = 0;
+            _lastAppliedSurfaceDelta = 0;
             _layoutPhase = MagnificationLayoutPhase.Rest;
             // Release overflow suppression after WPF finishes arranging the restored rest widths so
             // ScrollableWidth does not reflect the previous expanded frame and flicker '>' for one frame (#82).
@@ -955,6 +984,15 @@ public partial class MainWindow
 
     private void ResetMagnification(bool immediate = false)
     {
+        if (!immediate && !_hasMagnificationPointer)
+        {
+            if (!_magnificationLayoutActive && !_magnificationRendering && _magnifiedIcons.Count == 0)
+                return;
+            if (_magnificationRendering && _magnificationScaleTargets.Count > 0
+                && _magnificationScaleTargets.Values.All(v => v <= 1.001))
+                return;
+        }
+
         _hasMagnificationPointer = false;
         var iconsToReset = _magnificationScaleTargets.Keys
             .Concat(_magnifiedIcons)
@@ -983,6 +1021,8 @@ public partial class MainWindow
 
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
+            _sessionSurfaceDelta = 0;
+            _lastAppliedSurfaceDelta = 0;
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
             _magnificationTargetsDirty = true;
@@ -1003,6 +1043,8 @@ public partial class MainWindow
             StopMagnificationRendering();
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
+            _sessionSurfaceDelta = 0;
+            _lastAppliedSurfaceDelta = 0;
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
             return;
