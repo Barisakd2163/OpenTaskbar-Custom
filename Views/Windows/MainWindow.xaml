@@ -399,27 +399,6 @@
                                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" /></ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                             </ItemsControl>
-                            <Button x:Name="ShowDesktopButton" Style="{StaticResource DockButton}" Width="6"
-                                    Click="ShowDesktop_Click" Cursor="Hand"
-                                    AllowDrop="True"
-                                    DragOver="ShowDesktopButton_DragOver"
-                                    DragLeave="ShowDesktopButton_DragLeave"
-                                    Drop="ShowDesktopButton_Drop"
-                                    MouseUp="ShowDesktopButton_MouseUp"
-                                    IsVisibleChanged="ShowDesktop_IsVisibleChanged"
-                                    PreviewMouseLeftButtonDown="ShellButton_PreviewMouseLeftButtonDown"
-                                    PreviewMouseMove="ShellButton_PreviewMouseMove"
-                                    PreviewMouseLeftButtonUp="ShellButton_PreviewMouseLeftButtonUp"
-                                    AutomationProperties.Name="{local:Loc ShowDesktop}" ToolTip="{local:Loc ShowDesktopTooltip}"
-                                    ToolTipService.InitialShowDelay="650" Margin="3,0,0,0"
-                                    VerticalAlignment="Stretch">
-                                <Button.ContextMenu>
-                                    <ContextMenu Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
-                                        <MenuItem Header="{local:Loc ShowDesktop}" Icon="{StaticResource IconMonitor}" Click="ShowDesktop_Click" />
-                                        <MenuItem Header="{local:Loc OpenDesktopFolder}" Icon="{StaticResource IconFolder}" Click="OpenDesktopFolder_Click" />
-                                    </ContextMenu>
-                                </Button.ContextMenu>
-                            </Button>
                         </StackPanel>
                         <!-- Widgets follow the apps in floating mode and pin to the right edge in full-width mode. -->
                         <Border x:Name="WidgetIsland" Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
@@ -437,6 +416,28 @@
                     <Border x:Name="DockDynamicGlowBorder" Visibility="Collapsed" IsHitTestVisible="False" />
                 </Grid>
             </Border>
+            <Button x:Name="ShowDesktopButton" Style="{StaticResource DockButton}" Width="6"
+                    Click="ShowDesktop_Click" Cursor="Hand"
+                    AllowDrop="True"
+                    DragOver="ShowDesktopButton_DragOver"
+                    DragLeave="ShowDesktopButton_DragLeave"
+                    Drop="ShowDesktopButton_Drop"
+                    MouseUp="ShowDesktopButton_MouseUp"
+                    IsVisibleChanged="ShowDesktop_IsVisibleChanged"
+                    PreviewMouseLeftButtonDown="ShellButton_PreviewMouseLeftButtonDown"
+                    PreviewMouseMove="ShellButton_PreviewMouseMove"
+                    PreviewMouseLeftButtonUp="ShellButton_PreviewMouseLeftButtonUp"
+                    AutomationProperties.Name="{local:Loc ShowDesktop}" ToolTip="{local:Loc ShowDesktopTooltip}"
+                    ToolTipService.InitialShowDelay="650" Margin="0"
+                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                    Panel.ZIndex="11">
+                <Button.ContextMenu>
+                    <ContextMenu Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
+                        <MenuItem Header="{local:Loc ShowDesktop}" Icon="{StaticResource IconMonitor}" Click="ShowDesktop_Click" />
+                        <MenuItem Header="{local:Loc OpenDesktopFolder}" Icon="{StaticResource IconFolder}" Click="OpenDesktopFolder_Click" />
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
             <!-- Scroll edge overlays: scrim and chevron sit flush at the outer dock edges, right beside the resize thumbs -->
             <Button x:Name="ScrollPrevOverlay"
                     HorizontalAlignment="Left" VerticalAlignment="Stretch"

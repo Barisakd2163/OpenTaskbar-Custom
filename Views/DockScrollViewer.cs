@@ -27,8 +27,10 @@ public sealed class DockScrollViewer : ScrollViewer
     private Button? _externalPreviousButton;
     private Button? _externalNextButton;
     private double _externalIndicatorCornerRadius = 19;
+    private double _externalNextIndicatorInset;
     private bool? _lastExternalVertical;
     private double _lastExternalRadius = double.NaN;
+    private double _lastExternalNextIndicatorInset = double.NaN;
     private bool _suppressOverflowIndicators;
 
     // The viewer is the single owner of the desired offset. Every write path (wheel, pan, step,
@@ -510,6 +512,15 @@ public sealed class DockScrollViewer : ScrollViewer
         }
     }
 
+    public void SetExternalNextIndicatorInset(double inset)
+    {
+        var clamped = double.IsFinite(inset) ? Math.Max(0, inset) : 0;
+        if (Math.Abs(_externalNextIndicatorInset - clamped) < 0.01) return;
+        _externalNextIndicatorInset = clamped;
+        _lastExternalNextIndicatorInset = double.NaN;
+        UpdateExternalIndicatorLayout(DockEdge != OpenTaskbar.Models.DockEdge.Bottom);
+    }
+
     public void ScrollStepBack() => ScrollStep(forward: false);
     public void ScrollStepForward() => ScrollStep(forward: true);
 
@@ -651,9 +662,12 @@ public sealed class DockScrollViewer : ScrollViewer
     {
         if (_externalPreviousButton is null && _externalNextButton is null) return;
         var radius = _externalIndicatorCornerRadius;
-        if (_lastExternalVertical == vertical && Math.Abs(_lastExternalRadius - radius) < 0.01) return;
+        if (_lastExternalVertical == vertical
+            && Math.Abs(_lastExternalRadius - radius) < 0.01
+            && Math.Abs(_lastExternalNextIndicatorInset - _externalNextIndicatorInset) < 0.01) return;
         _lastExternalVertical = vertical;
         _lastExternalRadius = radius;
+        _lastExternalNextIndicatorInset = _externalNextIndicatorInset;
 
         // Inset by 1 DIP (ControlStroke) so edge scrims stay cleanly inside DockFrame's border.
         if (vertical)
@@ -683,7 +697,7 @@ public sealed class DockScrollViewer : ScrollViewer
                 _externalNextButton.HorizontalContentAlignment = HorizontalAlignment.Center;
                 _externalNextButton.VerticalContentAlignment = VerticalAlignment.Bottom;
                 _externalNextButton.Padding = new Thickness(0, 0, 0, 6);
-                _externalNextButton.Margin = new Thickness(1, 0, 1, 1);
+                _externalNextButton.Margin = new Thickness(1, 0, 1, 1 + _externalNextIndicatorInset);
                 _externalNextButton.Tag = new CornerRadius(0, 0, radius, radius);
             }
         }
@@ -715,7 +729,7 @@ public sealed class DockScrollViewer : ScrollViewer
                 _externalNextButton.HorizontalContentAlignment = HorizontalAlignment.Right;
                 _externalNextButton.VerticalContentAlignment = VerticalAlignment.Center;
                 _externalNextButton.Padding = new Thickness(0, 0, 7, 0);
-                _externalNextButton.Margin = new Thickness(0, 1, 1, 1);
+                _externalNextButton.Margin = new Thickness(0, 1, 1 + _externalNextIndicatorInset, 1);
                 _externalNextButton.Tag = new CornerRadius(0, radius, radius, 0);
             }
         }

@@ -2643,7 +2643,6 @@ public partial class MainWindow : Window
         if (settings.StartPlacement != StartButtonPlacement.Hidden) tokens.Add("start");
         if (settings.ShowSearchButton) tokens.Add("search");
         if (settings.ShowTaskViewButton) tokens.Add("taskview");
-        if (settings.ShowDesktopButton) tokens.Add("peek");
 
         var groupedPaths = (settings.AppGroups ?? []).SelectMany(g => g.ExecutablePaths)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -2734,8 +2733,6 @@ public partial class MainWindow : Window
             return _preferences.Current.ShowTaskViewButton ? TaskViewButton : null;
         if (string.Equals(token, "tray", StringComparison.OrdinalIgnoreCase))
             return _preferences.Current.ShowTrayButton ? TrayButton : null;
-        if (string.Equals(token, "peek", StringComparison.OrdinalIgnoreCase))
-            return _preferences.Current.ShowDesktopButton ? ShowDesktopButton : null;
         if (string.Equals(token, "bin", StringComparison.OrdinalIgnoreCase)) return RecycleBinButton;
         if (token.StartsWith("app:", StringComparison.OrdinalIgnoreCase))
         {
@@ -2894,6 +2891,7 @@ public partial class MainWindow : Window
     private void RebuildDockOrder()
     {
         if (_rebuildingDockOrder || DockContents is null) return;
+        ApplyShowDesktopButtonLayout();
         _rebuildingDockOrder = true;
         ResetMagnification(immediate: true);
         try
@@ -3169,9 +3167,33 @@ public partial class MainWindow : Window
                 DockScrollViewer.SuppressOverflowIndicators = false;
             }
         }
+        ApplyShowDesktopButtonLayout();
         ApplyDockMargin();
         ApplyDockAlignment();
         ResizeDockToContent();
+    }
+
+    private void ApplyShowDesktopButtonLayout()
+    {
+        var visible = _preferences.Current.ShowDesktopButton;
+        ShowDesktopButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        var inset = visible ? (IsVertical ? ShowDesktopButton.Height : ShowDesktopButton.Width) + 1 : 0;
+
+        DockLayoutRoot.Margin = IsVertical
+            ? new Thickness(0, 0, 0, inset)
+            : new Thickness(0, 0, inset, 0);
+        DockScrollViewer.SetExternalNextIndicatorInset(inset);
+        if (IsVertical)
+        {
+            var edgeInset = new Thickness(0, 0, 0, inset);
+            LeftResizeThumb.Margin = edgeInset;
+            RightResizeThumb.Margin = edgeInset;
+        }
+        else
+        {
+            LeftResizeThumb.Margin = new Thickness(0);
+            RightResizeThumb.Margin = new Thickness(0, 0, inset, 0);
+        }
     }
 
     /// <summary>
@@ -3658,6 +3680,9 @@ public partial class MainWindow : Window
         var appsContentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
         var trailWidth = DockScrollViewer.MeasureContentWidth(DockTrailControls);
         var widgetsWidth = hasWidgets ? DockScrollViewer.MeasureContentWidth(WidgetIsland) : 0;
+        var showDesktopWidth = ShowDesktopButton.Visibility == Visibility.Visible
+            ? ShowDesktopButton.Width + 1
+            : 0;
         var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : targetDisplay.Width;
         var margin = DockSurface.Margin;
@@ -3668,10 +3693,10 @@ public partial class MainWindow : Window
         // App icons can scroll inside DockScrollViewer, so their natural (unscrolled) width must not be
         // counted as overflow right away. They may take space from their own scroll range first, but once
         // that would squeeze them below a couple of cells the remaining overflow has to come from widgets.
-        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth);
+        var maxAppsWidth = Math.Max(0, maxLayoutWidth - leadWidth - trailWidth - widgetsWidth - showDesktopWidth);
         var appScrollFloor = (double)FindResource("DockCellSize") * 2;
         var effectiveAppsWidth = WidgetCoordinator.EffectiveAppsWidth(appsContentWidth, maxAppsWidth, appScrollFloor);
-        var contentFixedWidth = leadWidth + effectiveAppsWidth + trailWidth + widgetsWidth;
+        var contentFixedWidth = leadWidth + effectiveAppsWidth + trailWidth + widgetsWidth + showDesktopWidth;
         // When the user has manually resized the dock, the shrink is intentional for the apps area only.
         // Widget compact mode must not be triggered by the dock width override — only by genuine content overflow
         // relative to the monitor width. Pass the full monitor layout width so Auto widgets never compact

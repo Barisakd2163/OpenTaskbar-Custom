@@ -159,9 +159,9 @@ public partial class MainWindow
 
         ShowDesktopButton.Width = vertical ? double.NaN : 6;
         ShowDesktopButton.Height = vertical ? 6 : double.NaN;
-        ShowDesktopButton.HorizontalAlignment = vertical ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
-        ShowDesktopButton.VerticalAlignment = vertical ? VerticalAlignment.Center : VerticalAlignment.Stretch;
-        ShowDesktopButton.Margin = vertical ? new Thickness(0, 3, 0, 0) : new Thickness(3, 0, 0, 0);
+        ShowDesktopButton.HorizontalAlignment = vertical ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        ShowDesktopButton.VerticalAlignment = vertical ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
+        ShowDesktopButton.Margin = new Thickness(0);
 
         DockContents.Orientation = orientation;
         DockContents.HorizontalAlignment = vertical ? HorizontalAlignment.Center : HorizontalAlignment.Left;
@@ -218,6 +218,9 @@ public partial class MainWindow
         var marginV = DockSurface.Margin.Top + DockSurface.Margin.Bottom;
         var maximumSurfaceHeight = Math.Max(1, available - marginV);
         var verticalChrome = DockFrame.Padding.Top + DockFrame.Padding.Bottom + 4;
+        var showDesktopInset = ShowDesktopButton.Visibility == Visibility.Visible
+            ? ShowDesktopButton.Height + 1
+            : 0;
         var shellCount = (StartButtonShown ? 1 : 0)
             + (_preferences.Current.ShowSearchButton ? 1 : 0)
             + (_preferences.Current.ShowTaskViewButton ? 1 : 0)
@@ -235,8 +238,8 @@ public partial class MainWindow
         {
             Application.Current.Resources["DockCellSize"] = Profile.Cell + verticalExtraWidth;
             Application.Current.Resources["DockCellHeight"] = Profile.Cell;
-            DockLayoutRoot.MinHeight = Math.Max(0, maximumSurfaceHeight - verticalChrome);
-            DockScrollViewer.MaxHeight = Math.Max(Profile.Cell, maximumSurfaceHeight - verticalChrome);
+            DockLayoutRoot.MinHeight = Math.Max(0, maximumSurfaceHeight - verticalChrome - showDesktopInset);
+            DockScrollViewer.MaxHeight = Math.Max(Profile.Cell, maximumSurfaceHeight - verticalChrome - showDesktopInset);
             DockSurface.Height = double.NaN;
             return;
         }
@@ -247,7 +250,7 @@ public partial class MainWindow
             Application.Current.Resources["DockCellSize"] = Profile.Cell + verticalExtraWidth;
             Application.Current.Resources["DockCellHeight"] = Profile.Cell;
             DockLayoutRoot.MinHeight = 0;
-            DockScrollViewer.MaxHeight = Math.Max(Profile.Cell, targetHeight - verticalChrome);
+            DockScrollViewer.MaxHeight = Math.Max(Profile.Cell, targetHeight - verticalChrome - showDesktopInset);
             DockSurface.Height = targetHeight;
             return;
         }
@@ -257,7 +260,7 @@ public partial class MainWindow
         Application.Current.Resources["DockCellHeight"] = Math.Min(Profile.Cell,
             Math.Max(DockMetrics.MinCellSize, (available - frame) / count));
         DockLayoutRoot.MinHeight = 0;
-        DockScrollViewer.MaxHeight = Math.Max(Profile.Cell, maximumSurfaceHeight - verticalChrome);
+        DockScrollViewer.MaxHeight = Math.Max(Profile.Cell, maximumSurfaceHeight - verticalChrome - showDesktopInset);
         DockSurface.Height = double.NaN;
     }
 }
