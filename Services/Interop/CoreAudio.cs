@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -8,31 +9,73 @@ namespace OpenTaskbar.Services;
 public sealed record AudioDeviceInfo(string Id, string Name, bool IsDefault, bool IsInput);
 
 /// <summary>
-/// Conservative matching between a media session's AppUserModelId and a WASAPI app session
-/// process name. No match means the media widget simply offers no per-app volume control.
+/// Associates a Windows media source with an unambiguous WASAPI app session.
 /// </summary>
 internal static class AppAudioSessionMatcher
 {
-    public static bool Matches(string appToken, string mediaHint)
+    internal static int Match(string processName, string? appUserModelId, string sourceId, string? windowAppUserModelId = null)
     {
-        var app = Normalize(appToken);
-        var hint = Normalize(mediaHint);
-        if (app.Length == 0 || hint.Length == 0) return false;
-        return app.Contains(hint, StringComparison.OrdinalIgnoreCase)
-            || hint.Contains(app, StringComparison.OrdinalIgnoreCase);
+        const StringComparison comparison = StringComparison.OrdinalIgnoreCase;
+        if (string.IsNullOrWhiteSpace(sourceId)) return 0;
+        if (string.Equals(appUserModelId, sourceId, comparison)
+            || string.Equals(windowAppUserModelId, sourceId, comparison)) return 2;
+
+        var app = ExecutableName(processName);
+        if (app.IsEmpty) return 0;
+
+        var separator = sourceId.IndexOf('!');
+        if (separator >= 0)
+        {
+            var application = sourceId.AsSpan(separator + 1);
+            return appUserModelId is null && !application.Equals("App", comparison)
+                && app.Equals(application, comparison) ? 1 : 0;
+        }
+
+        var source = ExecutableName(sourceId);
+        if (source.Equals(app, comparison)) return 1;
+        // Chromium app and profile IDs can append dot-separated components to the browser ID.
+        return (app.Equals("chrome", comparison) || app.Equals("msedge", comparison))
+            && source.Length > app.Length && source[app.Length] == '.'
+            && source.StartsWith(app, comparison) ? 1 : 0;
     }
 
-    public static string Normalize(string value)
+    internal static AppAudioSession? Select(IReadOnlyList<AppAudioSession> sessions, string sourceId)
     {
-        var span = value.AsSpan().Trim();
-        var slash = span.LastIndexOfAny(['\\', '/']);
-        if (slash >= 0) span = span[(slash + 1)..];
-        if (span.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) span = span[..^4];
-        var bang = span.LastIndexOf('!');
-        if (bang >= 0 && bang + 1 < span.Length) span = span[(bang + 1)..];
-        // Strip Nintendo-style AUMID suffix after underscore only when it looks like a package family token.
-        return span.ToString();
+        AppAudioSession? best = null;
+        var bestRank = 0;
+        foreach (var session in sessions)
+        {
+            var match = Match(session.Name, session.AppUserModelId, sourceId, session.WindowAppUserModelId);
+            var state = session.State;
+            if (session.ProcessId <= 0 || match == 0 || state == AppAudioSessionState.Unavailable) continue;
+
+            var rank = match * 2 + (state == AppAudioSessionState.Active ? 1 : 0);
+            if (rank < bestRank) continue;
+            // An app ID alone cannot distinguish multiple equally plausible audio streams.
+            best = rank == bestRank ? null : session;
+            bestRank = rank;
+        }
+
+        foreach (var session in sessions)
+        {
+            if (!ReferenceEquals(session, best)) session.Dispose();
+        }
+        return best;
     }
+
+    private static ReadOnlySpan<char> ExecutableName(string value)
+    {
+        var name = value.AsSpan().Trim();
+        name = name[(name.LastIndexOfAny('\\', '/') + 1)..];
+        return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
+    }
+}
+
+internal enum AppAudioSessionState
+{
+    Inactive,
+    Active,
+    Unavailable
 }
 
 public sealed record AppAudioSession(
@@ -48,6 +91,10 @@ public sealed record AppAudioSession(
     Func<bool>? GetMute = null) : IDisposable
 {
     private int _disposed;
+    internal string? AppUserModelId { get; init; }
+    internal string? WindowAppUserModelId { get; init; }
+    internal Func<AppAudioSessionState>? ReadState { private get; init; }
+    internal AppAudioSessionState State => ReadState?.Invoke() ?? AppAudioSessionState.Inactive;
 
     /// <summary>Live value from the audio session, when the provider supplies one.</summary>
     public float CurrentVolume => GetVolume?.Invoke() ?? Volume;
@@ -294,7 +341,10 @@ public sealed class AudioEndpointMonitor : IDisposable
         }
     }
 
-    public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null)
+    public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null) =>
+        GetAppSessions(targetDeviceId, mediaSourceId: null);
+
+    private IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId, string? mediaSourceId)
     {
         var sessions = new List<AppAudioSession>();
         var seenSessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -329,19 +379,26 @@ public sealed class AudioEndpointMonitor : IDisposable
                             try
                             {
                                 if (control is not IAudioSessionControl2 ctl2 || control is not ISimpleAudioVolume simpleVolume) continue;
-                                if (ctl2.GetState(out var state) != 0 || state == 2) continue; // 2 = Expired
+                                if (ctl2.GetState(out var state) != 0 || state is not (0 or 1)) continue;
 
                                 var isSystemSounds = ctl2.IsSystemSoundsSession() == 0;
-                                ctl2.GetProcessId(out var pid);
+                                if (ctl2.GetProcessId(out var pid) < 0) continue;
                                 if (pid == myPid) continue;
+                                if (mediaSourceId is not null && (isSystemSounds || pid <= 0)) continue;
 
-                                var sessionKey = ctl2.GetSessionInstanceIdentifier(out var instanceId) == 0 && !string.IsNullOrWhiteSpace(instanceId)
-                                    ? instanceId
-                                    : $"pid:{pid}:{i}";
-                                if (!seenSessionIds.Add(sessionKey)) continue;
+                                if (ctl2.GetSessionInstanceIdentifier(out var instanceId) == 0 && !string.IsNullOrWhiteSpace(instanceId))
+                                {
+                                    if (!seenSessionIds.Add(instanceId)) continue;
+                                }
+                                else if (mediaSourceId is null && !seenSessionIds.Add($"pid:{pid}:{i}"))
+                                {
+                                    continue;
+                                }
 
                                 string appName;
                                 BitmapSource? appIcon = null;
+                                string? appUserModelId = null;
+                                string? windowAppUserModelId = null;
 
                                 if (isSystemSounds)
                                 {
@@ -359,16 +416,27 @@ public sealed class AudioEndpointMonitor : IDisposable
                                     {
                                         using var proc = Process.GetProcessById(pid);
                                         appName = proc.ProcessName;
-                                        var exePath = proc.MainModule?.FileName;
-                                        if (!string.IsNullOrEmpty(exePath))
+                                        if (mediaSourceId is not null)
+                                        {
+                                            appUserModelId = NativeWindowTracker.GetProcessPackagedAppId((uint)pid);
+                                            if (!string.Equals(appUserModelId, mediaSourceId, StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                // Desktop apps can publish an opaque media ID as a window property.
+                                                windowAppUserModelId = NativeJumpListSession.ReadWindowAppId(proc.MainWindowHandle);
+                                            }
+                                        }
+                                        else if (proc.MainModule?.FileName is { Length: > 0 } exePath)
                                         {
                                             appIcon = ApplicationIconProvider.GetForFile(exePath, 32);
                                         }
                                     }
-                                    catch
+                                    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
                                     {
                                         appName = $"App ({pid})";
                                     }
+                                    if (mediaSourceId is not null
+                                        && AppAudioSessionMatcher.Match(appName, appUserModelId, mediaSourceId, windowAppUserModelId) == 0)
+                                        continue;
                                 }
                                 else
                                 {
@@ -377,8 +445,7 @@ public sealed class AudioEndpointMonitor : IDisposable
                                     if (!seenNames.Add(appName)) continue;
                                 }
 
-                                simpleVolume.GetMasterVolume(out var vol);
-                                simpleVolume.GetMute(out var muted);
+                                if (simpleVolume.GetMasterVolume(out var vol) != 0 || simpleVolume.GetMute(out var muted) != 0) continue;
 
                                 // The slider must retain its COM session until the mixer is closed.
                                 // Releasing it here makes later volume writes fail against a disconnected RCW.
@@ -386,7 +453,12 @@ public sealed class AudioEndpointMonitor : IDisposable
                                 sessions.Add(new AppAudioSession(
                                     pid, appName, appIcon, vol, muted,
                                     handle.SetVolume, handle.SetMute, handle.Dispose,
-                                    handle.GetVolume, handle.GetMute));
+                                    handle.GetVolume, handle.GetMute)
+                                {
+                                    AppUserModelId = appUserModelId,
+                                    WindowAppUserModelId = windowAppUserModelId,
+                                    ReadState = handle.GetState
+                                });
                                 retainedForMixer = true;
                             }
                             catch (Exception ex)
@@ -425,7 +497,8 @@ public sealed class AudioEndpointMonitor : IDisposable
             }
         }
 
-        if (_enumerator.GetDefaultAudioEndpoint(DataFlowRender, RoleMultimedia, out var defDevice) == 0 && defDevice is not null)
+        if (mediaSourceId is null && _enumerator.GetDefaultAudioEndpoint(DataFlowRender, RoleMultimedia, out var defDevice) == 0
+            && defDevice is not null)
         {
             try { CollectFromDevice(defDevice); }
             finally { Marshal.ReleaseComObject(defDevice); }
@@ -457,44 +530,11 @@ public sealed class AudioEndpointMonitor : IDisposable
     }
 
     /// <summary>
-    /// Finds a single running app audio session whose process name or AppUserModelId matches
-    /// one of the supplied hints. Returns a session that stays alive until disposed.
-    /// Matching is intentionally conservative: no match means no per-app control is offered.
+    /// Finds the unambiguous WASAPI session for a media source. The caller owns the returned session.
     /// </summary>
-    public AppAudioSession? FindAppSession(params string[] hints)
-    {
-        if (hints.Length == 0) return null;
-        var wanted = hints
-            .Where(h => !string.IsNullOrWhiteSpace(h))
-            .Select(AppAudioSessionMatcher.Normalize)
-            .Where(h => h.Length > 0)
-            .ToArray();
-        if (wanted.Length == 0) return null;
-
-        AppAudioSession? found = null;
-        var sessions = GetAppSessions();
-        foreach (var session in sessions)
-        {
-            if (wanted.Any(h => AppAudioSessionMatcher.Matches(session.Name, h)))
-            {
-                found = session;
-                break;
-            }
-        }
-
-        if (found is null)
-        {
-            foreach (var session in sessions) session.Dispose();
-        }
-        else
-        {
-            foreach (var session in sessions)
-            {
-                if (!ReferenceEquals(session, found)) session.Dispose();
-            }
-        }
-        return found;
-    }
+    public AppAudioSession? FindAppSession(string sourceId) => string.IsNullOrWhiteSpace(sourceId)
+        ? null
+        : AppAudioSessionMatcher.Select(GetAppSessions(targetDeviceId: null, sourceId), sourceId);
 
     // Owns one audio session for as long as its mixer controls are on screen.
     private sealed class AppSessionVolumeHandle(IAudioSessionControl control, ISimpleAudioVolume volume) : IDisposable
@@ -502,6 +542,20 @@ public sealed class AudioEndpointMonitor : IDisposable
         private IAudioSessionControl? _control = control;
         private readonly ISimpleAudioVolume _volume = volume;
         private Guid _eventContext = Guid.NewGuid();
+
+        public AppAudioSessionState GetState()
+        {
+            try
+            {
+                if (_control is { } control && control.GetState(out var state) == 0 && state is 0 or 1)
+                    return (AppAudioSessionState)state;
+            }
+            catch (COMException ex)
+            {
+                AppLog.Warning($"Session state unavailable: {ex.Message}");
+            }
+            return AppAudioSessionState.Unavailable;
+        }
 
         public bool SetVolume(float level)
         {
@@ -690,7 +744,7 @@ public sealed class AudioEndpointMonitor : IDisposable
         public IReadOnlyList<AudioDeviceInfo> GetRecordingDevices() => _disposed ? [] : _owner.GetDevices(isRecording: true);
         public bool SelectDefaultDevice(string deviceId) => !_disposed && SetDefaultDevice(deviceId);
         public IReadOnlyList<AppAudioSession> GetAppSessions(string? targetDeviceId = null) => _disposed ? [] : _owner.GetAppSessions(targetDeviceId);
-        public AppAudioSession? FindAppSession(params string[] hints) => _disposed ? null : _owner.FindAppSession(hints);
+        public AppAudioSession? FindAppSession(string sourceId) => _disposed ? null : _owner.FindAppSession(sourceId);
 
         public void BindDefaultDevice()
         {

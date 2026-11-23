@@ -31,6 +31,7 @@ checks += RunningAppChecks.Run();
 checks += TaskbarWindowChecks.Run();
 checks += RunningAppProjectionChecks.Run();
 checks += ShellFlyoutPositionChecks.Run();
+checks += MediaVolumeChecks.Run();
 checks += AiUsageChecks.Run();
 if (!headless) checks += WidgetViewChecks.Run();
 checks += ThemePackChecks.Run();

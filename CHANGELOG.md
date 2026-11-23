@@ -15,6 +15,8 @@
 
 - Simplified the system metrics widget and its flyouts, and removed the duplicate Show Desktop widget in favor of the taskbar edge strip.
 
+- Fixed the media widget timeline freezing or jumping when players repeat an unchanged position or omit its timestamp. The volume slider resolves window identities used by apps such as LibreWolf, prefers the active audio session, and disables itself when the match is ambiguous.
+
 - Reveal the desktop when a file is dragged over the Show Desktop strip. Drop directly onto the strip to copy, or hold Shift to move (#148).
 - Add an application pin command to the dock menu and preserve Store app identities and icons, including AppsFolder entries that lack a readable executable (#147).
 - Update an existing Windows startup entry when a newer portable copy is opened from a different location or the registered executable no longer exists (#152).

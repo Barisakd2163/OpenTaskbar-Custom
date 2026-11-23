@@ -39,7 +39,9 @@
             </StackPanel>
 
             <!-- 3. Progress bar with elapsed and total time -->
-            <Grid x:Name="ProgressPanel" Grid.Column="2" MinWidth="138" Margin="0,0,8,0" VerticalAlignment="Center">
+            <Grid x:Name="ProgressPanel" Grid.Column="2" MinWidth="138" Margin="0,0,8,0" VerticalAlignment="Center"
+                  PreviewMouseLeftButtonDown="ProgressSlider_PreviewMouseLeftButtonDown"
+                  PreviewMouseLeftButtonUp="ProgressSlider_PreviewMouseLeftButtonUp">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -49,8 +51,7 @@
                            Text="0:00" Margin="0,0,6,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
                 <Slider x:Name="ProgressSlider" Grid.Column="1" Style="{StaticResource MediaProgressSlider}" Minimum="0" Maximum="100" Value="0"
                         VerticalAlignment="Center"
-                        PreviewMouseLeftButtonDown="ProgressSlider_PreviewMouseLeftButtonDown"
-                        PreviewMouseLeftButtonUp="ProgressSlider_PreviewMouseLeftButtonUp"
+                        w:SliderTrackDrag.IsEnabled="True"
                         LostMouseCapture="ProgressSlider_LostMouseCapture"
                         ValueChanged="ProgressSlider_ValueChanged" />
                 <TextBlock x:Name="TotalText" Grid.Column="2" Style="{StaticResource WidgetCaption}" FontSize="9.5"

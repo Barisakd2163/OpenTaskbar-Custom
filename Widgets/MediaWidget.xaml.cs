@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -33,19 +34,14 @@ public partial class MediaWidget : DockWidget
     private AudioEndpointMonitor.SharedHandle? _audio;
     private AppAudioSession? _mediaVolumeSession;
 
-    /// <summary>Test hook: supplies per-app audio sessions for the current media session.</summary>
-    internal Func<IReadOnlyList<AppAudioSession>>? AppSessionSource { get; set; }
     private readonly DispatcherTimer _volumeHoverCloseTimer;
     private int _activationVersion;
     private int _refreshVersion;
-    private TimeSpan _startTime;
-    private TimeSpan _endTime;
-    private TimeSpan _position;
-    private DateTimeOffset _positionUpdatedAt;
-    private bool _playing;
+    private readonly MediaTimeline _timeline = new();
     private bool _canSeek;
     private bool _updatingProgress;
     private bool _draggingProgress;
+    private bool _seekingProgress;
     private bool _updatingVolume;
     private bool? _lastPlayGlyph;
 
@@ -177,10 +173,6 @@ public partial class MediaWidget : DockWidget
         CloseVolumePopover();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         BindSession(null);
-        _lastVolumeSessionRetryMs = 0;
-        _mediaVolumeSession?.Dispose();
-        _mediaVolumeSession = null;
-        ClearAlbumArt();
         if (_manager is not null)
         {
             _manager.CurrentSessionChanged -= Manager_CurrentSessionChanged;
@@ -210,68 +202,32 @@ public partial class MediaWidget : DockWidget
         if (!IsActive || _manager is null) return;
 
         var candidate = GetActiveSession();
-        if (ShouldSwitchSession(candidate))
+        if (!IsSameSession(candidate, _session))
         {
             BindSession(candidate);
             return;
         }
 
-        if (_session is null || _draggingProgress) return;
-
-        RefreshTimeline();
-
-        try
-        {
-            var pb = _session.GetPlaybackInfo();
-            if (pb is not null)
-            {
-                var isPlaying = pb.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-                if (_playing != isPlaying)
-                {
-                    _playing = isPlaying;
-                    if (_lastPlayGlyph != _playing)
-                    {
-                        _lastPlayGlyph = _playing;
-                        PlayPauseGlyph.Content = FindResource(_playing ? "IconPauseFill" : "IconPlayFill");
-                    }
-                }
-                var controls = pb.Controls;
-                if (controls is not null)
-                {
-                    _canSeek = controls.IsPlaybackPositionEnabled;
-                    ProgressSlider.IsHitTestVisible = _canSeek;
-                    ProgressSlider.Focusable = _canSeek;
-                }
-            }
-        }
-        catch
-        {
-            // Transient COM failure during app transition.
-        }
-
-        if (_playing)
-        {
-            UpdateProgressUI();
-        }
-
+        if (_session is null) return;
+        RefreshPlayback(_session);
         RefreshMediaVolumeState();
     }
 
     private void RefreshMediaVolumeState()
     {
-        var session = _mediaVolumeSession;
-        if (session is null)
+        var state = _mediaVolumeSession?.State ?? AppAudioSessionState.Unavailable;
+        if (state != AppAudioSessionState.Active
+            && Environment.TickCount64 - _lastVolumeSessionRetryMs >= VolumeSessionRetryIntervalMs)
         {
-            if (_session is not null && (_audio is not null || AppSessionSource is not null))
-            {
-                var now = Environment.TickCount64;
-                if (now - _lastVolumeSessionRetryMs >= VolumeSessionRetryIntervalMs)
-                {
-                    _lastVolumeSessionRetryMs = now;
-                    BindMediaVolumeSession();
-                    if (_mediaVolumeSession is not null) RenderVolume();
-                }
-            }
+            BindMediaVolumeSession();
+            RenderVolume();
+            return;
+        }
+        if (_mediaVolumeSession is not { } session) return;
+        if (state == AppAudioSessionState.Unavailable)
+        {
+            ClearMediaVolumeSession();
+            RenderVolume();
             return;
         }
         var level = Math.Clamp(session.CurrentVolume, 0f, 1f);
@@ -297,56 +253,27 @@ public partial class MediaWidget : DockWidget
     /// </summary>
     private void BindMediaVolumeSession()
     {
-        _mediaVolumeSession?.Dispose();
-        _mediaVolumeSession = null;
-
-        if (_session is null || _audio is null) return;
-
-        var hints = new List<string>();
+        _lastVolumeSessionRetryMs = Environment.TickCount64;
+        ClearMediaVolumeSession();
         try
         {
-            if (!string.IsNullOrWhiteSpace(_session.SourceAppUserModelId))
-                hints.Add(_session.SourceAppUserModelId);
+            if (_session is not null && _audio is not null)
+                _mediaVolumeSession = _audio.FindAppSession(_session.SourceAppUserModelId);
         }
-        catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
-
-        if (hints.Count == 0) return;
-
-        try
-        {
-            _mediaVolumeSession = AppSessionSource is not null
-                ? ResolveFromSource(hints)
-                : _audio.FindAppSession(hints.ToArray());
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
             AppLog.Warning($"Media app volume session lookup failed: {ex.Message}");
-            _mediaVolumeSession = null;
         }
 
         _mediaVolumeLevel = _mediaVolumeSession?.Volume ?? -1;
         _mediaVolumeMuted = _mediaVolumeSession?.IsMuted ?? false;
-        InvalidateVolumeDisplayCache();
     }
 
-    private AppAudioSession? ResolveFromSource(List<string> hints)
+    private void ClearMediaVolumeSession()
     {
-        var sessions = AppSessionSource!();
-        var normalized = hints.Select(AppAudioSessionMatcher.Normalize).ToArray();
-        foreach (var session in sessions)
-        {
-            if (normalized.Any(h => AppAudioSessionMatcher.Matches(session.Name, h)))
-                return session;
-        }
-        foreach (var session in sessions) session.Dispose();
-        return null;
-    }
-
-    private void InvalidateVolumeDisplayCache()
-    {
-        _lastAudioHasDevice = null;
-        _lastAudioLevel = -1;
-        _lastAudioIconKey = null;
+        _mediaVolumeSession?.Dispose();
+        _mediaVolumeSession = null;
+        InvalidateAudioCache();
     }
 
     private void ClearAlbumArt()
@@ -456,7 +383,6 @@ public partial class MediaWidget : DockWidget
 
     private void VolumeTrigger_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (_mediaVolumeSession is null) return;
         BindMediaVolumeSession();
         RenderVolume();
         if (_mediaVolumeSession is null) return;
@@ -590,6 +516,7 @@ public partial class MediaWidget : DockWidget
         // must never be changed from the media widget.
         if (session is null)
         {
+            CloseVolumePopover();
             if (_lastAudioHasDevice == false && _lastAudioLanguage == lang) return;
             _lastAudioHasDevice = false;
             _lastAudioLanguage = lang;
@@ -639,7 +566,7 @@ public partial class MediaWidget : DockWidget
         {
             if (!IsActive || _manager is null) return;
             var candidate = GetActiveSession();
-            if (ShouldSwitchSession(candidate)) BindSession(candidate);
+            if (!IsSameSession(candidate, _session)) BindSession(candidate);
         });
 
     private void Manager_SessionsChanged(MediaSessionManager sender, SessionsChangedEventArgs args) =>
@@ -647,7 +574,7 @@ public partial class MediaWidget : DockWidget
         {
             if (!IsActive || _manager is null) return;
             var candidate = GetActiveSession();
-            if (ShouldSwitchSession(candidate)) BindSession(candidate);
+            if (!IsSameSession(candidate, _session)) BindSession(candidate);
         });
 
     private static bool IsSameSession(MediaSession? a, MediaSession? b)
@@ -662,36 +589,6 @@ public partial class MediaWidget : DockWidget
         {
             return false;
         }
-    }
-
-    private bool ShouldSwitchSession(MediaSession? candidate)
-    {
-        if (candidate is null) return _session is not null;
-        if (_session is null) return true;
-        if (IsSameSession(candidate, _session)) return false;
-
-        try
-        {
-            if (string.Equals(candidate.SourceAppUserModelId, _session.SourceAppUserModelId, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        catch
-        {
-            return true;
-        }
-
-        if (!_playing)
-        {
-            try
-            {
-                var pb = candidate.GetPlaybackInfo();
-                if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
-                    return true;
-            }
-            catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
-        }
-
-        return false;
     }
 
     private MediaSession? GetActiveSession()
@@ -762,7 +659,12 @@ public partial class MediaWidget : DockWidget
         }
 
         _session = session;
-        _lastVolumeSessionRetryMs = 0;
+        CloseVolumePopover();
+        _timeline.Reset();
+        _draggingProgress = false;
+        _seekingProgress = false;
+        _canSeek = false;
+        UpdateProgressUI();
         if (_session is not null)
         {
             _session.MediaPropertiesChanged += Session_MediaPropertiesChanged;
@@ -772,104 +674,87 @@ public partial class MediaWidget : DockWidget
 
         BindMediaVolumeSession();
         RenderVolume();
-        Refresh(includeProperties: true);
+        _ = RefreshMediaAsync();
     }
 
     private void Session_MediaPropertiesChanged(MediaSession sender, MediaPropertiesChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && IsSameSession(sender, _session)) Refresh(includeProperties: true);
+            if (IsActive && IsSameSession(sender, _session)) _ = RefreshMediaAsync();
         });
 
     private void Session_PlaybackInfoChanged(MediaSession sender, PlaybackInfoChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && IsSameSession(sender, _session)) Refresh(includeProperties: false);
+            if (IsActive && IsSameSession(sender, _session)) RefreshPlayback(sender);
         });
 
     private void Session_TimelinePropertiesChanged(MediaSession sender, TimelinePropertiesChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && IsSameSession(sender, _session)) RefreshTimeline();
+            if (IsActive && IsSameSession(sender, _session)) RefreshPlayback(sender);
         });
 
-    private void RefreshTimeline()
+    private void RefreshPlayback(MediaSession session)
     {
-        if (_session is null) return;
         try
         {
-            var timeline = _session.GetTimelineProperties();
-            if (timeline is null) return;
+            var playback = session.GetPlaybackInfo();
+            var controls = playback.Controls;
+            var playing = playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            if (_lastPlayGlyph != playing)
+            {
+                _lastPlayGlyph = playing;
+                PlayPauseGlyph.Content = FindResource(playing ? "IconPauseFill" : "IconPlayFill");
+            }
+            PlayPauseButton.IsEnabled = controls.IsPlayPauseToggleEnabled || controls.IsPlayEnabled || controls.IsPauseEnabled;
+            PreviousButton.IsEnabled = controls.IsPreviousEnabled;
+            NextButton.IsEnabled = controls.IsNextEnabled;
+            _canSeek = controls.IsPlaybackPositionEnabled;
 
+            var timeline = session.GetTimelineProperties();
             var start = timeline.StartTime;
-            var end = timeline.EndTime;
-            if (end <= TimeSpan.Zero && timeline.MaxSeekTime > TimeSpan.Zero)
-                end = timeline.MaxSeekTime;
-
-            var pos = timeline.Position;
-            var updatedAt = timeline.LastUpdatedTime;
-
-            _startTime = start;
-            _endTime = end;
-            _position = pos;
-            _positionUpdatedAt = updatedAt != default ? updatedAt : DateTimeOffset.UtcNow;
-
-            if (!_draggingProgress) UpdateProgressUI();
+            var end = timeline.EndTime > start ? timeline.EndTime : timeline.MaxSeekTime;
+            var reportedRate = playback.PlaybackRate.GetValueOrDefault();
+            var rate = reportedRate > 0 && double.IsFinite(reportedRate) ? reportedRate : 1;
+            _timeline.Update(new(start, end, timeline.Position, timeline.LastUpdatedTime),
+                playing ? rate : 0,
+                DateTimeOffset.UtcNow, Stopwatch.GetTimestamp());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
-            AppLog.Warning($"Media timeline refresh failed: {ex.Message}");
+            AppLog.Warning($"Media playback refresh failed: {ex.Message}");
         }
+
+        if (!_draggingProgress && !_seekingProgress) UpdateProgressUI();
     }
 
     private void UpdateProgressUI()
     {
-        var duration = _endTime - _startTime;
-        if (duration.TotalSeconds <= 0.5)
-        {
-            _updatingProgress = true;
-            ProgressSlider.Maximum = 100;
-            ProgressSlider.Value = 0;
-            ProgressSlider.IsEnabled = false;
-            ProgressSlider.ToolTip = null;
-            ElapsedText.Text = "0:00";
-            TotalText.Text = "0:00";
-            _updatingProgress = false;
-            return;
-        }
-
-        var elapsed = (_position - _startTime).TotalSeconds;
-        if (_playing && _positionUpdatedAt != default)
-        {
-            var delta = (DateTimeOffset.UtcNow - _positionUpdatedAt).TotalSeconds;
-            if (delta > -2)
-                elapsed += Math.Max(0, delta);
-        }
-
-        elapsed = Math.Clamp(elapsed, 0, duration.TotalSeconds);
-        var elapsedText = FormatTime(TimeSpan.FromSeconds(elapsed));
-        var totalText = FormatTime(duration);
+        var duration = _timeline.Duration;
+        var available = duration > 0;
+        var elapsed = _timeline.PositionAt(Stopwatch.GetTimestamp());
+        var elapsedText = available ? FormatTime(TimeSpan.FromSeconds(elapsed)) : "—";
+        var totalText = available ? FormatTime(TimeSpan.FromSeconds(duration)) : "—";
 
         _updatingProgress = true;
-        ProgressSlider.Maximum = duration.TotalSeconds;
+        ProgressSlider.Maximum = available ? duration : 100;
         ProgressSlider.Value = elapsed;
-        ProgressSlider.IsEnabled = true;
-        ProgressSlider.IsHitTestVisible = _canSeek;
-        ProgressSlider.Focusable = _canSeek;
+        ProgressSlider.IsEnabled = available;
+        ProgressSlider.IsHitTestVisible = available && _canSeek;
+        ProgressSlider.Focusable = available && _canSeek;
         ElapsedText.Text = elapsedText;
         TotalText.Text = totalText;
-        ProgressSlider.ToolTip = $"{elapsedText} / {totalText}";
+        ProgressSlider.ToolTip = available ? $"{elapsedText} / {totalText}" : null;
         _updatingProgress = false;
     }
 
     private static string FormatTime(TimeSpan span) =>
         span.TotalHours >= 1 ? span.ToString(@"h\:mm\:ss") : span.ToString(@"m\:ss");
 
-    private void Refresh(bool includeProperties) => _ = RefreshAsync(includeProperties);
-
-    private async Task RefreshAsync(bool includeProperties)
+    private async Task RefreshMediaAsync()
     {
-        var version = includeProperties ? ++_refreshVersion : _refreshVersion;
+        var version = ++_refreshVersion;
         var activationVersion = _activationVersion;
         var session = _session;
         if (session is null)
@@ -881,21 +766,7 @@ public partial class MediaWidget : DockWidget
 
         try
         {
-            var playback = session.GetPlaybackInfo();
-            var controls = playback.Controls;
-            _playing = playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-            _canSeek = controls.IsPlaybackPositionEnabled;
-            if (_lastPlayGlyph != _playing)
-            {
-                _lastPlayGlyph = _playing;
-                PlayPauseGlyph.Content = FindResource(_playing ? "IconPauseFill" : "IconPlayFill");
-            }
-            PlayPauseButton.IsEnabled = controls.IsPlayPauseToggleEnabled || controls.IsPlayEnabled || controls.IsPauseEnabled;
-            PreviousButton.IsEnabled = controls.IsPreviousEnabled;
-            NextButton.IsEnabled = controls.IsNextEnabled;
-            RefreshTimeline();
-            if (!includeProperties) return;
-
+            RefreshPlayback(session);
             var properties = await session.TryGetMediaPropertiesAsync();
             if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive) return;
             var title = properties?.Title;
@@ -974,7 +845,8 @@ public partial class MediaWidget : DockWidget
 
     private void ProgressSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _draggingProgress = true;
+        if (ProgressSlider.IsMouseOver && ProgressSlider.IsHitTestVisible)
+            _draggingProgress = true;
     }
 
     private async void ProgressSlider_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -986,7 +858,9 @@ public partial class MediaWidget : DockWidget
 
     private void ProgressSlider_LostMouseCapture(object sender, MouseEventArgs e)
     {
+        if (!_draggingProgress || ProgressSlider.IsMouseCaptureWithin) return;
         _draggingProgress = false;
+        if (!_seekingProgress) UpdateProgressUI();
     }
 
     private async void ProgressSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -997,36 +871,55 @@ public partial class MediaWidget : DockWidget
             ElapsedText.Text = FormatTime(TimeSpan.FromSeconds(Math.Max(0, e.NewValue)));
             return;
         }
-        var mouseSeek = ProgressSlider.IsMouseOver && Mouse.LeftButton == MouseButtonState.Pressed;
-        var keyboardSeek = ProgressSlider.IsKeyboardFocusWithin;
-        if (!mouseSeek && !keyboardSeek) return;
-        await SeekToSliderValueAsync();
+        if (ProgressSlider.IsKeyboardFocusWithin) await SeekToSliderValueAsync();
     }
 
     private async Task SeekToSliderValueAsync()
     {
-        if (_session is null || !_canSeek) return;
-        var target = _startTime + TimeSpan.FromSeconds(ProgressSlider.Value);
-        _position = target;
-        _positionUpdatedAt = DateTimeOffset.UtcNow;
-        await RunAsync(s => s.TryChangePlaybackPositionAsync(target.Ticks));
+        if (_session is not { } session || !_canSeek || _seekingProgress || _timeline.Sample is not { } sample) return;
+        var elapsed = ProgressSlider.Value;
+        var target = sample.Start + TimeSpan.FromSeconds(elapsed);
+        _seekingProgress = true;
+        try
+        {
+            if (await RunAsync(s => s.TryChangePlaybackPositionAsync(target.Ticks))
+                && ReferenceEquals(session, _session) && _timeline.Sample == sample)
+                _timeline.ConfirmSeek(elapsed, Stopwatch.GetTimestamp());
+        }
+        finally
+        {
+            if (ReferenceEquals(session, _session))
+            {
+                _seekingProgress = false;
+                if (!_draggingProgress) RefreshPlayback(session);
+            }
+        }
     }
 
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_updatingVolume) return;
-        var session = _mediaVolumeSession;
-        if (session is null) return;
-        var next = (float)(e.NewValue / 100.0);
+        SetMediaVolume((float)(e.NewValue / 100.0));
+    }
+
+    private void SetMediaVolume(float next)
+    {
+        if (_mediaVolumeSession is not { } session) return;
         if (!session.SetVolume(next))
         {
-            Report(UiText.Get("ErrorVolumeChange"));
-            InvalidateVolumeDisplayCache();
-            RenderVolume();
+            ReportVolumeFailure();
             return;
         }
         _mediaVolumeLevel = next;
-        if (next > 0 && _mediaVolumeMuted && session.SetMute(false)) _mediaVolumeMuted = false;
+        if (next > 0 && _mediaVolumeMuted)
+        {
+            if (!session.SetMute(false))
+            {
+                ReportVolumeFailure();
+                return;
+            }
+            _mediaVolumeMuted = false;
+        }
         RenderVolume();
     }
 
@@ -1040,41 +933,36 @@ public partial class MediaWidget : DockWidget
             _mediaVolumeMuted = nextMuted;
             RenderVolume();
         }
-        else Report(UiText.Get("ErrorVolumeChange"));
+        else ReportVolumeFailure();
     }
 
     private void Volume_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        var session = _mediaVolumeSession;
-        if (session is null) return;
-        var next = Math.Clamp(_mediaVolumeLevel + Math.Sign(e.Delta) * 0.02f, 0f, 1f);
-        if (!session.SetVolume(next))
-        {
-            Report(UiText.Get("ErrorVolumeChange"));
-            InvalidateVolumeDisplayCache();
-            RenderVolume();
-        }
-        else
-        {
-            _mediaVolumeLevel = next;
-            if (next > 0 && _mediaVolumeMuted && session.SetMute(false)) _mediaVolumeMuted = false;
-            RenderVolume();
-        }
+        if (_mediaVolumeSession is null) return;
+        SetMediaVolume(Math.Clamp(_mediaVolumeLevel + Math.Sign(e.Delta) * 0.02f, 0f, 1f));
         e.Handled = true;
     }
 
-    private async Task RunAsync(Func<MediaSession, IAsyncOperation<bool>> command)
+    private void ReportVolumeFailure()
     {
-        if (_session is null) return;
+        BindMediaVolumeSession();
+        RenderVolume();
+        Report(UiText.Get("ErrorVolumeChange"));
+    }
+
+    private async Task<bool> RunAsync(Func<MediaSession, IAsyncOperation<bool>> command)
+    {
+        if (_session is null) return false;
         try
         {
-            if (!await command(_session)) Report(UiText.Get("ErrorMediaControl"));
+            if (await command(_session)) return true;
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
             AppLog.Warning($"Media command failed: {ex.Message}");
-            Report(UiText.Get("ErrorMediaControl"));
         }
+        Report(UiText.Get("ErrorMediaControl"));
+        return false;
     }
 
     [StructLayout(LayoutKind.Sequential)]

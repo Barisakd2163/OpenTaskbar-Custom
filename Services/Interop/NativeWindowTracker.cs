@@ -763,6 +763,11 @@ public sealed class NativeWindowTracker : IDisposable
             return null;
         }
 
+        return GetProcessPackagedAppId(processId);
+    }
+
+    internal static string? GetProcessPackagedAppId(uint processId)
+    {
         var processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
         if (processHandle == 0)
         {
