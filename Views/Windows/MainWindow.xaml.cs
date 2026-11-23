@@ -853,10 +853,22 @@ public partial class MainWindow : Window
     private IReadOnlyList<RunningAppCandidate> RunningCandidates()
     {
         // Apps hidden by the active profile still show up among running apps while they have windows.
-        var pinnedPaths = _pinnedApps.Where(app => !IsHiddenByProfile(app)).Select(app => app.ExecutablePath)
+        var visiblePins = _pinnedApps.Where(app => !IsHiddenByProfile(app)).ToList();
+        var pinnedPaths = visiblePins.Select(app => app.ExecutablePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return RunningAppProjection.Project(VisibleSnapshot, pinnedPaths, _foregroundWindow,
+        var pinnedAumids = visiblePins
+            .Select(app => app.AppUserModelId ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(app.ExecutablePath))
+            .Where(AppShortcutResolver.IsPackagedAppUserModelId)
+            .Select(aumid => aumid!.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var candidates = RunningAppProjection.Project(VisibleSnapshot, pinnedPaths, _foregroundWindow,
             _preferences.Current.EffectiveNotificationBadgesEnabled, File.Exists);
+        if (pinnedAumids.Count == 0) return candidates;
+        return candidates
+            .Where(candidate => string.IsNullOrWhiteSpace(candidate.AppUserModelId)
+                || !pinnedAumids.Contains(candidate.AppUserModelId.Trim()))
+            .ToList();
     }
 
     /// <summary>Updates running apps and their layout together, including callers outside the window-event path.</summary>
@@ -1259,11 +1271,16 @@ public partial class MainWindow : Window
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false, nint? foregroundAtPress = null)
     {
         var executablePath = app.ExecutablePath;
+        var effectiveAumid = app.AppUserModelId
+            ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath);
+        var hasPackagedAumid = AppShortcutResolver.IsPackagedAppUserModelId(effectiveAumid);
+
         var existingWindow = foregroundAtPress is { } pressedWindow
             ? _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == pressedWindow
-                && string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+                && (string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)
+                    || (hasPackagedAumid && string.Equals(window.AppUserModelId, effectiveAumid, StringComparison.OrdinalIgnoreCase))))
             : null;
-        existingWindow ??= FindNextWindowForExecutable(executablePath);
+        existingWindow ??= FindNextWindowForExecutable(executablePath, hasPackagedAumid ? effectiveAumid : null);
         if (existingWindow is not null)
         {
             var activated = toggleIfForeground
@@ -1321,9 +1338,9 @@ public partial class MainWindow : Window
     {
         // Packaged Store apps cannot be launched by their WindowsApps executable directly;
         // the Shell AppUserModelID is the supported activation path.
-        var useAumid = !string.IsNullOrWhiteSpace(appUserModelId);
+        var useAumid = AppShortcutResolver.IsPackagedAppUserModelId(appUserModelId);
         if (!useAumid && !File.Exists(executablePath)) return "ErrorAppFileNotFound";
-        var target = useAumid ? $"shell:AppsFolder\\{appUserModelId}" : executablePath;
+        var target = useAumid ? $"shell:AppsFolder\\{appUserModelId!.Trim()}" : executablePath;
         try
         {
             using var _ = Process.Start(new ProcessStartInfo(target)
@@ -1511,10 +1528,12 @@ public partial class MainWindow : Window
                 string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase));
     }
 
-    private TrackedWindow? FindNextWindowForExecutable(string executablePath)
+    private TrackedWindow? FindNextWindowForExecutable(string executablePath, string? appUserModelId = null)
     {
+        var hasPackagedAumid = AppShortcutResolver.IsPackagedAppUserModelId(appUserModelId);
         var matchingWindows = VisibleSnapshot.Where(window =>
-            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)).ToList();
+            string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)
+            || (hasPackagedAumid && string.Equals(window.AppUserModelId, appUserModelId, StringComparison.OrdinalIgnoreCase))).ToList();
         if (matchingWindows is not { Count: > 0 })
         {
             return null;
@@ -1539,11 +1558,24 @@ public partial class MainWindow : Window
         // with several AppUserModelIDs). Aggregate by path instead of ToDictionary: duplicate keys used to throw
         // "An item with the same key has already been added" during startup and tear down the whole dock.
         var states = RunningAppProjection.AggregateByExecutablePath(candidates);
+        var aumidStates = new Dictionary<string, (int WindowCount, bool IsForeground)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            if (!AppShortcutResolver.IsPackagedAppUserModelId(candidate.AppUserModelId)) continue;
+            var key = candidate.AppUserModelId!.Trim();
+            aumidStates.TryGetValue(key, out var existing);
+            aumidStates[key] = (existing.WindowCount + candidate.WindowCount, existing.IsForeground || candidate.IsForeground);
+        }
 
         for (var index = 0; index < _pinnedApps.Count; index++)
         {
             var app = _pinnedApps[index];
-            states.TryGetValue(app.ExecutablePath, out var state);
+            if (!states.TryGetValue(app.ExecutablePath, out var state))
+            {
+                var aumid = app.AppUserModelId ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(app.ExecutablePath);
+                if (AppShortcutResolver.IsPackagedAppUserModelId(aumid))
+                    aumidStates.TryGetValue(aumid!.Trim(), out state);
+            }
             var isForeground = state.IsForeground;
             var count = state.WindowCount;
             if (app.IsRunning != (count > 0) || app.IsForeground != isForeground || app.WindowCount != count)

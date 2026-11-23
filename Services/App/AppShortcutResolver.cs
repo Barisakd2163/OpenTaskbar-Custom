@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace OpenTaskbar.Services;
 
@@ -22,12 +23,18 @@ internal static class AppShortcutResolver
     /// <summary>What to hand to ShellExecute. Target may be a .lnk or shell:AppsFolder\{AUMID}.</summary>
     internal sealed record LaunchSpec(string Target, string Arguments, string WorkingDirectory);
 
+    private static readonly Regex PackagedAumidRegex = new(
+        @"^[A-Za-z0-9\.\-]+_[a-z0-9]{13}![A-Za-z0-9\.\-_]+$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    internal static bool IsPackagedAppUserModelId(string? appUserModelId) =>
+        !string.IsNullOrWhiteSpace(appUserModelId) && PackagedAumidRegex.IsMatch(appUserModelId.Trim());
+
     internal static LaunchSpec Resolve(string? executablePath, string? appUserModelId, string? displayName = null)
     {
-        // Packaged apps are activated by AUMID; no shortcut needed.
-        if (!string.IsNullOrWhiteSpace(appUserModelId)
-            && appUserModelId.EndsWith("!App", StringComparison.OrdinalIgnoreCase))
-            return new LaunchSpec($"shell:AppsFolder\\{appUserModelId}", string.Empty, string.Empty);
+        // Packaged apps are activated by AUMID (e.g. !App, !Spotify); no shortcut needed.
+        if (IsPackagedAppUserModelId(appUserModelId))
+            return new LaunchSpec($"shell:AppsFolder\\{appUserModelId!.Trim()}", string.Empty, string.Empty);
 
         var shortcuts = Index.Value;
         var exe = Normalize(executablePath);

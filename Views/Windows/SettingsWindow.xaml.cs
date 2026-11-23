@@ -444,10 +444,9 @@ public partial class SettingsWindow : Window
         ApplySettingsBorderCornerRadius();
         if (surfaceMode == SurfaceBackground.None)
         {
-            var transparent = SettingsBackdrop.TryEnableTransparent(this, ThemeManager.EffectiveTheme);
-            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty,
-                transparent ? "SettingsGlassMaterial" : "SettingsBackground");
-            chrome.GlassFrameThickness = transparent ? new Thickness(-1) : new Thickness(0);
+            SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
+            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsBackground");
+            chrome.GlassFrameThickness = new Thickness(0);
             return;
         }
         if (surfaceMode == SurfaceBackground.Solid)
