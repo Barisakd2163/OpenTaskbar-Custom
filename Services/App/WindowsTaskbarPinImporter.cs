@@ -81,6 +81,9 @@ public static class WindowsTaskbarPinImporter
         {
             foreach (var shortcutPath in shortcutPaths)
             {
+                string? targetPath = null;
+                string? arguments = null;
+                string? iconLocation = null;
                 try
                 {
                     var shortcut = shellType.InvokeMember(
@@ -91,6 +94,7 @@ public static class WindowsTaskbarPinImporter
                         args: [shortcutPath]);
                     if (shortcut is null)
                     {
+                        LogSkipped(shortcutPath, targetPath, iconLocation);
                         skippedCount++;
                         continue;
                     }
@@ -98,12 +102,13 @@ public static class WindowsTaskbarPinImporter
                     try
                     {
                         var shortcutType = shortcut.GetType();
-                        var targetPath = ReadStringProperty(shortcutType, shortcut, "TargetPath");
-                        var arguments = ReadStringProperty(shortcutType, shortcut, "Arguments");
-                        var iconLocation = ReadStringProperty(shortcutType, shortcut, "IconLocation");
+                        targetPath = ReadStringProperty(shortcutType, shortcut, "TargetPath");
+                        arguments = ReadStringProperty(shortcutType, shortcut, "Arguments");
+                        iconLocation = ReadStringProperty(shortcutType, shortcut, "IconLocation");
                         var executablePath = ResolveExecutablePath(targetPath, iconLocation);
                         if (executablePath is null || !seenPaths.Add(executablePath))
                         {
+                            LogSkipped(shortcutPath, targetPath, iconLocation);
                             skippedCount++;
                             continue;
                         }
@@ -116,6 +121,7 @@ public static class WindowsTaskbarPinImporter
                             // Store apps pinned via .lnk point at WindowsApps\*.exe, which cannot be launched
                             // directly. Capture the packaged AUMID so shell:AppsFolder activation works.
                             AppUserModelId = ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath)
+                                ?? TryExtractAumidFromArguments(arguments)
                         });
                     }
                     finally
@@ -128,18 +134,22 @@ public static class WindowsTaskbarPinImporter
                 }
                 catch (COMException)
                 {
+                    LogSkipped(shortcutPath, targetPath, iconLocation);
                     skippedCount++;
                 }
                 catch (TargetInvocationException ex) when (ex.InnerException is COMException)
                 {
+                    LogSkipped(shortcutPath, targetPath, iconLocation);
                     skippedCount++;
                 }
                 catch (IOException)
                 {
+                    LogSkipped(shortcutPath, targetPath, iconLocation);
                     skippedCount++;
                 }
                 catch (UnauthorizedAccessException)
                 {
+                    LogSkipped(shortcutPath, targetPath, iconLocation);
                     skippedCount++;
                 }
             }
@@ -417,6 +427,25 @@ public static class WindowsTaskbarPinImporter
         }
     }
 
+    private static void LogSkipped(string shortcutPath, string? targetPath, string? iconLocation) =>
+        AppLog.Warning($"Skipped taskbar pin '{Path.GetFileName(shortcutPath)}': target='{targetPath}', icon='{iconLocation}'.");
+
+    /// <summary>
+    /// Explorer-based pins for Store apps carry "shell:AppsFolder\\&lt;AUMID&gt;" in the arguments. Capturing it
+    /// lets the launcher activate the packaged app instead of opening a bare Explorer window.
+    /// </summary>
+    internal static string? TryExtractAumidFromArguments(string? arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments)) return null;
+        const string marker = "shell:appsfolder\\";
+        var index = arguments.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) return null;
+        var start = index + marker.Length;
+        var end = arguments.IndexOfAny([' ', '"', '\t'], start);
+        var candidate = (end < 0 ? arguments[start..] : arguments[start..end]).Trim();
+        return AppShortcutResolver.IsPackagedAppUserModelId(candidate) ? candidate : null;
+    }
+
     private static string? ResolveExecutablePath(string targetPath, string iconLocation)
     {
         var normalizedTarget = Environment.ExpandEnvironmentVariables(targetPath.Trim().Trim('"'));
@@ -426,15 +455,20 @@ public static class WindowsTaskbarPinImporter
             return Path.GetFullPath(normalizedTarget);
         }
 
-        if (string.IsNullOrWhiteSpace(normalizedTarget))
+        // Many taskbar pins are helper/stub shortcuts whose TargetPath has moved or points at a protocol.
+        // The icon location still names the real executable in most of those cases, so use it as a fallback
+        // instead of dropping the pin (#147).
+        var iconPath = Environment.ExpandEnvironmentVariables(iconLocation.Split(',', 2)[0].Trim().Trim('"'));
+        if (Path.GetExtension(iconPath).Equals(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(iconPath))
         {
-            var iconPath = iconLocation.Split(',', 2)[0].Trim().Trim('"');
-            var normalizedIconPath = Environment.ExpandEnvironmentVariables(iconPath);
-            if (string.Equals(Path.GetFileName(normalizedIconPath), "explorer.exe", StringComparison.OrdinalIgnoreCase)
-                && File.Exists(normalizedIconPath))
-            {
-                return Path.GetFullPath(normalizedIconPath);
-            }
+            return Path.GetFullPath(iconPath);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedTarget)
+            && string.Equals(Path.GetFileName(iconPath), "explorer.exe", StringComparison.OrdinalIgnoreCase)
+            && File.Exists(iconPath))
+        {
+            return Path.GetFullPath(iconPath);
         }
 
         return null;

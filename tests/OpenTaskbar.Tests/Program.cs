@@ -60,6 +60,12 @@ void AppLaunchChecks()
     var missing = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".exe");
     Check(OpenTaskbar.MainWindow.StartApplication(missing, string.Empty, elevated: false) == "ErrorAppFileNotFound",
         "A missing executable must report ErrorAppFileNotFound instead of starting anything.");
+    Check(WindowsTaskbarPinImporter.TryExtractAumidFromArguments(
+            "/separate,shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App")
+        == "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+        "Explorer-based Store pins must expose their AUMID from the shortcut arguments.");
+    Check(WindowsTaskbarPinImporter.TryExtractAumidFromArguments("--not-a-packaged-app") is null,
+        "Unrelated arguments must not be mistaken for a packaged app AUMID.");
 }
 
 // The tray flyout shows its last list at once and rebuilds only when a fresh enumeration differs.
