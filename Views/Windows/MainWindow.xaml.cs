@@ -3340,7 +3340,11 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
             _dockFitPending = false;
-            if (_magnificationLayoutActive || _magnificationRendering) return;
+            if (_magnificationLayoutActive || _magnificationRendering)
+            {
+                _deferredDockResize = true;
+                return;
+            }
             ResizeDockToContent();
         }));
     }

@@ -660,6 +660,7 @@ public sealed class AiUsageWidget : DockWidget
             sessionBar.Children.Add(sessionFill);
 
             var sessionReset = Text("—", 9, "TextPrimary", lineHeight: 12);
+            sessionReset.MinWidth = 42;
             sessionReset.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(sessionReset, FontNumeralAlignment.Tabular);
 
@@ -686,6 +687,7 @@ public sealed class AiUsageWidget : DockWidget
             weeklyBar.Children.Add(weeklyFill);
 
             var weeklyReset = Text("—", 9, "TextPrimary", lineHeight: 12);
+            weeklyReset.MinWidth = 42;
             weeklyReset.VerticalAlignment = VerticalAlignment.Center;
             Typography.SetNumeralAlignment(weeklyReset, FontNumeralAlignment.Tabular);
 
