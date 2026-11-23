@@ -1,4 +1,6 @@
 using System.IO;
+using System.Windows;
+using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
 internal static class ShellFlyoutPositionChecks
@@ -11,6 +13,64 @@ internal static class ShellFlyoutPositionChecks
             if (!condition) throw new InvalidOperationException(message);
             checks++;
         }
+
+        var native = new ShellShortcuts.SearchWindow(101, 42, "TestShell", "TestWindow");
+        var legacyLookups = 0;
+        List<nint> FindLegacy()
+        {
+            legacyLookups++;
+            return [202, 303];
+        }
+
+        var selected = ShellShortcuts.SelectSearchWindows(native, FindLegacy);
+        Check(selected.Native == native && selected.Legacy.Count == 0 && legacyLookups == 0,
+            "A UIA-confirmed Search surface must take precedence over the legacy lookup.");
+        selected = ShellShortcuts.SelectSearchWindows(null, FindLegacy);
+        Check(selected.Native is null && selected.Legacy.SequenceEqual([(nint)202, (nint)303]) && legacyLookups == 1,
+            "The legacy lookup must preserve auxiliary Search windows when no native surface is confirmed.");
+        selected = ShellShortcuts.SelectSearchWindows(null, () => []);
+        Check(selected.Native is null && selected.Legacy.Count == 0,
+            "Unknown Search surfaces must leave both targeting paths empty.");
+        Check(ShellShortcuts.HasSearchIdentity("SearchTextBox", "Suchfeld")
+            && ShellShortcuts.HasSearchIdentity("", "Windows Search")
+            && !ShellShortcuts.HasSearchIdentity("MainWindow", "File Explorer"),
+            "Search identity must accept semantic automation IDs without a localized title.");
+
+        for (var successfulStep = 1; successfulStep <= 4; successfulStep++)
+        {
+            var calls = new List<int>();
+            bool Apply(int step)
+            {
+                calls.Add(step);
+                return step == successfulStep;
+            }
+
+            var applied = ShellShortcuts.TryApplySearchQuery(() => Apply(1), () => Apply(2), () => Apply(3));
+            Check(applied == (successfulStep < 4) && calls.SequenceEqual(Enumerable.Range(1, Math.Min(3, successfulStep))),
+                "Query synchronization must try ValuePattern, the identified editor, and keyboard input in order.");
+        }
+
+        var host = new Rect(-1600, 200, 900, 720);
+        var panel = new Rect(-1570, 240, 600, 460);
+        var work = new Rect(-1920, 0, 1920, 1080);
+        var anchor = new Rect(-1300, 1000, 50, 50);
+        var bottom = ShellShortcuts.ComputeMeasuredSearchPosition(host, panel, work, anchor, DockEdge.Bottom, 1.5);
+        Check(bottom == (-1330, 482),
+            "Measured Search must align its visible panel above the button with a DPI-scaled gap.");
+        var resized = ShellShortcuts.ComputeMeasuredSearchPosition(host, new Rect(-1570, 240, 600, 560),
+            work, anchor, DockEdge.Bottom, 1.5);
+        Check(resized.X == bottom.X && resized.Y == bottom.Y - 100,
+            "Growing Search results must keep the visible bottom edge anchored.");
+        var left = ShellShortcuts.ComputeMeasuredSearchPosition(host, panel, work,
+            new Rect(-1920, 400, 50, 50), DockEdge.Left, 1);
+        var right = ShellShortcuts.ComputeMeasuredSearchPosition(host, panel, work,
+            new Rect(-50, 400, 50, 50), DockEdge.Right, 1);
+        Check(left.X + 30 == -1858 && right.X + 30 + 600 == -62 && left.Y == right.Y,
+            "Measured side-dock Search must apply the gap to the visible panel on either side.");
+        var clamped = ShellShortcuts.ComputeMeasuredSearchPosition(host, panel, work,
+            new Rect(-50, 1000, 50, 50), DockEdge.Bottom, 1);
+        Check(clamped.X + 30 + 600 == -8,
+            "Measured Search must clamp its visible panel even when the host extends past the work area.");
 
         var processIds = new Dictionary<nint, uint> { [11] = 100, [22] = 200, [33] = 300 };
         var moved = new List<(nint Handle, int X, int Y)>();

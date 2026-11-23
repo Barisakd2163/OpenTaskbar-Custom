@@ -14,7 +14,7 @@ namespace OpenTaskbar.Services;
 /// <summary>
 /// Opens Windows' own flyouts and settings pages, which stand in for the hidden taskbar's tray area.
 /// </summary>
-public static class ShellShortcuts
+public static partial class ShellShortcuts
 {
     public const ushort VkLeftWindows = 0x5B;
     public const ushort VkControl = 0x11;
@@ -189,74 +189,12 @@ public static class ShellShortcuts
         {
             ScheduleSearchReposition(anchor);
         }
+        else if (error is null)
+        {
+            _ = ObserveUnanchoredSearchAsync();
+        }
         if (error is not null) AppLog.Warning($"OpenWindowsSearch failed: {error}");
         return error;
-    }
-
-    /// <summary>Checks whether Windows Search flyout is currently open and uncloaked.</summary>
-    public static bool IsSearchFlyoutOpen() => FindSearchWindows().Count > 0;
-
-    /// <summary>Closes Windows Search flyout if currently open.</summary>
-    public static void CloseWindowsSearch()
-    {
-        if (IsSearchFlyoutOpen())
-        {
-            SendWindowsShortcut(VkS);
-            EnsureNativeTaskbarHidden();
-        }
-    }
-
-    /// <summary>Forwards a virtual key down/up to the open Windows Search flyout.</summary>
-    public static void ForwardKeyToSearch(ushort vk)
-    {
-        var windows = FindSearchWindows();
-        if (windows.Count == 0) return;
-        foreach (var hwnd in windows)
-        {
-            PostMessage(hwnd, WmKeyDown, (nint)vk, 0);
-            PostMessage(hwnd, WmKeyUp, (nint)vk, 0);
-        }
-    }
-
-    /// <summary>Synchronizes the dock search text query into Windows Search edit control.</summary>
-    public static void SyncSearchQuery(string query)
-    {
-        Task.Run(() =>
-        {
-            try
-            {
-                var windows = FindSearchWindows();
-                if (windows.Count == 0) return;
-
-                foreach (var hwnd in windows)
-                {
-                    try
-                    {
-                        var root = AutomationElement.FromHandle(hwnd);
-                        if (root is null) continue;
-
-                        var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
-                        var edit = root.FindFirst(TreeScope.Descendants, editCondition);
-                        if (edit is not null)
-                        {
-                            if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) && pattern is ValuePattern vp)
-                            {
-                                vp.SetValue(query);
-                                return;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLog.Warning($"SyncSearchQuery element error: {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warning($"SyncSearchQuery failed: {ex.Message}");
-            }
-        });
     }
 
     private static void EnsureNativeTaskbarHidden()
@@ -282,7 +220,7 @@ public static class ShellShortcuts
         }, 0);
     }
 
-    private static List<nint> FindSearchWindows()
+    private static List<nint> FindLegacySearchWindows()
     {
         var list = new List<nint>();
         try
@@ -314,7 +252,7 @@ public static class ShellShortcuts
         }
         catch (Exception ex)
         {
-            AppLog.Warning($"FindSearchWindows exception: {ex.Message}");
+            AppLog.Warning($"FindLegacySearchWindows exception: {ex.GetType().Name}");
         }
 
         if (list.Count == 0)
@@ -385,7 +323,16 @@ public static class ShellShortcuts
 
                 EnsureNativeTaskbarHidden();
 
-                var searchWindows = FindSearchWindows();
+                var search = await FindSearchAsync(cancellation);
+                if (!CanMoveShellWindow(generation, cancellation)) return;
+                if (search.Native is { } native)
+                {
+                    await RepositionNativeSearchAsync(native, monitorInfo.Work, topLeft, bottomRight,
+                        edge, generation, cancellation);
+                    return;
+                }
+
+                var searchWindows = search.Legacy;
                 if (searchWindows.Count == 0) continue;
 
                 AppLog.Info($"RepositionSearchAsync: attempt {attempt} found {searchWindows.Count} window(s).");
@@ -400,6 +347,7 @@ public static class ShellShortcuts
                 var width = rect.Right - rect.Left;
                 var height = rect.Bottom - rect.Top;
                 if (width < 100 || height < 100) continue;
+                _ = LogLegacySearchAsync(mainHwnd);
                 FlyoutPositions.Remember(mainHwnd, rect.Left, rect.Top);
 
                 var dpi = GetDpiForWindow(mainHwnd);
@@ -441,8 +389,9 @@ public static class ShellShortcuts
                     EnsureNativeTaskbarHidden();
                     SetWindowPos(mainHwnd, 0, targetX, targetY, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
                 }
-                break;
+                return;
             }
+            AppLog.Warning("Windows Search flyout could not be identified for anchoring. Win+S was left available.");
         }
         catch (OperationCanceledException)
         {
@@ -549,7 +498,15 @@ public static class ShellShortcuts
         int windowWidth, int windowHeight,
         int workLeft, int workTop, int workRight, int workBottom,
         double anchorLeft, double anchorTop, double anchorRight, double anchorBottom,
-        DockEdge edge, double dpiScale = 1.0)
+        DockEdge edge, double dpiScale = 1.0) =>
+        ComputeSearchPanelPosition(windowWidth, windowHeight, workLeft, workTop, workRight, workBottom,
+            anchorLeft, anchorTop, anchorRight, anchorBottom, edge, dpiScale, measured: false);
+
+    private static (int X, int Y) ComputeSearchPanelPosition(
+        int windowWidth, int windowHeight,
+        int workLeft, int workTop, int workRight, int workBottom,
+        double anchorLeft, double anchorTop, double anchorRight, double anchorBottom,
+        DockEdge edge, double dpiScale, bool measured)
     {
         var margin = (int)Math.Round(8 * dpiScale);
         var gap = (int)Math.Round(12 * dpiScale);
@@ -568,12 +525,10 @@ public static class ShellShortcuts
                 Math.Clamp((int)Math.Round(anchorLeft) - windowWidth - gap, minX, maxX),
                 ComputeSideFlyoutY(anchorTop, anchorBottom, windowHeight, workTop, workBottom)
             ),
-            // Left-align with the Search button (matching Start) so wide Search panels open above the button
-            // instead of sticking hundreds of pixels to the left of the dock. SearchHost's window rect already
-            // includes ~8 DIP of invisible bottom shadow, so use an 8 DIP offset to match Start's visible gap.
+            // Keep the shadow compensation for the legacy host rect. Measured panels already exclude it.
             _ => (
-                Math.Clamp((int)Math.Round(anchorLeft - margin), minX, maxX),
-                Math.Clamp((int)Math.Round(anchorTop) - windowHeight - margin, minY, maxY)
+                Math.Clamp((int)Math.Round(anchorLeft - (measured ? 0 : margin)), minX, maxX),
+                Math.Clamp((int)Math.Round(anchorTop) - windowHeight - (measured ? gap : margin), minY, maxY)
             )
         };
     }

@@ -10,34 +10,27 @@ namespace OpenTaskbar.Services;
 internal static class StaTask
 {
     private static readonly BlockingCollection<Action> Work = new();
-    private static readonly Lazy<Thread> Worker = new(() =>
-    {
-        var thread = new Thread(() =>
-        {
-            foreach (var item in Work.GetConsumingEnumerable()) item();
-        })
-        {
-            IsBackground = true,
-            Name = "OpenTaskbar STA worker",
-            Priority = ThreadPriority.BelowNormal
-        };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return thread;
-    });
+    private static readonly Lazy<Thread> Worker = CreateWorker(Work, "OpenTaskbar STA worker");
 
     // Window enumeration runs on its own STA thread so a 50-128 ms scan can never make a Start-menu
     // measurement wait behind it (issue #128 findings 1 and 6).
     private static readonly BlockingCollection<Action> ScanWork = new();
-    private static readonly Lazy<Thread> ScanWorker = new(() =>
+    private static readonly Lazy<Thread> ScanWorker = CreateWorker(ScanWork, "OpenTaskbar window scanner");
+
+    // Unknown Search providers can stall a UIA call. Keep Search discovery and measurement off the
+    // Start and native window scanner queues even if the caller has already timed out.
+    private static readonly BlockingCollection<Action> SearchWork = new();
+    private static readonly Lazy<Thread> SearchWorker = CreateWorker(SearchWork, "OpenTaskbar Search worker");
+
+    private static Lazy<Thread> CreateWorker(BlockingCollection<Action> work, string name) => new(() =>
     {
         var thread = new Thread(() =>
         {
-            foreach (var item in ScanWork.GetConsumingEnumerable()) item();
+            foreach (var item in work.GetConsumingEnumerable()) item();
         })
         {
             IsBackground = true,
-            Name = "OpenTaskbar window scanner",
+            Name = name,
             Priority = ThreadPriority.BelowNormal
         };
         thread.SetApartmentState(ApartmentState.STA);
@@ -48,6 +41,8 @@ internal static class StaTask
     public static Task<T> Run<T>(Func<T> work) => Submit(Work, Worker, work);
 
     public static Task<T> RunScan<T>(Func<T> work) => Submit(ScanWork, ScanWorker, work);
+
+    public static Task<T> RunSearch<T>(Func<T> work) => Submit(SearchWork, SearchWorker, work);
 
     private static Task<T> Submit<T>(BlockingCollection<Action> queue, Lazy<Thread> worker, Func<T> work)
     {

@@ -23,6 +23,7 @@ internal static class SyntheticKeyboard
     private const uint InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventExtended = 0x0001;
+    private const uint KeyEventUnicode = 0x0004;
     private const int ChordHoldMs = 20;
 
     // Released last first, so Win is the final modifier to go up.
@@ -111,6 +112,50 @@ internal static class SyntheticKeyboard
         }
     }
 
+    // The caller verifies that the Search editor is focused. Send one batch so physical keystrokes
+    // cannot interleave between selecting the existing value and typing its replacement.
+    internal static bool ReplaceFocusedText(string text)
+    {
+        if (Modifiers.Any(key => GetAsyncKeyState(key) < 0)) return false;
+        const ushort selectAll = 0x41;
+        const ushort delete = 0x2E;
+        var inputs = new List<Input>(4 + Math.Max(2, text.Length * 2))
+        {
+            CreateKeyInput(VkControl, 0),
+            CreateKeyInput(selectAll, 0),
+            CreateKeyInput(selectAll, KeyEventKeyUp),
+            CreateKeyInput(VkControl, KeyEventKeyUp)
+        };
+        if (text.Length == 0)
+        {
+            inputs.Add(CreateKeyInput(delete, KeyEventExtended));
+            inputs.Add(CreateKeyInput(delete, KeyEventExtended | KeyEventKeyUp));
+        }
+        foreach (var character in text)
+        {
+            inputs.Add(CreateKeyInput(0, KeyEventUnicode, character));
+            inputs.Add(CreateKeyInput(0, KeyEventUnicode | KeyEventKeyUp, character));
+        }
+
+        var batch = inputs.ToArray();
+        var sent = SendInput((uint)batch.Length, batch, Marshal.SizeOf<Input>());
+        if (sent is > 0 and < 4)
+        {
+            if (sent == 2) SendKey(selectAll, up: true);
+            SendKey(VkControl, up: true);
+        }
+        return sent == batch.Length;
+    }
+
+    internal static bool SendFocusedNavigationKey(ushort key)
+    {
+        var flags = key is >= 0x21 and <= 0x28 ? KeyEventExtended : 0;
+        var up = CreateKeyInput(key, flags | KeyEventKeyUp);
+        var size = Marshal.SizeOf<Input>();
+        var sent = SendInput(2, [CreateKeyInput(key, flags), up], size);
+        return sent == 2 || (sent == 1 && SendInput(1, [up], size) == 1);
+    }
+
     private static string Failure(ushort key, bool down)
     {
         AppLog.Warning($"Synthetic keyboard: {key:X2} {(down ? "down" : "up")} failed: {Marshal.GetLastPInvokeError()}");
@@ -123,25 +168,40 @@ internal static class SyntheticKeyboard
 
     private static bool SendKey(ushort key, bool up)
     {
-        var input = new Input
-        {
-            Type = InputKeyboard,
-            Keyboard = new KeyboardInput
-            {
-                VirtualKey = key,
-                Flags = (up ? KeyEventKeyUp : 0) | (IsExtended(key) ? KeyEventExtended : 0)
-            }
-        };
+        var input = CreateKeyInput(key, (up ? KeyEventKeyUp : 0) | (IsExtended(key) ? KeyEventExtended : 0));
         return SendInput(1, [input], Marshal.SizeOf<Input>()) == 1;
     }
+
+    private static Input CreateKeyInput(ushort key, uint flags, ushort scanCode = 0) =>
+        new()
+        {
+            Type = InputKeyboard,
+            Data = new InputData
+            {
+                Keyboard = new KeyboardInput { VirtualKey = key, ScanCode = scanCode, Flags = flags }
+            }
+        };
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Input
     {
         public uint Type;
-        public KeyboardInput Keyboard;
-        // Pads the union to the size of MOUSEINPUT, the largest member.
-        private readonly long _padding;
+        public InputData Data;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputData
+    {
+        [FieldOffset(0)] public KeyboardInput Keyboard;
+        [FieldOffset(0)] public MouseInput Mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X, Y;
+        public uint Data, Flags, Time;
+        public nint ExtraInfo;
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -98,6 +98,7 @@ public partial class MainWindow : Window
     private int _wheelRemainder;
     private System.Windows.Threading.DispatcherTimer? _searchTransitionTimer;
     private DateTime _searchTransitionDeadlineUtc;
+    private bool _searchTransitionProbePending;
     // Suppresses the "menu is open → close it" branch briefly after we open it: the shell's cloak state lags
     // the entrance animation, so rapid repeat clicks would otherwise send Escape and cancel the opening.
     private long _startOpenRequestedAt;
@@ -237,7 +238,7 @@ public partial class MainWindow : Window
             });
         };
 
-        // Typing in the Start menu makes Windows hand off to SearchHost. The Search-button click path positions
+        // Typing in the Start menu makes Windows hand off to Search. The Search-button click path positions
         // the flyout, but this handoff bypasses it. Watch briefly after Start opens and reposition when Search
         // appears so it opens above the Search button instead of centered on screen.
         _searchTransitionTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -391,17 +392,32 @@ public partial class MainWindow : Window
         _searchTransitionTimer?.Start();
     }
 
-    private void SearchTransitionTimer_Tick(object? sender, EventArgs e)
+    private async void SearchTransitionTimer_Tick(object? sender, EventArgs e)
     {
-        if (ShellShortcuts.IsSearchFlyoutOpen())
+        if (DateTime.UtcNow >= _searchTransitionDeadlineUtc)
         {
             _searchTransitionTimer?.Stop();
-            var anchor = SearchButton.IsVisible ? SearchButton : StartButton;
-            ShellShortcuts.ScheduleSearchReposition(anchor);
             return;
         }
-        if (DateTime.UtcNow >= _searchTransitionDeadlineUtc)
-            _searchTransitionTimer?.Stop();
+        if (_searchTransitionProbePending) return;
+
+        var deadline = _searchTransitionDeadlineUtc;
+        _searchTransitionProbePending = true;
+        try
+        {
+            var open = await ShellShortcuts.IsSearchFlyoutOpenAsync();
+            if (open && _searchTransitionTimer is { IsEnabled: true }
+                && deadline == _searchTransitionDeadlineUtc && DateTime.UtcNow < deadline)
+            {
+                _searchTransitionTimer.Stop();
+                var anchor = SearchButton.IsVisible ? SearchButton : StartButton;
+                ShellShortcuts.ScheduleSearchReposition(anchor);
+            }
+        }
+        finally
+        {
+            _searchTransitionProbePending = false;
+        }
     }
 
     private bool _startupFinalized;

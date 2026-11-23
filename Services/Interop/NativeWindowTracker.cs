@@ -709,7 +709,7 @@ public sealed class NativeWindowTracker : IDisposable
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
-    private static string? GetExecutablePath(nint windowHandle)
+    internal static string? GetExecutablePath(nint windowHandle)
     {
         var threadId = GetWindowThreadProcessId(windowHandle, out var processId);
         if (threadId == 0 || processId == 0)
