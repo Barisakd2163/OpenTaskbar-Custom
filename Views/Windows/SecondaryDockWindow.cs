@@ -151,6 +151,10 @@ public sealed class SecondaryDockWindow : Window
         });
         RegisterAppBar();
         PositionOnMonitor();
+        if (TaskbarReplacementSession.IsAnySessionActive)
+        {
+            TaskbarReplacementSession.EnforceSecondaryTraysHidden();
+        }
     }
 
     protected override void OnClosed(EventArgs e)

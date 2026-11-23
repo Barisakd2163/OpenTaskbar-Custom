@@ -34,7 +34,11 @@ public sealed class TaskbarReplacementSession : IDisposable
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpShowWindow = 0x0040;
+    private const uint SwpHideWindow = 0x0080;
     private const uint SwpNoOwnerZOrder = 0x0200;
+    private const uint EventObjectShow = 0x8002;
+    private const uint WineventOutOfContext = 0x0000;
+    private const uint WineventSkipOwnProcess = 0x0002;
     private const int SwHide = 0;
     private const int SwShowNoActivate = 4;
     private const int SwShow = 5;
@@ -331,9 +335,12 @@ public sealed class TaskbarReplacementSession : IDisposable
     public event Action<Size>? LayoutChanged;
     public event Action<bool>? FullScreenChanged;
 
+    internal static bool IsAnySessionActive => Volatile.Read(ref _current)?.CanOperate == true;
+
     public void UpdateForeground(nint windowHandle)
     {
         if (!CanOperate) return;
+        EnforceSecondaryTraysHidden();
         // Do not trust that the passed HWND is still the fullscreen window: Chromium's Esc bubble can briefly own
         // focus, and focus can fall back to this process without the video leaving fullscreen.
         SetFullScreenSuppression(IsAnyFullScreenOnDockMonitor());
@@ -454,6 +461,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             };
             _fullScreenPollTimer.Tick += FullScreenPollTimer_Tick;
             _fullScreenPollTimer.Start();
+            InstallTrayShowHook();
             PositionDockWindow(throwOnFailure: true);
         }
         catch
@@ -1302,11 +1310,18 @@ public sealed class TaskbarReplacementSession : IDisposable
     /// startup (e.g. after a TaskbarCreated broadcast). Hides any that are still visible without touching
     /// the primary taskbar or the session's state machine.
     /// </summary>
+    private static void HideTrayWindow(nint handle)
+    {
+        ShowWindow(handle, SwHide);
+        SetWindowPos(handle, 0, 0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpHideWindow);
+    }
+
     internal static void EnforceSecondaryTraysHidden()
     {
         foreach (var secondary in NativeTaskbarWindow.FindSecondaryLeases())
         {
-            if (IsWindowVisible(secondary.Handle)) ShowWindow(secondary.Handle, SwHide);
+            if (IsWindowVisible(secondary.Handle)) HideTrayWindow(secondary.Handle);
         }
     }
 
@@ -1319,13 +1334,13 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         if (IsWindowVisible(taskbar.Handle))
         {
-            ShowWindow(taskbar.Handle, SwHide);
+            HideTrayWindow(taskbar.Handle);
         }
 
         var secondaries = NativeTaskbarWindow.FindSecondaryLeases();
         foreach (var secondary in secondaries.Where(s => IsWindowVisible(s.Handle)))
         {
-            ShowWindow(secondary.Handle, SwHide);
+            HideTrayWindow(secondary.Handle);
         }
 
         // Every tray must be gone before reporting success. Checking only the primary used to stop the
@@ -1664,6 +1679,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             if (IsActive) return;
         }
         _disposed = true;
+        UninstallTrayShowHook();
         _fullScreenPollTimer?.Stop();
         if (_fullScreenPollTimer is not null)
         {
@@ -1784,4 +1800,65 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    private delegate void WinEventProc(nint hWinEventHook, uint eventType, nint hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
+
+    [DllImport("user32.dll")]
+    private static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint hmodWinEventProc, WinEventProc lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWinEvent(nint hWinEventHook);
+
+    private nint _trayShowHook;
+    private WinEventProc? _trayShowHookDelegate;
+    private int _trayShowHideQueued;
+
+    private void InstallTrayShowHook()
+    {
+        if (_trayShowHook != 0) return;
+        _trayShowHookDelegate = OnTrayWindowShown;
+        _trayShowHook = SetWinEventHook(
+            EventObjectShow,
+            EventObjectShow,
+            0,
+            _trayShowHookDelegate,
+            0,
+            0,
+            WineventOutOfContext | WineventSkipOwnProcess);
+    }
+
+    private void UninstallTrayShowHook()
+    {
+        if (_trayShowHook != 0)
+        {
+            _ = UnhookWinEvent(_trayShowHook);
+            _trayShowHook = 0;
+        }
+        _trayShowHookDelegate = null;
+    }
+
+    private void OnTrayWindowShown(nint hWinEventHook, uint eventType, nint hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime)
+    {
+        if (idObject != 0 || idChild != 0 || hwnd == 0 || !CanOperate) return;
+
+        var buffer = new char[32];
+        var length = GetClassName(hwnd, buffer, buffer.Length);
+        if (length <= 0) return;
+
+        var span = buffer.AsSpan(0, length);
+        var isSecondary = span.SequenceEqual("Shell_SecondaryTrayWnd");
+        if (!isSecondary && !span.SequenceEqual("Shell_TrayWnd")) return;
+
+        _ = GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == (uint)Environment.ProcessId) return;
+
+        if (Interlocked.Exchange(ref _trayShowHideQueued, 1) != 0) return;
+        _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.Send, () =>
+        {
+            Interlocked.Exchange(ref _trayShowHideQueued, 0);
+            if (!CanOperate) return;
+            EnforceNativeTaskbarHidden();
+        });
+    }
 }
