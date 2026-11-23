@@ -4,7 +4,6 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -12,9 +11,7 @@ using OpenTaskbar.Services;
 namespace OpenTaskbar.Widgets;
 
 /// <summary>
-/// Interactive System Resources widget: refined dock telemetry segments with live micro load bars and semantic
-/// thermal/load accenting, backed by a rich DockFlyout with live rolling sparklines, CPU/RAM/GPU breakdown cards,
-/// lazily sampled top processes, and Task Manager / Resource Monitor quick actions.
+/// Live system metrics and their history, with process details sampled while the panel is open.
 /// </summary>
 public partial class SystemStatsWidget : DockWidget
 {
@@ -37,7 +34,6 @@ public partial class SystemStatsWidget : DockWidget
         public bool Initialized;
         public int Shown;
         public double Value;
-        public string? AccentKey;
         public string? TextBrushKey;
         public AppLanguage Language;
     }
@@ -46,24 +42,15 @@ public partial class SystemStatsWidget : DockWidget
     {
         public required TextBlock UptimeText { get; init; }
         public required TextBlock CpuValueText { get; init; }
-        public required Ellipse CpuDot { get; init; }
         public required TelemetrySparkline CpuSparkline { get; init; }
 
         public required TextBlock RamValueText { get; init; }
         public required TextBlock RamPairText { get; init; }
-        public required TextBlock RamUsedText { get; init; }
-        public required TextBlock RamAvailableText { get; init; }
-        public required Ellipse RamDot { get; init; }
-        public required Border RamBarFill { get; init; }
-        public required ColumnDefinition RamBarFillCol { get; init; }
-        public required ColumnDefinition RamBarEmptyCol { get; init; }
         public required TelemetrySparkline RamSparkline { get; init; }
 
-        public required Border GpuCard { get; init; }
+        public required StackPanel GpuSection { get; init; }
         public required TextBlock GpuValueText { get; init; }
-        public required Border GpuTempBadge { get; init; }
         public required TextBlock GpuTempText { get; init; }
-        public required Ellipse GpuDot { get; init; }
         public required TelemetrySparkline GpuSparkline { get; init; }
 
         public required StackPanel ProcessesList { get; init; }
@@ -74,19 +61,10 @@ public partial class SystemStatsWidget : DockWidget
         public required Border Container { get; init; }
         public required TextBlock UptimeText { get; init; }
         public required TextBlock CpuValueText { get; init; }
-        public required Border CpuBarFill { get; init; }
-        public required ColumnDefinition CpuBarFillCol { get; init; }
-        public required ColumnDefinition CpuBarEmptyCol { get; init; }
         public required TextBlock RamValueText { get; init; }
         public required TextBlock RamDetailText { get; init; }
-        public required Border RamBarFill { get; init; }
-        public required ColumnDefinition RamBarFillCol { get; init; }
-        public required ColumnDefinition RamBarEmptyCol { get; init; }
-        public required StackPanel GpuRow { get; init; }
+        public required DockPanel GpuRow { get; init; }
         public required TextBlock GpuValueText { get; init; }
-        public required Border GpuBarFill { get; init; }
-        public required ColumnDefinition GpuBarFillCol { get; init; }
-        public required ColumnDefinition GpuBarEmptyCol { get; init; }
     }
 
     private readonly SystemStats _stats = new();
@@ -118,9 +96,8 @@ public partial class SystemStatsWidget : DockWidget
     private bool _hasGpu;
     private bool _hasGpuTemp;
     private SystemMeters _configuredMeters;
-    private bool _lastAppliedCompact;
-    private bool _lastAppliedVertical;
-    private string? _lastStatsIconKey;
+    private bool? _lastAppliedCompact;
+    private bool? _lastAppliedVertical;
 
     private TelemetryFlyoutView? _clickFlyout;
     private HoverFlyoutView? _hoverFlyout;
@@ -132,7 +109,7 @@ public partial class SystemStatsWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 30;
-    public override double CompactWidthEstimate => 100;
+    public override double CompactWidthEstimate => 84;
     public override double FullWidthEstimate
     {
         get
@@ -143,7 +120,7 @@ public partial class SystemStatsWidget : DockWidget
             if (meters.HasFlag(SystemMeters.Memory)) count++;
             if (meters.HasFlag(SystemMeters.Gpu) && _hasGpu) count++;
             if (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp) count++;
-            return Math.Max(104, 42 + count * 50);
+            return 16 + count * 36 + Math.Max(0, count - 1) * 7;
         }
     }
 
@@ -206,7 +183,6 @@ public partial class SystemStatsWidget : DockWidget
         _lastFastSampleTickMs = 0;
         _lastSensorSampleTickMs = 0;
         _lastProcessSampleTickMs = 0;
-        UpdateLeadingIconAccent();
     }
 
     protected override void OnDisposed()
@@ -290,7 +266,6 @@ public partial class SystemStatsWidget : DockWidget
     private void StatsCardButton_Click(object sender, RoutedEventArgs e)
     {
         _flyout.Toggle(StatsCardButton, () => BuildTelemetryFlyout(isPreview: false), animate: true, focusable: false);
-        UpdateLeadingIconAccent();
     }
 
     private void Flyout_Closed(object? sender, EventArgs e)
@@ -298,7 +273,6 @@ public partial class SystemStatsWidget : DockWidget
         CancelProcessSampling();
         _clickFlyout = null;
         _lastProcessSampleTickMs = 0;
-        UpdateLeadingIconAccent();
     }
 
     private void SampleFastCounters(bool sampleCpu)
@@ -306,17 +280,16 @@ public partial class SystemStatsWidget : DockWidget
         if (sampleCpu && _stats.SampleCpu() is { } cpu)
         {
             _cpuHistory.Push(cpu);
-            SetUsage(CpuValueText, CpuBarFill, CpuBarFillCol, CpuBarEmptyCol, ref _cpuState, cpu, "WidgetBlue");
+            SetUsage(CpuValueText, ref _cpuState, cpu);
         }
 
         if (SystemStats.SampleMemorySnapshot() is { } memorySnapshot)
         {
             _lastMemorySnapshot = memorySnapshot;
             _memoryHistory.Push(memorySnapshot.UsageRatio);
-            SetUsage(RamValueText, RamBarFill, RamBarFillCol, RamBarEmptyCol, ref _memoryState, memorySnapshot.UsageRatio, "WidgetAccent");
+            SetUsage(RamValueText, ref _memoryState, memorySnapshot.UsageRatio);
         }
 
-        UpdateLeadingIconAccent();
         UpdateTooltip();
     }
 
@@ -413,12 +386,11 @@ public partial class SystemStatsWidget : DockWidget
             usage =>
             {
                 _gpuHistory.Push(usage);
-                SetUsage(GpuValueText, GpuBarFill, GpuBarFillCol, GpuBarEmptyCol, ref _gpuState, usage, "AccentBrush");
+                SetUsage(GpuValueText, ref _gpuState, usage);
             });
         UpdateSensor(GpuTemperatureButton, currentMeters.HasFlag(SystemMeters.GpuTemperature) ? gpuTemp : null,
-            celsius => SetTemperature(GpuTempValueText, GpuTempBarFill, GpuTempBarFillCol, GpuTempBarEmptyCol, ref _gpuTempState, celsius));
+            celsius => SetTemperature(GpuTempValueText, ref _gpuTempState, celsius));
 
-        UpdateLeadingIconAccent();
         UpdateTooltip();
 
         if (_flyout.IsOpen && _clickFlyout is not null)
@@ -447,19 +419,9 @@ public partial class SystemStatsWidget : DockWidget
         var compact = IsCompact && !IsHoverExpanded;
         var vertical = Settings.Edge != DockEdge.Bottom;
         var meters = Settings.StatsMeters;
-        var changed = false;
-
-        if (_lastAppliedCompact != compact)
-        {
-            _lastAppliedCompact = compact;
-            changed = true;
-        }
-
-        if (_lastAppliedVertical != vertical)
-        {
-            _lastAppliedVertical = vertical;
-            changed = true;
-        }
+        var changed = _lastAppliedCompact != compact || _lastAppliedVertical != vertical;
+        _lastAppliedCompact = compact;
+        _lastAppliedVertical = vertical;
 
         var showCpu = meters.HasFlag(SystemMeters.Cpu);
         var showRam = meters.HasFlag(SystemMeters.Memory);
@@ -469,14 +431,10 @@ public partial class SystemStatsWidget : DockWidget
         MetricsPanel.Orientation = vertical ? Orientation.Vertical : Orientation.Horizontal;
         StatsCardButton.Padding = vertical
             ? (compact ? new Thickness(6, 5, 6, 5) : new Thickness(8, 6, 8, 6))
-            : (compact ? new Thickness(7, 0, 7, 0) : new Thickness(10, 0, 10, 0));
-        StatsIcon.Margin = vertical
-            ? new Thickness(0, 0, 0, compact ? 4 : 6)
-            : new Thickness(0, 0, compact ? 5 : 8, 0);
-
+            : (compact ? new Thickness(6, 0, 6, 0) : new Thickness(8, 0, 8, 0));
         var dividerMargin = vertical
             ? new Thickness(0, compact ? 4 : 5, 0, compact ? 4 : 5)
-            : new Thickness(compact ? 5 : 8, 0, compact ? 5 : 8, 0);
+            : new Thickness(3, 0, 3, 0);
         foreach (var divider in new[] { RamDivider, GpuDivider, GpuTempDivider })
         {
             divider.Width = vertical ? 22 : 1;
@@ -484,11 +442,11 @@ public partial class SystemStatsWidget : DockWidget
             divider.Margin = dividerMargin;
         }
 
-        var metricMinWidth = compact ? 28.0 : 36.0;
+        var metricMinWidth = compact ? 32.0 : 36.0;
         CpuButton.MinWidth = metricMinWidth;
         MemoryButton.MinWidth = metricMinWidth;
         GpuButton.MinWidth = metricMinWidth;
-        GpuTemperatureButton.MinWidth = compact ? 26.0 : 32.0;
+        GpuTemperatureButton.MinWidth = compact ? 32.0 : 36.0;
 
         Set(CpuLabel, !compact);
         Set(RamLabel, !compact);
@@ -503,7 +461,6 @@ public partial class SystemStatsWidget : DockWidget
         Set(GpuTempDivider, (showCpu || showRam || showGpu) && showGpuTemp);
         Set(GpuTemperatureButton, showGpuTemp);
 
-        UpdateLeadingIconAccent();
         if (changed) RaiseContentWidthChanged();
 
         void Set(FrameworkElement element, bool visible)
@@ -556,109 +513,60 @@ public partial class SystemStatsWidget : DockWidget
 
     private void SetUsage(
         TextBlock target,
-        Border fillBar,
-        ColumnDefinition fillCol,
-        ColumnDefinition emptyCol,
         ref MetricState state,
-        double value,
-        string normalAccentKey)
+        double value)
     {
         var clamped = double.IsFinite(value) ? Math.Clamp(value, 0, 1) : 0;
         var percent = (int)Math.Round(clamped * 100);
         var lang = Settings.Language;
-        var accentKey = LoadBrushKey(clamped, normalAccentKey);
         var textKey = LoadTextBrushKey(clamped);
 
         if (state.Initialized
             && state.Shown == percent
             && state.Language == lang
-            && state.AccentKey == accentKey
             && state.TextBrushKey == textKey
             && Math.Abs(clamped - state.Value) < ValueEpsilon)
             return;
 
-        if (state.AccentKey != accentKey)
-            fillBar.SetResourceReference(Border.BackgroundProperty, accentKey);
         if (state.TextBrushKey != textKey)
             target.SetResourceReference(TextBlock.ForegroundProperty, textKey);
 
         state.Value = clamped;
         state.Shown = percent;
         state.Language = lang;
-        state.AccentKey = accentKey;
         state.TextBrushKey = textKey;
         state.Initialized = true;
 
         target.Text = $"{percent.ToString(CultureInfo.InvariantCulture)}%";
-        SetProgressColumns(fillCol, emptyCol, clamped);
     }
 
     private void SetTemperature(
         TextBlock target,
-        Border fillBar,
-        ColumnDefinition fillCol,
-        ColumnDefinition emptyCol,
         ref MetricState state,
         double celsius)
     {
         var rounded = (int)Math.Round(celsius);
         var normalized = celsius / TemperatureScaleCelsius;
-        var barRatio = NormalizeTemperatureBar(celsius);
         var lang = Settings.Language;
-        var accentKey = ThermalBrushKey(celsius);
         var textKey = ThermalTextBrushKey(celsius);
 
         if (state.Initialized
             && state.Shown == rounded
             && state.Language == lang
-            && state.AccentKey == accentKey
             && state.TextBrushKey == textKey
             && Math.Abs(normalized - state.Value) < ValueEpsilon)
             return;
 
-        if (state.AccentKey != accentKey)
-            fillBar.SetResourceReference(Border.BackgroundProperty, accentKey);
         if (state.TextBrushKey != textKey)
             target.SetResourceReference(TextBlock.ForegroundProperty, textKey);
 
         state.Value = normalized;
         state.Shown = rounded;
         state.Language = lang;
-        state.AccentKey = accentKey;
         state.TextBrushKey = textKey;
         state.Initialized = true;
 
         target.Text = $"{rounded.ToString(CultureInfo.InvariantCulture)}°";
-        SetProgressColumns(fillCol, emptyCol, barRatio);
-    }
-
-    private void UpdateLeadingIconAccent()
-    {
-        string targetKey;
-        if (_flyout.IsOpen)
-        {
-            targetKey = "WidgetSelectedForeground";
-        }
-        else
-        {
-            var meters = Settings.StatsMeters;
-            var isCritical = (meters.HasFlag(SystemMeters.Cpu) && _cpuState.Initialized && _cpuState.Value >= CriticalThreshold)
-                || (meters.HasFlag(SystemMeters.Memory) && _memoryState.Initialized && _memoryState.Value >= CriticalThreshold)
-                || (meters.HasFlag(SystemMeters.Gpu) && _hasGpu && _gpuState.Initialized && _gpuState.Value >= CriticalThreshold)
-                || (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp && _gpuTempState.Initialized && _gpuTempState.Shown >= ThermalCriticalCelsius);
-
-            var isWarning = !isCritical && (
-                (meters.HasFlag(SystemMeters.Cpu) && _cpuState.Initialized && _cpuState.Value >= WarningThreshold)
-                || (meters.HasFlag(SystemMeters.Memory) && _memoryState.Initialized && _memoryState.Value >= WarningThreshold)
-                || (meters.HasFlag(SystemMeters.Gpu) && _hasGpu && _gpuState.Initialized && _gpuState.Value >= WarningThreshold)
-                || (meters.HasFlag(SystemMeters.GpuTemperature) && _hasGpuTemp && _gpuTempState.Initialized && _gpuTempState.Shown >= ThermalWarningCelsius));
-
-            targetKey = isCritical ? "WidgetDangerForeground" : (isWarning ? "WidgetWarning" : "TextSecondary");
-        }
-
-        if (_lastStatsIconKey == targetKey) return;
-        _lastStatsIconKey = targetKey;
-        StatsIcon.SetResourceReference(ForegroundProperty, targetKey);
     }
 
     private void UpdateTooltip()
@@ -673,289 +581,73 @@ public partial class SystemStatsWidget : DockWidget
         AutomationProperties.SetName(StatsCardButton, $"{UiText.Get("WidgetSystemStats")}: {summary}");
     }
 
-    /// <summary>
-    /// Builds the interactive telemetry flyout with rolling sparklines, CPU/RAM/GPU breakdown cards,
-    /// top processes (lazily sampled off the UI thread while open), and system tool quick actions.
-    /// </summary>
     internal UIElement BuildTelemetryFlyout(bool isPreview = false)
     {
         var root = new StackPanel();
-        var container = new Border { Width = 332, Child = root };
+        var container = new Border { Width = 296, Child = root };
 
-        // 1. Header bar: icon + title on left, live system uptime pill on right.
-        var header = new DockPanel { Margin = new Thickness(2, 0, 2, 10) };
-
-        var uptimeText = new TextBlock
-        {
-            Text = FormatUptime(SystemStats.GetSystemUptime()),
-            FontSize = 10.5,
-            FontWeight = FontWeights.Medium,
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
+        var uptimeText = CreateValueText();
         uptimeText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-
-        var uptimePill = new Border
-        {
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(7, 3, 7, 3),
-            BorderThickness = new Thickness(1),
-            VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = UiText.Get("StatsUptime")
-        };
-        uptimePill.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
-        uptimePill.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
-        var uptimeRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var uptimeIcon = CreateIcon("IconClock", 11, "TextSecondary");
-        uptimeIcon.Margin = new Thickness(0, 0, 5, 0);
-        uptimeRow.Children.Add(uptimeIcon);
-        uptimeRow.Children.Add(uptimeText);
-        uptimePill.Child = uptimeRow;
-        DockPanel.SetDock(uptimePill, Dock.Right);
-        header.Children.Add(uptimePill);
-
-        var titleGroup = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var headerIcon = CreateIcon("IconCpu", 15, "WidgetSelectedForeground");
-        headerIcon.Margin = new Thickness(0, 0, 7, 0);
-        var titleBlock = new TextBlock
-        {
-            Text = UiText.Get("WidgetSystemStats"),
-            FontSize = 13,
-            FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        titleBlock.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        titleGroup.Children.Add(headerIcon);
-        titleGroup.Children.Add(titleBlock);
-        header.Children.Add(titleGroup);
+        uptimeText.ToolTip = UiText.Get("StatsUptime");
+        var header = CreateMetricLine(UiText.Get("WidgetSystemStats"), uptimeText);
+        header.Margin = new Thickness(0, 0, 0, 12);
         root.Children.Add(header);
 
-        // 2. CPU breakdown card + rolling sparkline
-        var cpuDot = CreateStatusDot("WidgetBlue");
-        var cpuValueText = CreateCardValueText();
-        var cpuSparkline = CreateSparkline("WidgetBlue", 34);
-        var cpuCard = CreateMetricCard();
-        var cpuStack = new StackPanel();
-        var cpuTop = new DockPanel();
-        DockPanel.SetDock(cpuValueText, Dock.Right);
-        cpuTop.Children.Add(cpuValueText);
+        var cpuValue = CreateValueText();
+        var cpuSparkline = CreateSparkline("WidgetBlue", 22);
+        root.Children.Add(CreateMetricSection(UiText.Get("Cpu"), cpuValue, cpuSparkline));
 
-        var cpuTitleRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        cpuTitleRow.Children.Add(cpuDot);
-        var cpuTitle = new TextBlock
-        {
-            Text = UiText.Get("Cpu"),
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        cpuTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        var cpuCores = new TextBlock
-        {
-            Text = $"· {UiText.Format("StatsLogicalCores", Environment.ProcessorCount)}",
-            FontSize = 10.5,
-            Margin = new Thickness(5, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        cpuCores.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        cpuTitleRow.Children.Add(cpuTitle);
-        cpuTitleRow.Children.Add(cpuCores);
-        cpuTop.Children.Add(cpuTitleRow);
+        var ramValue = CreateValueText();
+        var ramPair = CreateValueText();
+        ramPair.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        var ramSparkline = CreateSparkline("WidgetAccent", 22);
+        root.Children.Add(CreateMetricSection(UiText.Get("Memory"), ramValue, ramSparkline, ramPair));
 
-        cpuStack.Children.Add(cpuTop);
-        cpuStack.Children.Add(cpuSparkline);
-        cpuCard.Child = cpuStack;
-        root.Children.Add(cpuCard);
+        var gpuValue = CreateValueText();
+        var gpuTemp = CreateValueText();
+        gpuTemp.ToolTip = UiText.Get("GpuTemperature");
+        var gpuSparkline = CreateSparkline("AccentBrush", 22);
+        var gpuSection = CreateMetricSection(UiText.Get("Gpu"), gpuValue, gpuSparkline, gpuTemp);
+        root.Children.Add(gpuSection);
 
-        // 3. RAM breakdown card + percentage bar + used/available GB + rolling sparkline
-        var ramDot = CreateStatusDot("WidgetAccent");
-        var ramValueText = CreateCardValueText();
-        var ramPairText = new TextBlock
-        {
-            Text = "—",
-            FontSize = 10.5,
-            Margin = new Thickness(5, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        ramPairText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-
-        var (ramTrack, ramBarFill, ramBarFillCol, ramBarEmptyCol) = CreateProgressBar("WidgetAccent", height: 5, new Thickness(0, 6, 0, 5));
-
-        var ramUsedText = new TextBlock
-        {
-            FontSize = 10,
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        ramUsedText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-
-        var ramAvailText = new TextBlock
-        {
-            FontSize = 10,
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        ramAvailText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-
-        var ramSubRow = new DockPanel { Margin = new Thickness(0, 0, 0, 2) };
-        DockPanel.SetDock(ramAvailText, Dock.Right);
-        ramSubRow.Children.Add(ramAvailText);
-        ramSubRow.Children.Add(ramUsedText);
-
-        var ramSparkline = CreateSparkline("WidgetAccent", 28);
-        var ramCard = CreateMetricCard();
-        var ramStack = new StackPanel();
-        var ramTop = new DockPanel();
-        DockPanel.SetDock(ramValueText, Dock.Right);
-        ramTop.Children.Add(ramValueText);
-
-        var ramTitleRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        ramTitleRow.Children.Add(ramDot);
-        var ramTitle = new TextBlock
-        {
-            Text = UiText.Get("Memory"),
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        ramTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        ramTitleRow.Children.Add(ramTitle);
-        ramTitleRow.Children.Add(ramPairText);
-        ramTop.Children.Add(ramTitleRow);
-
-        ramStack.Children.Add(ramTop);
-        ramStack.Children.Add(ramTrack);
-        ramStack.Children.Add(ramSubRow);
-        ramStack.Children.Add(ramSparkline);
-        ramCard.Child = ramStack;
-        root.Children.Add(ramCard);
-
-        // 4. GPU card (usage % + temperature pill + rolling sparkline, shown when GPU sensors report data)
-        var gpuDot = CreateStatusDot("AccentBrush");
-        var gpuValueText = CreateCardValueText();
-        var gpuTempText = new TextBlock
-        {
-            Text = "—",
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        gpuTempText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-
-        var gpuTempBadge = new Border
-        {
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(6, 2, 6, 2),
-            Margin = new Thickness(0, 0, 6, 0),
-            BorderThickness = new Thickness(1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = gpuTempText,
-            ToolTip = UiText.Get("GpuTemperature")
-        };
-        gpuTempBadge.SetResourceReference(Border.BackgroundProperty, "SurfaceSelectedStrong");
-        gpuTempBadge.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
-
-        var gpuSparkline = CreateSparkline("AccentBrush", 28);
-        var gpuCard = CreateMetricCard();
-        var gpuStack = new StackPanel();
-        var gpuTop = new DockPanel();
-
-        var gpuRight = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        gpuRight.Children.Add(gpuTempBadge);
-        gpuRight.Children.Add(gpuValueText);
-        DockPanel.SetDock(gpuRight, Dock.Right);
-        gpuTop.Children.Add(gpuRight);
-
-        var gpuTitleRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        gpuTitleRow.Children.Add(gpuDot);
-        var gpuTitle = new TextBlock
-        {
-            Text = UiText.Get("Gpu"),
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        gpuTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        gpuTitleRow.Children.Add(gpuTitle);
-        gpuTop.Children.Add(gpuTitleRow);
-
-        gpuStack.Children.Add(gpuTop);
-        gpuStack.Children.Add(gpuSparkline);
-        gpuCard.Child = gpuStack;
-        root.Children.Add(gpuCard);
-
-        // 5. Top Processes card (sampled asynchronously off UI thread only while flyout is open)
-        var procHeader = new DockPanel { Margin = new Thickness(2, 2, 2, 5) };
-        var procMemHeading = new TextBlock
-        {
-            Text = UiText.Get("Memory"),
-            FontSize = 10,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        procMemHeading.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        DockPanel.SetDock(procMemHeading, Dock.Right);
-        procHeader.Children.Add(procMemHeading);
-
-        var procTitle = new TextBlock
-        {
-            Text = UiText.Get("StatsTopProcesses"),
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        procTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        procHeader.Children.Add(procTitle);
-        root.Children.Add(procHeader);
+        var processColumn = CreateValueText();
+        processColumn.Text = UiText.Get("Memory");
+        processColumn.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        var processHeader = CreateMetricLine(UiText.Get("StatsTopProcesses"), processColumn);
+        processHeader.Margin = new Thickness(0, 8, 0, 4);
+        root.Children.Add(processHeader);
 
         var processesList = new StackPanel();
-        var processesCard = CreateMetricCard(bottomMargin: 10);
-        processesCard.Padding = new Thickness(9, 7, 9, 7);
-        processesCard.Child = processesList;
-        root.Children.Add(processesCard);
+        root.Children.Add(processesList);
 
-        // 6. Quick Action Footer: Task Manager + Resource Monitor
-        var footer = new UniformGrid { Columns = 2 };
-        var taskManagerBtn = CreateFooterActionButton("IconTaskManager", UiText.Get("TaskManager"), primary: true, new Thickness(0, 0, 4, 0));
-        taskManagerBtn.Click += (_, _) =>
+        var footer = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var taskManager = CreateFooterActionButton(UiText.Get("TaskManager"), new Thickness(0, 0, 8, 0));
+        taskManager.Click += (_, _) =>
         {
             _flyout.Close(restoreFocus: false);
             OpenTaskManagerAction();
         };
-
-        var resourceMonitorBtn = CreateFooterActionButton("IconMonitor", UiText.Get("ResourceMonitor"), primary: false, new Thickness(4, 0, 0, 0));
-        resourceMonitorBtn.Click += (_, _) =>
+        var resourceMonitor = CreateFooterActionButton(UiText.Get("ResourceMonitor"), new Thickness(0));
+        resourceMonitor.Click += (_, _) =>
         {
             _flyout.Close(restoreFocus: false);
             OpenResourceMonitorAction();
         };
-
-        footer.Children.Add(taskManagerBtn);
-        footer.Children.Add(resourceMonitorBtn);
+        footer.Children.Add(taskManager);
+        footer.Children.Add(resourceMonitor);
         root.Children.Add(footer);
 
         var view = new TelemetryFlyoutView
         {
             UptimeText = uptimeText,
-            CpuValueText = cpuValueText,
-            CpuDot = cpuDot,
+            CpuValueText = cpuValue,
             CpuSparkline = cpuSparkline,
-            RamValueText = ramValueText,
-            RamPairText = ramPairText,
-            RamUsedText = ramUsedText,
-            RamAvailableText = ramAvailText,
-            RamDot = ramDot,
-            RamBarFill = ramBarFill,
-            RamBarFillCol = ramBarFillCol,
-            RamBarEmptyCol = ramBarEmptyCol,
+            RamValueText = ramValue,
+            RamPairText = ramPair,
             RamSparkline = ramSparkline,
-            GpuCard = gpuCard,
-            GpuValueText = gpuValueText,
-            GpuTempBadge = gpuTempBadge,
-            GpuTempText = gpuTempText,
-            GpuDot = gpuDot,
+            GpuSection = gpuSection,
+            GpuValueText = gpuValue,
+            GpuTempText = gpuTemp,
             GpuSparkline = gpuSparkline,
             ProcessesList = processesList
         };
@@ -1093,7 +785,6 @@ public partial class SystemStatsWidget : DockWidget
         var cpuTextKey = _cpuState.Initialized ? LoadTextBrushKey(cpuRatio) : "TextPrimary";
         view.CpuValueText.Text = _cpuState.Initialized ? $"{_cpuState.Shown.ToString(CultureInfo.InvariantCulture)}%" : "—";
         view.CpuValueText.SetResourceReference(TextBlock.ForegroundProperty, cpuTextKey);
-        view.CpuDot.SetResourceReference(Shape.FillProperty, cpuAccent);
         view.CpuSparkline.SetResourceReference(TelemetrySparkline.StrokeBrushProperty, cpuAccent);
         view.CpuSparkline.UpdateFrom(_cpuHistory);
 
@@ -1106,39 +797,23 @@ public partial class SystemStatsWidget : DockWidget
         var ramTextKey = ramHasValue ? LoadTextBrushKey(ramRatio) : "TextPrimary";
         view.RamValueText.Text = ramHasValue ? $"{ramShown.ToString(CultureInfo.InvariantCulture)}%" : "—";
         view.RamValueText.SetResourceReference(TextBlock.ForegroundProperty, ramTextKey);
-        view.RamDot.SetResourceReference(Shape.FillProperty, ramAccent);
-        view.RamBarFill.SetResourceReference(Border.BackgroundProperty, ramAccent);
-        SetProgressColumns(view.RamBarFillCol, view.RamBarEmptyCol, ramHasValue ? ramRatio : 0);
 
-        if (mem is { TotalBytes: > 0 } snap)
-        {
-            var usedStr = FormatBytesGigabytes(snap.UsedBytes, culture);
-            var totalStr = FormatBytesGigabytes(snap.TotalBytes, culture);
-            var availStr = FormatBytesGigabytes(snap.AvailableBytes, culture);
-            view.RamPairText.Text = $"· {usedStr} / {totalStr}";
-            view.RamUsedText.Text = UiText.Format("StatsMemoryUsed", usedStr);
-            view.RamAvailableText.Text = UiText.Format("StatsMemoryAvailable", availStr);
-        }
-        else
-        {
-            view.RamPairText.Text = string.Empty;
-            view.RamUsedText.Text = "—";
-            view.RamAvailableText.Text = string.Empty;
-        }
+        view.RamPairText.Text = mem is { TotalBytes: > 0 } snap
+            ? $"{FormatBytesGigabytes(snap.UsedBytes, culture)} / {FormatBytesGigabytes(snap.TotalBytes, culture)}"
+            : string.Empty;
 
         view.RamSparkline.SetResourceReference(TelemetrySparkline.StrokeBrushProperty, ramAccent);
         view.RamSparkline.UpdateFrom(_memoryHistory);
 
         // GPU
-        var showGpuCard = _hasGpu || _hasGpuTemp;
-        view.GpuCard.Visibility = showGpuCard ? Visibility.Visible : Visibility.Collapsed;
-        if (showGpuCard)
+        var showGpu = _hasGpu || _hasGpuTemp;
+        view.GpuSection.Visibility = showGpu ? Visibility.Visible : Visibility.Collapsed;
+        if (showGpu)
         {
             var gpuRatio = _gpuState.Initialized ? _gpuState.Value : 0;
             var gpuAccent = _hasGpu
                 ? LoadBrushKey(gpuRatio, "AccentBrush")
                 : (_hasGpuTemp && _gpuTempState.Initialized ? ThermalBrushKey(_gpuTempState.Shown) : "AccentBrush");
-            view.GpuDot.SetResourceReference(Shape.FillProperty, gpuAccent);
 
             view.GpuValueText.Visibility = _hasGpu ? Visibility.Visible : Visibility.Collapsed;
             if (_hasGpu)
@@ -1148,8 +823,7 @@ public partial class SystemStatsWidget : DockWidget
                 view.GpuValueText.SetResourceReference(TextBlock.ForegroundProperty, gpuTextKey);
             }
 
-            view.GpuTempBadge.Visibility = _hasGpuTemp ? Visibility.Visible : Visibility.Collapsed;
-            view.GpuTempBadge.Margin = _hasGpu ? new Thickness(0, 0, 6, 0) : new Thickness(0);
+            view.GpuTempText.Visibility = _hasGpuTemp ? Visibility.Visible : Visibility.Collapsed;
             if (_hasGpuTemp)
             {
                 var tempKey = _gpuTempState.Initialized ? ThermalTextBrushKey(_gpuTempState.Shown) : "TextPrimary";
@@ -1198,63 +872,15 @@ public partial class SystemStatsWidget : DockWidget
         }
 
         var culture = Settings.Language.Culture;
-        var maxWorkingSet = Math.Max(1L, entries[0].WorkingSetBytes);
-
-        for (var i = 0; i < entries.Count; i++)
+        foreach (var entry in entries)
         {
-            var entry = entries[i];
-            var rowStack = new StackPanel { Margin = new Thickness(0, i == 0 ? 0 : 6, 0, 0) };
-
-            var textRow = new DockPanel();
-            var memText = new TextBlock
-            {
-                Text = FormatProcessMemory(entry.WorkingSetBytes, culture),
-                FontSize = 11,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(8, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-            };
-            memText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-            DockPanel.SetDock(memText, Dock.Right);
-            textRow.Children.Add(memText);
-
-            var namePanel = new DockPanel { LastChildFill = true };
-            if (entry.InstanceCount > 1)
-            {
-                var countText = new TextBlock
-                {
-                    Text = $"×{entry.InstanceCount.ToString(CultureInfo.InvariantCulture)}",
-                    FontSize = 9.5,
-                    Margin = new Thickness(5, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-                };
-                countText.SetResourceReference(TextBlock.ForegroundProperty, "TextMuted");
-                DockPanel.SetDock(countText, Dock.Right);
-                namePanel.Children.Add(countText);
-            }
-
-            var nameText = new TextBlock
-            {
-                Text = entry.Name,
-                FontSize = 11.5,
-                FontWeight = FontWeights.Medium,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-            namePanel.Children.Add(nameText);
-            textRow.Children.Add(namePanel);
-            rowStack.Children.Add(textRow);
-
-            var ratio = Math.Clamp((double)entry.WorkingSetBytes / maxWorkingSet, 0.04, 1.0);
-            var (barTrack, barFill, fillCol, emptyCol) = CreateProgressBar("WidgetAccent", height: 2.2, new Thickness(0, 3, 0, 0));
-            barFill.Opacity = 0.78;
-            SetProgressColumns(fillCol, emptyCol, ratio);
-            rowStack.Children.Add(barTrack);
-
-            container.Children.Add(rowStack);
+            var memory = CreateValueText();
+            memory.Text = FormatProcessMemory(entry.WorkingSetBytes, culture);
+            memory.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            var row = CreateMetricLine(entry.Name, memory);
+            row.ToolTip = entry.Name;
+            row.Margin = new Thickness(0, 2, 0, 2);
+            container.Children.Add(row);
         }
     }
 
@@ -1285,43 +911,26 @@ public partial class SystemStatsWidget : DockWidget
         header.Children.Add(title);
         root.Children.Add(header);
 
-        var (cpuRow, cpuVal, cpuFill, cpuFillCol, cpuEmptyCol) = CreateCompactMetricRow(UiText.Get("Cpu"), "WidgetBlue");
-        var (ramRow, ramVal, ramFill, ramFillCol, ramEmptyCol) = CreateCompactMetricRow(UiText.Get("Memory"), "WidgetAccent");
-        var ramDetail = new TextBlock
-        {
-            FontSize = 10,
-            Margin = new Thickness(0, 2, 0, 0),
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
+        var cpuValue = CreateValueText();
+        var ramValue = CreateValueText();
+        var ramDetail = CreateValueText();
         ramDetail.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        ramRow.Children.Add(ramDetail);
+        var gpuValue = CreateValueText();
+        var gpuRow = CreateMetricLine(UiText.Get("Gpu"), gpuValue);
 
-        var (gpuRow, gpuVal, gpuFill, gpuFillCol, gpuEmptyCol) = CreateCompactMetricRow(UiText.Get("Gpu"), "AccentBrush");
-
-        root.Children.Add(cpuRow);
-        ramRow.Margin = new Thickness(0, 7, 0, 0);
-        root.Children.Add(ramRow);
-        gpuRow.Margin = new Thickness(0, 7, 0, 0);
+        root.Children.Add(CreateMetricLine(UiText.Get("Cpu"), cpuValue));
+        root.Children.Add(CreateMetricLine(UiText.Get("Memory"), ramValue, ramDetail));
         root.Children.Add(gpuRow);
 
         return new HoverFlyoutView
         {
             Container = container,
             UptimeText = uptimeText,
-            CpuValueText = cpuVal,
-            CpuBarFill = cpuFill,
-            CpuBarFillCol = cpuFillCol,
-            CpuBarEmptyCol = cpuEmptyCol,
-            RamValueText = ramVal,
+            CpuValueText = cpuValue,
+            RamValueText = ramValue,
             RamDetailText = ramDetail,
-            RamBarFill = ramFill,
-            RamBarFillCol = ramFillCol,
-            RamBarEmptyCol = ramEmptyCol,
             GpuRow = gpuRow,
-            GpuValueText = gpuVal,
-            GpuBarFill = gpuFill,
-            GpuBarFillCol = gpuFillCol,
-            GpuBarEmptyCol = gpuEmptyCol
+            GpuValueText = gpuValue
         };
     }
 
@@ -1330,17 +939,12 @@ public partial class SystemStatsWidget : DockWidget
         var culture = Settings.Language.Culture;
         view.UptimeText.Text = FormatUptime(SystemStats.GetSystemUptime());
 
-        var cpuRatio = _cpuState.Initialized ? _cpuState.Value : 0;
         view.CpuValueText.Text = _cpuState.Initialized ? $"{_cpuState.Shown.ToString(CultureInfo.InvariantCulture)}%" : "—";
-        view.CpuBarFill.SetResourceReference(Border.BackgroundProperty, LoadBrushKey(cpuRatio, "WidgetBlue"));
-        SetProgressColumns(view.CpuBarFillCol, view.CpuBarEmptyCol, _cpuState.Initialized ? cpuRatio : 0);
 
         var mem = _lastMemorySnapshot ?? SystemStats.SampleMemorySnapshot();
         var ramRatio = mem?.UsageRatio ?? (_memoryState.Initialized ? _memoryState.Value : 0);
         var ramHas = mem.HasValue || _memoryState.Initialized;
         view.RamValueText.Text = ramHas ? $"{((int)Math.Round(ramRatio * 100)).ToString(CultureInfo.InvariantCulture)}%" : "—";
-        view.RamBarFill.SetResourceReference(Border.BackgroundProperty, LoadBrushKey(ramRatio, "WidgetAccent"));
-        SetProgressColumns(view.RamBarFillCol, view.RamBarEmptyCol, ramHas ? ramRatio : 0);
         view.RamDetailText.Text = mem is { TotalBytes: > 0 } snap
             ? $"{FormatBytesGigabytes(snap.UsedBytes, culture)} / {FormatBytesGigabytes(snap.TotalBytes, culture)}"
             : string.Empty;
@@ -1349,130 +953,67 @@ public partial class SystemStatsWidget : DockWidget
         view.GpuRow.Visibility = showGpu ? Visibility.Visible : Visibility.Collapsed;
         if (showGpu)
         {
-            var gpuRatio = _gpuState.Initialized ? _gpuState.Value : 0;
             var parts = new List<string>(2);
             if (_hasGpu && _gpuState.Initialized) parts.Add($"{_gpuState.Shown.ToString(CultureInfo.InvariantCulture)}%");
             if (_hasGpuTemp && _gpuTempState.Initialized) parts.Add($"{_gpuTempState.Shown.ToString(CultureInfo.InvariantCulture)}°C");
             view.GpuValueText.Text = parts.Count > 0 ? string.Join(" · ", parts) : "—";
-            view.GpuBarFill.SetResourceReference(Border.BackgroundProperty,
-                _hasGpu
-                    ? LoadBrushKey(gpuRatio, "AccentBrush")
-                    : (_gpuTempState.Initialized ? ThermalBrushKey(_gpuTempState.Shown) : "WidgetGreen"));
-            SetProgressColumns(view.GpuBarFillCol, view.GpuBarEmptyCol,
-                _hasGpu
-                    ? (_gpuState.Initialized ? gpuRatio : 0)
-                    : (_hasGpuTemp && _gpuTempState.Initialized ? NormalizeTemperatureBar(_gpuTempState.Shown) : 0));
         }
     }
 
-    private (StackPanel Row, TextBlock ValueText, Border FillBar, ColumnDefinition FillCol, ColumnDefinition EmptyCol)
-        CreateCompactMetricRow(string label, string accentKey)
+    private static DockPanel CreateMetricLine(string label, TextBlock value, TextBlock? detail = null)
     {
-        var row = new StackPanel();
-        var header = new DockPanel();
-        var valueText = new TextBlock
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 3) };
+        DockPanel.SetDock(value, Dock.Right);
+        row.Children.Add(value);
+        if (detail is not null)
         {
-            Text = "—",
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
-        };
-        valueText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        DockPanel.SetDock(valueText, Dock.Right);
-        header.Children.Add(valueText);
+            detail.Margin = new Thickness(8, 0, 8, 0);
+            DockPanel.SetDock(detail, Dock.Right);
+            row.Children.Add(detail);
+        }
 
-        var labelText = new TextBlock
+        var name = new TextBlock
         {
             Text = label,
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        labelText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        header.Children.Add(labelText);
-
-        var (track, fill, fillCol, emptyCol) = CreateProgressBar(accentKey, height: 4, new Thickness(0, 4, 0, 0));
-        row.Children.Add(header);
-        row.Children.Add(track);
-        return (row, valueText, fill, fillCol, emptyCol);
-    }
-
-    private Border CreateMetricCard(double bottomMargin = 8)
-    {
-        var card = new Border
-        {
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(10, 8, 10, 8),
-            Margin = new Thickness(0, 0, 0, bottomMargin),
-            BorderThickness = new Thickness(1)
-        };
-        card.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
-        card.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
-        return card;
-    }
-
-    private Button CreateFooterActionButton(string iconKey, string label, bool primary, Thickness margin)
-    {
-        var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var icon = CreateIcon(iconKey, 13, primary ? "WidgetSelectedForeground" : "TextSecondary");
-        icon.Margin = new Thickness(0, 0, 6, 0);
-        var text = new TextBlock
-        {
-            Text = label,
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
+            FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
-        content.Children.Add(icon);
-        content.Children.Add(text);
+        name.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        row.Children.Add(name);
+        return row;
+    }
 
+    private static StackPanel CreateMetricSection(string label, TextBlock value, TelemetrySparkline history, TextBlock? detail = null)
+    {
+        var section = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+        section.Children.Add(CreateMetricLine(label, value, detail));
+        section.Children.Add(history);
+        return section;
+    }
+
+    private static Button CreateFooterActionButton(string label, Thickness margin)
+    {
         var button = new Button
         {
-            Content = content,
+            Content = label,
             Margin = margin,
-            Padding = new Thickness(8, 0, 8, 0),
-            ToolTip = label
+            Padding = new Thickness(4, 0, 4, 0),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0)
         };
-        button.SetResourceReference(StyleProperty, primary ? "WidgetFlyoutPrimaryButton" : "WidgetFlyoutActionButton");
+        button.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
         AutomationProperties.SetName(button, label);
         return button;
     }
 
-    private ContentControl CreateIcon(string resourceKey, double size, string foregroundKey)
-    {
-        var icon = new ContentControl
-        {
-            Content = TryFindResource(resourceKey),
-            Width = size,
-            Height = size,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        icon.SetResourceReference(StyleProperty, "WidgetIcon");
-        icon.SetResourceReference(ForegroundProperty, foregroundKey);
-        return icon;
-    }
-
-    private static Ellipse CreateStatusDot(string brushKey)
-    {
-        var dot = new Ellipse
-        {
-            Width = 7,
-            Height = 7,
-            Margin = new Thickness(0, 0, 6, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        dot.SetResourceReference(Shape.FillProperty, brushKey);
-        return dot;
-    }
-
-    private static TextBlock CreateCardValueText()
+    private static TextBlock CreateValueText()
     {
         var text = new TextBlock
         {
             Text = "—",
-            FontSize = 16,
-            FontWeight = FontWeights.Bold,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
@@ -1484,48 +1025,11 @@ public partial class SystemStatsWidget : DockWidget
     {
         var sparkline = new TelemetrySparkline
         {
-            Height = height,
-            Margin = new Thickness(0, 6, 0, 0)
+            Height = height
         };
         sparkline.SetResourceReference(TelemetrySparkline.StrokeBrushProperty, brushKey);
         sparkline.SetResourceReference(TelemetrySparkline.GridBrushProperty, "WidgetTrack");
         return sparkline;
-    }
-
-    private static (Border Track, Border Fill, ColumnDefinition FillCol, ColumnDefinition EmptyCol)
-        CreateProgressBar(string brushKey, double height, Thickness margin)
-    {
-        var radius = height / 2.0;
-        var track = new Border
-        {
-            Height = height,
-            CornerRadius = new CornerRadius(radius),
-            Margin = margin,
-            ClipToBounds = true
-        };
-        track.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
-
-        var grid = new Grid();
-        var fillCol = new ColumnDefinition { Width = new GridLength(0, GridUnitType.Star) };
-        var emptyCol = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
-        grid.ColumnDefinitions.Add(fillCol);
-        grid.ColumnDefinitions.Add(emptyCol);
-
-        var fill = new Border { CornerRadius = new CornerRadius(radius) };
-        fill.SetResourceReference(Border.BackgroundProperty, brushKey);
-        Grid.SetColumn(fill, 0);
-        grid.Children.Add(fill);
-        track.Child = grid;
-
-        return (track, fill, fillCol, emptyCol);
-    }
-
-    private static void SetProgressColumns(ColumnDefinition fillCol, ColumnDefinition emptyCol, double ratio)
-    {
-        var clamped = double.IsFinite(ratio) ? Math.Clamp(ratio, 0, 1) : 0;
-        var visual = clamped > 0.005 ? Math.Max(0.04, clamped) : 0;
-        fillCol.Width = new GridLength(visual, GridUnitType.Star);
-        emptyCol.Width = new GridLength(Math.Max(0, 1.0 - visual), GridUnitType.Star);
     }
 
     internal static string LoadBrushKey(double ratio, string normalKey) => ratio switch
@@ -1555,9 +1059,6 @@ public partial class SystemStatsWidget : DockWidget
         >= ThermalWarningCelsius => "WidgetWarning",
         _ => "TextPrimary"
     };
-
-    internal static double NormalizeTemperatureBar(double celsius) =>
-        Math.Clamp((celsius - 25.0) / 70.0, 0.06, 1.0);
 
     internal static string FormatBytesGigabytes(ulong bytes, CultureInfo culture)
     {

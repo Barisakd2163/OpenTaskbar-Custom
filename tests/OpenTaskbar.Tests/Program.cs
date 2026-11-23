@@ -478,7 +478,7 @@ void WidgetCategoryChecks()
     var catalog = new DockWidgetService(clock);
     var options = catalog.CreateOptions([], []);
 
-    Check(options.Count == 23, "Catalog must define exactly 23 widgets.");
+    Check(options.Count == 22, "Catalog must define exactly 22 widgets.");
 
     var timeWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.TimeAndWeather).Select(o => o.Id).ToArray();
     Check(timeWidgets.Length == 5
@@ -511,10 +511,8 @@ void WidgetCategoryChecks()
         "MediaAndControls category must contain Media, Audio and QuickSettings.");
 
     var prodWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.Productivity).Select(o => o.Id).ToArray();
-    Check(prodWidgets.Length == 2
-        && prodWidgets.Contains(DockWidgetService.FocusId)
-        && prodWidgets.Contains(DockWidgetService.ShowDesktopId),
-        "Productivity category must contain Focus and ShowDesktop.");
+    Check(prodWidgets.SequenceEqual([DockWidgetService.FocusId]),
+        "Productivity category must contain only Focus.");
 
     UiText.Current.SetLanguage(AppLanguage.Turkish);
     var sample = options.First(o => o.CategoryEnum == DockWidgetCategory.AiQuotas);
@@ -547,11 +545,12 @@ void WidgetRegistryChecks()
     {
         "Media", "SystemStats", "Focus", "Weather", "NetSpeed", "BluetoothBattery", "Battery", "Storage",
         "DayProgress", "AiUsageClaude", "AiUsageCodex", "AiUsageAntigravity", "AiUsageOpenCode",
-        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock",
-        "ShowDesktop"
+        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock"
     };
     Check(live.Select(descriptor => descriptor.Id).SequenceEqual(expectedOrder),
-        "Live widget dock order must stay identical so saved widget orders keep their meaning.");
+        "Remaining live widgets must preserve their dock order.");
+    Check(DockSettingsStore.Validate(new DockSettings(Widgets: ["ShowDesktop"], InstalledWidgets: ["ShowDesktop"])),
+        "Saved settings with the retired ShowDesktop widget must remain valid.");
 
     // Capability flags decide live previews instead of a second hard-coded ID list.
     Check(catalog.Where(descriptor => descriptor.SupportsLivePreview)

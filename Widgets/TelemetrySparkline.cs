@@ -67,7 +67,7 @@ internal sealed class TelemetrySparkline : FrameworkElement
 
     public static readonly DependencyProperty StrokeThicknessProperty = DependencyProperty.Register(
         nameof(StrokeThickness), typeof(double), typeof(TelemetrySparkline),
-        new FrameworkPropertyMetadata(1.6, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(1.25, FrameworkPropertyMetadataOptions.AffectsRender));
 
     private double[] _samples = [];
     private int _sampleCount;
@@ -75,10 +75,6 @@ internal sealed class TelemetrySparkline : FrameworkElement
     private Pen? _linePen;
     private Brush? _linePenBrush;
     private double _linePenThickness;
-    private Brush? _areaBrush;
-    private Brush? _haloBrush;
-    private Color? _cachedStrokeColor;
-    private Pen? _gridPen;
     private Pen? _baselinePen;
     private Brush? _gridPenBrush;
 
@@ -128,82 +124,37 @@ internal sealed class TelemetrySparkline : FrameworkElement
         var plotWidth = Math.Max(1.0, width - padLeft - padRight);
         var plotHeight = Math.Max(1.0, height - padTop - padBottom);
         var bottomY = padTop + plotHeight;
-        var midY = padTop + plotHeight * 0.5;
-
-        EnsureGridPens(GridBrush);
-        if (_gridPen is not null)
-            dc.DrawLine(_gridPen, new Point(padLeft, midY), new Point(padLeft + plotWidth, midY));
-        if (_baselinePen is not null)
-            dc.DrawLine(_baselinePen, new Point(padLeft, bottomY), new Point(padLeft + plotWidth, bottomY));
-
-        if (_sampleCount <= 0) return;
-
-        var strokeBrush = StrokeBrush;
-        var linePen = GetLinePen(strokeBrush, StrokeThickness);
-        EnsureDerivedFills(strokeBrush);
-
-        var lineGeometry = new StreamGeometry();
-        var areaGeometry = new StreamGeometry();
-        Point lastPoint;
-
-        if (_sampleCount == 1)
+        var gridBrush = GridBrush;
+        if (_baselinePen is null || !ReferenceEquals(_gridPenBrush, gridBrush))
         {
-            var y = bottomY - _samples[0] * plotHeight;
-            var start = new Point(padLeft, y);
-            var end = new Point(padLeft + plotWidth, y);
-            lastPoint = end;
-
-            using (var lg = lineGeometry.Open())
-            {
-                lg.BeginFigure(start, isFilled: false, isClosed: false);
-                lg.LineTo(end, isStroked: true, isSmoothJoin: true);
-            }
-
-            using (var ag = areaGeometry.Open())
-            {
-                ag.BeginFigure(new Point(padLeft, bottomY), isFilled: true, isClosed: true);
-                ag.LineTo(start, isStroked: false, isSmoothJoin: false);
-                ag.LineTo(end, isStroked: false, isSmoothJoin: false);
-                ag.LineTo(new Point(padLeft + plotWidth, bottomY), isStroked: false, isSmoothJoin: false);
-            }
+            _gridPenBrush = gridBrush;
+            _baselinePen = new Pen(gridBrush, 1);
         }
-        else
+        dc.DrawLine(_baselinePen, new Point(padLeft, bottomY), new Point(padLeft + plotWidth, bottomY));
+
+        if (_sampleCount == 0) return;
+
+        var line = new StreamGeometry();
+        using (var geometry = line.Open())
         {
-            var stepX = plotWidth / (_sampleCount - 1);
             var firstY = bottomY - _samples[0] * plotHeight;
-            var firstPoint = new Point(padLeft, firstY);
-            lastPoint = firstPoint;
-
-            using (var lg = lineGeometry.Open())
-            using (var ag = areaGeometry.Open())
+            geometry.BeginFigure(new Point(padLeft, firstY), isFilled: false, isClosed: false);
+            if (_sampleCount == 1)
             {
-                lg.BeginFigure(firstPoint, isFilled: false, isClosed: false);
-                ag.BeginFigure(new Point(padLeft, bottomY), isFilled: true, isClosed: true);
-                ag.LineTo(firstPoint, isStroked: false, isSmoothJoin: false);
-
+                geometry.LineTo(new Point(padLeft + plotWidth, firstY), isStroked: true, isSmoothJoin: true);
+            }
+            else
+            {
+                var step = plotWidth / (_sampleCount - 1);
                 for (var i = 1; i < _sampleCount; i++)
                 {
-                    var pt = new Point(padLeft + i * stepX, bottomY - _samples[i] * plotHeight);
-                    lg.LineTo(pt, isStroked: true, isSmoothJoin: true);
-                    ag.LineTo(pt, isStroked: false, isSmoothJoin: false);
-                    lastPoint = pt;
+                    geometry.LineTo(new Point(padLeft + i * step, bottomY - _samples[i] * plotHeight),
+                        isStroked: true, isSmoothJoin: true);
                 }
-
-                ag.LineTo(new Point(lastPoint.X, bottomY), isStroked: false, isSmoothJoin: false);
             }
         }
-
-        lineGeometry.Freeze();
-        areaGeometry.Freeze();
-
-        if (_areaBrush is not null)
-            dc.DrawGeometry(_areaBrush, null, areaGeometry);
-        dc.DrawGeometry(null, linePen, lineGeometry);
-
-        // Live terminal point with soft translucent halo.
-        if (_haloBrush is not null)
-            dc.DrawEllipse(_haloBrush, null, lastPoint, 4.5, 4.5);
-        dc.DrawEllipse(strokeBrush, null, lastPoint, 2.2, 2.2);
+        line.Freeze();
+        dc.DrawGeometry(null, GetLinePen(StrokeBrush, StrokeThickness), line);
     }
 
     private Pen GetLinePen(Brush brush, double thickness)
@@ -223,59 +174,4 @@ internal sealed class TelemetrySparkline : FrameworkElement
         _linePenThickness = thickness;
         return pen;
     }
-
-    private void EnsureDerivedFills(Brush strokeBrush)
-    {
-        var color = ExtractAccentColor(strokeBrush);
-        if (_cachedStrokeColor == color && _areaBrush is not null && _haloBrush is not null)
-            return;
-
-        _cachedStrokeColor = color;
-
-        var gradient = new LinearGradientBrush
-        {
-            StartPoint = new Point(0, 0),
-            EndPoint = new Point(0, 1),
-            GradientStops =
-            [
-                new GradientStop(Color.FromArgb(0x46, color.R, color.G, color.B), 0.0),
-                new GradientStop(Color.FromArgb(0x16, color.R, color.G, color.B), 0.65),
-                new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0)
-            ]
-        };
-        gradient.Freeze();
-        _areaBrush = gradient;
-
-        var halo = new SolidColorBrush(Color.FromArgb(0x38, color.R, color.G, color.B));
-        halo.Freeze();
-        _haloBrush = halo;
-    }
-
-    private void EnsureGridPens(Brush gridBrush)
-    {
-        if (_gridPen is not null && ReferenceEquals(_gridPenBrush, gridBrush))
-            return;
-
-        _gridPenBrush = gridBrush;
-        var baseColor = ExtractAccentColor(gridBrush);
-
-        var midBrush = new SolidColorBrush(Color.FromArgb((byte)(baseColor.A * 0.55), baseColor.R, baseColor.G, baseColor.B));
-        midBrush.Freeze();
-        var midPen = new Pen(midBrush, 1.0) { DashStyle = new DashStyle([2.5, 3.5], 0) };
-        midPen.Freeze();
-        _gridPen = midPen;
-
-        var baseLineBrush = new SolidColorBrush(Color.FromArgb((byte)(baseColor.A * 0.7), baseColor.R, baseColor.G, baseColor.B));
-        baseLineBrush.Freeze();
-        var basePen = new Pen(baseLineBrush, 1.0);
-        basePen.Freeze();
-        _baselinePen = basePen;
-    }
-
-    private static Color ExtractAccentColor(Brush brush) => brush switch
-    {
-        SolidColorBrush solid => solid.Color,
-        GradientBrush gradient when gradient.GradientStops.Count > 0 => gradient.GradientStops[0].Color,
-        _ => Colors.DeepSkyBlue
-    };
 }

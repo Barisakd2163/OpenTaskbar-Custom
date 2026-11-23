@@ -108,7 +108,7 @@ internal static class SystemStatsAvailabilityChecks
               && SystemStatsWidget.FormatProcessMemory(256L * 1024 * 1024, CultureInfo.InvariantCulture) == "256 MB",
             "FormatProcessMemory must format GiB and MiB working sets cleanly.");
 
-        // Rich flyout structure & Dark/Light dynamic theme binding
+        // Flat flyout structure and dynamic theme binding.
         var prevLang = UiText.Current.Language;
         try
         {
@@ -131,14 +131,14 @@ internal static class SystemStatsAvailabilityChecks
             foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
             {
                 ThemeManager.Apply(theme);
-                var expectedSurface = app.TryFindResource("SurfaceSelected") as Brush;
-                Check(expectedSurface is not null, $"SurfaceSelected token must exist in {theme} theme.");
+                var expectedText = app.TryFindResource("TextPrimary") as Brush;
+                Check(expectedText is not null, $"TextPrimary token must exist in {theme} theme.");
                 var themedFlyout = widget.BuildTelemetryFlyout(isPreview: true);
-                var cards = LogicalDescendants<Border>(themedFlyout)
-                    .Where(b => Math.Abs(b.CornerRadius.TopLeft - 10) < 0.01)
-                    .ToList();
-                Check(cards.Count >= 3 && cards.All(c => ReferenceEquals(c.Background, expectedSurface)),
-                    $"SystemStatsWidget flyout cards must resolve to SurfaceSelected in {theme} theme.");
+                var title = LogicalDescendants<TextBlock>(themedFlyout)
+                    .Single(t => t.Text == UiText.Get("WidgetSystemStats"));
+                Check(ReferenceEquals(title.Foreground, expectedText)
+                      && !LogicalDescendants<Border>(themedFlyout).Any(b => b.Background is not null),
+                    $"SystemStatsWidget must use themed text without nested background panels in {theme} theme.");
             }
         }
         finally

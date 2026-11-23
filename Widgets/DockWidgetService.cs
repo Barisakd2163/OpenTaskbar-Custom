@@ -44,7 +44,6 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     public const string CountdownId = "Countdown";
     public const string NetSpeedId = "NetSpeed";
     public const string BluetoothBatteryId = "BluetoothBattery";
-    public const string ShowDesktopId = "ShowDesktop";
 
     public sealed record AiUsageWidgetDefinition(string Id, AiProviders Provider, string LabelKey, string IconKey);
 
@@ -121,12 +120,12 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new(FocusId, "WidgetFocus", _ => "25:00",
             DockWidgetCategory.Productivity, "IconTarget", true,
             DockOrder: 2, Factory: () => new FocusWidget()),
-        new(ShowDesktopId, "WidgetShowDesktop", _ => UiText.Get("ShowDesktop"),
-            DockWidgetCategory.Productivity, "IconMonitor", false,
-            DockOrder: 19, Factory: () => new ShowDesktopWidget()),
 
         // Legacy alias kept only so old settings files stay valid; it is never a card or a dock slot.
         new(DateId, "WidgetClock", null, DockWidgetCategory.TimeAndWeather, "IconClock", false,
+            CatalogVisible: false, SupportsLivePreview: false),
+        // Keep saved widget lists valid after retiring the duplicate desktop control.
+        new("ShowDesktop", "WidgetShowDesktop", null, DockWidgetCategory.Productivity, "IconMonitor", false,
             CatalogVisible: false, SupportsLivePreview: false)
     ];
 

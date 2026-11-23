@@ -729,7 +729,7 @@ internal static class DockLayoutChecks
         Check(app.FindResource("StartDockButton") is Style, "StartDockButton tactile tile style must be defined.");
 
         // Verify WidgetCoordinator ordering, reordering and validation
-        Check(WidgetCoordinator.DefaultWidgetOrder.Length == 21, "WidgetCoordinator must have 21 default widgets (including Battery, Storage, DayProgress, ShowDesktop, and one per AI provider).");
+        Check(WidgetCoordinator.DefaultWidgetOrder.Length == 20, "WidgetCoordinator must have 20 default widgets.");
         Check(WidgetCoordinator.GetLabelKey("Clock") == "WidgetClock", "Clock widget label key must match.");
         Check(WidgetCoordinator.GetLabelKey("Media") == "WidgetMedia", "Media widget label key must match.");
         Check(WidgetCoordinator.GetLabelKey("NetSpeed") == "WidgetNetSpeed", "NetSpeed widget label key must match.");
@@ -737,7 +737,6 @@ internal static class DockLayoutChecks
         Check(WidgetCoordinator.GetLabelKey("Battery") == "WidgetBattery", "Battery widget label key must match.");
         Check(WidgetCoordinator.GetLabelKey("Storage") == "WidgetStorage", "Storage widget label key must match.");
         Check(WidgetCoordinator.GetLabelKey("DayProgress") == "WidgetDayProgress", "DayProgress widget label key must match.");
-        Check(WidgetCoordinator.GetLabelKey(DockWidgetService.ShowDesktopId) == "WidgetShowDesktop", "ShowDesktop widget label key must match.");
 
         UiText.Current.SetLanguage(AppLanguage.Turkish);
         Check(UiText.Get("WidgetOrderHeading") == "Widget Sıralaması", "WidgetOrderHeading must localize to Turkish.");
@@ -750,10 +749,10 @@ internal static class DockLayoutChecks
         using var coordinator = new WidgetCoordinator(testStrip, Dispatcher.CurrentDispatcher, _ => { });
         Check(coordinator.CurrentOrder.SequenceEqual(WidgetCoordinator.DefaultWidgetOrder), "Initial coordinator order must match defaults.");
 
-        coordinator.ApplyOrder(["Clock", "Focus", "Media"]);
+        coordinator.ApplyOrder(["Clock", "ShowDesktop", "Focus", "Media"]);
         Check(coordinator.CurrentOrder[0] == "Clock" && coordinator.CurrentOrder[1] == "Focus" && coordinator.CurrentOrder[2] == "Media",
             "ApplyOrder must reorder widgets per specified order.");
-        Check(testStrip.Children.Count == 21, "Strip children count must remain 21 after reordering.");
+        Check(testStrip.Children.Count == 20, "The retired ShowDesktop slot must be ignored when applying an old order.");
         var unspecified = coordinator.CurrentOrder.Skip(3).ToArray();
         coordinator.ApplyOrder(["Clock", "Focus", "Media"]);
         Check(coordinator.CurrentOrder.Skip(3).SequenceEqual(unspecified),
@@ -774,17 +773,6 @@ internal static class DockLayoutChecks
         var removeItem = firstWidget.ContextMenu?.Items.OfType<MenuItem>().FirstOrDefault();
         Check(removeItem?.Header?.ToString() == UiText.Get("RemoveWidget"), "Widget context menu must have RemoveWidget header.");
         Check(removeItem?.Icon != null, "Widget remove item must have an icon.");
-
-        // Verify ShowDesktopWidget preview, compact mode, and custom context menu items
-        var showDesktopWidget = coordinator.ActiveWidgets[DockWidgetService.ShowDesktopId];
-        Check(showDesktopWidget.SupportsCompactMode && showDesktopWidget.SupportsStaticPreview,
-            "ShowDesktopWidget must support compact mode and static catalog previews.");
-        var showDesktopMenuItems = showDesktopWidget.ContextMenu?.Items.OfType<MenuItem>().ToArray() ?? [];
-        Check(showDesktopMenuItems.Length == 3
-            && showDesktopMenuItems[0].Header?.ToString() == UiText.Get("ShowDesktop")
-            && showDesktopMenuItems[1].Header?.ToString() == UiText.Get("OpenDesktopFolder")
-            && showDesktopMenuItems[2].Header?.ToString() == UiText.Get("RemoveWidget"),
-            "ShowDesktopWidget context menu must expose ShowDesktop, OpenDesktopFolder, and RemoveWidget.");
 
         // Verify DockSettingsStore validation for WidgetOrder
         var validSettings = new DockSettings(WidgetOrder: ["Clock", "Weather", "Media"]);
