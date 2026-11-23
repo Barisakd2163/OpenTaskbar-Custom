@@ -15,6 +15,7 @@ public sealed class WidgetPanelHost : IDisposable
     private FrameworkElement? _closedAnchor;
     private bool _isOpenState;
     private bool _suppressNextClick;
+    private long _suppressNextClickUntilMs;
     private bool _explicitClose;
     private bool _restoreFocus;
     private bool _disposed;
@@ -54,7 +55,7 @@ public sealed class WidgetPanelHost : IDisposable
             return;
         }
 
-        if (_suppressNextClick && ReferenceEquals(_closedAnchor, anchor))
+        if (_suppressNextClick && ReferenceEquals(_closedAnchor, anchor) && Environment.TickCount64 <= _suppressNextClickUntilMs)
         {
             _isOpenState = false;
             _suppressNextClick = false;
@@ -65,11 +66,8 @@ public sealed class WidgetPanelHost : IDisposable
         _suppressNextClick = false;
         _closedAnchor = null;
         Close(restoreFocus: false);
-        if (!_owner.IsActive && !_owner.Activate())
-        {
-            OperationFailed?.Invoke("WidgetPanelFocusError");
-            return;
-        }
+        if (!_owner.IsActive)
+            _owner.Activate();
         _isOpenState = true;
         _anchor = anchor;
         _restoreFocus = true;
@@ -104,9 +102,10 @@ public sealed class WidgetPanelHost : IDisposable
     {
         _isOpenState = false;
         var anchor = _anchor;
-        if (!_explicitClose && anchor is not null && IsCursorOver(anchor))
+        if (!_explicitClose && anchor is not null && Mouse.LeftButton == MouseButtonState.Pressed && IsCursorOver(anchor))
         {
             _suppressNextClick = true;
+            _suppressNextClickUntilMs = Environment.TickCount64 + 300;
             _closedAnchor = anchor;
         }
         else

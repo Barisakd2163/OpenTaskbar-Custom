@@ -161,12 +161,15 @@ public partial class ClockWidget : DockWidget
 
     private void ClockButton_Click(object sender, RoutedEventArgs e)
     {
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        _shownMonth = new DateOnly(today.Year, today.Month, 1);
-        _selectedDate = null;
-        var root = new ContentControl();
-        root.Content = BuildCalendar(root);
-        _calendar.Toggle(ClockButton, () => root);
+        _calendar.Toggle(ClockButton, () =>
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            _shownMonth = new DateOnly(today.Year, today.Month, 1);
+            _selectedDate = null;
+            var root = new ContentControl();
+            root.Content = BuildCalendar(root);
+            return root;
+        });
     }
 
     internal static string FormatLocalTimeZone()
@@ -421,7 +424,9 @@ public partial class ClockWidget : DockWidget
         AutomationProperties.SetName(button, label);
         button.Click += (_, _) =>
         {
-            _shownMonth = _shownMonth.AddMonths(months);
+            var totalMonths = (_shownMonth.Year - 1) * 12 + (_shownMonth.Month - 1) + months;
+            var clamped = Math.Clamp(totalMonths, 1, (9998 - 1) * 12 + 11);
+            _shownMonth = new DateOnly(clamped / 12 + 1, clamped % 12 + 1, 1);
             host.Content = BuildCalendar(host);
         };
         return button;

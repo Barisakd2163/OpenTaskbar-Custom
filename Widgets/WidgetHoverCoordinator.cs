@@ -54,6 +54,7 @@ public sealed class WidgetHoverCoordinator : IDisposable
         if (_disposed || !widget.SupportsCompactMode || !_attached.Add(widget)) return;
         widget.MouseEnter += Widget_MouseEnter;
         widget.MouseLeave += Widget_MouseLeave;
+        widget.PreviewMouseDown += Widget_PreviewMouseDown;
     }
 
     public void Detach(DockWidget widget)
@@ -61,6 +62,7 @@ public sealed class WidgetHoverCoordinator : IDisposable
         if (!_attached.Remove(widget)) return;
         widget.MouseEnter -= Widget_MouseEnter;
         widget.MouseLeave -= Widget_MouseLeave;
+        widget.PreviewMouseDown -= Widget_PreviewMouseDown;
         if (_pendingWidget == widget)
         {
             _enterTimer.Stop();
@@ -150,10 +152,16 @@ public sealed class WidgetHoverCoordinator : IDisposable
         }
     }
 
+    private void Widget_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _enterTimer.Stop();
+        _pendingWidget = null;
+    }
+
     private void EnterTimer_Tick(object? sender, EventArgs e)
     {
         _enterTimer.Stop();
-        if (Environment.TickCount64 < _suppressedUntilMs)
+        if (DockFlyout.IsAnyOpen || Environment.TickCount64 < _suppressedUntilMs)
         {
             _pendingWidget = null;
             return;
@@ -209,8 +217,9 @@ public sealed class WidgetHoverCoordinator : IDisposable
             return;
         }
 
-        // Keep open while dragging an internal control slider or while physical cursor rests over the widget or card.
+        // Keep open while dragging an internal control slider, while a click flyout is open, or while cursor rests over the widget or card.
         if (IsSliderDragCaptured(_activeWidget, _activeFlyoutContent)
+            || (_activeFlyoutContent is null && DockFlyout.IsAnyOpen)
             || IsPointerInsideActiveSurface(_activeWidget, _activeFlyoutContent))
         {
             _outsideSinceMs = 0;
@@ -317,6 +326,7 @@ public sealed class WidgetHoverCoordinator : IDisposable
         {
             widget.MouseEnter -= Widget_MouseEnter;
             widget.MouseLeave -= Widget_MouseLeave;
+            widget.PreviewMouseDown -= Widget_PreviewMouseDown;
         }
         _attached.Clear();
         _enterTimer.Tick -= EnterTimer_Tick;

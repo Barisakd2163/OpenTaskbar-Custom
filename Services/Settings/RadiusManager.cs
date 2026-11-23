@@ -44,10 +44,14 @@ internal static class RadiusManager
 
     internal static void Initialize()
     {
-        if (_initialized) return;
         var dictionaries = Application.Current.Resources.MergedDictionaries;
         dictionaries.Remove(Derived);
         dictionaries.Add(Derived);
+        if (_initialized)
+        {
+            Rebuild();
+            return;
+        }
         _initialized = true;
         Rebuild();
     }

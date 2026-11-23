@@ -138,10 +138,14 @@ public partial class FocusWidget : DockWidget
         if (IsActive) Render();
     }
 
+    private int _lastConfiguredFocusMinutes = -1;
+
     protected override void OnSettingsChanged()
     {
         _session = Math.Min(_session, Settings.FocusSessions);
-        if (!_initialized || (!IsRunning && _remaining == _lastFullLength))
+        var focusMinutesChanged = _lastConfiguredFocusMinutes != Settings.FocusMinutes;
+        _lastConfiguredFocusMinutes = Settings.FocusMinutes;
+        if (!_initialized || (focusMinutesChanged && !IsRunning && _remaining == _lastFullLength))
         {
             _activePresetMinutes = Settings.FocusMinutes;
             _remaining = PhaseLength;
@@ -413,6 +417,11 @@ public partial class FocusWidget : DockWidget
         }
 
         Card.ToolTip = $"{UiText.Get(_phase == Phase.Focus ? "Focus" : "Break")} · {RemainingText.Text}";
+
+        if ((phaseChanged || langChanged) && _flyoutContainer is not null && _flyout.IsOpen)
+        {
+            PopulateFocusFlyout(_flyoutContainer);
+        }
 
         _renderedPhase = _phase;
         _renderedRunning = IsRunning;
