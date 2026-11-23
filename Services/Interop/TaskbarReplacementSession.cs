@@ -79,6 +79,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     private bool _nativeTaskbarAtBottom = true;
     private DispatcherTimer? _hideRetryTimer;
     private DispatcherTimer? _fullScreenPollTimer;
+    private long _lastForegroundTrayEnforceMs;
     private int _hideRetryAttempts;
     private bool _hideRetryPending;
     private double _shelfHeight = DockMetrics.ShelfHeight;
@@ -344,7 +345,13 @@ public sealed class TaskbarReplacementSession : IDisposable
     public void UpdateForeground(nint windowHandle)
     {
         if (!CanOperate) return;
-        EnforceSecondaryTraysHidden();
+        // The WinEvent hook handles the immediate case; this is only a safety net and enumerating every
+        // secondary tray on each focus change is needlessly expensive (#128).
+        if (Environment.TickCount64 - _lastForegroundTrayEnforceMs >= 500)
+        {
+            _lastForegroundTrayEnforceMs = Environment.TickCount64;
+            EnforceSecondaryTraysHidden();
+        }
         // Do not trust that the passed HWND is still the fullscreen window: Chromium's Esc bubble can briefly own
         // focus, and focus can fall back to this process without the video leaving fullscreen.
         SetFullScreenSuppression(IsAnyFullScreenOnDockMonitor());
@@ -1688,7 +1695,13 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             var error = Stop();
             if (error is not null) AppLog.Error(error);
-            if (IsActive) return;
+            if (IsActive)
+            {
+                // Stop() can leave the session active on failure. The WinEvent hook must still be released,
+                // otherwise its delegate and out-of-context hook survive for the lifetime of the process.
+                UninstallTrayShowHook();
+                return;
+            }
         }
         _disposed = true;
         UninstallTrayShowHook();
