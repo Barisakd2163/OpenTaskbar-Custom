@@ -17,6 +17,13 @@ namespace OpenTaskbar.Services;
 internal sealed class TrayHost : IDisposable
 {
     private const uint SMTOAbortIfHung = 0x0002;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const uint TokenQuery = 0x0008;
+    private const int TokenIntegrityLevel = 25;
+    private const uint SecurityMandatoryMediumRid = 0x2000;
+    private const int ErrorAccessDenied = 5;
+
+    private static readonly Lazy<uint> CurrentIntegrityRid = new(ResolveCurrentIntegrityRid);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint SendMessageTimeout(nint window, uint message, nint wParam, nint lParam,
@@ -101,15 +108,115 @@ internal sealed class TrayHost : IDisposable
     public IReadOnlyList<NotifyIcon> AppIcons() =>
         Icons.Where(icon => !icon.IsHidden && !SystemIconGuids.Contains(icon.GUID) && icon.HWnd != 0).ToList();
 
-    /// <summary>Sends the click the native taskbar would send, so the app shows its own window or menu.</summary>
-    public static void Click(NotifyIcon icon, MouseButton button)
+    /// <summary>True when a process at <paramref name="currentRid"/> can send window messages to <paramref name="targetRid"/> under UIPI.</summary>
+    internal static bool IsIntegrityReachable(uint currentRid, uint targetRid) => targetRid <= currentRid;
+
+    /// <summary>
+    /// Returns true when the target tray owner window is alive and not isolated above our integrity level
+    /// (UIPI). Elevated/PPL processes such as Process Lasso or security suites drop un-elevated tray messages.
+    /// </summary>
+    internal static bool CanForwardInputToWindow(nint hwnd)
     {
+        if (hwnd == 0 || !IsWindow(hwnd)) return false;
+        _ = GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == 0) return false;
+
+        var processHandle = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (processHandle == 0)
+            return Marshal.GetLastWin32Error() != ErrorAccessDenied;
+
+        try
+        {
+            if (!TryGetProcessIntegrityRid(processHandle, out var targetRid, out var win32Error))
+                return win32Error != ErrorAccessDenied;
+
+            return IsIntegrityReachable(CurrentIntegrityRid.Value, targetRid);
+        }
+        finally
+        {
+            CloseHandle(processHandle);
+        }
+    }
+
+    private static uint ResolveCurrentIntegrityRid()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        return TryGetProcessIntegrityRid(process.Handle, out var rid, out _)
+            ? rid
+            : SecurityMandatoryMediumRid;
+    }
+
+    private static bool TryGetProcessIntegrityRid(nint processHandle, out uint rid, out int win32Error)
+    {
+        rid = SecurityMandatoryMediumRid;
+        win32Error = 0;
+        if (!OpenProcessToken(processHandle, TokenQuery, out var tokenHandle))
+        {
+            win32Error = Marshal.GetLastWin32Error();
+            return false;
+        }
+
+        try
+        {
+            _ = GetTokenInformation(tokenHandle, TokenIntegrityLevel, nint.Zero, 0, out var requiredBytes);
+            if (requiredBytes == 0 || requiredBytes > 4096)
+            {
+                win32Error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            var buffer = Marshal.AllocHGlobal((int)requiredBytes);
+            try
+            {
+                if (!GetTokenInformation(tokenHandle, TokenIntegrityLevel, buffer, requiredBytes, out _))
+                {
+                    win32Error = Marshal.GetLastWin32Error();
+                    return false;
+                }
+
+                var sidPtr = Marshal.ReadIntPtr(buffer);
+                if (sidPtr == nint.Zero) return false;
+                var subAuthCountPtr = GetSidSubAuthorityCount(sidPtr);
+                if (subAuthCountPtr == nint.Zero) return false;
+                var subAuthCount = Marshal.ReadByte(subAuthCountPtr);
+                if (subAuthCount == 0) return false;
+                var ridPtr = GetSidSubAuthority(sidPtr, (uint)(subAuthCount - 1));
+                if (ridPtr == nint.Zero) return false;
+                rid = unchecked((uint)Marshal.ReadInt32(ridPtr));
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            CloseHandle(tokenHandle);
+        }
+    }
+
+    /// <summary>
+    /// Forwards a click to the tray icon's owner when UIPI permits it; returns false when the owner window is
+    /// elevated/inaccessible so callers can show a fallback menu instead of silently failing.
+    /// </summary>
+    public static bool TryClick(NotifyIcon icon, MouseButton button)
+    {
+        if (!CanForwardInputToWindow(icon.HWnd)) return false;
+
+        _ = GetWindowThreadProcessId(icon.HWnd, out var pid);
+        if (pid != 0) _ = AllowSetForegroundWindow(pid);
+
         GetCursorPos(out var cursor);
         var position = (uint)((cursor.Y << 16) | (cursor.X & 0xFFFF));
         var doubleClickTime = (int)GetDoubleClickTime();
         icon.IconMouseDown(button, position, doubleClickTime);
         icon.IconMouseUp(button, position, doubleClickTime);
+        return true;
     }
+
+    /// <summary>Sends the click the native taskbar would send, so the app shows its own window or menu.</summary>
+    public static void Click(NotifyIcon icon, MouseButton button) => _ = TryClick(icon, button);
 
     public void Dispose()
     {
@@ -268,6 +375,40 @@ internal sealed class TrayHost : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(nint handle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenProcessToken(nint processHandle, uint desiredAccess, out nint tokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetTokenInformation(
+        nint tokenHandle,
+        int tokenInformationClass,
+        nint tokenInformation,
+        uint tokenInformationLength,
+        out uint returnLength);
+
+    [DllImport("advapi32.dll")]
+    private static extern nint GetSidSubAuthorityCount(nint sid);
+
+    [DllImport("advapi32.dll")]
+    private static extern nint GetSidSubAuthority(nint sid, uint subAuthority);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

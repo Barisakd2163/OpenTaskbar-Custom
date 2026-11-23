@@ -246,11 +246,31 @@ public sealed class TrayShellButton : Button
             var row = new DockPanel();
             row.Children.Add(image);
             row.Children.Add(new TextBlock { Text = name, FontSize = 12.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+            var canonicalKey = TrayPinIdentity.KeyFor(icon.GUID, icon.Path, icon.UID);
+            var matchedKey = TrayPinIdentity.FindMatchingKey(pinned, icon.GUID, icon.Path, icon.UID);
+            var toggleKey = matchedKey ?? canonicalKey;
+
             var open = DockFlyout.FlatButton(row, (_, _) => ForwardClick(icon, System.Windows.Input.MouseButton.Left), name);
             open.Padding = new Thickness(8, 7, 8, 7);
-            open.PreviewMouseRightButtonDown += (_, _) => _flyout.RetainForExternalContextMenu(icon.HWnd);
+            open.PreviewMouseRightButtonDown += (_, _) =>
+            {
+                if (TrayHost.CanForwardInputToWindow(icon.HWnd))
+                {
+                    open.ContextMenu = null;
+                    _flyout.RetainForExternalContextMenu(icon.HWnd);
+                }
+                else
+                {
+                    open.ContextMenu = BuildLiveFallbackMenu(name, icon, toggleKey, matchedKey is not null, () =>
+                    {
+                        var currentIcons = TrayHost.Current is { IsRunning: true } host ? host.AppIcons() : icons;
+                        _flyout.Show(this, BuildLiveContent(currentIcons), animate: false);
+                    });
+                }
+            };
             open.PreviewMouseRightButtonUp += (_, e) =>
             {
+                if (!TrayHost.CanForwardInputToWindow(icon.HWnd)) return;
                 e.Handled = true;
                 ForwardClick(icon, System.Windows.Input.MouseButton.Right);
             };
@@ -279,9 +299,6 @@ public sealed class TrayShellButton : Button
                 appRow.Children.Add(quit);
             }
 
-            var canonicalKey = TrayPinIdentity.KeyFor(icon.GUID, icon.Path, icon.UID);
-            var matchedKey = TrayPinIdentity.FindMatchingKey(pinned, icon.GUID, icon.Path, icon.UID);
-            var toggleKey = matchedKey ?? canonicalKey;
             if (!string.IsNullOrEmpty(toggleKey))
             {
                 var pinButton = CreatePinButton(name, toggleKey, matchedKey is not null, () =>
@@ -298,6 +315,67 @@ public sealed class TrayShellButton : Button
         }
 
         return root;
+    }
+
+    private ContextMenu BuildLiveFallbackMenu(
+        string name,
+        ManagedShell.WindowsTray.NotifyIcon icon,
+        string toggleKey,
+        bool isPinned,
+        Action refreshFlyout)
+    {
+        var menu = new ContextMenu();
+        var path = icon.Path?.Trim();
+
+        if (!string.IsNullOrEmpty(path))
+        {
+            var openItem = new MenuItem { Header = UiText.Get("OpenApplication") };
+            openItem.Click += (_, _) =>
+            {
+                _flyout.Close();
+                Report(TrayIcons.Open(new TrayApp(name, path, icon.Icon as System.Windows.Media.Imaging.BitmapSource,
+                    icon.GUID == Guid.Empty ? null : icon.GUID, icon.UID, IconSource.Live)));
+            };
+            menu.Items.Add(openItem);
+        }
+
+        if (!string.IsNullOrEmpty(toggleKey))
+        {
+            var pinItem = new MenuItem
+            {
+                Header = UiText.Get(isPinned ? "UnpinTrayIcon" : "PinTrayIcon"),
+                Icon = FindResource("IconPin")
+            };
+            pinItem.Click += (_, _) =>
+            {
+                var wasOpen = _flyout.IsOpen;
+                PinToggled?.Invoke(toggleKey);
+                if (wasOpen) refreshFlyout();
+            };
+            menu.Items.Add(pinItem);
+        }
+
+        if (!string.IsNullOrEmpty(path))
+        {
+            var closeItem = new MenuItem { Header = UiText.Get("CloseApplication"), Icon = FindResource("IconClose") };
+            closeItem.Click += (_, _) =>
+            {
+                _flyout.Close();
+                CloseApplicationRequested?.Invoke(path);
+            };
+            var terminateItem = new MenuItem { Header = UiText.Get("Terminate"), Icon = FindResource("IconTerminate") };
+            terminateItem.SetResourceReference(StyleProperty, "DestructiveMenuItem");
+            terminateItem.Click += (_, _) =>
+            {
+                _flyout.Close();
+                TerminateApplicationRequested?.Invoke(path);
+            };
+            menu.Items.Add(new Separator());
+            menu.Items.Add(closeItem);
+            menu.Items.Add(terminateItem);
+        }
+
+        return menu;
     }
 
     private Button CreatePinButton(string name, string pinKey, bool isPinned, Action refreshFlyout)
