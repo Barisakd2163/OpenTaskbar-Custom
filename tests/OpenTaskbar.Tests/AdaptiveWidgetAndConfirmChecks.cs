@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -239,6 +240,10 @@ internal static class AdaptiveWidgetAndConfirmChecks
         check(!string.IsNullOrWhiteSpace(UiText.Get("NoActiveAudioApps")), "NoActiveAudioApps key must exist in English.");
 
         // 2. Data contracts
+        check(Marshal.OffsetOf<AudioEndpointMonitor.PropVariant>(nameof(AudioEndpointMonitor.PropVariant.Pointer)) == 8,
+            "Core Audio must read the native endpoint name pointer at offset eight on both architectures.");
+        check(Marshal.SizeOf<AudioEndpointMonitor.PropVariant>() == (IntPtr.Size == 4 ? 16 : 24),
+            "Core Audio must reserve the native PROPVARIANT size for the current architecture.");
         var dev = new AudioDeviceInfo("dev-1", "Test Headphones", true, false);
         check(dev.Id == "dev-1" && dev.Name == "Test Headphones" && dev.IsDefault && !dev.IsInput,
             "AudioDeviceInfo contract must retain device identity, state, and flow.");

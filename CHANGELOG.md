@@ -13,6 +13,7 @@
 
 ## Unreleased
 
+- Fixed the Audio widget showing generic speaker and microphone labels on x86 when Windows provides the device names.
 - Added runtime detection and measured dock anchoring for alternate Windows Search flyouts, with the existing Search host and native Win+S available as fallbacks.
 
 - Enabled hardware rendering by default for fluid magnification and flyout animations. Added Settings → Behavior → Hardware acceleration (restart required) to switch back to software rendering, which measured ~100 MB lower private memory (81–86 MB vs 180–190 MB) at the cost of animation fluidity. `--software-render` remains available as a command-line override.

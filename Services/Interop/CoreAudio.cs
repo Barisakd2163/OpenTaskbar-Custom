@@ -760,15 +760,17 @@ public sealed class AudioEndpointMonitor : IDisposable
         public uint Id = id;
     }
 
-    [StructLayout(LayoutKind.Explicit, Size = 24)]
-    private struct PropVariant
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PropVariant
     {
-        [FieldOffset(0)] public ushort Type;
-        // Native PROPVARIANT pointer lives at offset 4 on x86 (16-byte struct) and offset 8 on x64
-        // (24-byte struct). Both fields coexist without overlapping: uint (4 bytes) at 4, nint at 8.
-        [FieldOffset(4)] public uint PointerX86;
-        [FieldOffset(8)] public nint PointerX64;
-        public nint Pointer => IntPtr.Size == 4 ? (nint)PointerX86 : PointerX64;
+        // The native header is eight bytes on both architectures. The union also holds
+        // a count and a pointer, so it needs two pointer-sized slots for COM to write it.
+        public ushort Type;
+        public ushort Reserved1;
+        public ushort Reserved2;
+        public ushort Reserved3;
+        public nint Pointer;
+        public nint UnionRemainder;
     }
 
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
