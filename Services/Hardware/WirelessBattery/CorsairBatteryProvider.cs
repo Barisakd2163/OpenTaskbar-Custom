@@ -208,11 +208,9 @@ internal sealed class CorsairBatteryProvider : IWirelessBatteryProvider
         var rawValue = reply[3] | (reply[4] << 8);
         if (rawValue is <= 0 or > 1000) return false;
 
-        // Bragi encodes battery level either in permille (0..1000 -> 0..100%) or direct percent (1..100).
-        batteryPercent = rawValue > 100
-            ? Math.Clamp((int)Math.Round(rawValue / 10.0), 0, 100)
-            : rawValue;
-        return batteryPercent is >= 0 and <= 100;
+        // Bragi encodes battery level in permille (1..1000 -> 1..100%).
+        batteryPercent = Math.Clamp((int)Math.Round(rawValue / 10.0), 1, 100);
+        return true;
     }
 
     internal static bool TryParseBragiChargingStatus(ReadOnlySpan<byte> rawReply, out bool isCharging)

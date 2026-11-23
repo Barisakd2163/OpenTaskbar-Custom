@@ -905,10 +905,13 @@
   "OpenDiskManagement": "Gerenciamento de Disco",
   "OpenComputerManagement": "Gerenciamento do Computador",
   "OpenEventViewer": "Visualizador de Eventos",
-  "OpenNetworkConnections": "Conex\u00F5es de Rede",
+  "OpenNetworkConnections": "Conexões de Rede",
   "LockWorkstation": "Bloquear",
   "SignOut": "Sair",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Desligar",
-  "ErrorSystemToolOpen": "N\u00E3o foi poss\u00EDvel abrir a ferramenta do sistema."
+  "ErrorSystemToolOpen": "Não foi possível abrir a ferramenta do sistema.",
+  "WirelessBatteryListenOnly": "Somente escuta: {0}",
+  "WirelessBatteryListenOnlyOn": "Ativado",
+  "WirelessBatteryListenOnlyOff": "Desativado"
 }

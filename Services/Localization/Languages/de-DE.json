@@ -898,11 +898,11 @@
   "AiUsageApiKeySave": "Speichern",
   "AiUsageApiKeyClear": "Löschen",
   "OpenFileExplorer": "Datei-Explorer",
-  "OpenRunDialog": "Ausf\u00FChren",
+  "OpenRunDialog": "Ausführen",
   "OpenTerminal": "Terminal",
   "OpenTerminalAdmin": "Terminal (Admin)",
-  "OpenDeviceManager": "Ger\u00E4te-Manager",
-  "OpenDiskManagement": "Datentr\u00E4gerverwaltung",
+  "OpenDeviceManager": "Geräte-Manager",
+  "OpenDiskManagement": "Datenträgerverwaltung",
   "OpenComputerManagement": "Computerverwaltung",
   "OpenEventViewer": "Ereignisanzeige",
   "OpenNetworkConnections": "Netzwerkverbindungen",
@@ -910,5 +910,8 @@
   "SignOut": "Abmelden",
   "RestartComputer": "Neustart",
   "ShutDownComputer": "Herunterfahren",
-  "ErrorSystemToolOpen": "Systemtool konnte nicht ge\u00F6ffnet werden."
+  "ErrorSystemToolOpen": "Systemtool konnte nicht geöffnet werden.",
+  "WirelessBatteryListenOnly": "Nur zuhören: {0}",
+  "WirelessBatteryListenOnlyOn": "Ein",
+  "WirelessBatteryListenOnlyOff": "Aus"
 }

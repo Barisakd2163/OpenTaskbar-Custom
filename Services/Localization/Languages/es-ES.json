@@ -907,8 +907,11 @@
   "OpenEventViewer": "Visor de eventos",
   "OpenNetworkConnections": "Conexiones de red",
   "LockWorkstation": "Bloquear",
-  "SignOut": "Cerrar sesi\u00F3n",
+  "SignOut": "Cerrar sesión",
   "RestartComputer": "Reiniciar",
   "ShutDownComputer": "Apagar",
-  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema."
+  "ErrorSystemToolOpen": "No se pudo abrir la herramienta del sistema.",
+  "WirelessBatteryListenOnly": "Solo escuchar: {0}",
+  "WirelessBatteryListenOnlyOn": "Activado",
+  "WirelessBatteryListenOnlyOff": "Desactivado"
 }

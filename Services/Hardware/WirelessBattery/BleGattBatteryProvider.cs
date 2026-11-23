@@ -26,6 +26,7 @@ internal sealed class BleGattBatteryProvider : IWirelessBatteryProvider
     private const string ContainerProperty = "System.Devices.ContainerId";
     private const string AepIdProperty = "System.Devices.Aep.AepId";
     private const string PresentProperty = "System.Devices.Present";
+    private const string DevPkeyIsPresentProperty = "{540b947e-8b40-45bc-a8a2-6a0b894cbda2} 5";
 
     private static readonly string[] NodeProperties =
     [
@@ -33,7 +34,8 @@ internal sealed class BleGattBatteryProvider : IWirelessBatteryProvider
         AepIdProperty,
         BatteryLevelProperty,
         BatteryLifeProperty,
-        PresentProperty
+        PresentProperty,
+        DevPkeyIsPresentProperty
     ];
 
     public WirelessBatterySource Source => WirelessBatterySource.BluetoothGatt;
@@ -62,6 +64,7 @@ internal sealed class BleGattBatteryProvider : IWirelessBatteryProvider
 
         // Group by container: if any node in the container already has a valid PnP battery percentage,
         // the fast PnP Bluetooth reader already handles it, so we only probe BLE containers missing PnP battery.
+        var presentContainers = new HashSet<Guid>();
         var containersWithPnpBattery = new HashSet<Guid>();
         var bleCandidatesByContainer = new Dictionary<Guid, (string AepId, string Name)>();
 
@@ -71,11 +74,19 @@ internal sealed class BleGattBatteryProvider : IWirelessBatteryProvider
             if (!TryReadContainerGuid(node.Properties, out var container) || container == Guid.Empty)
                 continue;
 
+            var isPresent = (node.Properties.TryGetValue(PresentProperty, out var p) && p is true)
+                || (node.Properties.TryGetValue(DevPkeyIsPresentProperty, out var dp) && dp is true);
+            if (isPresent)
+                presentContainers.Add(container);
+
             if (HasValidPnpBattery(node.Properties))
             {
                 containersWithPnpBattery.Add(container);
                 continue;
             }
+
+            if (!isPresent)
+                continue;
 
             var aepId = node.Properties.TryGetValue(AepIdProperty, out var aepVal) ? aepVal?.ToString() : null;
             if (!IsBleAssociationEndpointId(aepId))
@@ -88,7 +99,7 @@ internal sealed class BleGattBatteryProvider : IWirelessBatteryProvider
         }
 
         var targets = bleCandidatesByContainer
-            .Where(kvp => !containersWithPnpBattery.Contains(kvp.Key))
+            .Where(kvp => presentContainers.Contains(kvp.Key) && !containersWithPnpBattery.Contains(kvp.Key))
             .Select(kvp => kvp.Value)
             .Take(6)
             .ToList();

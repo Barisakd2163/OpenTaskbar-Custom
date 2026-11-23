@@ -20,15 +20,23 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
     public const ushort NinjutsoVendorId = 0x359B;    // Ninjutso (Sora / Sora V2 / Origin One X)
     public const ushort TelinkAjazzVendorId = 0x248A; // Ajazz / Attack Shark / Darmoshark Telink 2.4G
     public const ushort YzwDarmosharkVendorId = 0x3151; // Darmoshark / Zaopin / Incott
+    public const ushort PulsarLamzu8kVendorId = 0x373E; // Lamzu Maya X / Pulsar 8K
+    public const ushort KeychronVendorId = 0x3434;      // Keychron wireless mice (UsagePage 0xFFC1)
+    public const ushort DareuVendorId = 0x260D;         // Dareu 2.4G wireless mice
+    public const ushort RapooVendorId = 0x24AE;         // Rapoo wireless mice
 
     public const ushort AtkA9UltraPid = 0x1119;
+    public const ushort Atk1kDonglePawPid = 0x10F0;
 
     public const ushort VendorUsagePage = 0xFF02;
     public const ushort AlternateVendorUsagePage = 0xFF00;
+    public const ushort Atk1kUsagePage = 0xFF10;
+    public const ushort KeychronUsagePage = 0xFFC1;
 
     public const int ReportByteLength = 17;
     public const int NordicReportByteLength = 64;
     public const int NordicFramedReportByteLength = 65;
+    public const int Atk1kFeatureReportLength = 9;
 
     public const byte ReportId = 0x08;
     public const byte BatteryQueryCommand = 0x04;
@@ -104,6 +112,30 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
                         results.Add(reading);
                     }
                 }
+                else if (IsMatchingAtk1kInterface(descriptor))
+                {
+                    var featLen = Math.Max((int)descriptor.FeatureReportLength, Atk1kFeatureReportLength);
+                    var featureSent = session.TrySetFeature(BuildAtk1kFeatureRequest(featLen, reportIdZero: true), out _)
+                        || session.TrySetFeature(BuildAtk1kFeatureRequest(featLen, reportIdZero: false), out _);
+                    if (featureSent)
+                    {
+                        var inLen = Math.Max((int)descriptor.InputReportLength, NordicFramedReportByteLength);
+                        var response = new byte[inLen];
+                        for (var attempt = 0; attempt < 4; attempt++)
+                        {
+                            if (cancellationToken.IsCancellationRequested || session.IsDisposed) break;
+                            if (!session.TryReadReport(response, timeoutMs: 250, out var bytesRead, out _))
+                                break;
+                            if (TryParseAtk1kReply(response.AsSpan(0, bytesRead), deviceId, deviceName, now, out var reading)
+                                && reading is not null)
+                            {
+                                seenProducts.Add((descriptor.VendorId, descriptor.ProductId));
+                                results.Add(reading);
+                                break;
+                            }
+                        }
+                    }
+                }
                 else if (IsMatchingNordic64Interface(descriptor))
                 {
                     var outLen = Math.Max((int)descriptor.OutputReportLength, NordicReportByteLength);
@@ -139,12 +171,25 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
             or LamzuVendorId
             or NinjutsoVendorId
             or TelinkAjazzVendorId
-            or YzwDarmosharkVendorId;
+            or YzwDarmosharkVendorId
+            or PulsarLamzu8kVendorId
+            or KeychronVendorId
+            or DareuVendorId
+            or RapooVendorId;
 
     internal static bool IsMatchingInterface(HidInterfaceDescriptor descriptor) =>
         !WirelessBatteryAggregator.IsIgnoredWiredDevice(descriptor.VendorId, descriptor.ProductId, descriptor.ProductName)
         && !WirelessKeyboard24gProvider.IsSupportedKeyboard(descriptor.VendorId, descriptor.ProductId)
-        && (IsMatchingCompx17Interface(descriptor) || IsMatchingNordic64Interface(descriptor));
+        && (IsMatchingCompx17Interface(descriptor)
+            || IsMatchingNordic64Interface(descriptor)
+            || IsMatchingAtk1kInterface(descriptor));
+
+    internal static bool IsMatchingAtk1kInterface(HidInterfaceDescriptor descriptor) =>
+        descriptor.VendorId == AtkVendorId
+        && descriptor.ProductId == Atk1kDonglePawPid
+        && descriptor.UsagePage == Atk1kUsagePage
+        && descriptor.FeatureReportLength >= Atk1kFeatureReportLength
+        && descriptor.InputReportLength >= 10;
 
     internal static bool IsMatchingCompx17Interface(HidInterfaceDescriptor descriptor) =>
         IsSupportedVendor(descriptor.VendorId)
@@ -154,7 +199,8 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
 
     internal static bool IsMatchingNordic64Interface(HidInterfaceDescriptor descriptor) =>
         IsSupportedVendor(descriptor.VendorId)
-        && descriptor.UsagePage is VendorUsagePage or AlternateVendorUsagePage
+        && (descriptor.UsagePage is VendorUsagePage or AlternateVendorUsagePage
+            || (descriptor.VendorId == KeychronVendorId && descriptor.UsagePage == KeychronUsagePage))
         && descriptor.InputReportLength is NordicReportByteLength or NordicFramedReportByteLength
         && descriptor.OutputReportLength is NordicReportByteLength or NordicFramedReportByteLength;
 
@@ -314,6 +360,55 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
         return true;
     }
 
+    internal static byte[] BuildAtk1kFeatureRequest(int reportLength = Atk1kFeatureReportLength, bool reportIdZero = true)
+    {
+        var packet = new byte[Math.Max(reportLength, Atk1kFeatureReportLength)];
+        if (reportIdZero)
+        {
+            packet[0] = 0x00;
+            packet[1] = 0x82;
+        }
+        else
+        {
+            packet[0] = 0x82;
+        }
+        return packet;
+    }
+
+    internal static bool TryParseAtk1kReply(
+        ReadOnlySpan<byte> rawReply,
+        string id,
+        string name,
+        DateTimeOffset sampledAt,
+        out WirelessDeviceReading? reading)
+    {
+        reading = null;
+        var reply = rawReply.Length >= 10 && rawReply[0] == 0x00 && rawReply[1] == 0x82
+            ? rawReply[1..]
+            : rawReply;
+        if (reply.Length < 9) return false;
+        if (reply[0] != 0x82 || reply[1] != 0x08 || reply[2] != 0x02 || reply[3] != 0x00 || reply[4] != 0xFF || reply[5] != 0x03)
+            return false;
+
+        var packed = reply[8];
+        var batteryPercent = packed & 0x7F;
+        var isCharging = (packed & 0x80) != 0;
+        if (batteryPercent is < 0 or > 100 || (batteryPercent == 0 && !isCharging))
+            return false;
+        var trimmedName = string.IsNullOrWhiteSpace(name) ? "ATK 1K Wireless Mouse" : name.Trim();
+        reading = new WirelessDeviceReading(
+            Id: id,
+            Name: trimmedName,
+            Kind: ClassifyDeviceKind(trimmedName),
+            BatteryLevel: batteryPercent,
+            IsConnected: true,
+            IsCharging: isCharging,
+            IsStale: false,
+            Source: WirelessBatterySource.CompxAtkVxe,
+            SampledAt: sampledAt);
+        return true;
+    }
+
     internal static BluetoothDeviceKind ClassifyDeviceKind(string name)
     {
         var classified = BluetoothBatteryWidget.ClassifyNode(name, string.Empty);
@@ -344,6 +439,10 @@ internal sealed class CompxAtkVxeBatteryProvider : IWirelessBatteryProvider
         (NinjutsoVendorId, _) => "Ninjutso Sora Wireless",
         (TelinkAjazzVendorId, _) => "Ajazz / Attack Shark Wireless Mouse",
         (YzwDarmosharkVendorId, _) => "Darmoshark / Zaopin Wireless Mouse",
+        (PulsarLamzu8kVendorId, _) => "Lamzu / Pulsar 8K Wireless Mouse",
+        (KeychronVendorId, _) => "Keychron Wireless Mouse",
+        (DareuVendorId, _) => "Dareu Wireless Mouse",
+        (RapooVendorId, _) => "Rapoo Wireless Mouse",
         (CompxVendorId, 0xF58A) => "VXE Dragonfly R1 Pro",
         (CompxVendorId, 0xF58B) => "VXE MAD R Major",
         (CompxVendorId, 0xF505) => "VGN Dragonfly F1 MOBA",

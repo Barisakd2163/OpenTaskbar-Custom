@@ -910,5 +910,8 @@
   "SignOut": "Esci",
   "RestartComputer": "Riavvia",
   "ShutDownComputer": "Arresta",
-  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema."
+  "ErrorSystemToolOpen": "Impossibile aprire lo strumento di sistema.",
+  "WirelessBatteryListenOnly": "Solo ascolto: {0}",
+  "WirelessBatteryListenOnlyOn": "Attivo",
+  "WirelessBatteryListenOnlyOff": "Disattivo"
 }

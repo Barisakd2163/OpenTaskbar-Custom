@@ -423,13 +423,18 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
                     var chunkAvailable = sliceRead - 4;
                     var needed = Math.Min(chunkAvailable, totalLen - nameBytes.Count);
                     if (needed <= 0) break;
+                    var hitNull = false;
                     for (var i = 0; i < needed; i++)
                     {
                         var b = resp[4 + i];
-                        if (b == 0) break;
+                        if (b == 0)
+                        {
+                            hitNull = true;
+                            break;
+                        }
                         nameBytes.Add(b);
                     }
-                    if (resp[4] == 0) break;
+                    if (hitNull) break;
                 }
 
                 if (nameBytes.Count > 0)
@@ -526,10 +531,22 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
             await ws.SendAsync(reqBytes, WebSocketMessageType.Text, endOfMessage: true, cts.Token).ConfigureAwait(false);
 
             var recvBuf = new byte[16384];
-            var result = await ws.ReceiveAsync(recvBuf, cts.Token).ConfigureAwait(false);
-            if (result.Count <= 0) return [];
+            using var ms = new System.IO.MemoryStream();
+            const int MaxGHubMessageBytes = 256 * 1024;
+            while (true)
+            {
+                var result = await ws.ReceiveAsync(recvBuf, cts.Token).ConfigureAwait(false);
+                if (result.MessageType == WebSocketMessageType.Close) return [];
+                if (result.Count > 0)
+                {
+                    if (ms.Length + result.Count > MaxGHubMessageBytes) return [];
+                    ms.Write(recvBuf, 0, result.Count);
+                }
+                if (result.EndOfMessage) break;
+            }
 
-            var json = Encoding.UTF8.GetString(recvBuf, 0, result.Count);
+            if (ms.Length <= 0) return [];
+            var json = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
             return ParseGHubJson(json, DateTimeOffset.UtcNow);
         }
         catch
@@ -567,10 +584,12 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
 
             if (percentage is >= 0 and <= 100)
             {
-                var name = element.TryGetProperty("displayName", out var dn) ? dn.GetString()
-                    : element.TryGetProperty("name", out var n) ? n.GetString()
+                var name = element.TryGetProperty("displayName", out var dn) && dn.ValueKind == JsonValueKind.String ? dn.GetString()
+                    : element.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()
                     : "Logitech Wireless";
-                var id = element.TryGetProperty("deviceId", out var idProp) ? idProp.GetString() : name;
+                var id = element.TryGetProperty("deviceId", out var idProp) && idProp.ValueKind == JsonValueKind.String
+                    ? idProp.GetString()
+                    : name;
                 var charging = element.TryGetProperty("charging", out var ch) && ch.ValueKind == JsonValueKind.True
                     || element.TryGetProperty("isCharging", out var ich) && ich.ValueKind == JsonValueKind.True;
 

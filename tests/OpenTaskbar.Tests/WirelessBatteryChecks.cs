@@ -30,7 +30,10 @@ internal static class WirelessBatteryChecks
         "WirelessBatteryLowToast",
         "WirelessBatteryPollInterval",
         "WirelessBatteryAlertThreshold",
-        "WirelessBatteryAlertOff"
+        "WirelessBatteryAlertOff",
+        "WirelessBatteryListenOnly",
+        "WirelessBatteryListenOnlyOn",
+        "WirelessBatteryListenOnlyOff"
     ];
 
     public static int Run(bool headless = false)
@@ -56,6 +59,7 @@ internal static class WirelessBatteryChecks
         CheckWirelessKeyboard24gProvider(Check);
         CheckXInputProvider(Check);
         CheckAggregatorCacheOutlierAndIsolation(Check);
+        CheckJouleInspiredUpgrades(Check);
         CheckSettingsValidationAndPrivacyDiagnostics(Check);
         CheckAllLocaleCatalogs(Check);
         CheckLiveHardwareScan(Check);
@@ -933,6 +937,206 @@ internal static class WirelessBatteryChecks
         check(readings.All(r => !r.Name.Contains("Wraith W75", StringComparison.OrdinalIgnoreCase)
                                 && !r.Id.Contains("2E3C", StringComparison.OrdinalIgnoreCase)),
             "Live WirelessBatteryAggregator scan must never include wired Wraith W75 (2E3C:C368).");
+    }
+
+    private static void CheckJouleInspiredUpgrades(Action<bool, string> check)
+    {
+        var fakeNow = new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);
+
+        // 1. Same-source same-name devices with distinct IDs must never collapse.
+        var dupNameDevices = new List<WirelessDeviceReading>
+        {
+            new("bt:001122334455", "DualSense Wireless Controller", BluetoothDeviceKind.Gamepad, 80, true, false, false, WirelessBatterySource.Bluetooth, fakeNow),
+            new("bt:AABBCCDDEEFF", "DualSense Wireless Controller", BluetoothDeviceKind.Gamepad, 35, true, false, false, WirelessBatterySource.Bluetooth, fakeNow)
+        };
+        var dedupedSameName = WirelessBatteryAggregator.DeduplicateReadings(dupNameDevices);
+        check(dedupedSameName.Count == 2
+              && dedupedSameName.Any(r => r.Id == "bt:001122334455" && r.BatteryLevel == 80)
+              && dedupedSameName.Any(r => r.Id == "bt:AABBCCDDEEFF" && r.BatteryLevel == 35),
+            "Same-source same-name devices with distinct IDs must stay separated.");
+
+        // 2. Weakest-first ordering (non-charging low battery first, charging devices after).
+        var orderAgg = new WirelessBatteryAggregator(
+            bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>(
+            [
+                new("bt:1", "Mouse High", BluetoothDeviceKind.Mouse, 85, true, false, false, WirelessBatterySource.Bluetooth, fakeNow),
+                new("bt:2", "Headset Charging", BluetoothDeviceKind.Headphones, 15, true, true, false, WirelessBatterySource.Bluetooth, fakeNow),
+                new("bt:3", "Keyboard Low", BluetoothDeviceKind.Keyboard, 20, true, false, false, WirelessBatterySource.Bluetooth, fakeNow)
+            ]),
+            providers: [],
+            clock: () => fakeNow);
+        var ordered = orderAgg.PollAsync().GetAwaiter().GetResult();
+        check(ordered.Count == 3
+              && ordered[0].Name == "Keyboard Low"
+              && ordered[1].Name == "Mouse High"
+              && ordered[2].Name == "Headset Charging",
+            "Aggregator must order non-charging weakest battery first, followed by charging devices.");
+
+        // 3. Listen-Only mode must skip active-write providers while retaining passive ones.
+        var activeCalled = false;
+        var passiveCalled = false;
+        var listenAgg = new WirelessBatteryAggregator(
+            bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+            providers:
+            [
+                new DelegateBatteryProvider(WirelessBatterySource.CompxAtkVxe, _ =>
+                {
+                    activeCalled = true;
+                    return Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]);
+                }),
+                new DelegateBatteryProvider(WirelessBatterySource.StandardHid, _ =>
+                {
+                    passiveCalled = true;
+                    return Task.FromResult<IReadOnlyList<WirelessDeviceReading>>(
+                    [
+                        new("std:1", "Passive Mouse", BluetoothDeviceKind.Mouse, 66, true, false, false, WirelessBatterySource.StandardHid, fakeNow)
+                    ]);
+                })
+            ],
+            clock: () => fakeNow);
+        var listenResult = listenAgg.PollAsync(listenOnly: true).GetAwaiter().GetResult();
+        check(!activeCalled && passiveCalled && listenResult.Count == 1 && listenResult[0].BatteryLevel == 66,
+            "Listen-Only mode must skip active-write providers and keep passive providers.");
+
+        // 4. Persistent disk cache across aggregator instances + corrupt JSON resilience.
+        var tempDir = Path.Combine(Path.GetTempPath(), "OpenTaskbar_WirelessCacheTest_" + Guid.NewGuid().ToString("N"));
+        var cachePath = Path.Combine(tempDir, "cache.json");
+        try
+        {
+            var writerAgg = new WirelessBatteryAggregator(
+                bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>(
+                [
+                    new("bt:disk1", "Persisted Mouse", BluetoothDeviceKind.Mouse, 73, true, false, false, WirelessBatterySource.Bluetooth, fakeNow)
+                ]),
+                providers: [],
+                clock: () => fakeNow,
+                cacheFilePath: cachePath);
+            var firstDiskPoll = writerAgg.PollAsync().GetAwaiter().GetResult();
+            check(firstDiskPoll.Count == 1 && File.Exists(cachePath),
+                "Persistent disk cache must save changed live readings to disk.");
+
+            var readerAgg = new WirelessBatteryAggregator(
+                bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+                providers: [],
+                clock: () => fakeNow.AddMinutes(5),
+                cacheFilePath: cachePath);
+            var restoredPoll = readerAgg.PollAsync().GetAwaiter().GetResult();
+            check(restoredPoll.Count == 1 && restoredPoll[0].BatteryLevel == 73 && restoredPoll[0].IsStale,
+                "New aggregator instance must restore recent disk-cached readings as stale.");
+
+            File.WriteAllText(cachePath, "{not-valid-json");
+            var corruptAgg = new WirelessBatteryAggregator(
+                bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+                providers: [],
+                clock: () => fakeNow.AddMinutes(5),
+                cacheFilePath: cachePath);
+            var corruptPoll = corruptAgg.PollAsync().GetAwaiter().GetResult();
+            check(corruptPoll.Count == 0,
+                "Corrupt disk cache JSON must be ignored gracefully without throwing.");
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+
+        // 5. Full charge highlight helper.
+        check(BluetoothBatteryWidget.IsFullChargeHighlight(100, true)
+              && !BluetoothBatteryWidget.IsFullChargeHighlight(100, false)
+              && !BluetoothBatteryWidget.IsFullChargeHighlight(99, true),
+            "IsFullChargeHighlight must only activate at 100% while actively charging.");
+
+        // 6. ATK 1K PAW reply parsing + expanded open-protocol VIDs/PIDs.
+        var atk1kReply = new byte[65];
+        atk1kReply[0] = 0x00;
+        atk1kReply[1] = 0x82;
+        atk1kReply[2] = 0x08;
+        atk1kReply[3] = 0x02;
+        atk1kReply[4] = 0x00;
+        atk1kReply[5] = 0xFF;
+        atk1kReply[6] = 0x03;
+        atk1kReply[9] = 0x80 | 27; // 27%, charging bit set
+        check(CompxAtkVxeBatteryProvider.TryParseAtk1kReply(atk1kReply, "atk1k", "ATK 1K PAW", fakeNow, out var atk1kReading)
+              && atk1kReading is { BatteryLevel: 27, IsCharging: true },
+            "TryParseAtk1kReply must decode 7-bit percentage and high-bit charging flag.");
+
+        check(CompxAtkVxeBatteryProvider.IsSupportedVendor(CompxAtkVxeBatteryProvider.PulsarLamzu8kVendorId)
+              && CompxAtkVxeBatteryProvider.IsSupportedVendor(CompxAtkVxeBatteryProvider.KeychronVendorId)
+              && CompxAtkVxeBatteryProvider.IsSupportedVendor(CompxAtkVxeBatteryProvider.DareuVendorId)
+              && CompxAtkVxeBatteryProvider.IsSupportedVendor(CompxAtkVxeBatteryProvider.RapooVendorId),
+            "CompxAtkVxeBatteryProvider must recognize Pulsar/Lamzu 8K, Keychron, Dareu, and Rapoo vendor IDs.");
+
+        check(SteelSeriesBatteryProvider.ClassifyProtocol(SteelSeriesBatteryProvider.Nova7Gen2AltPid) == SteelSeriesBatteryProvider.SteelSeriesProtocolKind.Nova7AndArctis7Plus
+              && SteelSeriesBatteryProvider.ClassifyProtocol(SteelSeriesBatteryProvider.Nova3PPid) == SteelSeriesBatteryProvider.SteelSeriesProtocolKind.Nova7AndArctis7Plus
+              && SteelSeriesBatteryProvider.ClassifyProtocol(SteelSeriesBatteryProvider.Arctis1WirelessPid) == SteelSeriesBatteryProvider.SteelSeriesProtocolKind.Arctis7And9Legacy,
+            "SteelSeriesBatteryProvider must classify Nova 7 Gen 2 alt, Nova 3P, and Arctis 1 PIDs.");
+
+        // 7. Regression tests for Argon High P1/P2 fixes:
+        // 7a. Corsair Bragi permille low-battery boundary (50 -> 5%, 100 -> 10%)
+        byte[] bragi50 = [0x00, 0x02, 0x00, 50, 0x00, 0x00];
+        byte[] bragi100 = [0x00, 0x02, 0x00, 100, 0x00, 0x00];
+        check(CorsairBatteryProvider.TryParseBragiBatteryLevel(bragi50, out var b50) && b50 == 5
+              && CorsairBatteryProvider.TryParseBragiBatteryLevel(bragi100, out var b100) && b100 == 10,
+            "Corsair Bragi permille parser must scale 50 -> 5% and 100 -> 10% without jumping to 50%/100%.");
+
+        // 7b. SteelSeries WirelessMouse & Arctis7And9Legacy low-battery direct percentage
+        byte[] ssMouse10 = [0xD2, 10, 0x00];
+        byte[] ssMouse20 = [0xD2, 20, 0x00];
+        byte[] ssLegacy4 = [0x06, 0x18, 4, 0x00];
+        check(SteelSeriesBatteryProvider.TryParseProtocolReply(SteelSeriesBatteryProvider.SteelSeriesProtocolKind.WirelessMouse, ssMouse10, "m10", "Aerox", fakeNow, out var m10) && m10?.BatteryLevel == 10
+              && SteelSeriesBatteryProvider.TryParseProtocolReply(SteelSeriesBatteryProvider.SteelSeriesProtocolKind.WirelessMouse, ssMouse20, "m20", "Aerox", fakeNow, out var m20) && m20?.BatteryLevel == 20
+              && SteelSeriesBatteryProvider.TryParseProtocolReply(SteelSeriesBatteryProvider.SteelSeriesProtocolKind.Arctis7And9Legacy, ssLegacy4, "a4", "Arctis 7", fakeNow, out var a4) && a4?.BatteryLevel == 4,
+            "SteelSeries mouse and legacy headset parsers must report 4%, 10%, 20% directly without step-range overlap.");
+
+        // 7c. SteelSeries IsMatchingInterface must reject unknown/wired 0x1038 PIDs
+        var unknownSteelSeries = new HidInterfaceDescriptor(@"\\?\hid#vid_1038&pid_9999", 0x1038, 0x9999, 1, 0xFFC0, 1, 64, 64, 0, "SteelSeries Wired Keyboard");
+        check(!SteelSeriesBatteryProvider.IsMatchingInterface(unknownSteelSeries),
+            "SteelSeriesBatteryProvider must reject unknown/wired 0x1038 PIDs.");
+
+        // 7d. ATK 1K PAW must reject sleeping 0% non-charging reply
+        var atk1kZero = (byte[])atk1kReply.Clone();
+        atk1kZero[9] = 0x00;
+        check(!CompxAtkVxeBatteryProvider.TryParseAtk1kReply(atk1kZero, "atk1k", "ATK 1K PAW", fakeNow, out _),
+            "TryParseAtk1kReply must reject sleeping 0% non-charging reply.");
+
+        // 7e. Disk cache future timestamp rejection + same-name promotion ghost eviction
+        var tempDir2 = Path.Combine(Path.GetTempPath(), "OpenTaskbar_WirelessCacheGhost_" + Guid.NewGuid().ToString("N"));
+        var cachePath2 = Path.Combine(tempDir2, "cache.json");
+        try
+        {
+            var futureEntry = new Dictionary<string, WirelessDeviceReading>
+            {
+                ["name:future"] = new("bt:f", "Future Device", BluetoothDeviceKind.Mouse, 99, true, false, false, WirelessBatterySource.Bluetooth, fakeNow.AddHours(2))
+            };
+            Directory.CreateDirectory(tempDir2);
+            File.WriteAllText(cachePath2, JsonSerializer.Serialize(futureEntry));
+            var futureAgg = new WirelessBatteryAggregator(
+                bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>([]),
+                providers: [],
+                clock: () => fakeNow,
+                cacheFilePath: cachePath2);
+            check(futureAgg.PollAsync().GetAwaiter().GetResult().Count == 0,
+                "Disk cache loader must reject future-dated SampledAt entries.");
+
+            var firstOnly = true;
+            var promoAgg = new WirelessBatteryAggregator(
+                bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>(firstOnly
+                    ? [new("bt:111", "Same Pad", BluetoothDeviceKind.Gamepad, 80, true, false, false, WirelessBatterySource.Bluetooth, fakeNow)]
+                    : [
+                        new("bt:111", "Same Pad", BluetoothDeviceKind.Gamepad, 80, true, false, false, WirelessBatterySource.Bluetooth, fakeNow),
+                        new("bt:222", "Same Pad", BluetoothDeviceKind.Gamepad, 40, true, false, false, WirelessBatterySource.Bluetooth, fakeNow)
+                      ]),
+                providers: [],
+                clock: () => fakeNow);
+            var p1 = promoAgg.PollAsync().GetAwaiter().GetResult();
+            firstOnly = false;
+            var p2 = promoAgg.PollAsync().GetAwaiter().GetResult();
+            check(p1.Count == 1 && p2.Count == 2,
+                "Promoting a same-name device from name: key to src:id: key must not emit a duplicate 3rd stale ghost.");
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir2)) Directory.Delete(tempDir2, recursive: true); } catch { }
+        }
     }
 
     private static int RunUiChecksOnSta(bool includeLegacyBluetoothSuite)

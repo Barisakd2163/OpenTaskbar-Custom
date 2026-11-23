@@ -241,7 +241,8 @@ public sealed record DockSettings(
     int WirelessBatteryPollSeconds = 30,
     int WirelessBatteryLowThreshold = 0,
     IReadOnlyList<string>? IgnoredWirelessDevices = null,
-    IReadOnlyDictionary<string, string>? WirelessDeviceAliases = null)
+    IReadOnlyDictionary<string, string>? WirelessDeviceAliases = null,
+    bool WirelessBatteryListenOnly = false)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

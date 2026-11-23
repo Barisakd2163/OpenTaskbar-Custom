@@ -44,8 +44,10 @@ internal static class Win32HidTransport
     private const uint FILE_FLAG_OVERLAPPED = 0x40000000;
 
     internal const int ERROR_IO_PENDING = 997;
+    internal const int ERROR_NOT_FOUND = 1168;
     internal const int ERROR_TIMEOUT = 1460;
     internal const int ERROR_INVALID_PARAMETER = 87;
+    internal const int ERROR_ACCESS_DENIED = 5;
     private const uint WAIT_OBJECT_0 = 0x00000000;
     internal const int HIDP_STATUS_SUCCESS = 0x00110000;
 
@@ -255,9 +257,32 @@ internal static class Win32HidTransport
             return false;
         }
 
+        if (!featureOnly && IsSystemMouseOrKeyboardCollection(handle))
+        {
+            handle.Dispose();
+            win32Error = ERROR_ACCESS_DENIED;
+            return false;
+        }
+
         win32Error = 0;
         session = new HidDeviceSession(handle);
         return true;
+    }
+
+    private static bool IsSystemMouseOrKeyboardCollection(SafeFileHandle handle)
+    {
+        if (!HidD_GetPreparsedData(handle, out var preparsedData) || preparsedData == nint.Zero)
+            return false;
+        try
+        {
+            if (HidP_GetCaps(preparsedData, out var caps) != HIDP_STATUS_SUCCESS)
+                return false;
+            return caps.UsagePage == 0x0001 && caps.Usage is 0x0002 or 0x0006;
+        }
+        finally
+        {
+            HidD_FreePreparsedData(preparsedData);
+        }
     }
 
     private static string ReadProductString(SafeFileHandle handle)
@@ -276,6 +301,8 @@ internal static class Win32HidTransport
         private readonly SafeFileHandle _handle;
         private bool _disposed;
 
+        public bool IsDisposed => _disposed;
+
         internal HidDeviceSession(SafeFileHandle handle)
         {
             _handle = handle;
@@ -284,82 +311,88 @@ internal static class Win32HidTransport
         public bool TryWriteReport(ReadOnlySpan<byte> report, int timeoutMs, out int win32Error)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var clampedTimeout = Math.Clamp(timeoutMs, 50, 300);
-            var buffer = report.ToArray();
-            var hEvent = CreateEventW(nint.Zero, bManualReset: true, bInitialState: false, lpName: null);
-            if (hEvent == nint.Zero)
+            if (report.IsEmpty)
             {
-                win32Error = Marshal.GetLastWin32Error();
+                win32Error = ERROR_INVALID_PARAMETER;
                 return false;
             }
 
-            var pinned = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-            try
-            {
-                var overlapped = new OVERLAPPED { hEvent = hEvent };
-                var ok = WriteFile(_handle, buffer, (uint)buffer.Length, out var written, ref overlapped);
-                var err = Marshal.GetLastWin32Error();
-                if (!ok)
-                {
-                    if (err == ERROR_IO_PENDING)
-                    {
-                        var wait = WaitForSingleObject(hEvent, (uint)clampedTimeout);
-                        if (wait == WAIT_OBJECT_0)
-                        {
-                            ok = GetOverlappedResult(_handle, ref overlapped, out written, bWait: false);
-                            err = ok ? 0 : Marshal.GetLastWin32Error();
-                        }
-                        else
-                        {
-                            CancelIoEx(_handle, ref overlapped);
-                            // Never wait without a bound here: a stuck HID driver may never complete the
-                            // cancelled IRP, which would pin a thread-pool worker forever.
-                            WaitForSingleObject(hEvent, 250);
-                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: false);
-                            win32Error = ERROR_TIMEOUT;
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        win32Error = err;
-                        return false;
-                    }
-                }
-                else
-                {
-                    err = 0;
-                }
+            var length = report.Length;
+            var bufferPtr = Marshal.AllocHGlobal(length);
+            var managed = report.ToArray();
+            Marshal.Copy(managed, 0, bufferPtr, length);
 
-                win32Error = err;
-                return ok && written > 0;
-            }
-            finally
-            {
-                if (pinned.IsAllocated) pinned.Free();
-                CloseHandle(hEvent);
-            }
+            var ok = TryExecuteOverlappedIo(
+                isWrite: true,
+                bufferPtr: bufferPtr,
+                bufferLength: (uint)length,
+                timeoutMs: timeoutMs,
+                out var transferred,
+                out win32Error);
+            return ok && transferred > 0;
         }
 
         public bool TryReadReport(Span<byte> destination, int timeoutMs, out int bytesRead, out int win32Error)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             bytesRead = 0;
+            if (destination.IsEmpty)
+            {
+                win32Error = ERROR_INVALID_PARAMETER;
+                return false;
+            }
+
+            var length = destination.Length;
+            var bufferPtr = Marshal.AllocHGlobal(length);
+            var ok = TryExecuteOverlappedIo(
+                isWrite: false,
+                bufferPtr: bufferPtr,
+                bufferLength: (uint)length,
+                timeoutMs: timeoutMs,
+                out var transferred,
+                out win32Error,
+                destination);
+
+            if (!ok || transferred == 0)
+                return false;
+
+            bytesRead = (int)Math.Min(transferred, (uint)length);
+            return true;
+        }
+
+        private bool TryExecuteOverlappedIo(
+            bool isWrite,
+            nint bufferPtr,
+            uint bufferLength,
+            int timeoutMs,
+            out uint transferred,
+            out int win32Error,
+            Span<byte> readDestination = default)
+        {
+            transferred = 0;
             var clampedTimeout = Math.Clamp(timeoutMs, 50, 300);
-            var buffer = new byte[destination.Length];
             var hEvent = CreateEventW(nint.Zero, bManualReset: true, bInitialState: false, lpName: null);
             if (hEvent == nint.Zero)
             {
                 win32Error = Marshal.GetLastWin32Error();
+                Marshal.FreeHGlobal(bufferPtr);
                 return false;
             }
 
-            var pinned = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            var overlappedSize = Marshal.SizeOf<OVERLAPPED>();
+            var overlappedPtr = Marshal.AllocHGlobal(overlappedSize);
+            for (var i = 0; i < overlappedSize; i++)
+                Marshal.WriteByte(overlappedPtr, i, 0);
+            Marshal.StructureToPtr(new OVERLAPPED { hEvent = hEvent }, overlappedPtr, fDeleteOld: false);
+
+            var ownsResources = true;
             try
             {
-                var overlapped = new OVERLAPPED { hEvent = hEvent };
-                var ok = ReadFile(_handle, buffer, (uint)buffer.Length, out var transferred, ref overlapped);
+                var ok = isWrite
+                    ? WriteFile(_handle, bufferPtr, bufferLength, nint.Zero, overlappedPtr)
+                    : ReadFile(_handle, bufferPtr, bufferLength, nint.Zero, overlappedPtr);
                 var err = Marshal.GetLastWin32Error();
+
                 if (!ok)
                 {
                     if (err == ERROR_IO_PENDING)
@@ -367,16 +400,29 @@ internal static class Win32HidTransport
                         var wait = WaitForSingleObject(hEvent, (uint)clampedTimeout);
                         if (wait == WAIT_OBJECT_0)
                         {
-                            ok = GetOverlappedResult(_handle, ref overlapped, out transferred, bWait: false);
+                            ok = GetOverlappedResult(_handle, overlappedPtr, out transferred, bWait: false);
                             err = ok ? 0 : Marshal.GetLastWin32Error();
                         }
                         else
                         {
-                            CancelIoEx(_handle, ref overlapped);
+                            var cancelled = CancelIoEx(_handle, overlappedPtr);
+                            var cancelErr = cancelled ? 0 : Marshal.GetLastWin32Error();
                             // Never wait without a bound here: a stuck HID driver may never complete the
                             // cancelled IRP, which would pin a thread-pool worker forever.
-                            WaitForSingleObject(hEvent, 250);
-                            GetOverlappedResult(_handle, ref overlapped, out _, bWait: false);
+                            var drainWait = WaitForSingleObject(hEvent, 250);
+                            if (drainWait == WAIT_OBJECT_0 || (!cancelled && cancelErr == ERROR_NOT_FOUND))
+                            {
+                                GetOverlappedResult(_handle, overlappedPtr, out _, bWait: false);
+                            }
+                            else
+                            {
+                                // The kernel IRP may still hold overlappedPtr/bufferPtr; defer freeing until hEvent signals,
+                                // and immediately close the wedged session handle so retry loops cannot issue more I/O on it.
+                                ownsResources = false;
+                                DeferCleanupUntilSignaled(hEvent, overlappedPtr, bufferPtr);
+                                Dispose();
+                            }
+
                             win32Error = ERROR_TIMEOUT;
                             return false;
                         }
@@ -389,20 +435,93 @@ internal static class Win32HidTransport
                 }
                 else
                 {
-                    err = 0;
+                    ok = GetOverlappedResult(_handle, overlappedPtr, out transferred, bWait: false);
+                    err = ok ? 0 : Marshal.GetLastWin32Error();
                 }
 
                 win32Error = err;
-                if (!ok || transferred == 0) return false;
+                if (!isWrite && ok && transferred > 0)
+                {
+                    var count = (int)Math.Min(transferred, (uint)readDestination.Length);
+                    var managed = new byte[count];
+                    Marshal.Copy(bufferPtr, managed, 0, count);
+                    managed.CopyTo(readDestination);
+                }
 
-                bytesRead = (int)Math.Min(transferred, (uint)destination.Length);
-                buffer.AsSpan(0, bytesRead).CopyTo(destination);
-                return true;
+                return ok;
             }
             finally
             {
-                if (pinned.IsAllocated) pinned.Free();
-                CloseHandle(hEvent);
+                if (ownsResources)
+                {
+                    CloseHandle(hEvent);
+                    Marshal.FreeHGlobal(overlappedPtr);
+                    Marshal.FreeHGlobal(bufferPtr);
+                }
+            }
+        }
+
+        private sealed class DeferredCleanupState(DeferredRawEventWaitHandle handle, nint overlappedPtr, nint bufferPtr)
+        {
+            public readonly DeferredRawEventWaitHandle Handle = handle;
+            public readonly nint OverlappedPtr = overlappedPtr;
+            public readonly nint BufferPtr = bufferPtr;
+            public RegisteredWaitHandle? Registered;
+            private int _unregistered;
+
+            public void TryUnregister()
+            {
+                if (Registered is { } reg && Interlocked.Exchange(ref _unregistered, 1) == 0)
+                {
+                    try { reg.Unregister(null); } catch { }
+                }
+            }
+        }
+
+        private static void DeferCleanupUntilSignaled(nint hEvent, nint overlappedPtr, nint bufferPtr)
+        {
+            try
+            {
+                var waitHandle = new DeferredRawEventWaitHandle(hEvent);
+                var state = new DeferredCleanupState(waitHandle, overlappedPtr, bufferPtr);
+                var registered = ThreadPool.RegisterWaitForSingleObject(
+                    waitHandle,
+                    static (rawState, _) =>
+                    {
+                        var ctx = (DeferredCleanupState)rawState!;
+                        ctx.TryUnregister();
+                        try { ctx.Handle.Dispose(); } catch { }
+                        CloseHandle(ctx.Handle.DangerousRawHandle);
+                        Marshal.FreeHGlobal(ctx.OverlappedPtr);
+                        Marshal.FreeHGlobal(ctx.BufferPtr);
+                    },
+                    state,
+                    Timeout.Infinite,
+                    executeOnlyOnce: true);
+                state.Registered = registered;
+                try
+                {
+                    if (waitHandle.WaitOne(0))
+                        state.TryUnregister();
+                }
+                catch
+                {
+                }
+            }
+            catch
+            {
+                // Intentionally leak unmanaged pointers rather than risking a kernel use-after-free on registration failure.
+            }
+        }
+
+        private sealed class DeferredRawEventWaitHandle : WaitHandle
+        {
+            public nint DangerousRawHandle { get; }
+
+            public DeferredRawEventWaitHandle(nint rawHandle)
+            {
+                DangerousRawHandle = rawHandle;
+                SafeWaitHandle = new SafeWaitHandle(rawHandle, ownsHandle: false);
             }
         }
 
@@ -485,10 +604,15 @@ internal static class Win32HidTransport
             out int win32Error)
         {
             bytesRead = 0;
+            if (_disposed)
+            {
+                win32Error = ERROR_TIMEOUT;
+                return false;
+            }
             var clampedTimeout = Math.Clamp(timeoutMs, 100, 300);
             if (!TryWriteReport(request, clampedTimeout, out win32Error))
             {
-                if (!TrySetOutputReport(request, out win32Error))
+                if (_disposed || !TrySetOutputReport(request, out win32Error))
                     return false;
             }
 
@@ -496,6 +620,11 @@ internal static class Win32HidTransport
             var maxAttempts = 4;
             for (var attempt = 0; attempt < maxAttempts; attempt++)
             {
+                if (_disposed)
+                {
+                    win32Error = ERROR_TIMEOUT;
+                    return false;
+                }
                 var elapsedMs = (int)Stopwatch.GetElapsedTime(startTick).TotalMilliseconds;
                 var remainingMs = clampedTimeout - elapsedMs;
                 if (remainingMs < 40) break;
@@ -729,19 +858,19 @@ internal static class Win32HidTransport
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool WriteFile(
         SafeFileHandle hFile,
-        byte[] lpBuffer,
+        nint lpBuffer,
         uint nNumberOfBytesToWrite,
-        out uint lpNumberOfBytesWritten,
-        ref OVERLAPPED lpOverlapped);
+        nint lpNumberOfBytesWritten,
+        nint lpOverlapped);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ReadFile(
         SafeFileHandle hFile,
-        byte[] lpBuffer,
+        nint lpBuffer,
         uint nNumberOfBytesToRead,
-        out uint lpNumberOfBytesRead,
-        ref OVERLAPPED lpOverlapped);
+        nint lpNumberOfBytesRead,
+        nint lpOverlapped);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern nint CreateEventW(
@@ -759,13 +888,13 @@ internal static class Win32HidTransport
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CancelIoEx(
         SafeFileHandle hFile,
-        ref OVERLAPPED lpOverlapped);
+        nint lpOverlapped);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetOverlappedResult(
         SafeFileHandle hFile,
-        ref OVERLAPPED lpOverlapped,
+        nint lpOverlapped,
         out uint lpNumberOfBytesTransferred,
         [MarshalAs(UnmanagedType.Bool)] bool bWait);
 

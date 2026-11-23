@@ -910,5 +910,8 @@
   "SignOut": "Sign out",
   "RestartComputer": "Restart",
   "ShutDownComputer": "Shut down",
-  "ErrorSystemToolOpen": "Could not open the system tool."
+  "ErrorSystemToolOpen": "Could not open the system tool.",
+  "WirelessBatteryListenOnly": "Listen only: {0}",
+  "WirelessBatteryListenOnlyOn": "On",
+  "WirelessBatteryListenOnlyOff": "Off"
 }

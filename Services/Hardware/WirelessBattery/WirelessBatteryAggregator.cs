@@ -1,4 +1,6 @@
+using System.IO;
 using System.Text;
+using System.Text.Json;
 using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar.Services;
@@ -15,6 +17,7 @@ internal sealed class WirelessBatteryAggregator
     public const ushort WraithW75ProductId = 0xC368;
     public const int OutlierDropThresholdPercent = 25;
     public const int OutlierProtectedFloorPercent = 25;
+    private const long MaxCacheFileBytes = 65_536;
 
     public static readonly TimeSpan DefaultProviderTimeout = TimeSpan.FromMilliseconds(1200);
     public static readonly TimeSpan StaleExpirationWindow = TimeSpan.FromMinutes(30);
@@ -38,39 +41,50 @@ internal sealed class WirelessBatteryAggregator
         ],
         clock: () => DateTimeOffset.UtcNow,
         providerTimeout: DefaultProviderTimeout,
-        hidEnumerator: () => Win32HidTransport.EnumerateInterfaces());
+        hidEnumerator: () => Win32HidTransport.EnumerateInterfaces(),
+        cacheFilePath: Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenTaskbar",
+            "wireless-battery-cache.json"));
 
     private readonly Func<CancellationToken, Task<IReadOnlyList<WirelessDeviceReading>>> _bluetoothReader;
     private readonly IReadOnlyList<IWirelessBatteryProvider> _providers;
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _providerTimeout;
     private readonly Func<IReadOnlyList<HidInterfaceDescriptor>> _hidEnumerator;
+    private readonly string? _cacheFilePath;
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
     private readonly object _cacheLock = new();
     private readonly Dictionary<string, WirelessDeviceReading> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _pendingOutliers = new(StringComparer.OrdinalIgnoreCase);
+    private bool _cacheLoadedFromDisk;
 
     internal WirelessBatteryAggregator(
         Func<CancellationToken, Task<IReadOnlyList<WirelessDeviceReading>>> bluetoothReader,
         IReadOnlyList<IWirelessBatteryProvider> providers,
         Func<DateTimeOffset>? clock = null,
         TimeSpan? providerTimeout = null,
-        Func<IReadOnlyList<HidInterfaceDescriptor>>? hidEnumerator = null)
+        Func<IReadOnlyList<HidInterfaceDescriptor>>? hidEnumerator = null,
+        string? cacheFilePath = null)
     {
         _bluetoothReader = bluetoothReader;
         _providers = providers;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _providerTimeout = providerTimeout ?? DefaultProviderTimeout;
         _hidEnumerator = hidEnumerator ?? (() => Win32HidTransport.EnumerateInterfaces());
+        _cacheFilePath = cacheFilePath;
     }
 
-    public static async Task<IReadOnlyList<BluetoothDeviceBatteryInfo>> ReadAllAsync()
+    public static async Task<IReadOnlyList<BluetoothDeviceBatteryInfo>> ReadAllAsync(bool listenOnly = false)
     {
-        var readings = await Shared.PollAsync().ConfigureAwait(false);
+        var readings = await Shared.PollAsync(CancellationToken.None, listenOnly).ConfigureAwait(false);
         return readings.Select(r => r.ToBatteryInfo()).ToList();
     }
 
-    public static Task<IReadOnlyList<WirelessDeviceReading>> ReadAllReadingsAsync(CancellationToken cancellationToken = default) =>
-        Shared.PollAsync(cancellationToken);
+    public static Task<IReadOnlyList<WirelessDeviceReading>> ReadAllReadingsAsync(
+        CancellationToken cancellationToken = default,
+        bool listenOnly = false) =>
+        Shared.PollAsync(cancellationToken, listenOnly);
 
     internal static bool IsIgnoredWiredDevice(ushort vendorId, ushort productId, string? deviceName = null)
     {
@@ -137,44 +151,63 @@ internal sealed class WirelessBatteryAggregator
         }
     }
 
-    public async Task<IReadOnlyList<WirelessDeviceReading>> PollAsync(CancellationToken cancellationToken = default)
+    internal static bool IsPassiveSource(WirelessBatterySource source) => source is
+        WirelessBatterySource.Bluetooth
+        or WirelessBatterySource.BluetoothGatt
+        or WirelessBatterySource.XInput
+        or WirelessBatterySource.StandardHid
+        or WirelessBatterySource.GamepadHid;
+
+    public async Task<IReadOnlyList<WirelessDeviceReading>> PollAsync(
+        CancellationToken cancellationToken = default,
+        bool listenOnly = false)
     {
-        IReadOnlyList<HidInterfaceDescriptor> hidSnapshot;
+        await _pollGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            hidSnapshot = await Task.Run(() => _hidEnumerator() ?? [], CancellationToken.None).ConfigureAwait(false);
-        }
-        catch
-        {
-            hidSnapshot = [];
-        }
-
-        var tasks = new List<Task<IReadOnlyList<WirelessDeviceReading>>>(_providers.Count + 1)
-        {
-            RunIsolatedAsync(_bluetoothReader, cancellationToken)
-        };
-
-        foreach (var provider in _providers)
-        {
-            var currentProvider = provider;
-            tasks.Add(RunIsolatedAsync(token => currentProvider.ProbeAsync(hidSnapshot, token), cancellationToken));
-        }
-
-        var batches = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var now = _clock();
-
-        var freshReadings = new List<WirelessDeviceReading>();
-        foreach (var batch in batches)
-        {
-            foreach (var reading in batch)
+            IReadOnlyList<HidInterfaceDescriptor> hidSnapshot;
+            try
             {
-                if (IsIgnoredWiredReading(reading)) continue;
-                freshReadings.Add(reading.SampledAt == default ? reading with { SampledAt = now } : reading);
+                hidSnapshot = await Task.Run(() => _hidEnumerator() ?? [], CancellationToken.None).ConfigureAwait(false);
             }
-        }
+            catch
+            {
+                hidSnapshot = [];
+            }
 
-        var deduplicated = DeduplicateReadings(freshReadings);
-        return MergeWithCache(deduplicated, now);
+            var tasks = new List<Task<IReadOnlyList<WirelessDeviceReading>>>(_providers.Count + 1)
+            {
+                RunIsolatedAsync(_bluetoothReader, cancellationToken)
+            };
+
+            foreach (var provider in _providers)
+            {
+                if (listenOnly && !IsPassiveSource(provider.Source))
+                    continue;
+                var currentProvider = provider;
+                tasks.Add(RunIsolatedAsync(token => currentProvider.ProbeAsync(hidSnapshot, token), cancellationToken));
+            }
+
+            var batches = await Task.WhenAll(tasks).ConfigureAwait(false);
+            var now = _clock();
+
+            var freshReadings = new List<WirelessDeviceReading>();
+            foreach (var batch in batches)
+            {
+                foreach (var reading in batch)
+                {
+                    if (IsIgnoredWiredReading(reading)) continue;
+                    freshReadings.Add(reading.SampledAt == default ? reading with { SampledAt = now } : reading);
+                }
+            }
+
+            var deduplicated = DeduplicateReadings(freshReadings);
+            return MergeWithCache(deduplicated, now);
+        }
+        finally
+        {
+            _pollGate.Release();
+        }
     }
 
     private async Task<IReadOnlyList<WirelessDeviceReading>> RunIsolatedAsync(
@@ -204,11 +237,34 @@ internal sealed class WirelessBatteryAggregator
 
     internal static IReadOnlyList<WirelessDeviceReading> DeduplicateReadings(IEnumerable<WirelessDeviceReading> readings)
     {
-        var byCanonicalKey = new Dictionary<string, WirelessDeviceReading>(StringComparer.OrdinalIgnoreCase);
+        var bySourceAndId = new List<WirelessDeviceReading>();
+        var exactIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var candidate in readings)
         {
-            var key = GetCanonicalDeviceKey(candidate);
+            var normalizedId = candidate.Id.Trim();
+            if (normalizedId.Length > 0)
+            {
+                var exactKey = $"{candidate.Source}:{normalizedId.ToLowerInvariant()}";
+                if (exactIndex.TryGetValue(exactKey, out var existingIdx))
+                {
+                    var existing = bySourceAndId[existingIdx];
+                    bySourceAndId[existingIdx] = ShouldPreferReading(existing, candidate)
+                        ? MergeMetadata(primary: candidate, secondary: existing)
+                        : MergeMetadata(primary: existing, secondary: candidate);
+                    continue;
+                }
+                exactIndex[exactKey] = bySourceAndId.Count;
+            }
+            bySourceAndId.Add(candidate);
+        }
+
+        var sourceNameCounts = CountBySourceAndName(bySourceAndId);
+        var byCanonicalKey = new Dictionary<string, WirelessDeviceReading>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in bySourceAndId)
+        {
+            var key = GetDeduplicationKey(candidate, sourceNameCounts, hasExistingSourceIdKey: false);
             if (!byCanonicalKey.TryGetValue(key, out var existing))
             {
                 byCanonicalKey[key] = candidate;
@@ -232,14 +288,21 @@ internal sealed class WirelessBatteryAggregator
         IReadOnlyList<WirelessDeviceReading> freshReadings,
         DateTimeOffset now)
     {
+        Dictionary<string, WirelessDeviceReading>? snapshotToPersist = null;
+        IReadOnlyList<WirelessDeviceReading> result;
+
         lock (_cacheLock)
         {
+            EnsureCacheLoadedLocked(now);
+            var cacheChanged = false;
+            var sourceNameCounts = CountBySourceAndName(freshReadings);
             var activeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var output = new List<WirelessDeviceReading>();
 
             foreach (var reading in freshReadings)
             {
-                var key = GetCanonicalDeviceKey(reading);
+                var idKey = $"src:{reading.Source}:id:{reading.Id.Trim().ToLowerInvariant()}";
+                var key = GetDeduplicationKey(reading, sourceNameCounts, _cache.ContainsKey(idKey));
                 activeKeys.Add(key);
 
                 // -1 is the only "unknown" level; a genuine 0% non-charging device is valid data.
@@ -266,7 +329,7 @@ internal sealed class WirelessBatteryAggregator
                         {
                             // Confirmed by 2 consecutive samples: accept the new level.
                             _pendingOutliers.Remove(key);
-                            _cache[key] = live;
+                            cacheChanged |= UpdateCacheEntryLocked(key, live);
                             output.Add(live);
                             continue;
                         }
@@ -280,13 +343,13 @@ internal sealed class WirelessBatteryAggregator
                             SampledAt = live.SampledAt,
                             SecondaryBatteryLevel = live.SecondaryBatteryLevel ?? prevTrusted.SecondaryBatteryLevel
                         };
-                        _cache[key] = guarded;
+                        cacheChanged |= UpdateCacheEntryLocked(key, guarded);
                         output.Add(guarded);
                         continue;
                     }
 
                     _pendingOutliers.Remove(key);
-                    _cache[key] = live;
+                    cacheChanged |= UpdateCacheEntryLocked(key, live);
                     output.Add(live);
                     continue;
                 }
@@ -310,6 +373,16 @@ internal sealed class WirelessBatteryAggregator
                 }
             }
 
+            // Track active (Source, NormalizedId) pairs so promoting a device from "name:..." to "src:...:id:..."
+            // never leaves its older "name:..." cache entry behind as a duplicate stale ghost.
+            var activeSourceIds = new HashSet<(WirelessBatterySource Source, string NormalizedId)>();
+            foreach (var reading in freshReadings)
+            {
+                var trimmedId = reading.Id.Trim();
+                if (trimmedId.Length > 0)
+                    activeSourceIds.Add((reading.Source, trimmedId.ToLowerInvariant()));
+            }
+
             // Retain recently seen devices that went to sleep or temporarily dropped off the bus (up to 30 minutes).
             var expiredKeys = new List<string>();
             foreach (var (key, cached) in _cache)
@@ -321,6 +394,13 @@ internal sealed class WirelessBatteryAggregator
                 }
 
                 if (activeKeys.Contains(key)) continue;
+
+                var cachedTrimmedId = cached.Id.Trim();
+                if (cachedTrimmedId.Length > 0 && activeSourceIds.Contains((cached.Source, cachedTrimmedId.ToLowerInvariant())))
+                {
+                    expiredKeys.Add(key);
+                    continue;
+                }
 
                 output.Add(cached with
                 {
@@ -334,14 +414,118 @@ internal sealed class WirelessBatteryAggregator
             {
                 _cache.Remove(key);
                 _pendingOutliers.Remove(key);
+                cacheChanged = true;
             }
 
-            return output
+            if (cacheChanged && !string.IsNullOrWhiteSpace(_cacheFilePath))
+                snapshotToPersist = new Dictionary<string, WirelessDeviceReading>(_cache, StringComparer.OrdinalIgnoreCase);
+
+            result = output
                 .OrderBy(r => r.IsStale ? 1 : 0)
+                .ThenBy(r => r.IsCharging ? 1 : 0)
+                .ThenBy(r => r.BatteryLevel >= 0 ? r.BatteryLevel : 101)
                 .ThenBy(r => GetSourcePriority(r.Source))
                 .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
+
+        if (snapshotToPersist is not null && !string.IsNullOrWhiteSpace(_cacheFilePath))
+            SaveCacheToDisk(_cacheFilePath, snapshotToPersist);
+
+        return result;
+    }
+
+    private bool UpdateCacheEntryLocked(string key, WirelessDeviceReading live)
+    {
+        var changed = !_cache.TryGetValue(key, out var prev)
+            || prev.BatteryLevel != live.BatteryLevel
+            || prev.IsCharging != live.IsCharging
+            || prev.SecondaryBatteryLevel != live.SecondaryBatteryLevel
+            || !string.Equals(prev.Name, live.Name, StringComparison.Ordinal)
+            || !string.Equals(prev.LevelOverrideText, live.LevelOverrideText, StringComparison.Ordinal);
+        _cache[key] = live;
+        return changed;
+    }
+
+    private void EnsureCacheLoadedLocked(DateTimeOffset now)
+    {
+        if (_cacheLoadedFromDisk) return;
+        _cacheLoadedFromDisk = true;
+        if (string.IsNullOrWhiteSpace(_cacheFilePath)) return;
+
+        try
+        {
+            var info = new FileInfo(_cacheFilePath);
+            if (!info.Exists || info.Length is <= 0 or > MaxCacheFileBytes) return;
+
+            var json = File.ReadAllText(_cacheFilePath, Encoding.UTF8);
+            var loaded = JsonSerializer.Deserialize<Dictionary<string, WirelessDeviceReading>>(json);
+            if (loaded is null) return;
+
+            var maxFutureSkew = TimeSpan.FromMinutes(1);
+            foreach (var (key, entry) in loaded)
+            {
+                if (_cache.Count >= 64) break;
+                if (string.IsNullOrWhiteSpace(key) || entry is null) continue;
+                if (entry.SampledAt > now + maxFutureSkew) continue;
+                if (now - entry.SampledAt > StaleExpirationWindow) continue;
+                if (entry.BatteryLevel is < -1 or > 100) continue;
+                if (entry.BatteryLevel < 0 && string.IsNullOrWhiteSpace(entry.LevelOverrideText)) continue;
+                if (IsIgnoredWiredReading(entry)) continue;
+                _cache[key] = entry;
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static void SaveCacheToDisk(string path, Dictionary<string, WirelessDeviceReading> snapshot)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir))
+                Directory.CreateDirectory(dir);
+
+            var tmpPath = path + ".tmp";
+            var json = JsonSerializer.Serialize(snapshot);
+            File.WriteAllText(tmpPath, json, Encoding.UTF8);
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        catch
+        {
+        }
+    }
+
+    private static Dictionary<(WirelessBatterySource Source, string NormalizedName), int> CountBySourceAndName(
+        IEnumerable<WirelessDeviceReading> readings)
+    {
+        var counts = new Dictionary<(WirelessBatterySource, string), int>();
+        foreach (var reading in readings)
+        {
+            var normalizedName = NormalizeDeviceName(reading.Name);
+            if (string.IsNullOrWhiteSpace(normalizedName)) continue;
+            var tuple = (reading.Source, normalizedName);
+            counts[tuple] = counts.TryGetValue(tuple, out var current) ? current + 1 : 1;
+        }
+        return counts;
+    }
+
+    private static string GetDeduplicationKey(
+        WirelessDeviceReading reading,
+        IReadOnlyDictionary<(WirelessBatterySource Source, string NormalizedName), int> sourceNameCounts,
+        bool hasExistingSourceIdKey)
+    {
+        var normalizedName = NormalizeDeviceName(reading.Name);
+        if (!string.IsNullOrWhiteSpace(normalizedName))
+        {
+            var hasCollisionInSource = sourceNameCounts.TryGetValue((reading.Source, normalizedName), out var count) && count > 1;
+            if ((hasCollisionInSource || hasExistingSourceIdKey) && !string.IsNullOrWhiteSpace(reading.Id))
+                return $"src:{reading.Source}:id:{reading.Id.Trim().ToLowerInvariant()}";
+            return $"name:{normalizedName}";
+        }
+        return $"id:{reading.Id.Trim().ToLowerInvariant()}";
     }
 
     internal static string GetCanonicalDeviceKey(WirelessDeviceReading reading)

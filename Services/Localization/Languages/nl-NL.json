@@ -910,5 +910,8 @@
   "SignOut": "Afmelden",
   "RestartComputer": "Opnieuw opstarten",
   "ShutDownComputer": "Afsluiten",
-  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen."
+  "ErrorSystemToolOpen": "Kan het systeemhulpprogramma niet openen.",
+  "WirelessBatteryListenOnly": "Alleen luisteren: {0}",
+  "WirelessBatteryListenOnlyOn": "Aan",
+  "WirelessBatteryListenOnlyOff": "Uit"
 }

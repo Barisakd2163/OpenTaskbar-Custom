@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
@@ -26,6 +27,9 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
     public const ushort Nova7XWirelessPid = 0x220A;
     public const ushort Nova7DragonPid = 0x223A;
     public const ushort Nova7Gen2Pid = 0x2258;
+    public const ushort Nova7Gen2AltPid = 0x227E;
+    public const ushort Nova3PPid = 0x2266;
+    public const ushort Nova3XPid = 0x226A;
     public const ushort Arctis7PlusPid = 0x220E;
     public const ushort Arctis7PPlusPid = 0x2212;
     public const ushort Arctis7XPlusPid = 0x2216;
@@ -35,7 +39,9 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
     public const ushort Nova5PWirelessPid = 0x2236;
     public const ushort Nova5XWirelessPid = 0x223E;
 
-    // Arctis 7 (2017/2019), Arctis 9, Arctis Pro Wireless
+    // Arctis 1 / 7 (2017/2019), Arctis 9, Arctis Pro Wireless
+    public const ushort Arctis1WirelessPid = 0x12B3;
+    public const ushort Arctis1XboxPid = 0x12B6;
     public const ushort Arctis7LegacyPid = 0x1260;
     public const ushort Arctis72019Pid = 0x12AD;
     public const ushort Arctis7PPid = 0x12D5;
@@ -60,13 +66,33 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
     public const byte StatusCharging = 0x02;
     public const byte StatusDischarging = 0x08;
 
+    private const long MaxCorePropsBytes = 65_536;
+    private const int MaxLoopbackResponseBytes = 256 * 1024;
+
+    private static readonly SocketsHttpHandler LoopbackHandler = new()
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false,
+        UseCookies = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = static (_, _, _, _) => true
+        }
+    };
+
+    private static readonly HttpClient LoopbackClient = new(LoopbackHandler)
+    {
+        Timeout = TimeSpan.FromSeconds(1)
+    };
+
     public WirelessBatterySource Source => WirelessBatterySource.SteelSeriesHid;
 
     public async Task<IReadOnlyList<WirelessDeviceReading>> ProbeAsync(
         IReadOnlyList<HidInterfaceDescriptor> hidInterfaces,
         CancellationToken cancellationToken)
     {
-        if (hidInterfaces.Count == 0 || !HasAnySteelSeriesVendor(hidInterfaces))
+        if (hidInterfaces.Count == 0 || !HasAnyMatchingInterface(hidInterfaces))
             return [];
 
         var hidReadings = await Task.Run(() => ProbeHidDevices(hidInterfaces, cancellationToken), CancellationToken.None).ConfigureAwait(false);
@@ -77,11 +103,11 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
         return ggReadings.Count > 0 ? ggReadings : hidReadings;
     }
 
-    internal static bool HasAnySteelSeriesVendor(IReadOnlyList<HidInterfaceDescriptor> interfaces)
+    internal static bool HasAnyMatchingInterface(IReadOnlyList<HidInterfaceDescriptor> interfaces)
     {
         for (var i = 0; i < interfaces.Count; i++)
         {
-            if (interfaces[i].VendorId == SteelSeriesVendorId)
+            if (IsMatchingInterface(interfaces[i]))
                 return true;
         }
         return false;
@@ -167,21 +193,66 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
         WirelessMouse
     }
 
-    internal static SteelSeriesProtocolKind ClassifyProtocol(ushort productId) => productId switch
+    internal static bool TryClassifyProtocol(ushort productId, out SteelSeriesProtocolKind protocol)
     {
-        NovaProWirelessPid or NovaProWirelessXboxPid => SteelSeriesProtocolKind.NovaProBaseStation,
-        Nova7WirelessPid or Nova7PWirelessPid or Nova7XWirelessPid or Nova7DragonPid or Nova7Gen2Pid
-            or Arctis7PlusPid or Arctis7PPlusPid or Arctis7XPlusPid => SteelSeriesProtocolKind.Nova7AndArctis7Plus,
-        Nova5WirelessPid or Nova5PWirelessPid or Nova5XWirelessPid => SteelSeriesProtocolKind.Nova5Series,
-        Arctis7LegacyPid or Arctis72019Pid or Arctis7PPid or Arctis7XPid or Arctis9Pid => SteelSeriesProtocolKind.Arctis7And9Legacy,
-        ArctisProWirelessPid => SteelSeriesProtocolKind.ArctisProWireless,
-        Aerox3WirelessPid or Aerox32022WirelessPid or Aerox5WirelessPid or Aerox9WirelessPid
-            or PrimeWirelessPid or PrimeMiniWirelessPid or Rival3WirelessPid or Rival650WirelessPid => SteelSeriesProtocolKind.WirelessMouse,
-        _ => SteelSeriesProtocolKind.NovaProBaseStation
-    };
+        switch (productId)
+        {
+            case NovaProWirelessPid:
+            case NovaProWirelessXboxPid:
+                protocol = SteelSeriesProtocolKind.NovaProBaseStation;
+                return true;
+            case Nova7WirelessPid:
+            case Nova7PWirelessPid:
+            case Nova7XWirelessPid:
+            case Nova7DragonPid:
+            case Nova7Gen2Pid:
+            case Nova7Gen2AltPid:
+            case Nova3PPid:
+            case Nova3XPid:
+            case Arctis7PlusPid:
+            case Arctis7PPlusPid:
+            case Arctis7XPlusPid:
+                protocol = SteelSeriesProtocolKind.Nova7AndArctis7Plus;
+                return true;
+            case Nova5WirelessPid:
+            case Nova5PWirelessPid:
+            case Nova5XWirelessPid:
+                protocol = SteelSeriesProtocolKind.Nova5Series;
+                return true;
+            case Arctis1WirelessPid:
+            case Arctis1XboxPid:
+            case Arctis7LegacyPid:
+            case Arctis72019Pid:
+            case Arctis7PPid:
+            case Arctis7XPid:
+            case Arctis9Pid:
+                protocol = SteelSeriesProtocolKind.Arctis7And9Legacy;
+                return true;
+            case ArctisProWirelessPid:
+                protocol = SteelSeriesProtocolKind.ArctisProWireless;
+                return true;
+            case Aerox3WirelessPid:
+            case Aerox32022WirelessPid:
+            case Aerox5WirelessPid:
+            case Aerox9WirelessPid:
+            case PrimeWirelessPid:
+            case PrimeMiniWirelessPid:
+            case Rival3WirelessPid:
+            case Rival650WirelessPid:
+                protocol = SteelSeriesProtocolKind.WirelessMouse;
+                return true;
+            default:
+                protocol = SteelSeriesProtocolKind.NovaProBaseStation;
+                return false;
+        }
+    }
+
+    internal static SteelSeriesProtocolKind ClassifyProtocol(ushort productId) =>
+        TryClassifyProtocol(productId, out var protocol) ? protocol : SteelSeriesProtocolKind.NovaProBaseStation;
 
     internal static bool IsMatchingInterface(HidInterfaceDescriptor descriptor) =>
         descriptor.VendorId == SteelSeriesVendorId
+        && TryClassifyProtocol(descriptor.ProductId, out _)
         && descriptor.UsagePage is VendorUsagePage or MouseVendorUsagePage
         && descriptor.InputReportLength is 64 or 65
         && descriptor.OutputReportLength is 64 or 65;
@@ -359,7 +430,7 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
                 if (reply.Length < 4 || reply[0] != 0x06 || reply[1] != 0x18) return false;
                 var rawLevel = (int)reply[2];
                 if (rawLevel is <= 0 or > 100) return false;
-                var percent = rawLevel <= 4 ? ScaleFourStepToPercent(rawLevel) : rawLevel;
+                var percent = rawLevel;
                 var isCharging = reply.Length > 3 && reply[3] == 0x01;
 
                 reading = new WirelessDeviceReading(
@@ -402,7 +473,7 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
                 var isCharging = (rawByte & 0x80) != 0;
                 var rawLevel = rawByte & 0x7F;
                 if (rawLevel is 0 or > 100) return false;
-                var percent = rawLevel <= 20 ? Math.Clamp((rawLevel - 1) * 5, 0, 100) : rawLevel;
+                var percent = rawLevel;
 
                 reading = new WirelessDeviceReading(
                     Id: id,
@@ -476,35 +547,45 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
         return Uri.TryCreate($"{scheme}://127.0.0.1:{port}", UriKind.Absolute, out endpoint);
     }
 
+    private static bool IsSteelSeriesGgRunning()
+    {
+        foreach (var procName in new[] { "SteelSeriesGG", "SteelSeriesGGClient", "SteelSeriesEngine3" })
+        {
+            var processes = Process.GetProcessesByName(procName);
+            try
+            {
+                if (processes.Length > 0) return true;
+            }
+            finally
+            {
+                foreach (var process in processes)
+                {
+                    try { process.Dispose(); }
+                    catch { }
+                }
+            }
+        }
+        return false;
+    }
+
     private static async Task<IReadOnlyList<WirelessDeviceReading>> ProbeGgLoopbackAsync(CancellationToken cancellationToken)
     {
         try
         {
+            if (!IsSteelSeriesGgRunning())
+                return [];
+
             var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
             var corePropsPath = Path.Combine(programData, "SteelSeries", "SteelSeries Engine 3", "coreProps.json");
-            if (!File.Exists(corePropsPath)) return [];
+            var corePropsInfo = new FileInfo(corePropsPath);
+            if (!corePropsInfo.Exists || corePropsInfo.Length is <= 0 or > MaxCorePropsBytes)
+                return [];
 
             var json = await File.ReadAllTextAsync(corePropsPath, cancellationToken).ConfigureAwait(false);
             if (!TryParseCorePropsLoopbackUri(json, out var baseUri) || baseUri is null)
                 return [];
 
             var allowedPort = baseUri.Port;
-            using var handler = new HttpClientHandler
-            {
-                AllowAutoRedirect = false,
-                UseProxy = false
-            };
-
-            if (string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
-            {
-                handler.ServerCertificateCustomValidationCallback = (request, _, _, _) =>
-                    request?.RequestUri is { Host: "127.0.0.1" } uri && uri.Port == allowedPort;
-            }
-
-            using var client = new HttpClient(handler)
-            {
-                Timeout = TimeSpan.FromSeconds(1)
-            };
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromMilliseconds(950));
@@ -517,10 +598,11 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
                     if (!string.Equals(targetUri.Host, "127.0.0.1", StringComparison.Ordinal) || targetUri.Port != allowedPort)
                         continue;
 
-                    using var response = await client.GetAsync(targetUri, cts.Token).ConfigureAwait(false);
+                    using var response = await LoopbackClient.GetAsync(targetUri, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode) continue;
 
-                    var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+                    var body = await ReadBoundedStringAsync(response.Content, MaxLoopbackResponseBytes, cts.Token).ConfigureAwait(false);
+                    if (body is null) continue;
                     var parsed = ParseGgBatteryJson(body, DateTimeOffset.UtcNow);
                     if (parsed.Count > 0) return parsed;
                 }
@@ -534,6 +616,25 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
         }
 
         return [];
+    }
+
+    private static async Task<string?> ReadBoundedStringAsync(HttpContent content, int maxBytes, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > 0 and var len && len > maxBytes)
+            return null;
+
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var ms = new MemoryStream();
+        var chunk = new byte[8192];
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk.AsMemory(0, chunk.Length), cancellationToken).ConfigureAwait(false);
+            if (read == 0) break;
+            if (ms.Length + read > maxBytes) return null;
+            ms.Write(chunk, 0, read);
+        }
+
+        return System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     internal static IReadOnlyList<WirelessDeviceReading> ParseGgBatteryJson(string json, DateTimeOffset sampledAt)
@@ -574,8 +675,8 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
 
             if (battery is >= 0 and <= 100)
             {
-                var name = element.TryGetProperty("displayName", out var dn) ? dn.GetString()
-                    : element.TryGetProperty("name", out var n) ? n.GetString()
+                var name = element.TryGetProperty("displayName", out var dn) && dn.ValueKind == JsonValueKind.String ? dn.GetString()
+                    : element.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()
                     : "SteelSeries Wireless";
                 var charging = element.TryGetProperty("charging", out var ch) && ch.ValueKind == JsonValueKind.True
                     || element.TryGetProperty("isCharging", out var ich) && ich.ValueKind == JsonValueKind.True;
@@ -610,8 +711,11 @@ internal sealed class SteelSeriesBatteryProvider : IWirelessBatteryProvider
     internal static string GetDefaultModelName(ushort productId) => productId switch
     {
         NovaProWirelessPid or NovaProWirelessXboxPid => "Arctis Nova Pro Wireless",
-        Nova7WirelessPid or Nova7PWirelessPid or Nova7XWirelessPid or Nova7DragonPid or Nova7Gen2Pid => "Arctis Nova 7 Wireless",
+        Nova7WirelessPid or Nova7PWirelessPid or Nova7XWirelessPid or Nova7DragonPid or Nova7Gen2Pid or Nova7Gen2AltPid => "Arctis Nova 7 Wireless",
+        Nova3PPid => "Arctis Nova 3P Wireless",
+        Nova3XPid => "Arctis Nova 3X Wireless",
         Nova5WirelessPid or Nova5PWirelessPid or Nova5XWirelessPid => "Arctis Nova 5 Wireless",
+        Arctis1WirelessPid or Arctis1XboxPid => "Arctis 1 Wireless",
         Arctis7PlusPid or Arctis7PPlusPid or Arctis7XPlusPid => "Arctis 7+ Wireless",
         Arctis7LegacyPid or Arctis72019Pid or Arctis7PPid or Arctis7XPid => "Arctis 7 Wireless",
         Arctis9Pid => "Arctis 9 Wireless",
