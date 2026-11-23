@@ -436,7 +436,7 @@ public partial class MainWindow : Window
         StartupStopwatch.Mark("dock first paint");
         // Split startup into short phases at Background priority so input can preempt each step. Previously two
         // monolithic Loaded jobs (390-510 ms + 170-260 ms) blocked every click during the first half second.
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () =>
         {
             if (!IsLoaded) return;
             var content = StartupStopwatch.Start("dock content");
@@ -444,18 +444,31 @@ public partial class MainWindow : Window
             StartupStopwatch.Mark("widgets placed");
             ApplyStartIcon();
             StartupStopwatch.Mark("start icon applied");
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-            {
-                if (!IsLoaded) return;
-                LoadPinnedApps(_preferences.Current.PinOrder);
-                StartupStopwatch.Mark("pinned apps and icons loaded");
-                InitializeExtras();
-                RebuildDockOrder();
-                PositionDock();
-                content.Finish("content total");
-                Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FinalizeWindowTracking));
-            }));
+            await PopulateDockContentAsync(content);
         }));
+    }
+
+    private async Task PopulateDockContentAsync(StartupStopwatch.Scope content)
+    {
+        (IReadOnlyList<DockApp> Apps, string? ErrorKey, int SkippedCount) pins;
+        try
+        {
+            pins = await StaTask.Run(WindowsTaskbarPinImporter.Import);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Startup pin import failed: {ex.GetType().Name}.");
+            pins = ([], "ErrorTaskbarPinsRead", 0);
+        }
+
+        if (_source is null || !IsLoaded) return;
+        ApplyImportedPins(pins, _preferences.Current.PinOrder);
+        StartupStopwatch.Mark("pins imported, icon loads queued");
+        InitializeExtras();
+        RebuildDockOrder();
+        PositionDock();
+        content.Finish("content total");
+        await Dispatcher.InvokeAsync(FinalizeWindowTracking, DispatcherPriority.Background);
     }
 
     /// <summary>Starts native window tracking in its own short phase (#128 finding 8).</summary>
@@ -484,6 +497,7 @@ public partial class MainWindow : Window
         StartupStopwatch.Mark("window tracking started");
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
+            if (_source is null || !IsLoaded) return;
             // Taskbar replacement already reserved the shelf in SourceInitialized; start TrayHost (ManagedShell)
             // after the layout phase so its COM/broadcast init never delays painting or input.
             if (_replacementSession is null) StartReplacementMode(startTrayHost: true);
@@ -731,16 +745,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadPinnedApps(IReadOnlyList<string>? preferredOrder = null)
+    private void ApplyImportedPins(
+        (IReadOnlyList<DockApp> Apps, string? ErrorKey, int SkippedCount) result, IReadOnlyList<string>? preferredOrder)
     {
-        var result = WindowsTaskbarPinImporter.Import();
         var apps = result.Apps.ToList();
-        foreach (var app in apps)
-        {
-            // Cold shell-item loads cost 130-175 ms each on the UI thread (#128 finding 7). DockApp.Icon notifies,
-            // so the icon can pop in once the shared STA loader finishes without blocking first paint.
-            LoadPinnedIconAsync(app);
-        }
 
         if (preferredOrder is { Count: > 0 })
         {
@@ -761,7 +769,9 @@ public partial class MainWindow : Window
 
         foreach (var app in apps)
         {
+            if (_pinnedApps.Any(existing => SamePath(existing.ExecutablePath, app.ExecutablePath))) continue;
             _pinnedApps.Add(app);
+            LoadPinnedIconAsync(app);
         }
 
         if (result.ErrorKey is not null)
@@ -769,7 +779,6 @@ public partial class MainWindow : Window
             ReportError(result.ErrorKey);
         }
         else if (result.SkippedCount > 0) ReportError("SkippedPins", true, result.SkippedCount);
-        RebuildDockOrder();
     }
 
     private void WindowTracker_WindowsChanged(object? sender, IReadOnlyList<TrackedWindow> windows)
@@ -1974,10 +1983,34 @@ public partial class MainWindow : Window
         PinRunningApp(app);
     }
 
+    private void PinApplication_Click(object sender, RoutedEventArgs e)
+    {
+        var label = UiText.Get("PinApplication");
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = label,
+            Filter = $"{label} (*.exe)|*.exe",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        var path = dialog.FileName;
+        if (!Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+        {
+            ReportError("ErrorTaskbarPin");
+            return;
+        }
+        PinRunningApp(new DockApp(Path.GetFileNameWithoutExtension(path), path));
+    }
+
     internal void PinRunningApp(DockApp app, int insertIndex = -1)
     {
         if (RevealHiddenPin(app)) return;
-        var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(app.Name, app.ExecutablePath, app.LaunchArguments);
+        if (_pinnedApps.Any(existing => SamePath(existing.ExecutablePath, app.ExecutablePath))) return;
+
+        var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(
+            app.Name, app.ExecutablePath, app.LaunchArguments, app.AppUserModelId, app.IconLocation);
         if (error is not null || shortcutPath is null)
         {
             ReportError(error ?? "ErrorAppPinFailed");
@@ -1988,11 +2021,14 @@ public partial class MainWindow : Window
         {
             Icon = app.Icon,
             LaunchArguments = app.LaunchArguments,
+            AppUserModelId = app.AppUserModelId,
+            IconLocation = app.IconLocation,
             ShortcutPath = shortcutPath,
             HasNotification = app.HasNotification,
             IsForeground = app.IsForeground,
             WindowCount = app.WindowCount
         };
+        if (pinnedApp.Icon is null) LoadPinnedIconAsync(pinnedApp);
 
         _runningApps.Remove(app);
         if (insertIndex >= 0 && insertIndex <= _pinnedApps.Count)
@@ -2005,6 +2041,7 @@ public partial class MainWindow : Window
         }
 
         SavePinOrder();
+        if (_windowTracker is not null) RefreshRunningApps();
         ResizeDockToContent();
         _replacementSession?.RefreshPosition();
     }
@@ -3637,6 +3674,7 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        StopShowDesktopDrag();
         _widgetPanel.IsOpenChanged -= WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed -= ReportError;
         _widgetPanel.Dispose();

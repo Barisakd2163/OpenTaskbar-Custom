@@ -6,11 +6,14 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.Win32;
 using OpenTaskbar.Models;
+using Windows.Management.Deployment;
 
 namespace OpenTaskbar.Services;
 
 public static class WindowsTaskbarPinImporter
 {
+    private const string AppsFolderPrefix = "shell:AppsFolder\\";
+
     public static (IReadOnlyList<DockApp> Apps, string? ErrorKey, int SkippedCount) Import()
     {
         var taskbarPinsPath = Path.Combine(
@@ -81,9 +84,6 @@ public static class WindowsTaskbarPinImporter
         {
             foreach (var shortcutPath in shortcutPaths)
             {
-                string? targetPath = null;
-                string? arguments = null;
-                string? iconLocation = null;
                 try
                 {
                     var shortcut = shellType.InvokeMember(
@@ -94,7 +94,7 @@ public static class WindowsTaskbarPinImporter
                         args: [shortcutPath]);
                     if (shortcut is null)
                     {
-                        LogSkipped(shortcutPath, targetPath, iconLocation);
+                        LogSkipped("Shortcut unavailable");
                         skippedCount++;
                         continue;
                     }
@@ -102,16 +102,23 @@ public static class WindowsTaskbarPinImporter
                     try
                     {
                         var shortcutType = shortcut.GetType();
-                        targetPath = ReadStringProperty(shortcutType, shortcut, "TargetPath");
-                        arguments = ReadStringProperty(shortcutType, shortcut, "Arguments");
-                        iconLocation = ReadStringProperty(shortcutType, shortcut, "IconLocation");
-                        var executablePath = ResolveExecutablePath(targetPath, iconLocation);
-                        if (executablePath is null || !seenPaths.Add(executablePath))
+                        var targetPath = ReadStringProperty(shortcutType, shortcut, "TargetPath");
+                        var arguments = ReadStringProperty(shortcutType, shortcut, "Arguments");
+                        var iconLocation = ReadStringProperty(shortcutType, shortcut, "IconLocation");
+                        var aumid = TryExtractAumidFromArguments(arguments)
+                            ?? TryExtractAumidFromArguments(targetPath);
+                        var packaged = aumid is null ? null : TryResolvePackagedApp(aumid);
+                        var executablePath = packaged?.ExecutablePath ?? ResolveExecutablePath(targetPath, iconLocation);
+                        // An AppsFolder shortcut may target Explorer, which is also separately pinned.
+                        // Never assign that shared host path to a packaged app.
+                        if (executablePath is null || (aumid is not null && packaged is null
+                            && string.Equals(Path.GetFileName(executablePath), "explorer.exe", StringComparison.OrdinalIgnoreCase)))
                         {
-                            LogSkipped(shortcutPath, targetPath, iconLocation);
+                            LogSkipped("Application target unavailable");
                             skippedCount++;
                             continue;
                         }
+                        if (!seenPaths.Add(executablePath)) continue;
 
                         apps.Add(new DockApp(Path.GetFileNameWithoutExtension(shortcutPath), executablePath)
                         {
@@ -120,8 +127,7 @@ public static class WindowsTaskbarPinImporter
                             IconLocation = string.IsNullOrWhiteSpace(iconLocation) ? null : iconLocation,
                             // Store apps pinned via .lnk point at WindowsApps\*.exe, which cannot be launched
                             // directly. Capture the packaged AUMID so shell:AppsFolder activation works.
-                            AppUserModelId = ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath)
-                                ?? TryExtractAumidFromArguments(arguments)
+                            AppUserModelId = aumid ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(executablePath)
                         });
                     }
                     finally
@@ -134,22 +140,17 @@ public static class WindowsTaskbarPinImporter
                 }
                 catch (COMException)
                 {
-                    LogSkipped(shortcutPath, targetPath, iconLocation);
+                    LogSkipped("Shell shortcut read failed");
                     skippedCount++;
                 }
                 catch (TargetInvocationException ex) when (ex.InnerException is COMException)
                 {
-                    LogSkipped(shortcutPath, targetPath, iconLocation);
+                    LogSkipped("Shell shortcut read failed");
                     skippedCount++;
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
                 {
-                    LogSkipped(shortcutPath, targetPath, iconLocation);
-                    skippedCount++;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    LogSkipped(shortcutPath, targetPath, iconLocation);
+                    LogSkipped(ex.GetType().Name);
                     skippedCount++;
                 }
             }
@@ -241,18 +242,27 @@ public static class WindowsTaskbarPinImporter
         var packageName = familyName[..underscore];
         var publisherId = familyName[(underscore + 1)..];
 
-        var root = windowsAppsRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsApps");
-        if (!Directory.Exists(root)) return null;
-
-        IEnumerable<string> packageDirs;
+        string[] packageDirs;
         try
         {
-            packageDirs = Directory.EnumerateDirectories(root, $"{packageName}_*_{publisherId}")
-                .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+            // The WindowsApps parent may deny enumeration, and apps can be installed on another volume.
+            // Query packages registered for the current user to get their actual locations.
+            packageDirs = windowsAppsRoot is null
+                ? new PackageManager().FindPackagesForUser(string.Empty, familyName)
+                    .OrderByDescending(package => package.Id.Version.Major)
+                    .ThenByDescending(package => package.Id.Version.Minor)
+                    .ThenByDescending(package => package.Id.Version.Build)
+                    .ThenByDescending(package => package.Id.Version.Revision)
+                    .Select(package => package.InstalledLocation.Path)
+                    .ToArray()
+                : Directory.EnumerateDirectories(windowsAppsRoot, $"{packageName}_*_{publisherId}")
+                    .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or COMException)
         {
-            return null;
+            AppLog.Warning($"Packaged taskbar pin lookup failed: {ex.GetType().Name}.");
+            packageDirs = [];
         }
 
         foreach (var packageDir in packageDirs)
@@ -282,7 +292,9 @@ public static class WindowsTaskbarPinImporter
                 }
                 if (string.IsNullOrWhiteSpace(displayName) || displayName.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
                 {
-                    displayName = Path.GetFileNameWithoutExtension(fullExe);
+                    displayName = (windowsAppsRoot is null
+                        ? ApplicationIconProvider.GetShellItemDisplayName(AppsFolderPrefix + aumid)
+                        : null) ?? Path.GetFileNameWithoutExtension(fullExe);
                 }
 
                 return (displayName, fullExe);
@@ -293,10 +305,15 @@ public static class WindowsTaskbarPinImporter
             }
         }
 
-        return null;
+        // Some valid AppsFolder entries, including system apps, expose no accessible executable.
+        if (windowsAppsRoot is not null || !AppShortcutResolver.IsPackagedAppUserModelId(aumid)) return null;
+        var parsingName = AppsFolderPrefix + aumid;
+        var shellName = ApplicationIconProvider.GetShellItemDisplayName(parsingName);
+        return string.IsNullOrWhiteSpace(shellName) ? null : (shellName, parsingName);
     }
 
-    public static (string? ShortcutPath, string? Error) AddPin(string appName, string executablePath, string? launchArguments = null)
+    public static (string? ShortcutPath, string? Error) AddPin(
+        string appName, string executablePath, string? launchArguments = null, string? appUserModelId = null, string? iconLocation = null)
     {
         var pinDirectory = Path.GetFullPath(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -323,6 +340,11 @@ public static class WindowsTaskbarPinImporter
         }
 
         var shortcutPath = Path.Combine(pinDirectory, safeName + ".lnk");
+        for (var suffix = 2; File.Exists(shortcutPath); suffix++)
+        {
+            if (suffix > 100) return (null, "ErrorTaskbarPin");
+            shortcutPath = Path.Combine(pinDirectory, $"{safeName} ({suffix}).lnk");
+        }
 
         Type? shellType;
         object? shell;
@@ -362,15 +384,27 @@ public static class WindowsTaskbarPinImporter
             try
             {
                 var shortcutType = shortcut.GetType();
-                shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, [executablePath]);
-                var workingDir = Path.GetDirectoryName(executablePath);
+                appUserModelId ??= TryExtractAumidFromArguments(launchArguments) ?? GetAppsFolderAumid(executablePath);
+                var packaged = AppShortcutResolver.IsPackagedAppUserModelId(appUserModelId);
+                var target = packaged
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe")
+                    : executablePath;
+                shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, [target]);
+                var workingDir = Path.GetDirectoryName(target);
                 if (!string.IsNullOrEmpty(workingDir))
                 {
                     shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, [workingDir]);
                 }
-                if (!string.IsNullOrWhiteSpace(launchArguments))
+                var arguments = packaged
+                    ? $"shell:AppsFolder\\{appUserModelId?.Trim()}"
+                    : launchArguments;
+                if (!string.IsNullOrWhiteSpace(arguments))
                 {
-                    shortcutType.InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut, [launchArguments]);
+                    shortcutType.InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut, [arguments]);
+                }
+                if (!string.IsNullOrWhiteSpace(iconLocation))
+                {
+                    shortcutType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, shortcut, [iconLocation]);
                 }
                 shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
                 return (shortcutPath, null);
@@ -427,8 +461,7 @@ public static class WindowsTaskbarPinImporter
         }
     }
 
-    private static void LogSkipped(string shortcutPath, string? targetPath, string? iconLocation) =>
-        AppLog.Warning($"Skipped taskbar pin '{Path.GetFileName(shortcutPath)}': target='{targetPath}', icon='{iconLocation}'.");
+    private static void LogSkipped(string reason) => AppLog.Warning($"Skipped taskbar pin. {reason}.");
 
     /// <summary>
     /// Explorer-based pins for Store apps carry "shell:AppsFolder\\&lt;AUMID&gt;" in the arguments. Capturing it
@@ -446,6 +479,13 @@ public static class WindowsTaskbarPinImporter
         return AppShortcutResolver.IsPackagedAppUserModelId(candidate) ? candidate : null;
     }
 
+    internal static string? GetAppsFolderAumid(string path)
+    {
+        if (!path.StartsWith(AppsFolderPrefix, StringComparison.OrdinalIgnoreCase)) return null;
+        var aumid = path[AppsFolderPrefix.Length..];
+        return AppShortcutResolver.IsPackagedAppUserModelId(aumid) ? aumid.Trim() : null;
+    }
+
     private static string? ResolveExecutablePath(string targetPath, string iconLocation)
     {
         var normalizedTarget = Environment.ExpandEnvironmentVariables(targetPath.Trim().Trim('"'));
@@ -458,15 +498,8 @@ public static class WindowsTaskbarPinImporter
         // Many taskbar pins are helper/stub shortcuts whose TargetPath has moved or points at a protocol.
         // The icon location still names the real executable in most of those cases, so use it as a fallback
         // instead of dropping the pin (#147).
-        var iconPath = Environment.ExpandEnvironmentVariables(iconLocation.Split(',', 2)[0].Trim().Trim('"'));
-        if (Path.GetExtension(iconPath).Equals(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(iconPath))
-        {
-            return Path.GetFullPath(iconPath);
-        }
-
-        if (string.IsNullOrWhiteSpace(normalizedTarget)
-            && string.Equals(Path.GetFileName(iconPath), "explorer.exe", StringComparison.OrdinalIgnoreCase)
-            && File.Exists(iconPath))
+        if (ApplicationIconProvider.TryParseIconLocation(iconLocation, out var iconPath, out _)
+            && Path.GetExtension(iconPath).Equals(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(iconPath))
         {
             return Path.GetFullPath(iconPath);
         }

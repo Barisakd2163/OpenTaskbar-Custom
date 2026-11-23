@@ -41,6 +41,7 @@
         </ContextMenu>
         <ContextMenu x:Key="DockContextMenu" Opened="DockContextMenu_Opened" Closed="DockContextMenu_Closed">
             <MenuItem Header="{local:Loc OpenLauncher}" Icon="{StaticResource IconSearch}" Click="OpenSearch_Click" />
+            <MenuItem Header="{local:Loc PinApplication}" Icon="{StaticResource IconPin}" Click="PinApplication_Click" />
             <MenuItem Header="{local:Loc AddStack}" Icon="{StaticResource IconFolderPlus}" Click="AddStack_Click" />
             <MenuItem Header="{local:Loc NewGroup}" Icon="{StaticResource IconLayers}" Tag="NewGroup" Click="NewGroup_Click" />
             <MenuItem Header="{local:Loc Profiles}" Icon="{StaticResource IconLayers}" Tag="ProfilesMenu">
@@ -399,6 +400,9 @@
                             </ItemsControl>
                             <Button x:Name="ShowDesktopButton" Style="{StaticResource DockButton}" Width="6"
                                     Click="ShowDesktop_Click" Cursor="Hand"
+                                    AllowDrop="True" DragOver="ShowDesktop_DragOver"
+                                    DragLeave="ShowDesktop_DragLeave" Drop="ShowDesktop_Drop"
+                                    IsVisibleChanged="ShowDesktop_IsVisibleChanged"
                                     PreviewMouseLeftButtonDown="ShellButton_PreviewMouseLeftButtonDown"
                                     PreviewMouseMove="ShellButton_PreviewMouseMove"
                                     PreviewMouseLeftButtonUp="ShellButton_PreviewMouseLeftButtonUp"

@@ -23,6 +23,8 @@ public partial class MainWindow
     {
         public string Token { get; } = token;
         public IReadOnlyList<LiveDockSlot> Slots { get; } = slots;
+        public IReadOnlyList<(double Start, double Size)> InsertionSlots { get; } =
+            slots.Select(slot => (slot.Start, slot.Size)).ToArray();
         public int DraggedIndex { get; } = draggedIndex;
         public LiveDockSlot Dragged => Slots[DraggedIndex];
         public double Origin { get; } = origin;
@@ -51,6 +53,13 @@ public partial class MainWindow
     private void DockContents_LiveDragOver(object sender, DragEventArgs e)
     {
         if (!TryGetDockItemToken(e, out var token)) return;
+        if (e.Data.GetDataPresent(typeof(Models.DockApp))
+            && e.OriginalSource is Visual source
+            && FindVisualParent<Button>(source)?.DataContext is GroupViewModel)
+        {
+            CancelLiveDrag();
+            return;
+        }
         var pointer = PointerAlongDock(e);
         if (_liveDrag is null) BeginLiveDrag(token, pointer);
         if (_liveDrag is { } drag && string.Equals(drag.Token, token, StringComparison.OrdinalIgnoreCase))
@@ -95,7 +104,7 @@ public partial class MainWindow
             Math.Max(-dragged.Start, extent - dragged.Start - dragged.Size));
         Place(dragged.Translate, drag.Offset);
 
-        var index = DockItemOrdering.InsertionIndex(drag.Slots.Select(s => (s.Start, s.Size)).ToList(), pointer);
+        var index = DockItemOrdering.InsertionIndex(drag.InsertionSlots, pointer);
         if (index == drag.InsertionIndex) return;
         drag.InsertionIndex = index;
         for (var i = 0; i < drag.Slots.Count; i++)
@@ -106,8 +115,8 @@ public partial class MainWindow
     }
 
     /// <summary>Drop index: the live index while a live drag is shown, so the item lands where the gap opened.</summary>
-    private int DropInsertionIndex(DragEventArgs e) => _liveDrag is { } drag
-        ? DockItemOrdering.InsertionIndex(drag.Slots.Select(s => (s.Start, s.Size)).ToList(), PointerAlongDock(e))
+    private int DropInsertionIndex(DragEventArgs e) => _liveDrag is { InsertionIndex: >= 0 } drag
+        ? drag.InsertionIndex
         : GetDockInsertionIndex(e);
 
     /// <summary>Drops a dragged dock item: moves it, then glides it from the pointer into its new slot.</summary>

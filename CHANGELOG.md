@@ -13,6 +13,13 @@
 
 ## Unreleased
 
+- Reveal the desktop when a file is dragged over the Show Desktop strip. Drop directly onto the strip to copy, or hold Shift to move (#148).
+- Add an application pin command to the dock menu and preserve Store app identities and icons, including AppsFolder entries that lack a readable executable (#147).
+- Update an existing Windows startup entry when a newer portable copy is opened from a different location or the registered executable no longer exists (#152).
+- Keep app grouping separate from the live reordering preview when dragging an app over a group (#130).
+- Stop the charging battery animation after a short pulse and import pinned apps off the UI thread at startup (#128).
+- Avoid restarting icon magnification resets and replacing hover bitmaps while the icons settle (#125, #127).
+
 - Fixed the Audio widget showing generic speaker and microphone labels on x86 when Windows provides the device names.
 - Added runtime detection and measured dock anchoring for alternate Windows Search flyouts, with the existing Search host and native Win+S available as fallbacks.
 

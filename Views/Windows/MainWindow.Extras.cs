@@ -719,13 +719,15 @@ public partial class MainWindow
         var added = 0;
         foreach (var pin in pins)
         {
-            if (!File.Exists(pin.ExecutablePath)
+            var aumid = WindowsTaskbarPinImporter.GetAppsFolderAumid(pin.ExecutablePath);
+            if ((aumid is null && !File.Exists(pin.ExecutablePath))
                 || _pinnedApps.Any(app => string.Equals(app.ExecutablePath, pin.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
 
-            var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(pin.Name, pin.ExecutablePath, pin.Arguments);
+            if (aumid is not null && WindowsTaskbarPinImporter.TryResolvePackagedApp(aumid) is null) continue;
+            var (shortcutPath, error) = WindowsTaskbarPinImporter.AddPin(pin.Name, pin.ExecutablePath, pin.Arguments, aumid);
             if (error is not null || shortcutPath is null)
             {
                 AppLog.Warning($"Import pin {pin.ExecutablePath}: {error}");
@@ -736,8 +738,9 @@ public partial class MainWindow
             {
                 // GetForPinnedApp resolves Store app AUMIDs from the executable path as a fallback,
                 // so backed-up pins of packaged apps keep their real icon too.
-                Icon = ApplicationIconProvider.GetForPinnedApp(pin.ExecutablePath),
+                Icon = ApplicationIconProvider.GetForPinnedApp(pin.ExecutablePath, appUserModelId: aumid),
                 LaunchArguments = pin.Arguments,
+                AppUserModelId = aumid,
                 ShortcutPath = shortcutPath
             });
             added++;

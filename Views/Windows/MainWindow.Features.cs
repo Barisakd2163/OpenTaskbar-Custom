@@ -32,6 +32,8 @@ public partial class MainWindow
     private bool _profileFilterApplied;
     private readonly List<SecondaryDockWindow> _secondaryDocks = [];
     private DispatcherTimer? _secondaryTimer;
+    private DispatcherTimer? _showDesktopDragTimer;
+    private bool _desktopDropInProgress;
 
     private void OnAnyDockFlyoutClosed() => _autoHideController?.EvaluateState();
 
@@ -117,6 +119,82 @@ public partial class MainWindow
 
     private void ShowDesktop_Click(object sender, RoutedEventArgs e) =>
         ReportResult(ShellShortcuts.ToggleShowDesktop());
+
+    private void ShowDesktop_DragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop, autoConvert: false)) return;
+
+        e.Effects = _desktopDropInProgress ? DragDropEffects.None : DesktopDropEffect(e);
+        e.Handled = true;
+        if (e.Effects == DragDropEffects.None || _showDesktopDragTimer is not null) return;
+
+        _showDesktopDragTimer = new DispatcherTimer(DispatcherPriority.Input, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _showDesktopDragTimer.Tick += ShowDesktopDragTimer_Tick;
+        _showDesktopDragTimer.Start();
+    }
+
+    private void ShowDesktopDragTimer_Tick(object? sender, EventArgs e)
+    {
+        _showDesktopDragTimer?.Stop();
+        if (ShowDesktopButton.IsVisible && Mouse.LeftButton == MouseButtonState.Pressed)
+            ReportResult(ShellShortcuts.MinimizeAllWindows());
+    }
+
+    private void ShowDesktop_DragLeave(object sender, DragEventArgs e) => StopShowDesktopDrag();
+
+    private async void ShowDesktop_Drop(object sender, DragEventArgs e)
+    {
+        StopShowDesktopDrag();
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop, autoConvert: false)) return;
+        var effect = DesktopDropEffect(e);
+        // The dock owns the transfer. Do not tell the OLE source to delete its files.
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+        if (_desktopDropInProgress || effect == DragDropEffects.None
+            || e.Data.GetData(DataFormats.FileDrop, autoConvert: false) is not string[] { Length: > 0 } paths)
+        {
+            return;
+        }
+
+        _desktopDropInProgress = true;
+        try
+        {
+            var error = await Task.Run(() => DesktopFileDrop.Transfer(paths, copy: effect == DragDropEffects.Copy));
+            if (error is not null && IsLoaded) ReportError(error);
+        }
+        finally
+        {
+            _desktopDropInProgress = false;
+        }
+    }
+
+    private static DragDropEffects DesktopDropEffect(DragEventArgs e)
+    {
+        var canCopy = (e.AllowedEffects & DragDropEffects.Copy) != 0;
+        var canMove = (e.AllowedEffects & DragDropEffects.Move) != 0;
+        if ((e.KeyStates & DragDropKeyStates.AltKey) != 0) return DragDropEffects.None;
+        if ((e.KeyStates & DragDropKeyStates.ControlKey) != 0)
+            return canCopy ? DragDropEffects.Copy : DragDropEffects.None;
+        if ((e.KeyStates & DragDropKeyStates.ShiftKey) != 0)
+            return canMove ? DragDropEffects.Move : DragDropEffects.None;
+        return canCopy ? DragDropEffects.Copy : canMove ? DragDropEffects.Move : DragDropEffects.None;
+    }
+
+    private void ShowDesktop_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is false) StopShowDesktopDrag();
+    }
+
+    private void StopShowDesktopDrag()
+    {
+        if (_showDesktopDragTimer is not { } timer) return;
+        timer.Stop();
+        timer.Tick -= ShowDesktopDragTimer_Tick;
+        _showDesktopDragTimer = null;
+    }
 
     // ---- Global hotkeys (#2) ----
 

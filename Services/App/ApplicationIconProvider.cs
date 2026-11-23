@@ -294,6 +294,25 @@ public static class ApplicationIconProvider
             : icon;
     }
 
+    internal static string? GetShellItemDisplayName(string parsingName)
+    {
+        var itemId = typeof(IShellItem).GUID;
+        if (SHCreateItemFromParsingName(parsingName, 0, ref itemId, out var shellObject) != 0
+            || shellObject is not IShellItem item)
+            return null;
+
+        nint displayName = 0;
+        try
+        {
+            return item.GetDisplayName(0, out displayName) == 0 ? Marshal.PtrToStringUni(displayName) : null;
+        }
+        finally
+        {
+            if (displayName != 0) Marshal.FreeCoTaskMem(displayName);
+            Marshal.ReleaseComObject(item);
+        }
+    }
+
     private static BitmapSource? LoadShellItemImage(string parsingName, int size, bool iconOnly)
     {
         var factoryId = typeof(IShellItemImageFactory).GUID;
@@ -373,6 +392,14 @@ public static class ApplicationIconProvider
     {
         [PreserveSig]
         int GetImage(NativeSize size, int flags, out nint bitmap);
+    }
+
+    [ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItem
+    {
+        [PreserveSig] int BindToHandler(nint bindContext, in Guid handler, in Guid iid, out nint result);
+        [PreserveSig] int GetParent(out nint parent);
+        [PreserveSig] int GetDisplayName(uint format, out nint name);
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]

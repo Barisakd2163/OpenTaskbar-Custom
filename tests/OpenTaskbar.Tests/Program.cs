@@ -66,6 +66,11 @@ void AppLaunchChecks()
         "Explorer-based Store pins must expose their AUMID from the shortcut arguments.");
     Check(WindowsTaskbarPinImporter.TryExtractAumidFromArguments("--not-a-packaged-app") is null,
         "Unrelated arguments must not be mistaken for a packaged app AUMID.");
+    Check(WindowsTaskbarPinImporter.GetAppsFolderAumid(@"shell:AppsFolder\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App")
+        == "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+        "AppsFolder-only pins must keep their packaged identity through backup and restore.");
+    Check(WindowsTaskbarPinImporter.GetAppsFolderAumid(@"shell:AppsFolder\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App extra") is null,
+        "A stored AppsFolder pin must contain only an AUMID.");
 }
 
 // The tray flyout shows its last list at once and rebuilds only when a fresh enumeration differs.

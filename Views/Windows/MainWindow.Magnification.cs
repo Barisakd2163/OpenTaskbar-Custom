@@ -814,6 +814,12 @@ public partial class MainWindow
             // while the icon ScaleTransform stays at 1.5x, causing overlap and a re-bloom on the next MouseMove.
             // StepSpring zeroes velocity on Settled, so the next real MouseMove just re-arms the converged spring.
             // Layout overrides are restored by ResetMagnification when the pointer actually leaves the dock.
+            if (!_hasMagnificationPointer)
+            {
+                _magnificationScaleTargets.Clear();
+                _magnifiedIcons.Clear();
+                _hoverIconStates.Clear();
+            }
             StopMagnificationRendering();
         }
     }
@@ -832,7 +838,6 @@ public partial class MainWindow
                     DockScrollViewer.SuppressOverflowIndicators = true;
                 }
                 _magnificationLayoutActive = true;
-                var appliedDelta = 0.0;
                 // Skipping sub-pixel writes avoids a full dock layout pass on most frames - the main source of judder.
                 for (var i = 0; i < _magnificationTargets.Count; i++)
                 {
@@ -841,12 +846,10 @@ public partial class MainWindow
                     if (vertical)
                     {
                         if (Math.Abs(target.Button.Height - slotSize) >= 0.25) target.Button.Height = slotSize;
-                        if (double.IsFinite(target.Button.Height)) appliedDelta += Math.Max(0.0, target.Button.Height - target.BaseSize);
                     }
                     else
                     {
                         if (Math.Abs(target.Button.Width - slotSize) >= 0.25) target.Button.Width = slotSize;
-                        if (double.IsFinite(target.Button.Width)) appliedDelta += Math.Max(0.0, target.Button.Width - target.BaseSize);
                     }
                 }
 
@@ -974,16 +977,20 @@ public partial class MainWindow
 
     private void ResetMagnification(bool immediate = false)
     {
+        if (!immediate && !_hasMagnificationPointer && _magnificationRendering
+            && _magnificationScaleTargets.Count > 0
+            && _magnificationScaleTargets.Values.All(target => target == 1.0))
+        {
+            return;
+        }
         _hasMagnificationPointer = false;
-        // Clear stale hover-icon state even on the no-op path below: scroll/layout signals can call this
-        // repeatedly after the icons have already returned to rest, leaving dead keys behind otherwise.
-        _hoverIconStates.Clear();
         // Scroll/layout signals call this many times per gesture. Once everything is already at rest there is
         // nothing to clear; avoid rebuilding the reset list and re-arming no-op work on every frame (#127).
         if (!_magnificationLayoutActive
             && _magnificationScaleTargets.Count == 0
             && _magnifiedIcons.Count == 0)
         {
+            _hoverIconStates.Clear();
             return;
         }
         var iconsToReset = _magnificationScaleTargets.Keys
@@ -1015,6 +1022,7 @@ public partial class MainWindow
             ClearMagnificationZIndexes();
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
+            _hoverIconStates.Clear();
             _magnificationTargetsDirty = true;
             return;
         }
@@ -1030,11 +1038,13 @@ public partial class MainWindow
 
         if (!anyMagnified)
         {
+            foreach (var icon in iconsToReset) UseHoverIcon(icon, false);
             StopMagnificationRendering();
             ClearMagnificationLayoutOverrides();
             ClearMagnificationZIndexes();
             _magnificationScaleTargets.Clear();
             _magnifiedIcons.Clear();
+            _hoverIconStates.Clear();
             return;
         }
 

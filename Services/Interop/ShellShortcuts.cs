@@ -1066,6 +1066,31 @@ public static partial class ShellShortcuts
     /// <summary>Win+D: toggles the desktop. Used by the slim trailing Show Desktop strip.</summary>
     public static string? ToggleShowDesktop() => SendWindowsShortcut(VkD);
 
+    // Modifier keys held for a file drag must not change what the Shell does.
+    public static string? MinimizeAllWindows()
+    {
+        object? shell = null;
+        try
+        {
+            var type = Type.GetTypeFromProgID("Shell.Application");
+            if (type is null || (shell = Activator.CreateInstance(type)) is null)
+                return UiText.Get("ErrorShortcutSend");
+
+            type.InvokeMember("MinimizeAll", System.Reflection.BindingFlags.InvokeMethod, null, shell, null);
+            return null;
+        }
+        catch (Exception ex) when (ex is COMException or System.Reflection.TargetInvocationException
+            or MissingMethodException or UnauthorizedAccessException)
+        {
+            AppLog.Warning($"Cannot reveal the desktop during a file drag: {ex.GetType().Name}.");
+            return UiText.Get("ErrorShortcutSend");
+        }
+        finally
+        {
+            if (shell is not null && Marshal.IsComObject(shell)) _ = Marshal.FinalReleaseComObject(shell);
+        }
+    }
+
     /// <summary>Win+R: opens the native Run dialog.</summary>
     public const ushort VkR = 0x52;
     public static string? OpenRunDialog() => SendWindowsShortcut(VkR);

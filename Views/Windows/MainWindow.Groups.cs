@@ -363,6 +363,7 @@ public partial class MainWindow
 
         if (e.Data.GetData(typeof(DockApp)) is DockApp app)
         {
+            CancelLiveDrag();
             // Dropping an app onto a group icon adds it (removing it from any previous group).
             RemoveAppFromItsGroup(app.ExecutablePath, save: false, preserveGroupId: group.Id);
             var groups = AppGroups.Select(g => SamePath(g.Id, group.Id)
