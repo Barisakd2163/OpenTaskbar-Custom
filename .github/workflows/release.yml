@@ -175,8 +175,39 @@ jobs:
           prerelease: ${{ needs.build.outputs.is_prerelease == 'true' }}
           body_path: release/release-notes.md
           generate_release_notes: false
+          overwrite_files: true
           files: |
             release/OpenTaskbar-*-win-*.exe
             release/OpenTaskbar-*.zip
             release/checksums.txt
             release/release-manifest.json
+
+      - name: Remove stale release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag_name }}
+        run: |
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release assets for $env:RELEASE_TAG." }
+
+          $expected = @(
+            "OpenTaskbar-$env:RELEASE_TAG-win-x64.exe",
+            "OpenTaskbar-$env:RELEASE_TAG-win-x64.zip",
+            "OpenTaskbar-$env:RELEASE_TAG-win-x86.exe",
+            "OpenTaskbar-$env:RELEASE_TAG-win-x86.zip",
+            'checksums.txt',
+            'release-manifest.json'
+          )
+          $assetNames = @($release.assets | ForEach-Object name)
+          $missing = @($expected | Where-Object { $_ -notin $assetNames })
+          if ($missing.Count -gt 0) {
+            throw "Release $env:RELEASE_TAG is missing expected assets: $($missing -join ', ')."
+          }
+
+          $staleAssets = @($release.assets | Where-Object { $_.name -notin $expected })
+          foreach ($asset in $staleAssets) {
+            gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)"
+            if ($LASTEXITCODE -ne 0) { throw "Could not remove stale release asset $($asset.name)." }
+            Write-Host "Removed stale release asset: $($asset.name)"
+          }
