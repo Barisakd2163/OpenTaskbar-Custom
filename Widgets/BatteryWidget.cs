@@ -54,6 +54,7 @@ public sealed class BatteryWidget : DockWidget
     private int _renderedPercent = -1;
     private bool _renderedCharging;
     private bool _renderedPresent;
+    private int _chargingPulseGeneration;
 
     internal Func<BatteryStatus> BatteryReader { get; set; } = SystemStats.SampleBattery;
     internal Action OpenPowerSettingsAction { get; set; } = () => ShellShortcuts.OpenUri("ms-settings:batterysaver");
@@ -243,7 +244,12 @@ public sealed class BatteryWidget : DockWidget
         _card.SetResourceReference(StyleProperty, "WidgetCardBorder");
         _card.Padding = new Thickness(0);
         _card.Background = new SolidColorBrush(Colors.Transparent);
-        _card.MouseEnter += (_, _) => AnimateOverlay(_hoverOverlay, 1, 160);
+        _card.MouseEnter += (_, _) =>
+        {
+            AnimateOverlay(_hoverOverlay, 1, 160);
+            if (_renderedCharging && !_isAnimatingCharging)
+                UpdateLiquidGeometry(forceAnimationRestart: true);
+        };
         _card.MouseLeave += (_, _) =>
         {
             AnimateOverlay(_hoverOverlay, 0, 160);
@@ -290,6 +296,11 @@ public sealed class BatteryWidget : DockWidget
     protected override void OnDeactivated()
     {
         StopChargingAnimation();
+    }
+
+    protected override void OnDockVisibilityChanged(bool visible)
+    {
+        UpdateLiquidGeometry(forceAnimationRestart: false);
     }
 
     protected override void OnDisposed()
@@ -439,6 +450,7 @@ public sealed class BatteryWidget : DockWidget
 
         var shouldAnimate = _renderedCharging
             && IsActive
+            && IsDockVisible
             && Settings.EffectiveAnimationsEnabled
             && SystemParameters.ClientAreaAnimation;
 
@@ -452,6 +464,11 @@ public sealed class BatteryWidget : DockWidget
         var geometryChanged = Math.Abs(height - _animatedWaveHeight) > 0.5
             || Math.Abs(edgeX - _animatedWaveEdgeX) > 0.5;
         if (_isAnimatingCharging && !forceAnimationRestart && !geometryChanged) return;
+        if (!_isAnimatingCharging && !forceAnimationRestart)
+        {
+            _liquidFill.Clip = BuildStaticFillGeometry(edgeX, height);
+            return;
+        }
 
         StartChargingAnimation(edgeX, height, animateWave: _renderedPercent < 100);
     }
@@ -522,6 +539,7 @@ public sealed class BatteryWidget : DockWidget
         _isAnimatingCharging = true;
         _animatedWaveHeight = height;
         _animatedWaveEdgeX = edgeX;
+        var generation = ++_chargingPulseGeneration;
 
         if (animateWave)
         {
@@ -531,12 +549,18 @@ public sealed class BatteryWidget : DockWidget
             _sheenClipHost.Clip = waveClip;
             var waveAnim = new DoubleAnimation(0, -height, TimeSpan.FromMilliseconds(1600))
             {
-                RepeatBehavior = RepeatBehavior.Forever
+                RepeatBehavior = new RepeatBehavior(2)
             };
             // Without a frame-rate cap WPF re-rasterizes this CPU-bound clip geometry at 60 fps,
             // consuming ~70% of a core while the PC simply sits charging. 15 fps is visually
             // indistinguishable for a 1.6s wave and cuts the cost by ~4x.
             Timeline.SetDesiredFrameRate(waveAnim, 15);
+            waveAnim.Completed += (_, _) =>
+            {
+                if (generation != _chargingPulseGeneration) return;
+                StopChargingAnimation();
+                _liquidFill.Clip = BuildStaticFillGeometry(edgeX, height);
+            };
             _waveTransform.BeginAnimation(TranslateTransform.YProperty, waveAnim);
         }
         else
@@ -546,14 +570,14 @@ public sealed class BatteryWidget : DockWidget
             _sheenClipHost.Clip = staticClip;
         }
 
-        // Slanted soft charging sheen with a calm pause between sweeps.
+        // Slanted soft charging sheen as a bounded pulse so idle charging drops to 0 fps.
         _chargeSheen.Visibility = Visibility.Visible;
         var startX = -SheenWidth - 28;
         var endX = edgeX + 28;
         var sheenAnim = new DoubleAnimationUsingKeyFrames
         {
             Duration = TimeSpan.FromMilliseconds(2800),
-            RepeatBehavior = RepeatBehavior.Forever
+            RepeatBehavior = new RepeatBehavior(1)
         };
 
         sheenAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(startX, KeyTime.FromTimeSpan(TimeSpan.Zero)));
@@ -563,11 +587,21 @@ public sealed class BatteryWidget : DockWidget
             new CubicEase { EasingMode = EasingMode.EaseInOut }));
         sheenAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(endX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2800))));
         Timeline.SetDesiredFrameRate(sheenAnim, 15);
+        if (!animateWave)
+        {
+            sheenAnim.Completed += (_, _) =>
+            {
+                if (generation != _chargingPulseGeneration) return;
+                StopChargingAnimation();
+                _liquidFill.Clip = BuildStaticFillGeometry(edgeX, height);
+            };
+        }
         _sheenTransform.BeginAnimation(TranslateTransform.XProperty, sheenAnim);
     }
 
     private void StopChargingAnimation()
     {
+        _chargingPulseGeneration++;
         if (!_isAnimatingCharging) return;
         _isAnimatingCharging = false;
         _animatedWaveHeight = 0;

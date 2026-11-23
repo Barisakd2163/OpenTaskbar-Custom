@@ -311,6 +311,18 @@ internal static class SettingsAndAutoHideChecks
             check(!controller.HasOverlap && !controller.IsHidden,
                 "Smart mode must ignore same-process foreground windows and stay visible without foreign overlap.");
 
+            // Idle guard ticks within the fallback interval must not repeatedly scan background windows,
+            // while InvalidateWindowOverlap() must trigger an immediate re-evaluation.
+            var bgQueries = 0;
+            controller.BackgroundWindowsProvider = () => { bgQueries++; return []; };
+            PumpDispatcher(application.Dispatcher, 650);
+            check(bgQueries == 0,
+                $"Idle 200 ms guard ticks must not repeatedly invoke BackgroundWindowsProvider within 2 s (got {bgQueries}).");
+            controller.InvalidateWindowOverlap();
+            check(bgQueries == 1,
+                $"InvalidateWindowOverlap must immediately re-evaluate BackgroundWindowsProvider (got {bgQueries}).");
+            controller.BackgroundWindowsProvider = null;
+
             controller.SetMode(AutoHideMode.Disabled);
             check(!controller.IsHidden && Math.Abs(translate.Y) < 0.001,
                 "Disabling auto-hide must keep dock revealed at zero offset.");

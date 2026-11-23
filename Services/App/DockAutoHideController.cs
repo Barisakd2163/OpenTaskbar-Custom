@@ -13,6 +13,7 @@ public sealed class DockAutoHideController : IDisposable
     private const uint GaRootOwner = 3;
     private const int DwmwaExtendedFrameBounds = 9;
     private const int DwmwaCloaked = 14;
+    private const long SmartOverlapFallbackIntervalMs = 2000;
 
     private static readonly CubicEase EaseOut = CreateFrozenEase(EasingMode.EaseOut);
     private static readonly CubicEase EaseInOut = CreateFrozenEase(EasingMode.EaseInOut);
@@ -26,6 +27,8 @@ public sealed class DockAutoHideController : IDisposable
     private readonly DispatcherTimer _revealedGuardTimer;
     private readonly char[] _classNameBuffer = new char[64];
     private bool _disposed;
+    private bool _overlapDirty = true;
+    private long _lastOverlapRefreshTick;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
 
@@ -124,10 +127,19 @@ public sealed class DockAutoHideController : IDisposable
             _revealedGuardTimer.Stop();
             return;
         }
-        if (Mode == AutoHideMode.Smart)
+        if (Mode == AutoHideMode.Smart
+            && (_overlapDirty || Environment.TickCount64 - _lastOverlapRefreshTick >= SmartOverlapFallbackIntervalMs))
         {
             RefreshSmartOverlap(GetForegroundWindow());
         }
+        EvaluateState();
+    }
+
+    public void InvalidateWindowOverlap()
+    {
+        if (_disposed || Mode != AutoHideMode.Smart) return;
+        _overlapDirty = true;
+        RefreshSmartOverlap(GetForegroundWindow());
         EvaluateState();
     }
 
@@ -146,6 +158,7 @@ public sealed class DockAutoHideController : IDisposable
 
         if (Mode == AutoHideMode.Smart)
         {
+            _overlapDirty = true;
             RefreshSmartOverlap(GetForegroundWindow());
         }
 
@@ -200,6 +213,8 @@ public sealed class DockAutoHideController : IDisposable
     // stays revealed after dismissing the popup.
     private void RefreshSmartOverlap(nint foregroundHwnd)
     {
+        _overlapDirty = false;
+        _lastOverlapRefreshTick = Environment.TickCount64;
         if (foregroundHwnd == 0) foregroundHwnd = NativeWindowTracker.GetForegroundApplicationWindow();
         if (foregroundHwnd == 0) return;
         var root = GetAncestor(foregroundHwnd, GaRootOwner);
