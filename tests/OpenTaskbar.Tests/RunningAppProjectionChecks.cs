@@ -62,6 +62,14 @@ internal static class RunningAppProjectionChecks
         Check(aumidCandidates[0].IsForeground,
             "A helper window carrying the same AUMID still marks the group as foreground.");
 
+        const string packagedAumid = "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App";
+        var hostedWindow = new TrackedWindow(13, "Settings", @"C:\Windows\System32\ApplicationFrameHost.exe",
+            AppUserModelId: packagedAumid);
+        Check(RunningAppProjection.MatchesWindow(hostedWindow, @"C:\Windows\SystemApps\Settings.exe", packagedAumid),
+            "A packaged app window hosted by ApplicationFrameHost must match its pinned app identity for previews.");
+        Check(!RunningAppProjection.MatchesWindow(hostedWindow, @"C:\Windows\SystemApps\Settings.exe", "Other.App_xyz!App"),
+            "A packaged app window must not match another app's preview by host executable alone.");
+
         var quiet = RunningAppProjection.Project(windows, excluded, foreground: 2,
             notificationBadgesEnabled: false, Exists);
         Check(quiet.All(candidate => !candidate.HasNotification),

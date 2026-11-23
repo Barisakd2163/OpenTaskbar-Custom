@@ -29,6 +29,13 @@ public sealed record RunningAppCandidate(
 /// </summary>
 internal static class RunningAppProjection
 {
+    internal static bool MatchesWindow(TrackedWindow window, string executablePath, string? appUserModelId)
+    {
+        if (string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)) return true;
+        return AppShortcutResolver.IsPackagedAppUserModelId(appUserModelId)
+            && string.Equals(window.AppUserModelId, appUserModelId, StringComparison.OrdinalIgnoreCase);
+    }
+
     internal static IReadOnlyList<RunningAppCandidate> Project(
         IReadOnlyList<TrackedWindow> windows,
         ISet<string> excludedPaths,

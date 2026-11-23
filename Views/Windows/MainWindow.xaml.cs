@@ -817,10 +817,11 @@ public partial class MainWindow : Window
         {
             var activeHandles = _thumbnailPreview.ActiveHandles;
             var closed = activeHandles.Where(h => windows.All(w => w.Handle != h)).ToList();
-            if (closed.Count > 0 && _thumbnailPreview.Anchor is { Tag: string previewPath })
+            if (closed.Count > 0 && _thumbnailPreview.Anchor is { DataContext: DockApp previewApp })
             {
                 var remaining = windows
-                    .Where(w => string.Equals(w.ExecutablePath, previewPath, StringComparison.OrdinalIgnoreCase))
+                    .Where(w => RunningAppProjection.MatchesWindow(w, previewApp.ExecutablePath,
+                        previewApp.AppUserModelId ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(previewApp.ExecutablePath)))
                     .ToList();
                 _thumbnailPreview.RemoveClosed(closed, remaining);
             }
@@ -1188,10 +1189,7 @@ public partial class MainWindow : Window
     {
         if (sender is not Button { DataContext: DockApp app }) return;
         e.Handled = true;
-        var windows = VisibleSnapshot
-            .Where(window => string.Equals(window.ExecutablePath, app.ExecutablePath, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(window => window.Handle.ToInt64())
-            .ToList();
+        var windows = WindowsForApp(app).OrderBy(window => window.Handle.ToInt64()).ToList();
         if (windows is not { Count: > 0 }) return;
         var current = windows.FindIndex(window => window.Handle == _foregroundWindow);
         if (current < 0 && _lastSelectedWindows.TryGetValue(app.ExecutablePath, out var last))
@@ -1415,14 +1413,12 @@ public partial class MainWindow : Window
             _thumbnailPreview.Hide();
             return;
         }
-        if (sender is not Button { Tag: string executablePath } hoveredButton)
+        if (sender is not Button { DataContext: DockApp app } hoveredButton)
         {
             return;
         }
 
-        var matchingWindows = VisibleSnapshot
-            .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
-            .ToList() ?? [];
+        var matchingWindows = WindowsForApp(app);
 
         ToolTipService.SetIsEnabled(hoveredButton, matchingWindows.Count == 0);
         if (matchingWindows.Count == 0)
@@ -1446,27 +1442,33 @@ public partial class MainWindow : Window
         {
             return;
         }
-        if (hoveredButton.Tag is not string executablePath)
+        if (hoveredButton.DataContext is not DockApp app)
         {
             return;
         }
 
-        var matchingWindows = VisibleSnapshot
-            .Where(window => string.Equals(window.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
-            .ToList() ?? [];
+        var matchingWindows = WindowsForApp(app);
         if (matchingWindows.Count == 0)
         {
             _thumbnailPreview.Hide();
             return;
         }
 
-        var appIcon = hoveredButton.DataContext is DockApp app ? app.Icon : null;
-        BuildThumbnailOverrides(executablePath, matchingWindows, out var iconOverrides, out var labelOverrides);
+        var appIcon = app.Icon;
+        BuildThumbnailOverrides(app.ExecutablePath, matchingWindows, out var iconOverrides, out var labelOverrides);
         _thumbnailPreview.ExtraGapDips = _preferences.Current.MagnificationEnabled
             ? DockFisheyeLayout.ComputePreviewClearance(Profile.Icon, CurrentMagnificationMaxScale)
             : 0;
         _thumbnailPreview.ShowForWindows(matchingWindows, hoveredButton, appIcon,
             iconOverrides: iconOverrides, labelOverrides: labelOverrides);
+    }
+
+    private IReadOnlyList<TrackedWindow> WindowsForApp(DockApp app)
+    {
+        var appUserModelId = app.AppUserModelId
+            ?? ApplicationIconProvider.TryResolvePackagedAppUserModelId(app.ExecutablePath);
+        return VisibleSnapshot.Where(window =>
+            RunningAppProjection.MatchesWindow(window, app.ExecutablePath, appUserModelId)).ToList();
     }
 
     /// <summary>
