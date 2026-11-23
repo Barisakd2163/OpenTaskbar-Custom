@@ -386,6 +386,28 @@ internal static class WirelessBatteryChecks
         var partialPoll = partialAggregator.PollAsync().GetAwaiter().GetResult();
         check(partialPoll.Count == 1 && partialPoll[0].BatteryLevel == 91,
             "Aggregator soft sub-timeout must preserve partial readings collected before cancellation.");
+
+        // Same-source same-name devices with distinct IDs must not collapse into a single entry.
+        var sameNameReadings = new List<WirelessDeviceReading>
+        {
+            new("bt:001122334455", "DualSense Wireless Controller", BluetoothDeviceKind.Gamepad, 80, true, false, false, WirelessBatterySource.Bluetooth, fakeNow),
+            new("bt:AABBCCDDEEFF", "DualSense Wireless Controller", BluetoothDeviceKind.Gamepad, 35, true, false, false, WirelessBatterySource.Bluetooth, fakeNow)
+        };
+        var dedupSameName = WirelessBatteryAggregator.DeduplicateReadings(sameNameReadings);
+        check(dedupSameName.Count == 2
+              && dedupSameName.Any(r => r.Id == "bt:001122334455" && r.BatteryLevel == 80)
+              && dedupSameName.Any(r => r.Id == "bt:AABBCCDDEEFF" && r.BatteryLevel == 35),
+            "DeduplicateReadings must preserve distinct same-name Bluetooth devices with different IDs.");
+
+        var sameNameAggregator = new WirelessBatteryAggregator(
+            bluetoothReader: _ => Task.FromResult<IReadOnlyList<WirelessDeviceReading>>(sameNameReadings),
+            providers: [],
+            clock: () => fakeNow);
+        var sameNamePoll = sameNameAggregator.PollAsync().GetAwaiter().GetResult();
+        check(sameNamePoll.Count == 2
+              && sameNamePoll.Any(r => r.Id == "bt:001122334455" && r.BatteryLevel == 80)
+              && sameNamePoll.Any(r => r.Id == "bt:AABBCCDDEEFF" && r.BatteryLevel == 35),
+            "PollAsync must preserve distinct same-name devices across cache merging.");
     }
 
     private static void CheckAllLocaleCatalogs(Action<bool, string> check)

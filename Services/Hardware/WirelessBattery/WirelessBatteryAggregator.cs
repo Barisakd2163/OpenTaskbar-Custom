@@ -133,11 +133,35 @@ internal sealed class WirelessBatteryAggregator
 
     internal static IReadOnlyList<WirelessDeviceReading> DeduplicateReadings(IEnumerable<WirelessDeviceReading> readings)
     {
-        var byCanonicalKey = new Dictionary<string, WirelessDeviceReading>(StringComparer.OrdinalIgnoreCase);
+        // First collapse exact same-source, same-id entries before counting distinct devices per (Source, Name).
+        var bySourceAndId = new List<WirelessDeviceReading>();
+        var exactIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var candidate in readings)
         {
-            var key = GetCanonicalDeviceKey(candidate);
+            var normalizedId = candidate.Id.Trim();
+            if (normalizedId.Length > 0)
+            {
+                var exactKey = $"{candidate.Source}:{normalizedId.ToLowerInvariant()}";
+                if (exactIndex.TryGetValue(exactKey, out var existingIdx))
+                {
+                    var existing = bySourceAndId[existingIdx];
+                    bySourceAndId[existingIdx] = ShouldPreferReading(existing, candidate)
+                        ? MergeMetadata(primary: candidate, secondary: existing)
+                        : MergeMetadata(primary: existing, secondary: candidate);
+                    continue;
+                }
+                exactIndex[exactKey] = bySourceAndId.Count;
+            }
+            bySourceAndId.Add(candidate);
+        }
+
+        var sourceNameCounts = CountBySourceAndName(bySourceAndId);
+        var byCanonicalKey = new Dictionary<string, WirelessDeviceReading>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in bySourceAndId)
+        {
+            var key = GetDeduplicationKey(candidate, sourceNameCounts, hasExistingSourceIdKey: false);
             if (!byCanonicalKey.TryGetValue(key, out var existing))
             {
                 byCanonicalKey[key] = candidate;
@@ -163,12 +187,14 @@ internal sealed class WirelessBatteryAggregator
     {
         lock (_cacheLock)
         {
+            var sourceNameCounts = CountBySourceAndName(freshReadings);
             var activeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var output = new List<WirelessDeviceReading>();
 
             foreach (var reading in freshReadings)
             {
-                var key = GetCanonicalDeviceKey(reading);
+                var idKey = $"src:{reading.Source}:id:{reading.Id.Trim().ToLowerInvariant()}";
+                var key = GetDeduplicationKey(reading, sourceNameCounts, _cache.ContainsKey(idKey));
                 activeKeys.Add(key);
 
                 // -1 is the only "unknown" level; a genuine 0% non-charging device is valid data.
@@ -235,6 +261,36 @@ internal sealed class WirelessBatteryAggregator
                 .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
+    }
+
+    private static Dictionary<(WirelessBatterySource Source, string NormalizedName), int> CountBySourceAndName(
+        IEnumerable<WirelessDeviceReading> readings)
+    {
+        var counts = new Dictionary<(WirelessBatterySource, string), int>();
+        foreach (var reading in readings)
+        {
+            var normalizedName = NormalizeDeviceName(reading.Name);
+            if (string.IsNullOrWhiteSpace(normalizedName)) continue;
+            var tuple = (reading.Source, normalizedName);
+            counts[tuple] = counts.TryGetValue(tuple, out var current) ? current + 1 : 1;
+        }
+        return counts;
+    }
+
+    private static string GetDeduplicationKey(
+        WirelessDeviceReading reading,
+        IReadOnlyDictionary<(WirelessBatterySource Source, string NormalizedName), int> sourceNameCounts,
+        bool hasExistingSourceIdKey)
+    {
+        var normalizedName = NormalizeDeviceName(reading.Name);
+        if (!string.IsNullOrWhiteSpace(normalizedName))
+        {
+            var hasCollisionInSource = sourceNameCounts.TryGetValue((reading.Source, normalizedName), out var count) && count > 1;
+            if ((hasCollisionInSource || hasExistingSourceIdKey) && !string.IsNullOrWhiteSpace(reading.Id))
+                return $"src:{reading.Source}:id:{reading.Id.Trim().ToLowerInvariant()}";
+            return $"name:{normalizedName}";
+        }
+        return $"id:{reading.Id.Trim().ToLowerInvariant()}";
     }
 
     internal static string GetCanonicalDeviceKey(WirelessDeviceReading reading)

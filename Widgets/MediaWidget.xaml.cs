@@ -25,6 +25,7 @@ namespace OpenTaskbar.Widgets;
 public partial class MediaWidget : DockWidget
 {
     private const int AlbumArtDecodePixels = 68;
+    private const long VolumeSessionRetryIntervalMs = 3000;
     private static readonly Color DefaultArtTint = Color.FromRgb(0x52, 0x6D, 0x84);
 
     private MediaSessionManager? _manager;
@@ -57,6 +58,7 @@ public partial class MediaWidget : DockWidget
     // Locally confirmed per-app volume state (AppAudioSession.Volume is a snapshot, not live).
     private float _mediaVolumeLevel = -1;
     private bool _mediaVolumeMuted;
+    private long _lastVolumeSessionRetryMs;
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 10;
@@ -175,6 +177,7 @@ public partial class MediaWidget : DockWidget
         CloseVolumePopover();
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         BindSession(null);
+        _lastVolumeSessionRetryMs = 0;
         _mediaVolumeSession?.Dispose();
         _mediaVolumeSession = null;
         ClearAlbumArt();
@@ -257,7 +260,20 @@ public partial class MediaWidget : DockWidget
     private void RefreshMediaVolumeState()
     {
         var session = _mediaVolumeSession;
-        if (session is null) return;
+        if (session is null)
+        {
+            if (_session is not null && (_audio is not null || AppSessionSource is not null))
+            {
+                var now = Environment.TickCount64;
+                if (now - _lastVolumeSessionRetryMs >= VolumeSessionRetryIntervalMs)
+                {
+                    _lastVolumeSessionRetryMs = now;
+                    BindMediaVolumeSession();
+                    if (_mediaVolumeSession is not null) RenderVolume();
+                }
+            }
+            return;
+        }
         var level = Math.Clamp(session.CurrentVolume, 0f, 1f);
         var muted = session.CurrentMute;
         if (Math.Abs(level - _mediaVolumeLevel) < 0.002f && muted == _mediaVolumeMuted) return;
@@ -638,7 +654,14 @@ public partial class MediaWidget : DockWidget
     {
         if (ReferenceEquals(a, b)) return true;
         if (a is null || b is null) return false;
-        return string.Equals(a.SourceAppUserModelId, b.SourceAppUserModelId, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            return a.Equals(b);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private bool ShouldSwitchSession(MediaSession? candidate)
@@ -646,6 +669,16 @@ public partial class MediaWidget : DockWidget
         if (candidate is null) return _session is not null;
         if (_session is null) return true;
         if (IsSameSession(candidate, _session)) return false;
+
+        try
+        {
+            if (string.Equals(candidate.SourceAppUserModelId, _session.SourceAppUserModelId, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        catch
+        {
+            return true;
+        }
 
         if (!_playing)
         {
@@ -729,6 +762,7 @@ public partial class MediaWidget : DockWidget
         }
 
         _session = session;
+        _lastVolumeSessionRetryMs = 0;
         if (_session is not null)
         {
             _session.MediaPropertiesChanged += Session_MediaPropertiesChanged;

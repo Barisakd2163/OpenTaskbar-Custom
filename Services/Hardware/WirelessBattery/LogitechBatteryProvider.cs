@@ -512,10 +512,22 @@ internal sealed class LogitechBatteryProvider : IWirelessBatteryProvider
             await ws.SendAsync(reqBytes, WebSocketMessageType.Text, endOfMessage: true, cts.Token).ConfigureAwait(false);
 
             var recvBuf = new byte[16384];
-            var result = await ws.ReceiveAsync(recvBuf, cts.Token).ConfigureAwait(false);
-            if (result.Count <= 0) return [];
+            using var ms = new System.IO.MemoryStream();
+            const int MaxGHubMessageBytes = 256 * 1024;
+            while (true)
+            {
+                var result = await ws.ReceiveAsync(recvBuf, cts.Token).ConfigureAwait(false);
+                if (result.MessageType == WebSocketMessageType.Close) return [];
+                if (result.Count > 0)
+                {
+                    if (ms.Length + result.Count > MaxGHubMessageBytes) return [];
+                    ms.Write(recvBuf, 0, result.Count);
+                }
+                if (result.EndOfMessage) break;
+            }
 
-            var json = Encoding.UTF8.GetString(recvBuf, 0, result.Count);
+            if (ms.Length <= 0) return [];
+            var json = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
             return ParseGHubJson(json, DateTimeOffset.UtcNow);
         }
         catch

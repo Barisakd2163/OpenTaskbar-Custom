@@ -77,6 +77,7 @@ public sealed class NetSpeedWidget : DockWidget
     private double _testLiveMbps;
     private double _testProgressPercent;
     private CancellationTokenSource? _testCts;
+    private int _testRunId;
 
     private static readonly HttpClient SharedHttpClient = new(new SocketsHttpHandler
     {
@@ -737,6 +738,7 @@ public sealed class NetSpeedWidget : DockWidget
         CancelSpeedTest();
         _testCts = new CancellationTokenSource();
         var ct = _testCts.Token;
+        var runId = ++_testRunId;
 
         _testStatus = SpeedTestStatus.Running;
         _testStatusMessage = UiText.Get("SpeedTestTestingPing");
@@ -746,7 +748,7 @@ public sealed class NetSpeedWidget : DockWidget
 
         var progress = new Progress<SpeedTestProgress>(p =>
         {
-            if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested || runId != _testRunId) return;
             _testStatusMessage = p.StatusText;
             _testLiveMbps = p.CurrentMbps;
             _testProgressPercent = p.Percent;
@@ -756,6 +758,7 @@ public sealed class NetSpeedWidget : DockWidget
         try
         {
             var result = await SpeedTestRunner(progress, ct).ConfigureAwait(true);
+            if (runId != _testRunId) return;
             if (!ct.IsCancellationRequested)
             {
                 _lastTestResult = result;
@@ -764,21 +767,27 @@ public sealed class NetSpeedWidget : DockWidget
         }
         catch (OperationCanceledException)
         {
+            if (runId != _testRunId) return;
             _testStatus = SpeedTestStatus.Idle;
         }
         catch
         {
+            if (runId != _testRunId) return;
             _testStatus = SpeedTestStatus.Failed;
         }
         finally
         {
-            _testLiveMbps = 0;
-            UpdateSpeedTestView();
+            if (runId == _testRunId)
+            {
+                _testLiveMbps = 0;
+                UpdateSpeedTestView();
+            }
         }
     }
 
     internal void CancelSpeedTest()
     {
+        _testRunId++;
         if (_testCts != null)
         {
             try
