@@ -88,7 +88,7 @@ public partial class QuickSettingsWidget : DockWidget
             if (_wifi is not null) _wifi.StateChanged += Radio_StateChanged;
             if (_bluetooth is not null) _bluetooth.StateChanged += Radio_StateChanged;
         }
-        catch (Exception ex) when (ex is COMException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
             if (activationVersion != _activationVersion) return;
             AppLog.Warning($"Radio access unavailable: {ex.Message}");

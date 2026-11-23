@@ -103,10 +103,10 @@ public partial class SystemStatsWidget : DockWidget
 
     protected override void OnSettingsChanged()
     {
-        Interlocked.Increment(ref _sensorGeneration);
         ApplyMeterSelection();
         if (IsActive)
         {
+            Interlocked.Increment(ref _sensorGeneration);
             _lastFastSampleTickMs = 0;
             _lastSensorSampleTickMs = 0;
             OnTick(DateTime.Now);

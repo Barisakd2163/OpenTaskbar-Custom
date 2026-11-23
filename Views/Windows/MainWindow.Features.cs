@@ -441,7 +441,12 @@ public partial class MainWindow
             return;
         }
 
-        _updateCheck?.Cancel();
+        var previous = _updateCheck;
+        if (previous is not null)
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
         var check = new CancellationTokenSource();
         _updateCheck = check;
         var (release, succeeded) = await UpdateChecker.FindNewerAsync(check.Token);
@@ -640,6 +645,8 @@ public partial class MainWindow
         _updateTimer?.Stop();
         _desktopTimer?.Stop();
         _updateCheck?.Cancel();
+        _updateCheck?.Dispose();
+        _updateCheck = null;
         DockFlyout.AnyClosed -= OnAnyDockFlyoutClosed;
     }
 

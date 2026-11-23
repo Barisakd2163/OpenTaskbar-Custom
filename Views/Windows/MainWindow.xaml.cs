@@ -1556,10 +1556,15 @@ public partial class MainWindow : Window
 
     private static string GetApplicationName(string executablePath)
     {
-        var description = FileVersionInfo.GetVersionInfo(executablePath).FileDescription;
-        return string.IsNullOrWhiteSpace(description)
-            ? Path.GetFileNameWithoutExtension(executablePath)
-            : description.Trim();
+        try
+        {
+            var description = FileVersionInfo.GetVersionInfo(executablePath).FileDescription;
+            if (!string.IsNullOrWhiteSpace(description)) return description.Trim();
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or UnauthorizedAccessException or IOException)
+        {
+        }
+        return Path.GetFileNameWithoutExtension(executablePath);
     }
 
     private bool IsShellOverlayWindow(nint windowHandle) =>
