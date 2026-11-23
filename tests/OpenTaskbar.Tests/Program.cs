@@ -120,6 +120,14 @@ void LiveDragMathChecks()
     Check(DockItemOrdering.InsertionIndex(slots, 10) == 0, "Pointer in the first half of item 0 inserts before it.");
     Check(DockItemOrdering.InsertionIndex(slots, 60) == 1, "Pointer past item 1's center inserts after it.");
     Check(DockItemOrdering.InsertionIndex(slots, 200) == 5, "Pointer past the last center appends at the end.");
+    Check(DockItemOrdering.InsertionIndex(slots, 58, currentIndex: 2, hysteresis: 6) == 2,
+        "Small pointer jitter near a slot center must not reverse a live insertion.");
+    Check(DockItemOrdering.InsertionIndex(slots, 53, currentIndex: 2, hysteresis: 6) == 1,
+        "Moving back beyond the hysteresis band must reverse the live insertion.");
+    Check(DockItemOrdering.InsertionIndex(slots, 63, currentIndex: 1, hysteresis: 6) == 1,
+        "Small pointer jitter on the forward side must preserve the live insertion.");
+    Check(DockItemOrdering.InsertionIndex(slots, 67, currentIndex: 1, hysteresis: 6) == 2,
+        "Moving forward beyond the hysteresis band must advance the live insertion.");
 
     // Dragging item 1 to insertion index 4 opens the gap by shifting items 2 and 3 left.
     Check(DockItemOrdering.SlideFor(1, 1, 4, 40) == 0, "The dragged item never slides itself.");

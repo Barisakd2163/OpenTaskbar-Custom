@@ -563,7 +563,6 @@ public partial class MainWindow
 
     private void DockSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_appReorderDragActive) return;
         if (!_preferences.Current.MagnificationEnabled || !_preferences.Current.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
             return;
 

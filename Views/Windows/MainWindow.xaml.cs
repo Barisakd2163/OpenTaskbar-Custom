@@ -1402,7 +1402,6 @@ public partial class MainWindow : Window
 
     private void DockApp_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_appReorderDragActive) return;
         _previewCloseTimer.Stop();
         _previewHoverTimer.Stop();
         _pendingPreviewButton = null;
@@ -1435,7 +1434,6 @@ public partial class MainWindow : Window
     private void PreviewHoverTimer_Tick(object? sender, EventArgs e)
     {
         _previewHoverTimer.Stop();
-        if (_appReorderDragActive) return;
         var hoveredButton = _pendingPreviewButton;
         _pendingPreviewButton = null;
         if (hoveredButton is null || !hoveredButton.IsMouseOver || _widgetPanel.IsOpen || !_preferences.Current.PreviewsEnabled)

@@ -15,8 +15,8 @@ namespace OpenTaskbar;
 public partial class MainWindow
 {
     private static readonly Duration LiveDragSlide = new(TimeSpan.FromMilliseconds(160));
+    private const double LiveDragInsertionHysteresis = 6;
     private LiveDockDrag? _liveDrag;
-    private bool _appReorderDragActive;
 
     private sealed record LiveDockSlot(FrameworkElement Element, double Start, double Size, TranslateTransform Translate);
 
@@ -103,7 +103,8 @@ public partial class MainWindow
             Math.Max(-dragged.Start, extent - dragged.Start - dragged.Size));
         Place(dragged.Translate, drag.Offset);
 
-        var index = DockItemOrdering.InsertionIndex(drag.InsertionSlots, pointer);
+        var index = DockItemOrdering.InsertionIndex(
+            drag.InsertionSlots, pointer, drag.InsertionIndex, LiveDragInsertionHysteresis);
         if (index == drag.InsertionIndex) return;
         drag.InsertionIndex = index;
         for (var i = 0; i < drag.Slots.Count; i++)

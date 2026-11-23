@@ -23,14 +23,28 @@ internal static class DockItemOrdering
     /// Insertion index for a pointer position along the dock: the number of visible slots (dragged item included)
     /// whose center lies before the pointer. This is the index <see cref="MoveVisibleItem"/> expects.
     /// </summary>
-    internal static int InsertionIndex(IReadOnlyList<(double Start, double Size)> slots, double pointer)
+    internal static int InsertionIndex(
+        IReadOnlyList<(double Start, double Size)> slots,
+        double pointer,
+        int currentIndex = -1,
+        double hysteresis = 0)
     {
-        var index = 0;
-        foreach (var (start, size) in slots)
+        if (currentIndex < 0 || currentIndex > slots.Count)
         {
-            if (pointer > start + size / 2) index++;
-            else break;
+            var initialIndex = 0;
+            foreach (var (start, size) in slots)
+            {
+                if (pointer > start + size / 2) initialIndex++;
+                else break;
+            }
+            return initialIndex;
         }
+
+        var index = currentIndex;
+        while (index < slots.Count && pointer > slots[index].Start + slots[index].Size / 2 + hysteresis)
+            index++;
+        while (index > 0 && pointer <= slots[index - 1].Start + slots[index - 1].Size / 2 - hysteresis)
+            index--;
         return index;
     }
 
