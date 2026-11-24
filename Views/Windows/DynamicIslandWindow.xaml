@@ -40,10 +40,31 @@
     </Window.Resources>
     <Grid ClipToBounds="False">
         <Path Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top"
-              Fill="{DynamicResource DynamicIslandMaterial}" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z" IsHitTestVisible="False" />
+              Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z">
+            <Path.Style>
+                <Style TargetType="Path">
+                    <Setter Property="Fill" Value="{DynamicResource DynamicIslandMaterial}" />
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Fill" Value="{DynamicResource SurfaceHover}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Path.Style>
+        </Path>
         <Path Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top"
-              Fill="{DynamicResource DynamicIslandMaterial}" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z"
-              RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False">
+              Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z"
+              RenderTransformOrigin="0.5,0.5">
+            <Path.Style>
+                <Style TargetType="Path">
+                    <Setter Property="Fill" Value="{DynamicResource DynamicIslandMaterial}" />
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Fill" Value="{DynamicResource SurfaceHover}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Path.Style>
             <Path.RenderTransform><ScaleTransform ScaleX="-1" /></Path.RenderTransform>
         </Path>
         <Border x:Name="IslandSurface" Width="320" HorizontalAlignment="Center"
@@ -71,7 +92,7 @@
                             </Style.Triggers>
                         </Style>
                     </Grid.Style>
-                    <Border x:Name="PageViewport" Margin="8,2,8,2" MouseLeftButtonUp="PageViewport_MouseLeftButtonUp"
+                    <Border x:Name="PageViewport" Margin="8,6,8,2" MouseLeftButtonUp="PageViewport_MouseLeftButtonUp"
                             ClipToBounds="True" Background="Transparent">
                         <widgets:DynamicIslandPagePanel x:Name="Pages" />
                     </Border>
@@ -79,7 +100,10 @@
                             BorderThickness="1" CornerRadius="0,0,17,17" Opacity="0"
                             IsHitTestVisible="False" />
                 </Grid>
-                <Border x:Name="DetailsPanel" Grid.Row="1" Padding="8,0,8,8"
+                <Border x:Name="DetailsPanel" Grid.Row="1" Padding="8,6,8,8"
+                        PreviewMouseLeftButtonDown="Details_PreviewMouseLeftButtonDown"
+                        PreviewMouseMove="Details_PreviewMouseMove"
+                        PreviewMouseLeftButtonUp="Details_PreviewMouseLeftButtonUp"
                         Visibility="Collapsed" Background="Transparent">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -88,10 +112,7 @@
                         </Grid.RowDefinitions>
                         <ScrollViewer x:Name="DetailsScrollViewer" Grid.Row="0"
                                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                      CanContentScroll="False"
-                                      PreviewMouseLeftButtonDown="Details_PreviewMouseLeftButtonDown"
-                                      PreviewMouseMove="Details_PreviewMouseMove"
-                                      PreviewMouseLeftButtonUp="Details_PreviewMouseLeftButtonUp">
+                                      CanContentScroll="False">
                             <ContentControl x:Name="DetailsContent" HorizontalContentAlignment="Stretch"
                                             Foreground="{DynamicResource TextPrimary}" />
                         </ScrollViewer>
@@ -104,10 +125,9 @@
                                 <ContentControl Width="12" Height="12" Content="{StaticResource IconChevronLeft}"
                                                 Style="{StaticResource WidgetGlyph}" />
                             </Button>
-                            <TextBlock x:Name="PageCount" MinWidth="48" HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" TextAlignment="Center" Margin="5,0"
-                                       Foreground="{DynamicResource TextSecondary}" FontSize="{DynamicResource TextSizeCaption}"
-                                       Typography.NumeralAlignment="Tabular" />
+                            <StackPanel x:Name="PageIndicators" Orientation="Horizontal"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Margin="5,0" IsHitTestVisible="False" />
                             <Button x:Name="NextButton" Width="26" Height="26" Style="{StaticResource IslandButton}"
                                     Click="Next_Click" AutomationProperties.Name="{DynamicResource DynamicIslandNext}"
                                     ToolTip="{DynamicResource DynamicIslandNext}">

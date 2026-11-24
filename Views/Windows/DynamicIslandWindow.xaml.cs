@@ -49,6 +49,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private int _currentPageIndex;
     private int _dragStartIndex;
     private bool _isDragging;
+    private bool _pointerGestureActive;
     private bool _isExpanded;
     private bool _syncingPages;
     private bool _resourcesDisposed;
@@ -285,7 +286,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
         {
             PreviousButton.IsEnabled = false;
             NextButton.IsEnabled = false;
-            PageCount.Text = string.Empty;
+            PageIndicators.Children.Clear();
             PageNavigation.Visibility = Visibility.Collapsed;
             AutomationProperties.SetName(Header, UiText.Get("DynamicIslandTitle"));
             return;
@@ -296,9 +297,21 @@ public partial class DynamicIslandWindow : Window, IDisposable
         PageNavigation.Visibility = _isExpanded && _pageIds.Count > 1
             ? Visibility.Visible
             : Visibility.Collapsed;
-        PageCount.Text = _pageIds.Count > 1
-            ? string.Create(UiText.Current.Language.Culture, $"{_currentPageIndex + 1:00} / {_pageIds.Count:00}")
-            : string.Empty;
+        PageIndicators.Children.Clear();
+        for (var index = 0; index < _pageIds.Count; index++)
+        {
+            var indicator = new Border
+            {
+                Width = index == _currentPageIndex ? 18 : 7,
+                Height = 3,
+                CornerRadius = new CornerRadius(1.5),
+                Margin = new Thickness(2, 0, 2, 0),
+                IsHitTestVisible = false
+            };
+            indicator.SetResourceReference(Border.BackgroundProperty,
+                index == _currentPageIndex ? "AccentBrush" : "StrokeSubtle");
+            PageIndicators.Children.Add(indicator);
+        }
         AutomationProperties.SetName(Header, UiText.Get(_isExpanded ? "DynamicIslandCollapse" : "DynamicIslandExpand"));
         AutomationProperties.SetHelpText(Header, GetIslandLabel(CurrentPageId() ?? string.Empty));
     }
@@ -708,8 +721,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private void Previous_Click(object sender, RoutedEventArgs e) => MovePage(-1);
     private void Next_Click(object sender, RoutedEventArgs e) => MovePage(1);
 
-    private void Header_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e);
-    private void Details_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e);
+    private void Header_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e, allowButtons: false);
+    private void Details_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e, allowButtons: true);
 
     private void Header_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -723,11 +736,14 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void Header_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => HeaderFocusRing.Opacity = 0;
 
-    private void BeginPointerGesture(MouseButtonEventArgs e)
+    private void BeginPointerGesture(MouseButtonEventArgs e, bool allowButtons)
     {
         _isDragging = false;
+        _pointerGestureActive = false;
+        var source = e.OriginalSource as DependencyObject;
         if (e.ChangedButton != MouseButton.Left || _pageIds.Count <= 1
-            || IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
+            || (allowButtons ? IsDragControl(source) : IsInteractiveSource(source))) return;
+        _pointerGestureActive = true;
         _pointerOrigin = e.GetPosition(PageViewport);
         _dragStartIndex = _currentPageIndex;
         _dragOffset = 0;
@@ -738,8 +754,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void UpdatePointerGesture(MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _pageIds.Count <= 1) return;
-        if (!_isDragging && IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
+        if (!_pointerGestureActive || e.LeftButton != MouseButtonState.Pressed || _pageIds.Count <= 1) return;
         var position = e.GetPosition(PageViewport);
         var dx = position.X - _pointerOrigin.X;
         var dy = position.Y - _pointerOrigin.Y;
@@ -767,6 +782,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void Header_LostMouseCapture(object sender, MouseEventArgs e)
     {
+        _pointerGestureActive = false;
         if (!_isDragging) return;
         _isDragging = false;
         SetCurrentPageIndex(_dragStartIndex, animate: true);
@@ -774,6 +790,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void FinishPointerGesture(MouseButtonEventArgs e)
     {
+        _pointerGestureActive = false;
         if (!_isDragging) return;
         _isDragging = false;
         if (Header.IsMouseCaptured) Header.ReleaseMouseCapture();
@@ -829,6 +846,17 @@ public partial class DynamicIslandWindow : Window, IDisposable
         while (current is not null)
         {
             if (current is ButtonBase or Slider or TextBoxBase or Selector or ScrollBar or Thumb) return true;
+            current = GetParent(current);
+        }
+        return false;
+    }
+
+    private static bool IsDragControl(DependencyObject? source)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is Slider or TextBoxBase or Selector or ScrollBar or Thumb) return true;
             current = GetParent(current);
         }
         return false;
