@@ -6,13 +6,13 @@
         xmlns:widgets="clr-namespace:OpenTaskbar.Views.Widgets"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="{local:Loc SettingsTitle}" Width="1020" Height="720" MinWidth="580" MinHeight="480" MaxWidth="1360" MaxHeight="960"
-        WindowStyle="None" ResizeMode="CanResize" Background="Transparent"
+        WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource SettingsBackground}"
         WindowStartupLocation="CenterScreen" Foreground="{DynamicResource TextPrimary}"
         FontFamily="{DynamicResource InterfaceFont}" FontSize="{DynamicResource TextSizeBody}"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         Closing="Window_Closing" PreviewKeyDown="Window_PreviewKeyDown">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="45" ResizeBorderThickness="6" GlassFrameThickness="-1" UseAeroCaptionButtons="False" />
+        <shell:WindowChrome CaptionHeight="45" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
         <ResourceDictionary>

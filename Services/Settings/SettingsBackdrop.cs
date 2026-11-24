@@ -88,6 +88,14 @@ internal static class SettingsBackdrop
         }
         var margins = new Margins(0);
         DwmExtendFrameIntoClientArea(handle, ref margins);
+        if (HwndSource.FromHwnd(handle)?.CompositionTarget is { } target)
+        {
+            target.BackgroundColor = window.TryFindResource("SettingsBackground") is SolidColorBrush brush
+                ? Color.FromRgb(brush.Color.R, brush.Color.G, brush.Color.B)
+                : theme == AppTheme.Dark
+                    ? Color.FromRgb(0x18, 0x1A, 0x20)
+                    : Color.FromRgb(0xF3, 0xF5, 0xF8);
+        }
     }
 
     private static void SuppressNativeBorder(nint handle)

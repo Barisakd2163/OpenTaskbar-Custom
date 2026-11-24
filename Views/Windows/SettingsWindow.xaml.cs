@@ -444,23 +444,13 @@ public partial class SettingsWindow : Window
         var surfaceMode = ThemeManager.GetSurface(SurfaceKind.Settings).Background;
         SettingsFrame.CornerRadius = new CornerRadius(0);
         ApplySettingsBorderCornerRadius();
-        if (surfaceMode == SurfaceBackground.None)
-        {
-            SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
-            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsBackground");
-            chrome.GlassFrameThickness = new Thickness(0);
-            return;
-        }
-        if (surfaceMode == SurfaceBackground.Solid)
-        {
-            SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
-            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsGlassMaterial");
-            chrome.GlassFrameThickness = new Thickness(0);
-            return;
-        }
-        var glass = SettingsBackdrop.TryEnableTransparent(this, ThemeManager.EffectiveTheme);
-        SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, glass ? "SettingsGlassMaterial" : "SettingsBackground");
-        chrome.GlassFrameThickness = glass ? new Thickness(-1) : new Thickness(0);
+        // Keep Settings on a stable opaque DWM surface with native Win11 rounded corners so the window never
+        // flashes black on open or shifts tone across active/inactive transitions and changing backgrounds.
+        SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
+        SettingsFrame.SetResourceReference(
+            System.Windows.Controls.Border.BackgroundProperty,
+            surfaceMode == SurfaceBackground.Solid ? "SettingsGlassMaterial" : "SettingsBackground");
+        chrome.GlassFrameThickness = new Thickness(0);
     }
 
     private DockSettings ReadSelection()
@@ -2349,37 +2339,38 @@ public partial class SettingsWindow : Window
     {
         try
         {
+            ApplyWeatherLocationSelection(savedCity, CountryCityService.GetInitialCountries());
             var countries = await CountryCityService.GetCountriesAsync();
             if (_closed) return;
-            var (matchedCountry, matchedCities) = CountryCityService.FindCachedCountryForCity(savedCity);
+            ApplyWeatherLocationSelection(savedCity, countries);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warning($"Weather location initialization error: {ex.Message}");
+        }
+    }
 
-            var wasInitializing = _initializing;
-            _initializing = true;
-            _initializingWeather = true;
-            try
+    private void ApplyWeatherLocationSelection(string savedCity, IReadOnlyList<CountryItem> countries)
+    {
+        var (matchedCountry, matchedCities) = CountryCityService.FindCachedCountryForCity(savedCity);
+
+        var wasInitializing = _initializing;
+        _initializing = true;
+        _initializingWeather = true;
+        try
+        {
+            WeatherCountryBox.ItemsSource = countries.Select(c => c.Name).ToList();
+
+            if (!string.IsNullOrWhiteSpace(savedCity))
             {
-                WeatherCountryBox.ItemsSource = countries.Select(c => c.Name).ToList();
-
-                if (!string.IsNullOrWhiteSpace(savedCity))
+                WeatherCityContainer.Visibility = Visibility.Visible;
+                if (matchedCountry is not null)
                 {
-                    WeatherCityContainer.Visibility = Visibility.Visible;
-                    if (matchedCountry is not null)
-                    {
-                        var canonicalCity = matchedCities.FirstOrDefault(c => string.Equals(c, savedCity, StringComparison.OrdinalIgnoreCase)) ?? savedCity;
-                        WeatherCountryBox.SelectedItem = matchedCountry;
-                        WeatherCountryBox.Text = matchedCountry;
-                        WeatherCityCombo.ItemsSource = matchedCities;
-                        WeatherCityCombo.SelectedItem = canonicalCity;
-                    }
-                    else
-                    {
-                        WeatherCountryBox.SelectedItem = null;
-                        WeatherCountryBox.Text = string.Empty;
-                        WeatherCityCombo.ItemsSource = Array.Empty<string>();
-                        WeatherCityCombo.SelectedItem = null;
-                    }
-                    WeatherCityCombo.Text = savedCity;
-                    WeatherCityBox.Text = savedCity;
+                    var canonicalCity = matchedCities.FirstOrDefault(c => string.Equals(c, savedCity, StringComparison.OrdinalIgnoreCase)) ?? savedCity;
+                    WeatherCountryBox.SelectedItem = matchedCountry;
+                    WeatherCountryBox.Text = matchedCountry;
+                    WeatherCityCombo.ItemsSource = matchedCities;
+                    WeatherCityCombo.SelectedItem = canonicalCity;
                 }
                 else
                 {
@@ -2387,20 +2378,25 @@ public partial class SettingsWindow : Window
                     WeatherCountryBox.Text = string.Empty;
                     WeatherCityCombo.ItemsSource = Array.Empty<string>();
                     WeatherCityCombo.SelectedItem = null;
-                    WeatherCityCombo.Text = string.Empty;
-                    WeatherCityBox.Text = string.Empty;
-                    WeatherCityContainer.Visibility = Visibility.Collapsed;
                 }
+                WeatherCityCombo.Text = savedCity;
+                WeatherCityBox.Text = savedCity;
             }
-            finally
+            else
             {
-                _initializingWeather = false;
-                _initializing = wasInitializing;
+                WeatherCountryBox.SelectedItem = null;
+                WeatherCountryBox.Text = string.Empty;
+                WeatherCityCombo.ItemsSource = Array.Empty<string>();
+                WeatherCityCombo.SelectedItem = null;
+                WeatherCityCombo.Text = string.Empty;
+                WeatherCityBox.Text = string.Empty;
+                WeatherCityContainer.Visibility = Visibility.Collapsed;
             }
         }
-        catch (Exception ex)
+        finally
         {
-            AppLog.Warning($"Weather location initialization error: {ex.Message}");
+            _initializingWeather = false;
+            _initializing = wasInitializing;
         }
     }
 
