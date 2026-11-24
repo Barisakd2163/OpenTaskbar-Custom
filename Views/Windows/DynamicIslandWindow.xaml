@@ -48,9 +48,9 @@
         </Path>
         <Border x:Name="IslandSurface" Width="320" HorizontalAlignment="Center"
                 Background="{DynamicResource DynamicIslandMaterial}" BorderBrush="{DynamicResource DynamicIslandStrokeMaterial}"
-                BorderThickness="0,1,1,1" CornerRadius="0,0,17,17"
+                BorderThickness="1,0,1,1" CornerRadius="0,0,17,17"
                 ClipToBounds="True" Effect="{DynamicResource DynamicIslandShadow}">
-            <Grid>
+            <Grid x:Name="IslandContent" ClipToBounds="True">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="50" />
                     <RowDefinition Height="*" />
