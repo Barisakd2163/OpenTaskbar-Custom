@@ -5,17 +5,19 @@
               xmlns:local="clr-namespace:OpenTaskbar.Services">
     <Button x:Name="ClockButton" Style="{StaticResource WidgetCardButton}" Padding="10,0" Click="ClockButton_Click"
             AutomationProperties.Name="{local:Loc Calendar}">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <StackPanel x:Name="ClockRoot" Orientation="Horizontal" VerticalAlignment="Center">
             <ContentControl x:Name="ClockIcon" Style="{StaticResource WidgetIcon}" Content="{StaticResource IconClock}"
                             Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"
                             Foreground="{DynamicResource TextSecondary}" />
-            <TextBlock x:Name="TimeText" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"
-                       VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
-            <StackPanel x:Name="DateColumn" VerticalAlignment="Center" Margin="9,0,0,0">
-                <TextBlock x:Name="DateText" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
-                           LineHeight="13" TextAlignment="Left" HorizontalAlignment="Left" />
-                <TextBlock x:Name="DayOfWeekText" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
-                           LineHeight="12" TextAlignment="Left" HorizontalAlignment="Left" />
+            <StackPanel x:Name="TimeAndDatePanel" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="TimeText" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"
+                           VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                <StackPanel x:Name="DateColumn" VerticalAlignment="Center" Margin="9,0,0,0">
+                    <TextBlock x:Name="DateText" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                               LineHeight="13" TextAlignment="Left" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="DayOfWeekText" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
+                               LineHeight="12" TextAlignment="Left" HorizontalAlignment="Left" />
+                </StackPanel>
             </StackPanel>
         </StackPanel>
     </Button>

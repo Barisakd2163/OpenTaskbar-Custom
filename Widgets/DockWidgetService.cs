@@ -44,6 +44,7 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
     public const string CountdownId = "Countdown";
     public const string NetSpeedId = "NetSpeed";
     public const string BluetoothBatteryId = "BluetoothBattery";
+    public const string KeyboardLayoutId = "KeyboardLayout";
 
     public sealed record AiUsageWidgetDefinition(string Id, AiProviders Provider, string LabelKey, string IconKey);
 
@@ -115,6 +116,9 @@ public sealed class DockWidgetService(TimeProvider timeProvider)
         new(QuickSettingsId, "WidgetQuickSettings", _ => "Wi-Fi · BT",
             DockWidgetCategory.MediaAndControls, "IconSliders", true,
             DockOrder: 17, Factory: () => new QuickSettingsWidget()),
+        new(KeyboardLayoutId, "WidgetKeyboardLayout", _ => KeyboardLayoutService.GetActiveLayout().ShortCode,
+            DockWidgetCategory.MediaAndControls, "IconKeyboard", false,
+            DockOrder: 19, Factory: () => new KeyboardLayoutWidget()),
 
         // Productivity
         new(FocusId, "WidgetFocus", _ => "25:00",

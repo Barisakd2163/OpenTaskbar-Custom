@@ -18,6 +18,7 @@ SettingsChecks();
 RadiusChecks();
 InitialLanguageChecks();
 MultiMonitorChecks();
+checks += DynamicIslandChecks.Run();
 DockIconPixelChecks();
 StartMenuAndOverlayChecks();
 AppLaunchChecks();
@@ -480,7 +481,7 @@ void WidgetCategoryChecks()
     var catalog = new DockWidgetService(clock);
     var options = catalog.CreateOptions([], []);
 
-    Check(options.Count == 22, "Catalog must define exactly 22 widgets.");
+    Check(options.Count == 23, "Catalog must define exactly 23 widgets.");
 
     var timeWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.TimeAndWeather).Select(o => o.Id).ToArray();
     Check(timeWidgets.Length == 5
@@ -506,11 +507,12 @@ void WidgetCategoryChecks()
         "AiQuotas category must contain all 8 AI provider widgets.");
 
     var mediaWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.MediaAndControls).Select(o => o.Id).ToArray();
-    Check(mediaWidgets.Length == 3
+    Check(mediaWidgets.Length == 4
         && mediaWidgets.Contains(DockWidgetService.MediaId)
         && mediaWidgets.Contains(DockWidgetService.AudioId)
-        && mediaWidgets.Contains(DockWidgetService.QuickSettingsId),
-        "MediaAndControls category must contain Media, Audio and QuickSettings.");
+        && mediaWidgets.Contains(DockWidgetService.QuickSettingsId)
+        && mediaWidgets.Contains(DockWidgetService.KeyboardLayoutId),
+        "MediaAndControls category must contain Media, Audio, QuickSettings and KeyboardLayout.");
 
     var prodWidgets = options.Where(o => o.CategoryEnum == DockWidgetCategory.Productivity).Select(o => o.Id).ToArray();
     Check(prodWidgets.SequenceEqual([DockWidgetService.FocusId]),
@@ -547,7 +549,8 @@ void WidgetRegistryChecks()
     {
         "Media", "SystemStats", "Focus", "Weather", "NetSpeed", "BluetoothBattery", "Battery", "Storage",
         "DayProgress", "AiUsageClaude", "AiUsageCodex", "AiUsageAntigravity", "AiUsageOpenCode",
-        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock"
+        "AiUsageCopilot", "AiUsageDeepSeek", "AiUsageOpenRouter", "AiUsageCursor", "Audio", "QuickSettings", "Clock",
+        "KeyboardLayout"
     };
     Check(live.Select(descriptor => descriptor.Id).SequenceEqual(expectedOrder),
         "Remaining live widgets must preserve their dock order.");

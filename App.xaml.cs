@@ -24,6 +24,7 @@ public partial class App : Application
     public bool OpenSettingsOnStartup { get; private set; }
     private DevReloadService? _devReload;
     private WindowsPaletteListener? _paletteListener;
+    private WindowsTaskbarPinMonitor? _taskbarPinMonitor;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -77,6 +78,7 @@ public partial class App : Application
             return;
         }
         _ownsSingletonMutex = true;
+        _taskbarPinMonitor = new WindowsTaskbarPinMonitor();
         new StartupRegistration().SyncOnStartup(IsDev, IsInspection);
 
 #if !DEBUG
@@ -207,6 +209,8 @@ public partial class App : Application
                 _paletteListener = null;
             }
             SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
+            _taskbarPinMonitor?.Dispose();
+            _taskbarPinMonitor = null;
             AppLog.Shutdown();
             base.OnExit(e);
             return;
@@ -222,6 +226,8 @@ public partial class App : Application
             _paletteListener = null;
         }
         SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
+        _taskbarPinMonitor?.Dispose();
+        _taskbarPinMonitor = null;
         var error = (MainWindow as OpenTaskbar.MainWindow)?.RestoreWindowsTaskbar();
         if (error is not null)
         {

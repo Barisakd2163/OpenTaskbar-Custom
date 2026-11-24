@@ -874,12 +874,37 @@ public partial class SystemStatsWidget : DockWidget
         var culture = Settings.Language.Culture;
         foreach (var entry in entries)
         {
+            var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2), LastChildFill = true };
+            var appIcon = entry.ExecutablePath is { Length: > 0 } path
+                ? ApplicationIconProvider.GetForFile(path, 18)
+                : null;
+            if (appIcon is not null)
+            {
+                row.Children.Add(new Image
+                {
+                    Source = appIcon,
+                    Width = 16,
+                    Height = 16,
+                    Margin = new Thickness(0, 0, 7, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    SnapsToDevicePixels = true
+                });
+            }
             var memory = CreateValueText();
             memory.Text = FormatProcessMemory(entry.WorkingSetBytes, culture);
             memory.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-            var row = CreateMetricLine(entry.Name, memory);
-            row.ToolTip = entry.Name;
-            row.Margin = new Thickness(0, 2, 0, 2);
+            DockPanel.SetDock(memory, Dock.Right);
+            row.Children.Add(memory);
+            var name = new TextBlock
+            {
+                Text = entry.Name,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = entry.Name
+            };
+            name.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+            row.Children.Add(name);
             container.Children.Add(row);
         }
     }

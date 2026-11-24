@@ -301,6 +301,14 @@
                                         <TextBlock Text="{local:Loc AutoHide}" Style="{StaticResource SettingsRowLabel}" />
                                     </StackPanel>
                                 </DockPanel></Border>
+                                <Border x:Name="RevealOnWinKeyRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <CheckBox x:Name="RevealOnWinKeyToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                              AutomationProperties.Name="{local:Loc RevealDockOnWinKey}" AutomationProperties.HelpText="{local:Loc RevealDockOnWinKeyDescription}" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc RevealDockOnWinKey}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc RevealDockOnWinKeyDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
                                 <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <CheckBox x:Name="AnimationsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                               AutomationProperties.Name="{local:Loc Animations}" AutomationProperties.HelpText="{local:Loc AnimationsDescription}" />
@@ -404,6 +412,14 @@
                                         <TextBlock Text="{local:Loc AllMonitorsDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
+                                <Border x:Name="MirrorMainDockRow" Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <CheckBox x:Name="MirrorMainDockToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                              AutomationProperties.Name="{local:Loc MirrorMainDock}" AutomationProperties.HelpText="{local:Loc MirrorMainDockDescription}" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc MirrorMainDock}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc MirrorMainDockDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
                                 <Border x:Name="SecondaryAppsRow" Style="{StaticResource SettingsRow}"><DockPanel>
                                     <ComboBox x:Name="SecondaryAppsBox" views:IconGlyph.Glyph="{StaticResource IconLayers}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center"
                                               DisplayMemberPath="DisplayName"
@@ -434,6 +450,29 @@
                                 <TextBlock Text="{local:Loc Widgets}" Style="{StaticResource SettingsHeading}" />
                                 <TextBlock Text="{local:Loc WidgetsDescription}" Style="{StaticResource SettingsPageSubtitle}" />
                             </StackPanel>
+
+                            <TextBlock Text="{local:Loc DynamicIslandTitle}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
+                            <Border Style="{StaticResource SettingsRowsGroup}" Margin="0,0,0,18"><StackPanel>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <ComboBox x:Name="DynamicIslandVisibilityBox" DockPanel.Dock="Right" MinWidth="170" MaxWidth="260" Width="Auto" VerticalAlignment="Center"
+                                              AutomationProperties.Name="{local:Loc DynamicIslandVisibility}" SelectionChanged="SegmentChoice_SelectionChanged">
+                                        <ComboBoxItem Content="{local:Loc DynamicIslandVisibilityAlways}" Tag="Always" />
+                                        <ComboBoxItem Content="{local:Loc DynamicIslandVisibilityDesktopOnly}" Tag="DesktopOnly" />
+                                    </ComboBox>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc DynamicIslandVisibility}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DynamicIslandVisibilityDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                    <CheckBox x:Name="DynamicIslandHideFullscreenToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                              AutomationProperties.Name="{local:Loc DynamicIslandHideFullscreen}" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc DynamicIslandHideFullscreen}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DynamicIslandHideFullscreenDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                            </StackPanel></Border>
 
                             <ItemsControl x:Name="WidgetOptionsList" ItemTemplate="{StaticResource SettingsWidgetOptionTemplate}"
                                           HorizontalAlignment="Stretch">
@@ -513,6 +552,14 @@
                                                 <ComboBoxItem Content="{local:Loc DateFormatDdMmYyyyDots}" Tag="DdMmYyyyDots" />
                                             </ComboBox>
                                             <TextBlock Text="{local:Loc ClockDateFormat}" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
+                                        </DockPanel></Border>
+                                        <Border Style="{StaticResource CompactSettingsRow}"><DockPanel>
+                                            <ComboBox x:Name="ClockDateLayoutBox" views:IconGlyph.Glyph="{StaticResource IconCalendar}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="210" Width="Auto" VerticalAlignment="Center"
+                                                      AutomationProperties.Name="{local:Loc ClockDateLayout}" SelectionChanged="SegmentChoice_SelectionChanged">
+                                                <ComboBoxItem Content="{local:Loc ClockDateLayoutBeside}" Tag="Beside" />
+                                                <ComboBoxItem Content="{local:Loc ClockDateLayoutBelow}" Tag="Below" />
+                                            </ComboBox>
+                                            <TextBlock Text="{local:Loc ClockDateLayout}" Style="{StaticResource SettingsRowLabel}" FontSize="12" />
                                         </DockPanel></Border>
                                     </StackPanel>
                                 </Border>
@@ -906,12 +953,12 @@
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                            AutomationProperties.Name="{Binding NativeName}">
+                                                            AutomationProperties.Name="{Binding DisplayName}">
                                                     <Border Style="{StaticResource LanguageBadge}" Margin="0,0,10,0">
                                                         <Image Source="{Binding FlagImage}" Width="22" Height="15"
                                                                Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                                     </Border>
-                                                    <TextBlock Text="{Binding NativeName}" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}"/>
+                                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}"/>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>

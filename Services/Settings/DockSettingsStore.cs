@@ -416,6 +416,7 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.StartAction) && Enum.IsDefined(settings.StartPlacement) && Enum.IsDefined(settings.Edge)
         && Enum.IsDefined(settings.DateStyle) && Enum.IsDefined(settings.DateFormat)
         && Enum.IsDefined(settings.WeatherUnit)
+        && Enum.IsDefined(settings.DynamicIslandVisibility)
         && (settings.StatsMeters & ~SystemMeters.All) == 0
         && (settings.AiUsageProviders & ~AiProviders.All) == 0
         && Enum.IsDefined(settings.AiUsageRing)
@@ -440,6 +441,7 @@ public sealed class DockSettingsStore
         && IsValidIgnoredWirelessDevices(settings.IgnoredWirelessDevices)
         && IsValidWirelessDeviceAliases(settings.WirelessDeviceAliases)
         && IsValidDynamicIslandPlacements(settings.DynamicIslandPlacements)
+        && IsValidDynamicIslandWidgetOrders(settings.DynamicIslandWidgetOrders)
         && (string.IsNullOrWhiteSpace(settings.ThemePack) || ThemePackTransfer.IsSafeId(settings.ThemePack.Trim()))
         && IsValidPinnedTrayIcons(settings.PinnedTrayIcons)
         && !HotkeysConflict(settings);
@@ -484,6 +486,19 @@ public sealed class DockSettingsStore
                     string.Equals(widget.Id, pair.Key, StringComparison.OrdinalIgnoreCase))
                 && !string.IsNullOrWhiteSpace(pair.Value)
                 && pair.Value.Length <= 32));
+
+    private static bool IsValidDynamicIslandWidgetOrders(
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? orders) =>
+        orders is null
+        || (orders.Count <= 32
+            && orders.All(pair =>
+                !string.IsNullOrWhiteSpace(pair.Key)
+                && pair.Key.Length <= 32
+                && pair.Value is not null
+                && pair.Value.Count <= DockWidgetService.CatalogDescriptors.Count
+                && pair.Value.All(id => DockWidgetService.CatalogDescriptors.Any(widget =>
+                    string.Equals(widget.Id, id, StringComparison.OrdinalIgnoreCase)))
+                && pair.Value.Distinct(StringComparer.OrdinalIgnoreCase).Count() == pair.Value.Count));
 
     private static bool IsValidPinnedTrayIcons(IReadOnlyList<string>? pinned) =>
         pinned is null

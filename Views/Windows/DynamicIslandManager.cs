@@ -30,8 +30,7 @@ public sealed class DynamicIslandManager : IDisposable
     public bool IsWidgetPlacedOnConnectedDisplay(DockSettings settings, string widgetId) =>
         !settings.FocusModeEnabled
         && settings.Widgets?.Contains(widgetId, StringComparer.OrdinalIgnoreCase) == true
-        && settings.DynamicIslandPlacements?.TryGetValue(widgetId, out var deviceName) == true
-        && _displays.Any(display => string.Equals(display.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+        && DynamicIslandPolicy.IsAssignedToAnyDisplay(settings.DynamicIslandPlacements, widgetId, _displays);
 
     public void RefreshDisplays()
     {
@@ -49,13 +48,9 @@ public sealed class DynamicIslandManager : IDisposable
         var placements = settings.DynamicIslandPlacements ?? new Dictionary<string, string>();
         var desired = _displays.ToDictionary(
             display => display.DeviceName,
-            display => placements
-                .Where(pair => selected.Contains(pair.Key)
-                    && string.Equals(pair.Value, display.DeviceName, StringComparison.OrdinalIgnoreCase))
-                .Select(pair => pair.Key)
-                .ToArray(),
+            display => DynamicIslandPolicy.WidgetsForDisplay(selected, placements, display.DeviceName),
             StringComparer.OrdinalIgnoreCase);
-        foreach (var empty in desired.Where(pair => pair.Value.Length == 0).Select(pair => pair.Key).ToArray())
+        foreach (var empty in desired.Where(pair => pair.Value.Count == 0).Select(pair => pair.Key).ToArray())
             desired.Remove(empty);
 
         foreach (var stale in _windows.Keys.Where(deviceName => !desired.ContainsKey(deviceName)).ToArray())

@@ -42,6 +42,7 @@ public partial class QuickSettingsWidget : DockWidget
     private CancellationTokenSource? _activation;
     private bool? _nightLightOn;
     private bool _loadingRadios;
+    private int _radioDiscoveryAttempts;
 
     internal Func<bool?> ReadNightLight { get; init; } = NightLightControl.Read;
     internal Func<bool, bool> WriteNightLight { get; init; } = NightLightControl.Set;
@@ -100,20 +101,39 @@ public partial class QuickSettingsWidget : DockWidget
         RaiseContentWidthChanged();
     }
 
-    protected override async void OnActivated()
+    protected override void OnActivated()
     {
         _activation = new CancellationTokenSource();
-        var token = _activation.Token;
         TransitionChanged += RefreshState;
-        _loadingRadios = true;
+        _radioDiscoveryAttempts = 0;
         RefreshState();
+        _ = DiscoverRadiosAsync(_activation.Token);
+    }
+
+    private async Task DiscoverRadiosAsync(CancellationToken token)
+    {
+        if (_loadingRadios) return;
+        _loadingRadios = true;
+        _radioDiscoveryAttempts++;
+        Render();
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeout.CancelAfter(TimeSpan.FromSeconds(8));
+            // WinRT requires RequestAccessAsync before GetRadiosAsync on unpackaged desktop apps so Bluetooth
+            // and Wi-Fi radios are enumerated and controllable rather than reported unavailable (#161).
+            var access = await EnsureRadioAccessAsync(timeout.Token);
+            if (token.IsCancellationRequested) return;
+            if (access != RadioAccessStatus.Allowed)
+            {
+                AppLog.Warning($"Quick settings radio access was {access}.");
+            }
+
             var radios = await Radio.GetRadiosAsync().AsTask(timeout.Token);
             if (token.IsCancellationRequested) return;
 
+            foreach (var oldRadio in _radios)
+                oldRadio.StateChanged -= Radio_StateChanged;
             _radios = radios.Where(radio => radio.Kind is RadioKind.WiFi or RadioKind.Bluetooth).ToArray();
             foreach (var radio in _radios)
                 radio.StateChanged += Radio_StateChanged;
@@ -122,7 +142,7 @@ public partial class QuickSettingsWidget : DockWidget
         catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidOperationException
             or OperationCanceledException)
         {
-            AppLog.Warning($"Quick settings radio discovery failed ({ex.GetType().Name}).");
+            AppLog.Warning($"Quick settings radio discovery failed ({ex.GetType().Name}): {ex.Message}");
         }
         finally
         {
@@ -145,6 +165,7 @@ public partial class QuickSettingsWidget : DockWidget
         _radios = [];
         _nightLightOn = null;
         _loadingRadios = false;
+        _radioDiscoveryAttempts = 0;
         _errors.Clear();
         Render();
     }
@@ -152,6 +173,13 @@ public partial class QuickSettingsWidget : DockWidget
     protected override void OnTick(DateTime now)
     {
         if (now.Second % 5 == 0) RefreshState();
+        // Retry radio discovery a few times if Bluetooth/Wi-Fi adapters were still initializing at boot.
+        if (now.Second % 15 == 0 && !_loadingRadios && _activation is { IsCancellationRequested: false } activation
+            && _radioDiscoveryAttempts < 4
+            && (RadiosFor(Setting.Bluetooth).Length == 0 || RadiosFor(Setting.Wifi).Length == 0))
+        {
+            _ = DiscoverRadiosAsync(activation.Token);
+        }
     }
 
     protected override void OnLanguageChanged() => Render();
@@ -292,14 +320,14 @@ public partial class QuickSettingsWidget : DockWidget
         _ => "QuickChangeFailed"
     };
 
-    private static async Task<ChangeResult> SetRadiosAsync(Radio[] radios, bool on, CancellationToken token)
+    private static async Task<RadioAccessStatus> EnsureRadioAccessAsync(CancellationToken token)
     {
         // Share permission discovery while Wi-Fi and Bluetooth requests overlap. A denial is not cached.
         var pendingAccess = _radioAccess ??= RequestRadioAccessAsync();
         RadioAccessStatus access;
         try
         {
-            access = await pendingAccess;
+            access = await pendingAccess.WaitAsync(token);
         }
         finally
         {
@@ -307,11 +335,16 @@ public partial class QuickSettingsWidget : DockWidget
                 _radioAccess = null;
         }
 
+        if (access != RadioAccessStatus.Allowed && ReferenceEquals(_radioAccess, pendingAccess))
+            _radioAccess = null;
+        return access;
+    }
+
+    private static async Task<ChangeResult> SetRadiosAsync(Radio[] radios, bool on, CancellationToken token)
+    {
+        var access = await EnsureRadioAccessAsync(token);
         if (access != RadioAccessStatus.Allowed)
-        {
-            if (ReferenceEquals(_radioAccess, pendingAccess)) _radioAccess = null;
             return ChangeResult.Denied;
-        }
         token.ThrowIfCancellationRequested();
 
         var target = on ? RadioState.On : RadioState.Off;

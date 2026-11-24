@@ -21,6 +21,11 @@
 | REC-03 | Start twice / rapidly exit and restart | Only one owner of taskbar replacement and app-bar reservations |
 | REC-04 | Suspend, hibernate, lock/unlock, RDP reconnect | Dock returns without orphaned reservations or permanent hidden state |
 | REC-05 | Update attempt fails, elevation denied, executable locked | Existing executable remains launchable; taskbar recovery remains possible |
+| REC-06 | Cold boot with Windows startup enabled; Explorer is absent, slow, or recreates its taskbar after OpenTaskbar starts | Dock remains usable, retries are bounded, AppBar registration is restored, and the native taskbar does not remain visible or hidden incorrectly |
+| REC-07 | Move or replace the portable executable, then sign in again | Startup registration points to the running supported executable; a stale path never silently starts an older copy |
+| REC-08 | Explorer restarts while replacement is active and delays or omits a shell notification | Reconciliation detects the new taskbar window, validates its process identity, and restores the reservation without duplicate registration |
+| REC-09 | Explorer creates or shows a secondary taskbar after the initial hide | The secondary taskbar is hidden promptly and remains hidden after delayed creation |
+| REC-10 | Recovery journal is missing, malformed, stale, or cannot be written | Recovery prefers a visible native taskbar and reports the failed operation; it never silently discards uncertain recovery state |
 
 ## P1: monitor topology, DPI and fullscreen
 
@@ -37,6 +42,7 @@
 | MON-09 | Move one app's windows across monitors | Current-monitor filtering and click/activation choose the expected window |
 | MON-10 | Change virtual desktop or move a window between desktops | Current-desktop filter follows preference; COM failure is visible in diagnostics |
 | MON-11 | Change Windows display scale or work area while dock is open | Correct repositioning after `WM_DPICHANGED`, `WM_DISPLAYCHANGE` and work-area notifications |
+| MON-12 | Explorer restarts while a secondary monitor is disconnected or being re-enumerated | No stale monitor or window handles are reused; the dock recovers when a valid display returns |
 
 ## P1: interaction, accessibility and visual design
 
@@ -62,6 +68,30 @@
 - SEC-03: Review shell command arguments, paths with special characters, log privacy and permission boundaries.
 - REL-01: Release pipeline reproducibility, artifact checksums, GitHub Actions pinning and Windows test reporting.
 - ARCH-01: Reduce coupling in `MainWindow`, `SettingsWindow`, `TaskbarReplacementSession` through small independently tested changes.
+
+## Cross-cutting regression controls
+
+The recurring failures in issues #79, #85, #86, #95, #126, #127, #128, #131 and #152 fall into three related classes:
+
+1. **External lifecycle races:** Explorer, its taskbar windows, display enumeration, and startup registration change independently. Treat missing, replaced, delayed, or unresponsive shell objects as normal states. Revalidate window handles and process identity at the point of use; make reconciliation idempotent; bound retries and expose exhaustion in diagnostics.
+2. **Feedback loops in layout:** measured width, scrolling, magnification, and window placement can trigger one another. Keep one source of truth for geometry, avoid changing native reservations during transient drag/slider updates, and test threshold boundaries (including a one-pixel overflow) with deterministic inputs.
+3. **Validation gaps between simulation and Windows:** logic tests can prove transitions and calculations but cannot prove Explorer timing, shell broadcasts, actual AppBar behavior, or multi-monitor placement. Keep simulated checks fast, and separately record live Windows results with OS build, process architecture, display topology, DPI, exact steps, and logs.
+
+Do not infer live compatibility from a passing source-level check. In particular, a simulated `TaskbarCreated` event does not prove Explorer restart recovery, and a single-monitor run does not prove secondary-taskbar handling. The current source-level recovery checks live in `tests/OpenTaskbar.Tests/ShellRecoveryChecks.cs`, `TaskbarRecoveryChecks.cs`, and `TaskbarWindowChecks.cs`; keep them aligned with the state machine and preserve separate live checks for the shell boundary.
+
+## Windows compatibility evidence
+
+For every release candidate, attach a small compatibility record to the release review:
+
+| Environment | Required evidence |
+|---|---|
+| Minimum supported Windows build, x64 | Startup, taskbar hide/restore, Explorer restart, and updater smoke checks |
+| Current supported Windows release, x64 | The same shell checks plus Start/Search anchoring and window previews |
+| Current supported Windows release, x86 if shipped | Native handle/P/Invoke checks and watchdog recovery |
+| Two displays with mixed DPI and a negative virtual-screen coordinate | Primary and secondary taskbar visibility, placement, disconnect/reconnect recovery |
+| Insider/preview Windows build, when available | Exploratory taskbar/AppBar check; record failures separately from supported-release claims |
+
+Record the exact OS build and app commit for each run. If a live test cannot be performed, mark it **not run**; do not mark it passed based on a simulation or static review. Windows shell behavior is outside this application’s release control, so long-term support requires a recurring compatibility check rather than an assumption that one tested build covers future Windows updates.
 
 ## Exit criteria and evidence
 

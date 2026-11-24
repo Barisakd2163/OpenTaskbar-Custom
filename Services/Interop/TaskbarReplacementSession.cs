@@ -138,14 +138,17 @@ public sealed class TaskbarReplacementSession : IDisposable
     private nint _registeredTaskbarHandle;
     private uint _registeredTaskbarPid;
     private nint _shellShowHook;
+    private readonly bool _ownsNativeTaskbar;
+    private int _secondaryShelfPixels;
 
-    public TaskbarReplacementSession(Window window, nint handle, bool autoHideEnabled)
+    public TaskbarReplacementSession(Window window, nint handle, bool autoHideEnabled, bool ownsNativeTaskbar = true)
     {
         _window = window;
         _handle = handle;
         _autoHideEnabled = autoHideEnabled;
+        _ownsNativeTaskbar = ownsNativeTaskbar;
         _shellShowCallback = OnShellWindowShown;
-        AppDomain.CurrentDomain.ProcessExit += Process_Exit;
+        if (ownsNativeTaskbar) AppDomain.CurrentDomain.ProcessExit += Process_Exit;
     }
 
     /// <summary>
@@ -260,12 +263,15 @@ public sealed class TaskbarReplacementSession : IDisposable
                 MarkRegistered(CurrentTaskbarLease());
             }
 
-            var edgeState = SetTaskbarState(ReplacementState, _handle);
-            if (edgeState != TaskbarStateResult.Applied)
+            if (_ownsNativeTaskbar)
             {
-                EnterDegraded(edgeState == TaskbarStateResult.MissingTaskbar
-                    ? "Edge: Shell_TrayWnd missing"
-                    : "Edge: SetTaskbarState failed");
+                var edgeState = SetTaskbarState(ReplacementState, _handle);
+                if (edgeState != TaskbarStateResult.Applied)
+                {
+                    EnterDegraded(edgeState == TaskbarStateResult.MissingTaskbar
+                        ? "Edge: Shell_TrayWnd missing"
+                        : "Edge: SetTaskbarState failed");
+                }
             }
             EnforceNativeTaskbarHidden();
             PositionDockWindow();
@@ -450,6 +456,20 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             return;
         }
+        if (!_ownsNativeTaskbar)
+        {
+            if (AppBarClient.Register(_handle, CallbackMessage, "SecondaryDock") == 0)
+                throw new InvalidOperationException("ErrorAppBarRegister");
+            MarkRegistered();
+            SetPhase(SessionState.Active);
+            try { StartPositioning(); }
+            catch
+            {
+                Stop();
+                throw;
+            }
+            return;
+        }
 
         var pending = HasPendingRecoveryFile(out var recoveryError, out var pendingState);
         if (recoveryError is not null)
@@ -549,15 +569,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
             ShellTelemetry.Result("SessionStart", "Start", success: true,
                 verified: Phase != SessionState.Degraded, ("state", _state));
-            // Browsers enter fullscreen by resizing the already-foreground HWND (no foreground-change event) and
-            // only notify the native taskbar via ITaskbarList2. Poll the window list so our dock hides too.
-            _fullScreenPollTimer = new DispatcherTimer(DispatcherPriority.Background, _window.Dispatcher)
-            {
-                Interval = TimeSpan.FromMilliseconds(500)
-            };
-            _fullScreenPollTimer.Tick += FullScreenPollTimer_Tick;
-            _fullScreenPollTimer.Start();
-            PositionDockWindow(throwOnFailure: true);
+            StartPositioning();
         }
         catch
         {
@@ -565,6 +577,22 @@ public sealed class TaskbarReplacementSession : IDisposable
             if (IsActive) SetPhase(SessionState.Failed);
             throw;
         }
+    }
+
+    private void StartPositioning()
+    {
+        // Browsers enter fullscreen by resizing the already-foreground HWND (no foreground-change event) and
+        // only notify the native taskbar via ITaskbarList2. Poll the window list so our dock hides too.
+        if (_fullScreenPollTimer is null)
+        {
+            _fullScreenPollTimer = new DispatcherTimer(DispatcherPriority.Background, _window.Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _fullScreenPollTimer.Tick += FullScreenPollTimer_Tick;
+        }
+        _fullScreenPollTimer.Start();
+        PositionDockWindow(throwOnFailure: true);
     }
 
     /// <summary>
@@ -592,6 +620,12 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (!CanOperate)
         {
             ShellTelemetry.Event("ReconcileSkipped", ("reason", reason), ("state", _state));
+            return;
+        }
+        if (!_ownsNativeTaskbar)
+        {
+            if (reason == "TaskbarCreated") ReapplyReservation();
+            else PositionDockWindow();
             return;
         }
 
@@ -940,6 +974,16 @@ public sealed class TaskbarReplacementSession : IDisposable
 
         try
         {
+            if (!_ownsNativeTaskbar)
+            {
+                _fullScreenPollTimer?.Stop();
+                StopReconcileTimer();
+                if (IsRegisteredPhase)
+                    AppBarClient.Unregister(_handle, "SecondaryDockStop");
+                _secondaryShelfPixels = 0;
+                SetPhase(SessionState.Uninitialized);
+                return null;
+            }
             // A journal on disk is enough reason to restore: a previous Start() may have died between writing it
             // and entering the Hiding phase, or Explorer may have re-hidden the tray after a partial stop.
             if (!IsActive && !File.Exists(JournalPath)) return null;
@@ -1034,7 +1078,7 @@ public sealed class TaskbarReplacementSession : IDisposable
     {
         _autoHideEnabled = autoHide;
         if (!CanOperate) return;
-        var state = SetTaskbarState(ReplacementState, _handle);
+        var state = _ownsNativeTaskbar ? SetTaskbarState(ReplacementState, _handle) : TaskbarStateResult.Applied;
         if (state == TaskbarStateResult.MissingTaskbar)
         {
             EnterDegraded("UpdateAutoHide: Shell_TrayWnd missing");
@@ -1177,6 +1221,13 @@ public sealed class TaskbarReplacementSession : IDisposable
             monitor.Bottom, metrics.ShelfPixels, _nativeBottomTaskbarHeight, dpi,
             _autoHideEnabled, ReleaseNativeStrip, _nativeTaskbarAtBottom,
             (_previousTaskbarState & AppBarClient.AbsAutoHide) != 0);
+        if (!_ownsNativeTaskbar)
+        {
+            // Exclude this AppBar's existing reservation from the monitor's work-area strip.
+            nativePixels = Math.Max(0, monitor.Bottom - workArea.Bottom - _secondaryShelfPixels);
+            extraHeight = _autoHideEnabled ? 0 : Math.Max(0, metrics.ShelfPixels - nativePixels);
+            expectedWorkBottom = monitor.Bottom - nativePixels - extraHeight;
+        }
         var request = (monitor.Left, monitor.Bottom, nativePixels, extraHeight);
         if (_reservation == request) return;
         _reservation = request;
@@ -1200,6 +1251,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         var verified = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (!_ownsNativeTaskbar && committed) _secondaryShelfPixels = extraHeight;
         var workAfter = GetMonitorInfo(monitorHandle, ref verified) ? verified.rcWork.Bottom : workArea.Bottom;
         _lastBottomReserveSynced = workAfter == expectedWorkBottom;
         AppLog.Info($"ReserveShelf: shelf={metrics.ShelfPixels}px native={nativePixels}px extra={extraHeight}px setPos=({resolved.Top}..{resolved.Bottom}) workBottom={workAfter} (expected={expectedWorkBottom}).");
@@ -1287,7 +1339,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             _shelfHeight = value;
             if (CanOperate)
             {
-                if (wasReleasingNative != ReleaseNativeStrip)
+                if (_ownsNativeTaskbar && wasReleasingNative != ReleaseNativeStrip)
                 {
                     SetTaskbarState(ReplacementState, _handle);
                     if (HideNativeTaskbarDetailed() != HideObservation.AlreadyHidden)
@@ -1318,7 +1370,13 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private bool IsFullScreen(nint windowHandle)
     {
-        if (windowHandle == 0 || !IsWindowVisible(windowHandle) || IsIconic(windowHandle))
+        var dockMonitor = _targetMonitor != 0 ? _targetMonitor : MonitorFromWindow(_handle, MonitorDefaultToNearest);
+        return IsFullScreenOnMonitor(windowHandle, dockMonitor);
+    }
+
+    internal static bool IsFullScreenOnMonitor(nint windowHandle, nint monitorHandle)
+    {
+        if (windowHandle == 0 || monitorHandle == 0 || !IsWindowVisible(windowHandle) || IsIconic(windowHandle))
             return false;
 
         var root = GetAncestor(windowHandle, GaRootOwner);
@@ -1330,10 +1388,8 @@ public sealed class TaskbarReplacementSession : IDisposable
         const long WsExTransparent = 0x00000020L;
         if ((GetWindowLongPtr(targetHandle, GwlExStyle).ToInt64() & WsExTransparent) != 0) return false;
 
-        var dockMonitor = _targetMonitor != 0 ? _targetMonitor : MonitorFromWindow(_handle, MonitorDefaultToNearest);
         var targetMonitor = MonitorFromWindow(targetHandle, MonitorDefaultToNearest);
-        if (targetMonitor != dockMonitor)
-            return false;
+        if (targetMonitor != monitorHandle) return false;
 
         var monitor = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(targetMonitor, ref monitor)
@@ -1378,13 +1434,21 @@ public sealed class TaskbarReplacementSession : IDisposable
         if (now - _lastFullScreenScanMs < 200) return _lastFullScreenScanResult;
         _lastFullScreenScanMs = now;
 
+        var monitor = _targetMonitor != 0 ? _targetMonitor : MonitorFromWindow(_handle, MonitorDefaultToNearest);
+        _lastFullScreenScanResult = IsAnyFullScreenOnMonitor(monitor);
+        return _lastFullScreenScanResult;
+    }
+
+    internal static bool IsAnyFullScreenOnMonitor(nint monitorHandle)
+    {
+        if (monitorHandle == 0) return false;
         var found = false;
         EnumWindows((handle, _) =>
         {
             if (found) return false;
             GetWindowThreadProcessId(handle, out var processId);
             if (processId == Environment.ProcessId) return true;
-            if (!IsFullScreen(handle)) return true;
+            if (!IsFullScreenOnMonitor(handle, monitorHandle)) return true;
             // Monitor-sized shell surfaces (desktop, IME, GPU overlays) must never hide the dock. Only a real
             // application window that owns a taskbar button counts as a fullscreen app. Static shell classes
             // are excluded even when their style would otherwise look eligible (e.g. TextInputHost).
@@ -1396,7 +1460,6 @@ public sealed class TaskbarReplacementSession : IDisposable
             found = true;
             return false;
         }, 0);
-        _lastFullScreenScanResult = found;
         return found;
     }
 
@@ -1411,7 +1474,7 @@ public sealed class TaskbarReplacementSession : IDisposable
             : appWindow;
     }
 
-    private bool IsExcludedFullScreenClass(nint handle, bool includeCoreWindow)
+    private static bool IsExcludedFullScreenClass(nint handle, bool includeCoreWindow)
     {
         // Local buffer: this helper is called from both the poll timer and WindowProc for every
         // enumerated window; a shared field would be fragile if either ever moves off the dispatcher.
@@ -1912,7 +1975,7 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     private void EnforceNativeTaskbarHidden()
     {
-        if (!CanOperate) return;
+        if (!_ownsNativeTaskbar || !CanOperate) return;
         var result = SetTaskbarState(ReplacementState, _handle);
         if (result == TaskbarStateResult.MissingTaskbar)
         {
@@ -2116,6 +2179,7 @@ public sealed class TaskbarReplacementSession : IDisposable
         }
 
         MarkUnregistered();
+        _secondaryShelfPixels = 0;
         _reservation = null;
         _sideReservation = null;
     }

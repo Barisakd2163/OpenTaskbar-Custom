@@ -36,6 +36,11 @@ public partial class MainWindow : Window
     private const int HtTransparent = -1;
 
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
+    private readonly MainWindow? _mirrorOf;
+    private readonly nint _mirrorMonitor;
+    private readonly FocusWidget.Session _focusSession;
+    private bool _closed;
+    private MainWindow? _startMenuDock;
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly ObservableCollection<DockWidgetItem> _widgets = [];
     private IReadOnlyDictionary<string, DockWidgetItem> _islandWidgetItems =
@@ -131,8 +136,13 @@ public partial class MainWindow : Window
         tooltip.Dispatcher.BeginInvoke((Action)Elevate, DispatcherPriority.Loaded);
     }
 
-    public MainWindow()
+    public MainWindow() : this(null, 0) { }
+
+    private MainWindow(MainWindow? mirrorOf, nint mirrorMonitor)
     {
+        _mirrorOf = mirrorOf;
+        _mirrorMonitor = mirrorMonitor;
+        _focusSession = mirrorOf?._focusSession ?? new FocusWidget.Session();
         var startup = StartupStopwatch.Start("MainWindow constructor");
         InitializeComponent();
         _dynamicIslandManager = new DynamicIslandManager(
@@ -152,8 +162,13 @@ public partial class MainWindow : Window
         _widgetPanel = new WidgetPanelHost(this);
         _widgetPanel.IsOpenChanged += WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed += ReportError;
-        ShowInTaskbar = _isInspection;
-        if (((App)Application.Current).OpenSettingsOnStartup)
+        ShowInTaskbar = _isInspection && _mirrorOf is null;
+        if (_mirrorOf is not null)
+        {
+            ShowActivated = false;
+            Title = UiText.Get("SecondaryDockTitle");
+        }
+        if (_mirrorOf is null && ((App)Application.Current).OpenSettingsOnStartup)
         {
             RoutedEventHandler? openSettingsOnce = null;
             openSettingsOnce = (_, _) =>
@@ -202,7 +217,10 @@ public partial class MainWindow : Window
         _widgetCoordinator = new WidgetCoordinator(
             WidgetStrip, Dispatcher, ReportError, lazy: true,
             canExpandInline: CanExpandWidgetInline,
-            onHoverLayoutChanged: _ => ResizeDockToContent())
+            onHoverLayoutChanged: _ => ResizeDockToContent(),
+            createWidget: id => id == DockWidgetService.FocusId
+                ? new FocusWidget(TimeProvider.System, _focusSession)
+                : WidgetCoordinator.CreateWidget(id))
         {
             OrderChanged = OnWidgetOrderChanged,
             IsWidgetEnabled = (settings, id) => !_dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(settings, id),
@@ -243,11 +261,13 @@ public partial class MainWindow : Window
         {
             Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
             {
-                if (StartButton.IsVisible)
+                var dock = _startMenuDock is { _closed: false } anchor ? anchor : this;
+                _startMenuDock = null;
+                if (dock.StartButton.IsVisible)
                 {
-                    ShellShortcuts.ScheduleStartMenuReposition(StartButton, hwnd);
+                    ShellShortcuts.ScheduleStartMenuReposition(dock.StartButton, hwnd);
                 }
-                WatchForStartToSearchTransition();
+                dock.WatchForStartToSearchTransition();
             });
         };
 
@@ -270,9 +290,12 @@ public partial class MainWindow : Window
         _dockPosition = _preferences.Current.Position;
         _thumbnailPreview.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
         _preferences.Changed += Preferences_Changed;
-        ShellShortcuts.IsMediaWidgetActive = () =>
-            _preferences.Current.Widgets?.Contains("Media", StringComparer.OrdinalIgnoreCase) == true
-            || _preferences.Current.ShowMedia;
+        if (_mirrorOf is null)
+        {
+            ShellShortcuts.IsMediaWidgetActive = () =>
+                _preferences.Current.Widgets?.Contains("Media", StringComparer.OrdinalIgnoreCase) == true
+                || _preferences.Current.ShowMedia;
+        }
         // App.OnStartup has already selected the theme pack; later changes come through ApplicationPreferences.Save.
         ThemePacks.Changed += ThemePacks_Changed;
         Closed += (_, _) =>
@@ -297,7 +320,7 @@ public partial class MainWindow : Window
             startupTrimTimer.Stop();
             NativeMemoryMethods.TrimWorkingSet(force: true);
         };
-        startupTrimTimer.Start();
+        if (_mirrorOf is null) startupTrimTimer.Start();
 
         // Widget placement (~180 ms) is deferred with the rest of the dock content so the frame paints first.
         DockScrollViewer.SetExternalIndicators(ScrollPrevOverlay, ScrollNextOverlay);
@@ -305,7 +328,7 @@ public partial class MainWindow : Window
         ApplyLayoutMode();
         ApplyDockWidthMode();
         PositionDock();
-        NotificationService.UpdateRequested += OnUpdateNotificationRequested;
+        if (_mirrorOf is null) NotificationService.UpdateRequested += OnUpdateNotificationRequested;
         startup.Finish("constructor total");
         Closed += (_, _) => NotificationService.UpdateRequested -= OnUpdateNotificationRequested;
     }
@@ -334,15 +357,18 @@ public partial class MainWindow : Window
         _source.AddHook(WindowProc);
         UpdatePreferredIconPixels();
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
-        if (!_isInspection && !ExcludeFromTaskSwitcher(source.Handle))
+        if (!ShowInTaskbar && !ExcludeFromTaskSwitcher(source.Handle))
         {
             ReportError("ErrorAltTabExclude");
         }
         WindowThumbnailPreview.ExcludeFromPeek(source.Handle);
 
-        _windowTracker = new NativeWindowTracker(Dispatcher);
-        _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
-        _windowTracker.ForegroundWindowChanged += WindowTracker_ForegroundWindowChanged;
+        _windowTracker = _mirrorOf is null ? new NativeWindowTracker(Dispatcher) : _mirrorOf._windowTracker;
+        if (_windowTracker is not null)
+        {
+            _windowTracker.WindowsChanged += WindowTracker_WindowsChanged;
+            _windowTracker.ForegroundWindowChanged += WindowTracker_ForegroundWindowChanged;
+        }
         // Window enumeration, the native taskbar takeover and feature setup are deferred to
         // Window_ContentRenderedOnce. Running them here would block WPF inside Show() before the
         // first paint, making the dock appear seconds after the executable starts.
@@ -368,7 +394,7 @@ public partial class MainWindow : Window
         _autoHideController.IsShellMenuWindow = IsShellOverlayWindow;
         _autoHideController.LastApplicationWindowProvider = () => _lastApplicationWindow;
         _autoHideController.BackgroundWindowsProvider = () => (_windowTracker?.Snapshot ?? []).Select(window => window.Handle);
-        _startMenu.StartWatching();
+        if (_mirrorOf is null) _startMenu.StartWatching();
         _autoHideController.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
         ApplyBackdropHitTesting();
@@ -464,6 +490,18 @@ public partial class MainWindow : Window
 
     private async Task PopulateDockContentAsync(StartupStopwatch.Scope content)
     {
+        if (_mirrorOf is not null)
+        {
+            if (_source is null || !IsLoaded) return;
+            SynchronizePins(_mirrorOf._pinnedApps);
+            StartupStopwatch.Mark("pinned apps synchronized");
+            InitializeExtras();
+            RebuildDockOrder();
+            PositionDock();
+            content.Finish("content total");
+            await Dispatcher.InvokeAsync(FinalizeWindowTracking, DispatcherPriority.Background);
+            return;
+        }
         (IReadOnlyList<DockApp> Apps, string? ErrorKey, int SkippedCount) pins;
         try
         {
@@ -490,12 +528,11 @@ public partial class MainWindow : Window
     {
         if (!IsLoaded) return;
         var startup = StartupStopwatch.Start("startup finalize");
-        if (_windowTracker is not null)
+        if (_windowTracker is not null && _mirrorOf is null)
         {
             try
             {
                 _windowTracker.Start(_source!.Handle);
-                if (!_foregroundPollTimer.IsEnabled) _foregroundPollTimer.Start();
                 if (!_windowTracker.NotificationsAvailable)
                 {
                     ReportError("ErrorNotificationBadge");
@@ -508,6 +545,7 @@ public partial class MainWindow : Window
                 _windowTracker = null;
             }
         }
+        if (_windowTracker is not null && !_foregroundPollTimer.IsEnabled) _foregroundPollTimer.Start();
         StartupStopwatch.Mark("window tracking started");
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
@@ -518,6 +556,11 @@ public partial class MainWindow : Window
             else if (_replacementSession.IsActive) EnsureTrayHostStarted();
             StartupStopwatch.Mark("taskbar replacement started");
             InitializeFeatures();
+            if (_mirrorOf is not null)
+            {
+                WindowTracker_ForegroundWindowChanged(NativeWindowTracker.GetForegroundApplicationWindow());
+                if (_windowTracker is not null) WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+            }
             StartupStopwatch.Mark("features initialized");
             startup.Finish("finalize total");
         }));
@@ -554,7 +597,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
+        var targetDisplay = GetDockDisplay();
         // Before taskbar replacement takes over, WorkArea still excludes the native Windows taskbar (~48 DIP),
         // which would paint the dock slightly above the screen edge and then jump down when StartReplacementMode
         // runs. Align to monitor Bounds by default and reserve WorkArea for fallback when replacement fails.
@@ -590,8 +633,9 @@ public partial class MainWindow : Window
 
         ResizeDockToContent();
         ApplyDockAlignment();
-        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
-        var session = new TaskbarReplacementSession(this, source.Handle, _preferences.Current.AutoHide != AutoHideMode.Disabled);
+        var targetDisplay = GetDockDisplay();
+        var session = new TaskbarReplacementSession(this, source.Handle, _preferences.Current.AutoHide != AutoHideMode.Disabled,
+            ownsNativeTaskbar: _mirrorOf is null);
         session.OperationReported += ReportOperationStatus;
         session.LayoutChanged += ApplyTaskbarLayout;
         session.FullScreenChanged += OnFullScreenChanged;
@@ -617,7 +661,7 @@ public partial class MainWindow : Window
 
     private void EnsureTrayHostStarted()
     {
-        var host = TrayHost.Start();
+        var host = _mirrorOf is null ? TrayHost.Start() : TrayHost.Current;
         if (host is not null)
         {
             PinnedTrayStrip.AttachHost(host);
@@ -805,6 +849,7 @@ public partial class MainWindow : Window
         // A window list change can move another window over the dock without a foreground change.
         _autoHideController?.InvalidateWindowOverlap();
         windows = FilterWindows(windows);
+        if (_mirrorOf is not null) _lastMirrorWindows = windows;
         _runningAppIcons.Retain(windows);
         var foreground = NativeWindowTracker.GetForegroundApplicationWindow();
         if (foreground != 0)
@@ -1313,6 +1358,7 @@ public partial class MainWindow : Window
 
         const uint wmSysCommand = 0x0112;
         const int scTaskList = 0xF130;
+        (_mirrorOf ?? this)._startMenuDock = this;
         if (_source is null || !PostMessage(_source.Handle, wmSysCommand, scTaskList, 0))
         {
             ReportError("ErrorStartMenuOpen");
@@ -1364,7 +1410,7 @@ public partial class MainWindow : Window
     private void OpenDockApp(DockApp app, bool toggleIfForeground = false, nint? foregroundAtPress = null)
     {
         var existingWindow = foregroundAtPress is { } pressedWindow
-            ? _windowTracker?.Snapshot.FirstOrDefault(window => window.Handle == pressedWindow && MatchesWindow(app, window))
+            ? (_mirrorOf is null ? _windowTracker?.Snapshot : VisibleSnapshot)?.FirstOrDefault(window => window.Handle == pressedWindow && MatchesWindow(app, window))
             : null;
         existingWindow ??= FindNextWindowForApp(app);
         if (existingWindow is not null)
@@ -1705,6 +1751,11 @@ public partial class MainWindow : Window
         var current = ResolveEffectiveForeground(_foregroundWindow, !isExternal, external);
         if (current != _foregroundWindow)
             WindowTracker_ForegroundWindowChanged(current);
+        if (_mirrorOf is not null && _preferences.Current.SecondaryApps == SecondaryAppScope.CurrentMonitorOnly)
+        {
+            var windows = FilterWindows(_windowTracker.Snapshot);
+            if (!_lastMirrorWindows.SequenceEqual(windows)) WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+        }
     }
 
     private void WindowTracker_ForegroundWindowChanged(nint windowHandle)
@@ -2154,6 +2205,12 @@ public partial class MainWindow : Window
 
     private void SavePinOrder()
     {
+        if (_mirrorOf is not null)
+        {
+            _mirrorOf.SynchronizePins(_pinnedApps);
+            _mirrorOf.SavePinOrder();
+            return;
+        }
         var order = _pinnedApps.Select(app => app.DockKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var error = _preferences.Save(_preferences.Current with { PinOrder = order });
         if (error is not null) ReportError(error);
@@ -2374,6 +2431,11 @@ public partial class MainWindow : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
+        if (_mirrorOf is not null)
+        {
+            _mirrorOf.OpenSettings_Click(sender, e);
+            return;
+        }
         NativeMemoryMethods.CancelIdleTrim();
         _widgetPanel.Close(restoreFocus: false);
         AppLog.Info($"Settings open requested: source={sender?.GetType().Name ?? "null"}, startupArg={((App)Application.Current).OpenSettingsOnStartup}, existing={(_settingsWindow is null ? "none" : _settingsWindow.IsClosingOrClosed ? "closing" : "open")}");
@@ -2463,7 +2525,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var target = DisplayService.GetTargetDisplay(settings.TargetDisplay);
+        var target = GetDockDisplay();
         var monitorExtent = IsVertical
             ? (target.Height > 0 ? target.Height : SystemParameters.WorkArea.Height)
             : (target.Width > 0 ? target.Width : SystemParameters.WorkArea.Width);
@@ -2475,6 +2537,12 @@ public partial class MainWindow : Window
 
     private void Preferences_Changed(object? sender, EventArgs e)
     {
+        if (_closed) return;
+        if (_mirrorOf is not null)
+        {
+            Title = UiText.Get("SecondaryDockTitle");
+            SynchronizePins(_mirrorOf._pinnedApps);
+        }
         _sizePreviewOverride = null;
         _radiusPreviewOverride = null;
         // Clear any live-slider deferral so ApplySizeProfile commits the updated AppBar shelf immediately.
@@ -2490,7 +2558,7 @@ public partial class MainWindow : Window
         ApplyBackdropHitTesting();
         _widgetCoordinator.Apply(_preferences.Current);
         ApplyWidgets(_preferences.Current.Widgets);
-        _dynamicIslandManager.Apply(_preferences.Current, _islandWidgetItems);
+        if (_mirrorOf is null) _dynamicIslandManager.Apply(_preferences.Current, _islandWidgetItems);
         ApplyExtrasSettings();
         ApplyFeatureSettings();
         RefreshPinnedTrayStrip();
@@ -2507,8 +2575,9 @@ public partial class MainWindow : Window
             var states = RunningWindowStates();
             UpdateNotificationBadges(_pinnedApps, states);
             UpdateNotificationBadges(_runningApps, states);
+            if (_mirrorOf is not null) WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
         }
-        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
+        var targetDisplay = GetDockDisplay();
         if (_replacementSession?.IsActive == true)
         {
             _replacementSession.SetTargetMonitor(targetDisplay.Handle);
@@ -2624,9 +2693,11 @@ public partial class MainWindow : Window
         }
         else
         {
-            if (settings.Widgets?.Contains(widgetId, StringComparer.OrdinalIgnoreCase) != true
-                || !DisplayService.GetDisplays().Any(display => string.Equals(
-                    display.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase)))
+            var displays = DisplayService.GetDisplays();
+            var validTarget = string.Equals(deviceName, DockSettings.DynamicIslandAllDisplays, StringComparison.OrdinalIgnoreCase)
+                ? displays.Count > 0
+                : displays.Any(display => string.Equals(display.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+            if (settings.Widgets?.Contains(widgetId, StringComparer.OrdinalIgnoreCase) != true || !validTarget)
                 return;
             placements[widgetId] = deviceName;
         }
@@ -2648,6 +2719,16 @@ public partial class MainWindow : Window
                 ? deviceName
                 : null;
             var displays = DisplayService.GetDisplays();
+            var allDisplays = new MenuItem
+            {
+                Header = UiText.Get("DynamicIslandAllDisplays"),
+                IsCheckable = true,
+                IsChecked = string.Equals(current, DockSettings.DynamicIslandAllDisplays, StringComparison.OrdinalIgnoreCase),
+                IsEnabled = displays.Count > 0
+            };
+            allDisplays.Click += (_, _) => SetDynamicIslandPlacement(widgetId, DockSettings.DynamicIslandAllDisplays);
+            submenu.Items.Add(allDisplays);
+            if (displays.Count > 0) submenu.Items.Add(new Separator());
             foreach (var display in displays)
             {
                 var target = new MenuItem
@@ -2704,9 +2785,10 @@ public partial class MainWindow : Window
             && (!statsStripActive || id != DockWidgetService.BatteryId))
             .ToArray();
         var islandItems = new Dictionary<string, DockWidgetItem>(StringComparer.OrdinalIgnoreCase);
-        foreach (var widget in _widgetService.CreateWidgets(filtered))
+        var sourceWidgets = _mirrorOf is null ? _widgetService.CreateWidgets(filtered) : _mirrorOf._widgets.ToList();
+        foreach (var widget in sourceWidgets)
         {
-            if (_dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(_preferences.Current, widget.Id))
+            if (_mirrorOf is null && _dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(_preferences.Current, widget.Id))
             {
                 widget.IsCompact = false;
                 islandItems.Add(widget.Id, widget);
@@ -2718,7 +2800,10 @@ public partial class MainWindow : Window
             }
         }
         _islandWidgetItems = islandItems;
-        foreach (var timed in TimedWidgetModels()) timed.PropertyChanged += TimedWidget_PropertyChanged;
+        if (_mirrorOf is null)
+        {
+            foreach (var timed in TimedWidgetModels()) timed.PropertyChanged += TimedWidget_PropertyChanged;
+        }
 
         var activeIds = new HashSet<string>(_widgets.Select(w => w.Id), StringComparer.OrdinalIgnoreCase);
         var removedKeys = _legacyWidgetElements.Keys.Where(k => !activeIds.Contains(k)).ToArray();
@@ -2729,7 +2814,7 @@ public partial class MainWindow : Window
 
         WidgetDivider.Visibility = Visibility.Collapsed;
         DockWidgets.Visibility = Visibility.Collapsed;
-        if (!_preferences.Current.FocusModeEnabled
+        if (_mirrorOf is null && !_preferences.Current.FocusModeEnabled
             && (_widgets.Count > 0 || _islandWidgetItems.Count > 0 || _widgetCoordinator.HasActiveWidgets))
         {
             DockWidgetService.Refresh(_widgets.Concat(_islandWidgetItems.Values), _preferences.Current.Language);
@@ -3128,7 +3213,7 @@ public partial class MainWindow : Window
 
     private void UpdateTimedWidgetRefresh()
     {
-        if (TimedWidgetModels().Any(widget => widget.IsRunning)) _timedWidgetRefreshTimer.Start();
+        if (_mirrorOf is null && TimedWidgetModels().Any(widget => widget.IsRunning)) _timedWidgetRefreshTimer.Start();
         else _timedWidgetRefreshTimer.Stop();
     }
 
@@ -3367,7 +3452,7 @@ public partial class MainWindow : Window
             var borderThickness = settings.DockBackground == SurfaceBackground.None
                 ? 0.0
                 : settings.DockBorderThickness;
-            var target = DisplayService.GetTargetDisplay(settings.TargetDisplay);
+            var target = GetDockDisplay();
             var extent = IsVertical ? target.Height : target.Width;
             if (extent <= 0) extent = IsVertical ? SystemParameters.WorkArea.Height : SystemParameters.WorkArea.Width;
             return ComputeShelfGeometry(Profile, IsVertical, borderThickness, ExternalBottomGap, ExternalTopGap,
@@ -3395,7 +3480,7 @@ public partial class MainWindow : Window
         get
         {
             var settings = _preferences.Current;
-            var target = DisplayService.GetTargetDisplay(settings.TargetDisplay);
+            var target = GetDockDisplay();
             var extent = IsVertical ? target.Height : target.Width;
             if (extent <= 0) extent = IsVertical ? SystemParameters.WorkArea.Height : SystemParameters.WorkArea.Width;
             return DockMetrics.ResolveGap(settings.DockTopGapUnit, settings.DockTopGapPixels, settings.DockTopGapPercent, extent);
@@ -3408,7 +3493,7 @@ public partial class MainWindow : Window
         get
         {
             var settings = _preferences.Current;
-            var target = DisplayService.GetTargetDisplay(settings.TargetDisplay);
+            var target = GetDockDisplay();
             var extent = IsVertical ? target.Height : target.Width;
             if (extent <= 0) extent = IsVertical ? SystemParameters.WorkArea.Height : SystemParameters.WorkArea.Width;
             return DockMetrics.ResolveGap(settings.DockBottomGapUnit, settings.DockBottomGapPixels, settings.DockBottomGapPercent, extent);
@@ -3671,6 +3756,7 @@ public partial class MainWindow : Window
         _foregroundAtAppPress = null;
         _startMenuOpenAtPress = false;
         _startMenu.Reset();
+        _winKeyMonitor?.ResetState();
         _lastApplicationWindow = 0;
         _contextTargetWasForeground = false;
         _contextMenuOpenedAtUtc = default;
@@ -3681,7 +3767,7 @@ public partial class MainWindow : Window
 
         // A Win keydown synthesized just before the lock may have lost its keyup on the secure desktop.
         ShellShortcuts.ReleaseStuckModifiers();
-        _windowTracker?.ResyncForeground();
+        if (_mirrorOf is null) _windowTracker?.ResyncForeground();
         UnregisterHotkeys();
         RegisterHotkeys();
         _replacementSession?.UpdateForeground(NativeWindowTracker.GetForegroundApplicationWindow());
@@ -3798,7 +3884,7 @@ public partial class MainWindow : Window
         var showDesktopWidth = ShowDesktopButton.Visibility == Visibility.Visible
             ? ShowDesktopButton.Width + 1
             : 0;
-        var targetDisplay = DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
+        var targetDisplay = GetDockDisplay();
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : targetDisplay.Width;
         var margin = DockSurface.Margin;
         var maximumSurfaceWidth = Math.Max(1, availableWidth - margin.Left - margin.Right);
@@ -3918,7 +4004,7 @@ public partial class MainWindow : Window
 
     private void ExitOpenTaskbar_Click(object sender, RoutedEventArgs e)
     {
-        Close();
+        (_mirrorOf ?? this).Close();
     }
 
     internal string? RestoreWindowsTaskbar()
@@ -3948,6 +4034,13 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (_mirrorOf is not null)
+        {
+            _replacementSession?.Dispose();
+            _replacementSession = null;
+            return;
+        }
+        CloseMirroredDocks();
         var error = RestoreWindowsTaskbar();
         var restoreUncertain = error is not null || TaskbarReplacementSession.HasPendingRecovery
             || _replacementSession?.IsActive == true;
@@ -3968,11 +4061,13 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _closed = true;
+        if (_mirrorOf?._startMenuDock == this) _mirrorOf._startMenuDock = null;
         CancelShowDesktopDragHover();
         _widgetPanel.IsOpenChanged -= WidgetPanel_IsOpenChanged;
         _widgetPanel.OperationFailed -= ReportError;
         _widgetPanel.Dispose();
-        ShellShortcuts.IsMediaWidgetActive = null;
+        if (_mirrorOf is null) ShellShortcuts.IsMediaWidgetActive = null;
         _preferences.Changed -= Preferences_Changed;
         _settingsWindow?.CloseForShutdown();
         _jumpListLoad?.Cancel();
@@ -3988,7 +4083,7 @@ public partial class MainWindow : Window
         {
             _windowTracker.WindowsChanged -= WindowTracker_WindowsChanged;
             _windowTracker.ForegroundWindowChanged -= WindowTracker_ForegroundWindowChanged;
-            _windowTracker.Dispose();
+            if (_mirrorOf is null) _windowTracker.Dispose();
             _windowTracker = null;
         }
 
@@ -4015,7 +4110,7 @@ public partial class MainWindow : Window
         _searchTransitionTimer?.Stop();
         _searchTransitionTimer = null;
         _startMenu.Dispose();
-        _dynamicIslandManager.Dispose();
+        if (_mirrorOf is null) _dynamicIslandManager.Dispose();
         _widgetCoordinator.Dispose();
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();

@@ -34,6 +34,7 @@ public readonly record struct AppLanguage
     public static AppLanguage Japanese { get; } = new("ja-JP");
     public CultureInfo Culture => CultureInfo.GetCultureInfo(CultureName);
     public string NativeName => Culture.NativeName;
+    public string DisplayName => Culture.TextInfo.ToTitleCase(NativeName);
     public string Code => Culture.TwoLetterISOLanguageName.ToUpperInvariant();
 
     /// <summary>Embedded country flag image for this culture, or null when no flag is bundled.</summary>
@@ -51,11 +52,15 @@ public enum ClockDateStyle { DayAndShortDate, ShortDateOnly, NumericDate, Hidden
 /// <summary>Explicit numeric date layouts available on the date &amp; time widget. System follows the UI culture.</summary>
 public enum ClockDateFormat { System, DdMmYyyy, DdMmYy, MmDdYyyy, YyyyMmDd, DdMmYyyyDots }
 
+/// <summary>Places the clock date beside the time or stacked below it to save horizontal dock space.</summary>
+public enum ClockDateLayout { Beside, Below }
+
 /// <summary>Temperature scale used by the weather widget. Values stay in Celsius internally and convert when rendered.</summary>
 public enum TemperatureUnit { Celsius, Fahrenheit }
 
 public enum SecondaryAppScope { CurrentMonitorOnly, AllMonitors }
 public enum WidgetDensityMode { Auto, Compact, Full }
+public enum DynamicIslandVisibilityMode { Always, DesktopOnly }
 /// <summary>How the dock's horizontal width is determined. Auto fits content; Fixed/Pin modes pin it; Fill spans edge-to-edge.</summary>
 public enum DockWidthMode { Auto, Pixels, Percent, Fill }
 
@@ -253,10 +258,17 @@ public sealed record DockSettings(
     // Appended at the end so older settings files and positional constructor calls keep working.
     TemperatureUnit WeatherUnit = TemperatureUnit.Celsius,
     ClockDateFormat DateFormat = ClockDateFormat.System,
-    // Widgets assigned to a Dynamic Island are keyed by widget ID and display device name.
+    // Widgets assigned to a Dynamic Island are keyed by widget ID and display device name. "*" targets all displays.
     // Appended so existing settings JSON and positional constructor calls remain compatible.
-    IReadOnlyDictionary<string, string>? DynamicIslandPlacements = null)
+    IReadOnlyDictionary<string, string>? DynamicIslandPlacements = null,
+    bool RevealDockOnWinKey = true,
+    ClockDateLayout ClockDateLayout = ClockDateLayout.Beside,
+    bool MirrorMainDock = false,
+    DynamicIslandVisibilityMode DynamicIslandVisibility = DynamicIslandVisibilityMode.Always,
+    bool DynamicIslandHideInFullscreen = true,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? DynamicIslandWidgetOrders = null)
 {
+    public const string DynamicIslandAllDisplays = "*";
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]
     public bool EffectiveAnimationsEnabled => AnimationsEnabled && !FocusModeEnabled;

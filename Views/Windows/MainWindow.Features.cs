@@ -31,12 +31,17 @@ public partial class MainWindow
     private string? _appliedProfileSignature;
     private bool _profileFilterApplied;
     private readonly List<SecondaryDockWindow> _secondaryDocks = [];
+    private readonly Dictionary<nint, MainWindow> _mirroredDocks = [];
+    private IReadOnlyList<TrackedWindow> _lastMirrorWindows = [];
+    private bool _featuresInitialized;
     private DispatcherTimer? _secondaryTimer;
+    private WinKeyRevealMonitor? _winKeyMonitor;
 
     private void OnAnyDockFlyoutClosed() => _autoHideController?.EvaluateState();
 
     private void InitializeFeatures()
     {
+        _featuresInitialized = true;
         Deactivated += (_, _) =>
         {
             EndKeyboardNavigation(restoreForeground: false);
@@ -45,23 +50,40 @@ public partial class MainWindow
         };
         DockFlyout.AnyClosed += OnAnyDockFlyoutClosed;
         PreviewKeyDown += Dock_PreviewKeyDown;
-        _updateTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(12) };
-        _updateTimer.Tick += async (_, _) =>
+        if (_mirrorOf is null)
         {
-            _updateTimer!.Interval = TimeSpan.FromHours(24);
-            await CheckForUpdatesAsync(userInitiated: false);
-        };
-        _desktopTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(1) };
-        _desktopTimer.Tick += (_, _) => RefreshDesktopFilter();
+            _updateTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(12) };
+            _updateTimer.Tick += async (_, _) =>
+            {
+                _updateTimer!.Interval = TimeSpan.FromHours(24);
+                await CheckForUpdatesAsync(userInitiated: false);
+            };
+            _desktopTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromSeconds(1) };
+            _desktopTimer.Tick += (_, _) => RefreshDesktopFilter();
+            _winKeyMonitor = new WinKeyRevealMonitor(Dispatcher);
+            _winKeyMonitor.StandaloneWinKeyPressed += OnStandaloneWinKeyPressed;
+        }
         ApplyFeatureSettings();
+    }
+
+    private void OnStandaloneWinKeyPressed()
+    {
+        if (!_preferences.Current.RevealDockOnWinKey || _preferences.Current.AutoHide == AutoHideMode.Disabled) return;
+        _autoHideController?.RevealForWinKey();
+        foreach (var dock in _mirroredDocks.Values) dock._autoHideController?.RevealForWinKey();
     }
 
     private void ApplyFeatureSettings()
     {
-        if (_updateTimer is null) return;
+        if (!_featuresInitialized) return;
         RegisterHotkeys();
-        if (_preferences.Current.CheckUpdates) { if (!_updateTimer.IsEnabled) _updateTimer.Start(); }
-        else _updateTimer.Stop();
+        _winKeyMonitor?.SetEnabled(_preferences.Current.RevealDockOnWinKey
+            && _preferences.Current.AutoHide != AutoHideMode.Disabled);
+        if (_updateTimer is not null)
+        {
+            if (_preferences.Current.CheckUpdates) { if (!_updateTimer.IsEnabled) _updateTimer.Start(); }
+            else _updateTimer.Stop();
+        }
         if (_preferences.Current.CurrentDesktopOnly) _desktopTimer?.Start();
         else _desktopTimer?.Stop();
         _filteredSource = null;
@@ -141,7 +163,7 @@ public partial class MainWindow
 
     private void RegisterHotkeys()
     {
-        if (_source is null) return;
+        if (_mirrorOf is not null || _source is null) return;
         var launcher = HotkeyBinding.Resolve(_preferences.Current.LauncherHotkey, _preferences.Current.CustomLauncherHotkey);
         var dock = HotkeyBinding.Resolve(_preferences.Current.DockHotkey, _preferences.Current.CustomDockHotkey);
         var wanted = (Launcher: launcher, Dock: dock);
@@ -541,6 +563,13 @@ public partial class MainWindow
 
     private IReadOnlyList<TrackedWindow> FilterWindows(IReadOnlyList<TrackedWindow> windows)
     {
+        if (_mirrorOf is not null)
+        {
+            var visible = _mirrorOf.FilterWindows(windows);
+            return _preferences.Current.SecondaryApps == SecondaryAppScope.AllMonitors
+                ? visible
+                : visible.Where(window => DisplayService.GetWindowMonitor(window.Handle) == _mirrorMonitor).ToList();
+        }
         if (!_preferences.Current.CurrentDesktopOnly) return windows;
         if (ReferenceEquals(windows, _filteredSource) && _filteredDesktop == _currentDesktop) return _filteredWindows;
         _filteredSource = windows;
@@ -558,6 +587,7 @@ public partial class MainWindow
         if (_preferences.Current.CurrentDesktopOnly)
         {
             WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
+            foreach (var dock in _mirroredDocks.Values) dock.WindowTracker_WindowsChanged(this, _windowTracker.Snapshot);
         }
     }
 
@@ -565,6 +595,7 @@ public partial class MainWindow
 
     private void ApplyDisplayConfiguration()
     {
+        if (_mirrorOf is not null) return;
         _dynamicIslandManager.RefreshDisplays();
         _widgetCoordinator.Apply(_preferences.Current);
         ApplyWidgets(_preferences.Current.Widgets);
@@ -574,7 +605,11 @@ public partial class MainWindow
 
     private void ApplySecondaryDocks()
     {
-        var wanted = _preferences.Current.ShowOnAllMonitors ? SecondaryDockWindow.SecondaryMonitors(_preferences.Current.TargetDisplay) : [];
+        if (_mirrorOf is not null) return;
+        var settings = _preferences.Current;
+        var displays = settings.ShowOnAllMonitors ? SecondaryDockWindow.SecondaryMonitors(settings.TargetDisplay) : [];
+        var wanted = settings.MirrorMainDock ? [] : displays;
+        if (!settings.MirrorMainDock) CloseMirroredDocks();
         foreach (var dock in _secondaryDocks.Where(dock => !wanted.Contains(dock.Monitor)).ToList())
         {
             dock.Close();
@@ -612,6 +647,49 @@ public partial class MainWindow
         }
 
         UpdateSecondaryDocks();
+        if (settings.MirrorMainDock) ApplyMirroredDocks(displays);
+    }
+
+    private void ApplyMirroredDocks(IReadOnlyList<nint> monitors)
+    {
+        foreach (var monitor in _mirroredDocks.Keys.Where(monitor => !monitors.Contains(monitor)).ToList())
+        {
+            var dock = _mirroredDocks[monitor];
+            _mirroredDocks.Remove(monitor);
+            dock.Close();
+        }
+        foreach (var monitor in monitors.Where(monitor => !_mirroredDocks.ContainsKey(monitor)))
+        {
+            var dock = new MainWindow(this, monitor);
+            _mirroredDocks.Add(monitor, dock);
+            dock.Show();
+        }
+        if (_mirroredDocks.Count > 0 && _replacementSession?.IsActive == true)
+        {
+            TaskbarReplacementSession.EnforceSecondaryTraysHidden();
+        }
+    }
+
+    private void CloseMirroredDocks() => ApplyMirroredDocks([]);
+
+    private DisplayInfo GetDockDisplay() =>
+        DisplayService.GetDisplay(_mirrorMonitor) ?? DisplayService.GetTargetDisplay(_preferences.Current.TargetDisplay);
+
+    private void SynchronizePins(IEnumerable<DockApp> source)
+    {
+        var current = _pinnedApps.ToDictionary(app => app.DockKey, StringComparer.OrdinalIgnoreCase);
+        var ordered = source.Select(pin =>
+            current.GetValueOrDefault(pin.DockKey) ?? new DockApp(pin.Name, pin.ExecutablePath)
+            {
+                Icon = pin.Icon,
+                LaunchArguments = pin.LaunchArguments,
+                ShortcutPath = pin.ShortcutPath,
+                IconLocation = pin.IconLocation,
+                AppUserModelId = pin.AppUserModelId
+            }).ToList();
+        if (_pinnedApps.SequenceEqual(ordered)) return;
+        _pinnedApps.Clear();
+        foreach (var pin in ordered) _pinnedApps.Add(pin);
     }
 
     /// <summary>Propagates a size/scale/height change to the secondary docks' reserved shelves and surfaces.</summary>
@@ -671,6 +749,8 @@ public partial class MainWindow
 
     private void DisposeFeatures()
     {
+        _winKeyMonitor?.Dispose();
+        _winKeyMonitor = null;
         _secondaryTimer?.Stop();
         foreach (var dock in _secondaryDocks) dock.Close();
         _secondaryDocks.Clear();

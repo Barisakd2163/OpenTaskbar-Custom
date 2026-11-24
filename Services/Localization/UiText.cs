@@ -15,7 +15,8 @@ public sealed class UiText : INotifyPropertyChanged
     public static IReadOnlyList<AppLanguage> Languages => LanguageCatalog.Languages
         .Append(Current._language)
         .Distinct()
-        .OrderBy(language => language.Culture.EnglishName, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(language => language.DisplayName, StringComparer.Create(Current._language.Culture, true))
+        .ThenBy(language => language.CultureName, StringComparer.OrdinalIgnoreCase)
         .ToArray();
     public static UiText Current { get; } = new();
     public event PropertyChangedEventHandler? PropertyChanged;

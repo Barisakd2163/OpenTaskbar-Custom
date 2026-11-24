@@ -218,6 +218,8 @@ public partial class SettingsWindow : Window
         Width = Math.Min(Width, workArea.Width);
         AddHandler(ToggleButton.CheckedEvent, _preferenceEditedHandler);
         AddHandler(ToggleButton.UncheckedEvent, _preferenceEditedHandler);
+        MirrorMainDockToggle.Checked += (_, _) => UpdateMultiMonitorControls();
+        MirrorMainDockToggle.Unchecked += (_, _) => UpdateMultiMonitorControls();
         _initializing = false;
     }
 
@@ -501,6 +503,9 @@ public partial class SettingsWindow : Window
             SettingsBorderColor = _borderColor,
             Widgets = enabledWidgets,
             InstalledWidgets = installedWidgets,
+            DynamicIslandVisibility = Enum.TryParse<DynamicIslandVisibilityMode>(Choice(DynamicIslandVisibilityBox), out var islandVisibility)
+                ? islandVisibility : _preferences.Current.DynamicIslandVisibility,
+            DynamicIslandHideInFullscreen = DynamicIslandHideFullscreenToggle.IsChecked == true,
             MagnificationEnabled = MagnificationToggle.IsChecked == true,
             Layout = Choice(PositionBox) == "FullWidth" ? DockLayout.FullWidth : DockLayout.Floating,
             Size = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact,
@@ -545,6 +550,8 @@ public partial class SettingsWindow : Window
             ShowOnAllMonitors = AllMonitorsToggle.IsChecked == true,
             SecondaryApps = (SecondaryAppsBox.SelectedItem as SecondaryAppChoice)?.Scope ?? SecondaryAppScope.CurrentMonitorOnly,
             SecondaryWidgets = SecondaryWidgetsToggle.IsChecked == true,
+            MirrorMainDock = MirrorMainDockToggle.IsChecked == true,
+            RevealDockOnWinKey = RevealOnWinKeyToggle.IsChecked == true,
             CurrentDesktopOnly = CurrentDesktopToggle.IsChecked == true,
             CheckUpdates = UpdatesToggle.IsChecked == true,
             Edge = Enum.TryParse<DockEdge>(Choice(EdgeBox), out var edge) ? edge : DockEdge.Bottom,
@@ -563,6 +570,7 @@ public partial class SettingsWindow : Window
             ClockShowSeconds = ClockSecondsToggle.IsChecked == true,
             DateStyle = Enum.TryParse<ClockDateStyle>(Choice(DateStyleBox), out var dateStyle) ? dateStyle : ClockDateStyle.DayAndShortDate,
             DateFormat = Enum.TryParse<ClockDateFormat>(Choice(DateFormatBox), out var dateFormat) ? dateFormat : ClockDateFormat.System,
+            ClockDateLayout = Enum.TryParse<ClockDateLayout>(Choice(ClockDateLayoutBox), out var clockDateLayout) ? clockDateLayout : ClockDateLayout.Beside,
             WeatherUnit = Enum.TryParse<TemperatureUnit>(Choice(WeatherUnitBox), out var weatherUnit) ? weatherUnit : TemperatureUnit.Celsius,
             StatsMeters = ReadStatsMeters(),
             AiUsageRing = _aiUsageRing,
@@ -615,8 +623,15 @@ public partial class SettingsWindow : Window
     private void UpdateMultiMonitorControls()
     {
         var allMonitors = AllMonitorsToggle.IsChecked == true;
+        MirrorMainDockRow.IsEnabled = allMonitors;
         SecondaryAppsRow.IsEnabled = allMonitors;
-        SecondaryWidgetsRow.IsEnabled = allMonitors;
+        SecondaryWidgetsRow.IsEnabled = allMonitors && MirrorMainDockToggle.IsChecked != true;
+    }
+
+    private void UpdateAutoHideControls()
+    {
+        var autoHideEnabled = !string.Equals(Choice(AutoHideBox), "Disabled", StringComparison.OrdinalIgnoreCase);
+        RevealOnWinKeyRow.IsEnabled = autoHideEnabled;
     }
 
     private void TargetDisplayBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1493,15 +1508,21 @@ public partial class SettingsWindow : Window
         AllMonitorsToggle.IsChecked = settings.ShowOnAllMonitors;
         LoadSecondaryAppChoices(settings.SecondaryApps);
         SecondaryWidgetsToggle.IsChecked = settings.SecondaryWidgets;
+        MirrorMainDockToggle.IsChecked = settings.MirrorMainDock;
+        RevealOnWinKeyToggle.IsChecked = settings.RevealDockOnWinKey;
         UpdateMultiMonitorControls();
+        UpdateAutoHideControls();
         CurrentDesktopToggle.IsChecked = settings.CurrentDesktopOnly;
         UpdatesToggle.IsChecked = settings.CheckUpdates;
         FocusModeToggle.IsChecked = settings.FocusModeEnabled;
+        SelectChoice(DynamicIslandVisibilityBox, settings.DynamicIslandVisibility.ToString());
+        DynamicIslandHideFullscreenToggle.IsChecked = settings.DynamicIslandHideInFullscreen;
         SelectChoice(EdgeBox, settings.Edge.ToString());
         SelectChoice(ClockFormatBox, settings.Clock24Hour ? "24" : "12");
         ClockSecondsToggle.IsChecked = settings.ClockShowSeconds;
         SelectChoice(DateStyleBox, settings.DateStyle.ToString());
         SelectChoice(DateFormatBox, settings.DateFormat.ToString());
+        SelectChoice(ClockDateLayoutBox, settings.ClockDateLayout.ToString());
         SelectChoice(WeatherUnitBox, settings.WeatherUnit.ToString());
         WeatherCityBox.Text = settings.WeatherCity;
         _aiUsageRing = settings.AiUsageRing;
@@ -2678,9 +2699,13 @@ public partial class SettingsWindow : Window
             LoadDockGapControls(defaults);
             UpdateDockScaleLabel();
             SelectChoice(AutoHideBox, defaults.AutoHide.ToString());
+            RevealOnWinKeyToggle.IsChecked = defaults.RevealDockOnWinKey;
+            UpdateAutoHideControls();
             AnimationsToggle.IsChecked = defaults.AnimationsEnabled;
             MagnificationToggle.IsChecked = defaults.MagnificationEnabled;
             PreviewsToggle.IsChecked = defaults.PreviewsEnabled;
+            SelectChoice(DynamicIslandVisibilityBox, defaults.DynamicIslandVisibility.ToString());
+            DynamicIslandHideFullscreenToggle.IsChecked = defaults.DynamicIslandHideInFullscreen;
             RecycleBinToggle.IsChecked = defaults.ShowRecycleBin;
             CurrentDesktopToggle.IsChecked = defaults.CurrentDesktopOnly;
             SearchButtonToggle.IsChecked = defaults.ShowSearchButton;
@@ -2691,6 +2716,7 @@ public partial class SettingsWindow : Window
             AllMonitorsToggle.IsChecked = defaults.ShowOnAllMonitors;
             LoadSecondaryAppChoices(defaults.SecondaryApps);
             SecondaryWidgetsToggle.IsChecked = defaults.SecondaryWidgets;
+            MirrorMainDockToggle.IsChecked = defaults.MirrorMainDock;
             UpdateMultiMonitorControls();
             _antigravityGroups = defaults.AntigravityGroups;
             UpdateAntigravityGroupCheckboxes();
@@ -2900,6 +2926,10 @@ public partial class SettingsWindow : Window
         {
             UpdateDockWidthControls();
             UpdateDockHeightControls();
+        }
+        else if (ReferenceEquals(sender, AutoHideBox))
+        {
+            UpdateAutoHideControls();
         }
         PreferenceEdited(sender, e);
     }

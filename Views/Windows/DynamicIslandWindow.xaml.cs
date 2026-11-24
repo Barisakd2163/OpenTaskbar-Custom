@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 using OpenTaskbar.Views.Widgets;
@@ -34,6 +35,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private readonly Action<DockSettings> _saveSettings;
     private readonly Action<string> _removeWidget;
     private readonly Func<string, IEnumerable<Control>> _createPlacementMenuItems;
+    private readonly DispatcherTimer _visibilityTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly HashSet<string> _placementIds = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, DockWidgetItem> _timedWidgets = new Dictionary<string, DockWidgetItem>();
     private IReadOnlyList<string> _pageIds = [];
@@ -69,13 +71,15 @@ public partial class DynamicIslandWindow : Window, IDisposable
             AllowWidgetReorder = false,
             EnableWidgetHover = false,
             IsWidgetEnabled = IsAssignedHere,
-            CreateWidgetAdditionalMenuItems = _createPlacementMenuItems,
+            CreateWidgetAdditionalMenuItems = CreateIslandAdditionalMenuItems,
             WidgetSettingsUpdated = _saveSettings
         };
         _widgetCoordinator.WidgetRemoveRequested += _removeWidget;
         _widgetCoordinator.AvailabilityChanged += SyncPages;
         _widgetCoordinator.WidgetsPlaced += SyncPages;
         InputManager.Current.PreProcessInput += InputManager_PreProcessInput;
+        _visibilityTimer.Tick += VisibilityTimer_Tick;
+        _visibilityTimer.Start();
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         UpdateControlLabels();
         PositionWindow(CompactMinimumWidth, CompactHeight, animate: false);
@@ -100,8 +104,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
         if (_pageIds.Count > 0)
         {
             PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: false);
-            if (!IsVisible) Show();
         }
+        RefreshVisibility();
     }
 
     public void Dispose()
@@ -113,8 +117,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private bool IsAssignedHere(DockSettings settings, string id) =>
         _placementIds.Contains(id)
-        && settings.DynamicIslandPlacements?.TryGetValue(id, out var deviceName) == true
-        && string.Equals(deviceName, _display.DeviceName, StringComparison.OrdinalIgnoreCase);
+        && DynamicIslandPolicy.IsAssignedToDisplay(
+            settings.DynamicIslandPlacements, id, _display.DeviceName);
 
     private void SyncPages()
     {
@@ -138,11 +142,15 @@ public partial class DynamicIslandWindow : Window, IDisposable
                 }
             }
 
-            var order = (_settings.WidgetOrder ?? [])
-                .Concat(WidgetCoordinator.DefaultWidgetOrder)
-                .Concat(_timedWidgets.Keys)
-                .Distinct(StringComparer.OrdinalIgnoreCase);
-            var nextPageIds = order.Where(available.Contains).ToArray();
+            var displayOrder = _settings.DynamicIslandWidgetOrders?.TryGetValue(_display.DeviceName, out var savedOrder) == true
+                ? savedOrder
+                : null;
+            var nextPageIds = DynamicIslandPolicy.OrderWidgets(
+                available,
+                displayOrder,
+                _settings.WidgetOrder,
+                WidgetCoordinator.DefaultWidgetOrder,
+                _timedWidgets.Keys);
             if (_pageIds.SequenceEqual(nextPageIds, StringComparer.OrdinalIgnoreCase))
             {
                 UpdatePageControls();
@@ -180,7 +188,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
             }
 
             _pageIds = nextPageIds;
-            var newIndex = selectedId is null ? 0 : Array.FindIndex(nextPageIds,
+            var newIndex = selectedId is null ? 0 : nextPageIds.ToList().FindIndex(
                 id => string.Equals(id, selectedId, StringComparison.OrdinalIgnoreCase));
             SetCurrentPageIndex(newIndex < 0 ? 0 : newIndex, animate: false);
             if (_isExpanded && !HasExpandableContent(CurrentPageId())) SetExpanded(false, animate: false);
@@ -193,9 +201,9 @@ public partial class DynamicIslandWindow : Window, IDisposable
                 return;
             }
 
-            if (!IsVisible) Show();
             UpdatePageControls();
             PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: false);
+            RefreshVisibility();
         }
         finally
         {
@@ -208,11 +216,44 @@ public partial class DynamicIslandWindow : Window, IDisposable
         var menu = new ContextMenu();
         foreach (var item in _createPlacementMenuItems(id)) menu.Items.Add(item);
         if (menu.Items.Count > 0) menu.Items.Add(new Separator());
+        menu.Items.Add(CreateMoveOrderMenuItem(id, -1));
+        menu.Items.Add(CreateMoveOrderMenuItem(id, 1));
+        menu.Items.Add(new Separator());
         var remove = new MenuItem { Header = UiText.Get("RemoveWidget") };
         if (Application.Current?.TryFindResource("IconTrash") is Geometry icon) remove.Icon = icon;
         remove.Click += (_, _) => _removeWidget(id);
         menu.Items.Add(remove);
         return menu;
+    }
+
+    private IEnumerable<Control> CreateIslandAdditionalMenuItems(string id)
+    {
+        var items = _createPlacementMenuItems(id).ToList();
+        items.Add(CreateMoveOrderMenuItem(id, -1));
+        items.Add(CreateMoveOrderMenuItem(id, 1));
+        return items;
+    }
+
+    private MenuItem CreateMoveOrderMenuItem(string id, int offset)
+    {
+        var item = new MenuItem
+        {
+            Header = UiText.Get(offset < 0 ? "DynamicIslandMoveEarlier" : "DynamicIslandMoveLater")
+        };
+        item.Click += (_, _) => MoveWidgetInIsland(id, offset);
+        return item;
+    }
+
+    private void MoveWidgetInIsland(string id, int offset)
+    {
+        var order = DynamicIslandPolicy.MoveWidget(_pageIds, id, offset);
+        if (_pageIds.SequenceEqual(order, StringComparer.OrdinalIgnoreCase)) return;
+
+        var orders = (_settings.DynamicIslandWidgetOrders ?? new Dictionary<string, IReadOnlyList<string>>())
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        orders[_display.DeviceName] = order;
+        _settings = _settings with { DynamicIslandWidgetOrders = orders };
+        _saveSettings(_settings);
     }
 
     private void TimedWidget_DetailsRequested(object sender, RoutedEventArgs e)
@@ -249,7 +290,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private bool HasExpandableContent(string? id) => id is not null
         && (_timedWidgets.ContainsKey(id)
             || id is DockWidgetService.ClockId or DockWidgetService.FocusId or DockWidgetService.SystemStatsId
-                or DockWidgetService.WeatherId or DockWidgetService.AudioId or DockWidgetService.NetSpeedId
+                or DockWidgetService.WeatherId or DockWidgetService.MediaId or DockWidgetService.AudioId or DockWidgetService.NetSpeedId
                 or DockWidgetService.BluetoothBatteryId
             || id.StartsWith("AiUsage", StringComparison.OrdinalIgnoreCase));
 
@@ -258,7 +299,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
         DockWidgetService.ClockId or DockWidgetService.FocusId or DockWidgetService.SystemStatsId =>
             widget.BuildPreviewFlyoutContent(),
         DockWidgetService.WeatherId when widget is WeatherWidget weather => weather.BuildFlyoutContent(),
-        DockWidgetService.MediaId => null,
+        DockWidgetService.MediaId when widget is MediaWidget media => media.BuildDynamicIslandExpandedContent(),
         _ => widget.BuildHoverFlyoutContent()
     };
 
@@ -319,8 +360,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
         var preferred = _isExpanded
             ? Math.Max(Math.Max(540, widgetWidth + 176), detailWidth + 32)
             : widgetWidth + 176;
-        var maximum = Math.Max(minimum, Math.Min(960, _display.Bounds.Width - 32));
-        return Math.Clamp(preferred, minimum, maximum);
+        return DynamicIslandPolicy.ClampWindowWidth(
+            preferred, _display.Bounds.Width, minimum, 960, edgeInset: 16);
     }
 
     private void PositionWindow(double width, double height, bool animate)
@@ -566,12 +607,37 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => UpdateControlLabels();
 
+    private void VisibilityTimer_Tick(object? sender, EventArgs e) => RefreshVisibility();
+
+    private void RefreshVisibility()
+    {
+        if (_resourcesDisposed) return;
+        var foregroundAvailable = NativeWindowTracker.TryGetForegroundApplicationWindow(out var foreground);
+        var foregroundOnDisplay = foregroundAvailable
+            && foreground != 0
+            && SecondaryDockWindow.IsWindowOnMonitor(foreground, _display.Handle);
+        var fullscreen = _settings.DynamicIslandHideInFullscreen
+            && TaskbarReplacementSession.IsAnyFullScreenOnMonitor(_display.Handle);
+        var shouldShow = _pageIds.Count > 0
+            && !_settings.FocusModeEnabled
+            && DynamicIslandPolicy.ShouldShow(
+                _settings.DynamicIslandVisibility,
+                desktopVisible: !foregroundOnDisplay,
+                hideInFullscreen: _settings.DynamicIslandHideInFullscreen,
+                fullscreen);
+
+        if (shouldShow && !IsVisible) Show();
+        else if (!shouldShow && IsVisible) Hide();
+    }
+
     private void Window_Closed(object? sender, EventArgs e) => ReleaseResources();
 
     private void ReleaseResources()
     {
         if (_resourcesDisposed) return;
         _resourcesDisposed = true;
+        _visibilityTimer.Stop();
+        _visibilityTimer.Tick -= VisibilityTimer_Tick;
         InputManager.Current.PreProcessInput -= InputManager_PreProcessInput;
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         _widgetCoordinator.AvailabilityChanged -= SyncPages;

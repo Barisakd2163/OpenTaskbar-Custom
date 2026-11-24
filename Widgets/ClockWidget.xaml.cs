@@ -77,7 +77,7 @@ public partial class ClockWidget : DockWidget
 
     public override bool SupportsCompactMode => true;
     public override int ShrinkPriority => 80;
-    public override double FullWidthEstimate => 148;
+    public override double FullWidthEstimate => Settings.ClockDateLayout == ClockDateLayout.Below ? 104 : 148;
     public override double CompactWidthEstimate => 84;
 
     // The clock renders from the local system time only, so a single frame is safe in Settings.
@@ -120,33 +120,71 @@ public partial class ClockWidget : DockWidget
         if (_flyoutLiveTime is not null) _flyoutLiveTime.Text = timeString;
 
         var compact = IsCompact && !IsHoverExpanded;
-        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.DateFormat}|{Settings.Language}|{compact}";
+        var stacked = !compact && Settings.ClockDateLayout == ClockDateLayout.Below && Settings.DateStyle != ClockDateStyle.Hidden;
+        var renderKey = $"{now:yyyyMMdd}|{timeString}|{Settings.DateStyle}|{Settings.DateFormat}|{Settings.ClockDateLayout}|{Settings.Language}|{compact}";
         if (renderKey == _lastRenderKey) return;
 
         _lastRenderKey = renderKey;
         TimeText.Text = timeString;
-        if (compact || Settings.DateStyle == ClockDateStyle.Hidden)
+
+        if (stacked)
         {
-            DateColumn.Visibility = Visibility.Collapsed;
+            TimeAndDatePanel.Orientation = Orientation.Vertical;
+            TimeText.FontSize = 13;
+            TimeText.LineHeight = 14.5;
+            TimeText.HorizontalAlignment = HorizontalAlignment.Center;
+            DateColumn.Visibility = Visibility.Visible;
+            DateColumn.Margin = new Thickness(0, 1, 0, 0);
+            DateColumn.HorizontalAlignment = HorizontalAlignment.Center;
+            DateText.FontSize = 10;
+            DateText.LineHeight = 11;
+            DateText.HorizontalAlignment = HorizontalAlignment.Center;
+            DateText.TextAlignment = TextAlignment.Center;
+            DayOfWeekText.Visibility = Visibility.Collapsed;
+            var formattedDate = FormatDate(now, culture);
+            DateText.Text = Settings.DateStyle == ClockDateStyle.DayAndShortDate
+                ? $"{now.ToString("ddd", culture)} · {formattedDate}"
+                : formattedDate;
         }
         else
         {
-            DateColumn.Visibility = Visibility.Visible;
-            switch (Settings.DateStyle)
+            TimeAndDatePanel.Orientation = Orientation.Horizontal;
+            TimeText.FontSize = 15;
+            TimeText.LineHeight = double.NaN;
+            TimeText.HorizontalAlignment = HorizontalAlignment.Left;
+            DateColumn.Margin = new Thickness(9, 0, 0, 0);
+            DateColumn.HorizontalAlignment = HorizontalAlignment.Left;
+            DateText.HorizontalAlignment = HorizontalAlignment.Left;
+            DateText.TextAlignment = TextAlignment.Left;
+
+            if (compact || Settings.DateStyle == ClockDateStyle.Hidden)
             {
-                case ClockDateStyle.DayAndShortDate:
-                    DayOfWeekText.Visibility = Visibility.Visible;
-                    DateText.Text = FormatDate(now, culture);
-                    DayOfWeekText.Text = now.ToString("ddd", culture);
-                    break;
-                case ClockDateStyle.ShortDateOnly:
-                case ClockDateStyle.NumericDate:
-                    DayOfWeekText.Visibility = Visibility.Collapsed;
-                    DateText.Text = FormatDate(now, culture);
-                    break;
+                DateColumn.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                DateColumn.Visibility = Visibility.Visible;
+                switch (Settings.DateStyle)
+                {
+                    case ClockDateStyle.DayAndShortDate:
+                        DayOfWeekText.Visibility = Visibility.Visible;
+                        DateText.FontSize = 11.5;
+                        DateText.LineHeight = 13;
+                        DateText.Text = FormatDate(now, culture);
+                        DayOfWeekText.Text = now.ToString("ddd", culture);
+                        break;
+                    case ClockDateStyle.ShortDateOnly:
+                    case ClockDateStyle.NumericDate:
+                        DayOfWeekText.Visibility = Visibility.Collapsed;
+                        DateText.FontSize = 13;
+                        DateText.LineHeight = double.NaN;
+                        DateText.Text = FormatDate(now, culture);
+                        break;
+                }
             }
         }
         ClockButton.ToolTip = now.ToString("D", culture);
+        RaiseContentWidthChanged();
     }
 
     private string FormatDate(DateTime now, CultureInfo culture) => Settings.DateFormat switch

@@ -486,6 +486,18 @@ internal static class SettingsAndAutoHideChecks
             var store = new DockSettingsStore(tempPath);
             var (migrated, error) = store.Load();
             check(error is null, $"Loading a v0.2.x settings file must migrate cleanly without error (got '{error}').");
+            check(!migrated.MirrorMainDock && migrated.RevealDockOnWinKey && migrated.ClockDateLayout == ClockDateLayout.Beside,
+                "Older settings must default MirrorMainDock=false, RevealDockOnWinKey=true, and ClockDateLayout=Beside.");
+            check(store.Save(migrated with
+                {
+                    MirrorMainDock = true,
+                    RevealDockOnWinKey = false,
+                    ClockDateLayout = ClockDateLayout.Below
+                }) is null,
+                "Saving MirrorMainDock, RevealDockOnWinKey, and ClockDateLayout must succeed.");
+            var reloaded = store.Load().Settings;
+            check(reloaded.MirrorMainDock && !reloaded.RevealDockOnWinKey && reloaded.ClockDateLayout == ClockDateLayout.Below,
+                "MirrorMainDock, RevealDockOnWinKey, and ClockDateLayout must survive settings reload.");
             check(migrated.Position == DockPosition.Left && migrated.Theme == AppTheme.Dark && Math.Abs(migrated.DockScale - 1.1) < 0.001,
                 "Migration must preserve user position, theme, and dock scale.");
             check(migrated.StatsMeters == (SystemMeters.Cpu | SystemMeters.Memory | SystemMeters.Gpu | SystemMeters.GpuTemperature),

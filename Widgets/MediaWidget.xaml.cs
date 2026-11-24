@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -50,12 +51,26 @@ public partial class MediaWidget : DockWidget
     private bool _seekingProgress;
     private bool _updatingVolume;
     private bool? _lastPlayGlyph;
+    private bool _islandDraggingProgress;
+    private bool _updatingIslandProgress;
+    private bool _updatingIslandVolume;
 
     private bool? _lastAudioHasDevice;
     private int _lastAudioLevel = -1;
     private bool _lastAudioMuted;
     private string? _lastAudioIconKey;
     private AppLanguage _lastAudioLanguage;
+    private Border? _islandDetails;
+    private Image? _islandArtImage;
+    private TextBlock? _islandTitleText;
+    private TextBlock? _islandArtistText;
+    private TextBlock? _islandElapsedText;
+    private TextBlock? _islandTotalText;
+    private Slider? _islandProgressSlider;
+    private Slider? _islandVolumeSlider;
+    private Button? _islandMuteButton;
+    private ContentControl? _islandPlayPauseGlyph;
+    private ContentControl? _islandVolumeGlyph;
 
     // Locally confirmed per-app volume state (AppAudioSession.Volume is a snapshot, not live).
     private float _mediaVolumeLevel = -1;
@@ -101,6 +116,215 @@ public partial class MediaWidget : DockWidget
 
     // V19: Media widget uses its own compact hover volume popover and does not open a large generic flyout.
     public override UIElement? BuildHoverFlyoutContent() => null;
+
+    public UIElement BuildDynamicIslandExpandedContent()
+    {
+        var surface = new Border { Width = 560, Padding = new Thickness(16), CornerRadius = new CornerRadius(14) };
+        surface.SetResourceReference(Border.BackgroundProperty, "WidgetGlassCard");
+        surface.SetResourceReference(Border.BorderBrushProperty, "WidgetGlassCardStroke");
+        surface.BorderThickness = new Thickness(1);
+
+        var layout = new Grid();
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var top = new Grid { Margin = new Thickness(0, 0, 0, 12), MinHeight = 58 };
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(116) });
+
+        var artFrame = new Border { Width = 58, Height = 58, CornerRadius = new CornerRadius(10), ClipToBounds = true };
+        artFrame.SetResourceReference(Border.BackgroundProperty, "WidgetSelectedFill");
+        var art = new Image { Width = 58, Height = 58, Stretch = Stretch.UniformToFill };
+        _islandArtImage = art;
+        artFrame.Child = art;
+        top.Children.Add(artFrame);
+
+        var metadata = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 12, 0) };
+        var title = new TextBlock { FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        _islandTitleText = title;
+        var artist = new TextBlock { FontSize = 12, Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        artist.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        _islandArtistText = artist;
+        metadata.Children.Add(title);
+        metadata.Children.Add(artist);
+        Grid.SetColumn(metadata, 1);
+        top.Children.Add(metadata);
+
+        var transport = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        transport.Children.Add(CreateIslandTransportButton("IconPreviousFill", UiText.Get("MediaPrevious"), Previous_Click, 24));
+        var playPause = CreateIslandTransportButton("IconPlayFill", UiText.Get("MediaPlayPause"), PlayPause_Click, 30);
+        _islandPlayPauseGlyph = (ContentControl)playPause.Content;
+        transport.Children.Add(playPause);
+        transport.Children.Add(CreateIslandTransportButton("IconNextFill", UiText.Get("MediaNext"), Next_Click, 24));
+        Grid.SetColumn(transport, 2);
+        top.Children.Add(transport);
+
+        var volume = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        volume.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+        volume.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var mute = new Button { Width = 26, Height = 26, Margin = new Thickness(0, 0, 6, 0), ToolTip = UiText.Get("MuteToggle") };
+        mute.SetResourceReference(StyleProperty, "WidgetIconButton");
+        mute.Click += MuteButton_Click;
+        var volumeGlyph = new ContentControl { Width = 14, Height = 14 };
+        volumeGlyph.SetResourceReference(StyleProperty, "WidgetIcon");
+        volumeGlyph.Content = FindResource("IconVolume");
+        _islandVolumeGlyph = volumeGlyph;
+        mute.Content = volumeGlyph;
+        _islandMuteButton = mute;
+        volume.Children.Add(mute);
+        var volumeSlider = new Slider { Minimum = 0, Maximum = 100, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 0, 0) };
+        volumeSlider.SetResourceReference(StyleProperty, "WidgetSlider");
+        volumeSlider.ValueChanged += IslandVolumeSlider_ValueChanged;
+        _islandVolumeSlider = volumeSlider;
+        Grid.SetColumn(volumeSlider, 1);
+        volume.Children.Add(volumeSlider);
+        Grid.SetColumn(volume, 3);
+        top.Children.Add(volume);
+        layout.Children.Add(top);
+
+        var progress = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        progress.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        progress.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        progress.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        var elapsed = CreateIslandTimeLabel();
+        var total = CreateIslandTimeLabel();
+        _islandElapsedText = elapsed;
+        _islandTotalText = total;
+        progress.Children.Add(elapsed);
+        var progressSlider = new Slider { Minimum = 0, Maximum = 100, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+        progressSlider.SetResourceReference(StyleProperty, "MediaProgressSlider");
+        SliderTrackDrag.SetIsEnabled(progressSlider, true);
+        progressSlider.PreviewMouseLeftButtonDown += IslandProgressSlider_PreviewMouseLeftButtonDown;
+        progressSlider.PreviewMouseLeftButtonUp += IslandProgressSlider_PreviewMouseLeftButtonUp;
+        progressSlider.LostMouseCapture += IslandProgressSlider_LostMouseCapture;
+        progressSlider.ValueChanged += IslandProgressSlider_ValueChanged;
+        _islandProgressSlider = progressSlider;
+        Grid.SetColumn(progressSlider, 1);
+        progress.Children.Add(progressSlider);
+        Grid.SetColumn(total, 2);
+        progress.Children.Add(total);
+        Grid.SetRow(progress, 1);
+        layout.Children.Add(progress);
+
+        surface.Child = layout;
+        _islandDetails = surface;
+        surface.Unloaded += IslandDetails_Unloaded;
+        UpdateIslandMetadata();
+        UpdateProgressUI();
+        RenderVolume();
+        return surface;
+    }
+
+    private Button CreateIslandTransportButton(string iconKey, string label, RoutedEventHandler click, double size)
+    {
+        var button = new Button { Width = size, Height = 30, ToolTip = label };
+        button.SetResourceReference(StyleProperty, "WidgetIconButton");
+        button.Click += click;
+        var glyph = new ContentControl { Width = 13, Height = 13 };
+        glyph.SetResourceReference(StyleProperty, "WidgetGlyph");
+        glyph.Content = FindResource(iconKey);
+        button.Content = glyph;
+        AutomationProperties.SetName(button, label);
+        return button;
+    }
+
+    private static TextBlock CreateIslandTimeLabel()
+    {
+        var label = new TextBlock
+        {
+            FontSize = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+            Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        return label;
+    }
+
+    private void IslandDetails_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(sender, _islandDetails)) return;
+        _islandDetails = null;
+        _islandArtImage = null;
+        _islandTitleText = null;
+        _islandArtistText = null;
+        _islandElapsedText = null;
+        _islandTotalText = null;
+        _islandProgressSlider = null;
+        _islandVolumeSlider = null;
+        _islandMuteButton = null;
+        _islandPlayPauseGlyph = null;
+        _islandVolumeGlyph = null;
+        _islandDraggingProgress = false;
+    }
+
+    private void IslandVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_updatingIslandVolume) SetMediaVolume((float)(e.NewValue / 100.0));
+    }
+
+    private void IslandProgressSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_islandProgressSlider is { IsMouseOver: true, IsHitTestVisible: true })
+            _islandDraggingProgress = true;
+    }
+
+    private async void IslandProgressSlider_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_islandDraggingProgress || _islandProgressSlider is not { } slider) return;
+        _islandDraggingProgress = false;
+        await SeekToElapsedAsync(slider.Value);
+    }
+
+    private void IslandProgressSlider_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (!_islandDraggingProgress || _islandProgressSlider?.IsMouseCaptureWithin == true) return;
+        _islandDraggingProgress = false;
+        if (!_seekingProgress) UpdateProgressUI();
+    }
+
+    private async void IslandProgressSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_updatingIslandProgress || _islandProgressSlider is not { } slider) return;
+        if (_islandDraggingProgress)
+        {
+            if (_islandElapsedText is not null)
+                _islandElapsedText.Text = FormatTime(TimeSpan.FromSeconds(Math.Max(0, e.NewValue)));
+            return;
+        }
+        if (slider.IsKeyboardFocusWithin) await SeekToElapsedAsync(slider.Value);
+    }
+
+    private void UpdateIslandMetadata()
+    {
+        if (_islandTitleText is not null) _islandTitleText.Text = TitleText.Text;
+        if (_islandArtistText is not null) _islandArtistText.Text = ArtistText.Text;
+        if (_islandArtImage is not null) _islandArtImage.Source = ArtImage.Source;
+        if (_islandPlayPauseGlyph is not null)
+        {
+            var isPlaying = _lastPlayGlyph == true;
+            _islandPlayPauseGlyph.Content = FindResource(isPlaying ? "IconPauseFill" : "IconPlayFill");
+        }
+    }
+
+    private void UpdateIslandVolumeControls()
+    {
+        if (_islandVolumeSlider is not null)
+        {
+            _updatingIslandVolume = true;
+            _islandVolumeSlider.IsEnabled = _mediaVolumeSession is not null;
+            _islandVolumeSlider.Value = _mediaVolumeSession is null || _mediaVolumeMuted
+                ? 0
+                : Math.Clamp(_mediaVolumeLevel * 100, 0, 100);
+            _updatingIslandVolume = false;
+        }
+
+        if (_islandMuteButton is not null)
+            _islandMuteButton.IsEnabled = _mediaVolumeSession is not null;
+        if (_islandVolumeGlyph is not null && _lastAudioIconKey is not null)
+            _islandVolumeGlyph.Content = FindResource(_lastAudioIconKey);
+    }
 
     public override UIElement? BuildPreviewFlyoutContent()
     {
@@ -285,6 +509,7 @@ public partial class MediaWidget : DockWidget
     private void ClearAlbumArt()
     {
         ArtImage.Source = null;
+        if (_islandArtImage is not null) _islandArtImage.Source = null;
         ArtPlaceholder.Visibility = Visibility.Visible;
         AnimateArtTint(DefaultArtTint);
     }
@@ -523,7 +748,11 @@ public partial class MediaWidget : DockWidget
         if (session is null)
         {
             CloseVolumePopover();
-            if (_lastAudioHasDevice == false && _lastAudioLanguage == lang) return;
+            if (_lastAudioHasDevice == false && _lastAudioLanguage == lang)
+            {
+                UpdateIslandVolumeControls();
+                return;
+            }
             _lastAudioHasDevice = false;
             _lastAudioLanguage = lang;
             _lastAudioLevel = -1;
@@ -532,6 +761,7 @@ public partial class MediaWidget : DockWidget
             VolumePercentText.Text = "—";
             SetVolumeIcon("IconVolumeMute");
             MuteButton.ToolTip = UiText.Get("Volume");
+            UpdateIslandVolumeControls();
             return;
         }
 
@@ -540,6 +770,7 @@ public partial class MediaWidget : DockWidget
         if (_lastAudioHasDevice == true && _lastAudioLevel == level && _lastAudioMuted == muted
             && _lastAudioLanguage == lang)
         {
+            UpdateIslandVolumeControls();
             return;
         }
 
@@ -558,6 +789,7 @@ public partial class MediaWidget : DockWidget
         _updatingVolume = true;
         VolumeSlider.Value = displayed;
         _updatingVolume = false;
+        UpdateIslandVolumeControls();
     }
 
     private void SetVolumeIcon(string key)
@@ -717,6 +949,8 @@ public partial class MediaWidget : DockWidget
                 _lastPlayGlyph = playing;
                 PlayPauseGlyph.Content = FindResource(playing ? "IconPauseFill" : "IconPlayFill");
             }
+            if (_islandPlayPauseGlyph is not null)
+                _islandPlayPauseGlyph.Content = FindResource(playing ? "IconPauseFill" : "IconPlayFill");
             PlayPauseButton.IsEnabled = controls.IsPlayPauseToggleEnabled || controls.IsPlayEnabled || controls.IsPauseEnabled;
             PreviousButton.IsEnabled = controls.IsPreviousEnabled;
             NextButton.IsEnabled = controls.IsNextEnabled;
@@ -802,6 +1036,22 @@ public partial class MediaWidget : DockWidget
         TotalText.Text = totalText;
         ProgressSlider.ToolTip = available ? $"{elapsedText} / {totalText}" : null;
         _updatingProgress = false;
+
+        if (_islandProgressSlider is { } islandProgress
+            && _islandElapsedText is { } islandElapsed
+            && _islandTotalText is { } islandTotal
+            && !_islandDraggingProgress && !_seekingProgress)
+        {
+            _updatingIslandProgress = true;
+            islandProgress.Maximum = available ? duration : 100;
+            islandProgress.Value = elapsed;
+            islandProgress.IsEnabled = available && _canSeek;
+            islandProgress.IsHitTestVisible = available && _canSeek;
+            islandProgress.Focusable = available && _canSeek;
+            islandElapsed.Text = elapsedText;
+            islandTotal.Text = totalText;
+            _updatingIslandProgress = false;
+        }
     }
 
     private static string FormatTime(TimeSpan span) =>
@@ -842,6 +1092,7 @@ public partial class MediaWidget : DockWidget
             TitleText.Text = title;
             ArtistText.Text = string.IsNullOrWhiteSpace(properties!.Artist) ? properties.AlbumTitle : properties.Artist;
             Card.ToolTip = string.IsNullOrWhiteSpace(ArtistText.Text) ? title : $"{title}\n{ArtistText.Text}";
+            UpdateIslandMetadata();
             HasData = true;
             await LoadArtAsync(properties, version, activationVersion);
         }
@@ -892,6 +1143,7 @@ public partial class MediaWidget : DockWidget
 
             if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive) return;
             ArtImage.Source = image;
+            if (_islandArtImage is not null) _islandArtImage.Source = image;
             ArtPlaceholder.Visibility = Visibility.Collapsed;
             AnimateArtTint(tint);
         }
@@ -936,11 +1188,12 @@ public partial class MediaWidget : DockWidget
         if (ProgressSlider.IsKeyboardFocusWithin) await SeekToSliderValueAsync();
     }
 
-    private async Task SeekToSliderValueAsync()
+    private Task SeekToSliderValueAsync() => SeekToElapsedAsync(ProgressSlider.Value);
+
+    private async Task SeekToElapsedAsync(double elapsed)
     {
         if (_session is not { } session || !_canSeek || _seekingProgress || _timeline.Sample is not { } sample) return;
-        var elapsed = ProgressSlider.Value;
-        var target = sample.Start + TimeSpan.FromSeconds(elapsed);
+        var target = sample.Start + TimeSpan.FromSeconds(Math.Clamp(elapsed, 0, _timeline.Duration));
         _seekingProgress = true;
         try
         {

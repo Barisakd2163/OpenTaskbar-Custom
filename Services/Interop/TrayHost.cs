@@ -104,9 +104,12 @@ internal sealed class TrayHost : IDisposable
         return Current = host;
     }
 
-    /// <summary>Visible, app-owned icons in their registration order.</summary>
+    /// <summary>True when <paramref name="hwnd"/> refers to an existing native window (filters stale crashed/exited tray icons).</summary>
+    internal static bool IsLiveWindow(nint hwnd) => hwnd != 0 && IsWindow(hwnd);
+
+    /// <summary>Visible, app-owned icons in their registration order, excluding dead windows from exited processes.</summary>
     public IReadOnlyList<NotifyIcon> AppIcons() =>
-        Icons.Where(icon => !icon.IsHidden && !SystemIconGuids.Contains(icon.GUID) && icon.HWnd != 0).ToList();
+        Icons.Where(icon => !icon.IsHidden && !SystemIconGuids.Contains(icon.GUID) && IsLiveWindow(icon.HWnd)).ToList();
 
     /// <summary>True when a process at <paramref name="currentRid"/> can send window messages to <paramref name="targetRid"/> under UIPI.</summary>
     internal static bool IsIntegrityReachable(uint currentRid, uint targetRid) => targetRid <= currentRid;

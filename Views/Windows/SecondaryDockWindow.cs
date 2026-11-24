@@ -416,17 +416,26 @@ public sealed class SecondaryDockWindow : Window
     }
 
     private bool IsFullScreen(nint window)
+        => IsFullScreenOnMonitor(window, _monitor);
+
+    internal static bool IsWindowOnMonitor(nint window, nint monitor)
     {
         if (window == 0) return false;
 
         var root = GetAncestor(window, 3);
         var targetHandle = root != 0 ? root : window;
+        return monitor != 0 && MonitorFromWindow(targetHandle, 2) == monitor;
+    }
 
-        if (MonitorFromWindow(targetHandle, 2) != _monitor)
-            return false;
+    internal static bool IsFullScreenOnMonitor(nint window, nint monitor)
+    {
+        if (!IsWindowOnMonitor(window, monitor)) return false;
+
+        var root = GetAncestor(window, 3);
+        var targetHandle = root != 0 ? root : window;
 
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(_monitor, ref info) || !GetWindowRect(targetHandle, out var rect))
+        if (!GetMonitorInfo(monitor, ref info) || !GetWindowRect(targetHandle, out var rect))
             return false;
 
         var monitorRect = new TaskbarReplacementSession.Rect(info.Monitor.Left, info.Monitor.Top, info.Monitor.Right, info.Monitor.Bottom);

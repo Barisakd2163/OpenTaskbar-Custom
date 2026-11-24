@@ -46,6 +46,58 @@ internal static class SecondaryDockAndInteropChecks
             && !secondary[1].IsForeground,
             "Unpinned running apps must remain included after pinned apps in Z-order.");
 
+        // PR #163: Shared widget provider requests across mirrored docks.
+        var reads = new OpenTaskbar.Widgets.SharedWidgetRequest<string, int>(TimeSpan.FromMinutes(1));
+        var pendingRead = new TaskCompletionSource<int>();
+        using (var closeDisplay = new CancellationTokenSource())
+        {
+            var firstRead = reads.ReadAsync("provider", () => pendingRead.Task, closeDisplay.Token);
+            var secondRead = reads.ReadAsync("provider",
+                () => throw new InvalidOperationException("Expected a shared provider request."), CancellationToken.None);
+            closeDisplay.Cancel();
+            pendingRead.SetResult(42);
+            Check(firstRead.IsCanceled && secondRead.GetAwaiter().GetResult() == 42
+                && reads.ReadAsync("provider", () => Task.FromResult(0), CancellationToken.None).Result == 42,
+                "Closing one view must cancel only its wait while other views reuse the provider result.");
+        }
+
+        // #158: Dead/zero tray icon handles must be excluded as non-live windows.
+        Check(!TrayHost.IsLiveWindow(0) && !TrayHost.IsLiveWindow(unchecked((nint)0x00DEAD01)),
+            "Zero or invalid HWNDs must not be treated as live tray windows.");
+
+        // #164: Standalone Win-key tap triggers dock reveal, while Win+key combinations do not.
+        var winTracker = new WinKeySequenceTracker();
+        winTracker.OnKeyDown(WinKeySequenceTracker.VkLeftWin);
+        Check(winTracker.OnKeyUp(WinKeySequenceTracker.VkLeftWin),
+            "Standalone Left Win press + release must trigger dock reveal.");
+        winTracker.OnKeyDown(WinKeySequenceTracker.VkRightWin);
+        winTracker.OnKeyDown(WinKeySequenceTracker.VkRightWin); // key repeat
+        Check(winTracker.OnKeyUp(WinKeySequenceTracker.VkRightWin),
+            "Held Right Win key repeat followed by release must still trigger dock reveal.");
+        winTracker.OnKeyDown(WinKeySequenceTracker.VkLeftWin);
+        winTracker.OnKeyDown(0x44); // 'D' (Win+D)
+        Check(!winTracker.OnKeyUp(WinKeySequenceTracker.VkLeftWin),
+            "Win+D chord must not trigger standalone Win dock reveal.");
+        winTracker.OnKeyDown(WinKeySequenceTracker.VkLeftWin);
+        winTracker.OnKeyDown(0x10); // Shift (Win+Shift+S)
+        winTracker.OnKeyDown(0x53); // 'S'
+        Check(!winTracker.OnKeyUp(WinKeySequenceTracker.VkLeftWin),
+            "Win+Shift+S chord must not trigger standalone Win dock reveal.");
+        winTracker.OnKeyDown(WinKeySequenceTracker.VkLeftWin);
+        winTracker.Reset();
+        Check(!winTracker.OnKeyUp(WinKeySequenceTracker.VkLeftWin),
+            "Resetting tracker state (e.g. on lock/unlock) must cancel pending Win reveal.");
+
+        // #156: Keyboard layout handle formatting produces stable uppercase ISO codes and display names.
+        var enLayout = KeyboardLayoutService.DescribeHandle(0x0409);
+        var trLayout = KeyboardLayoutService.DescribeHandle(0x041F);
+        var ukLayout = KeyboardLayoutService.DescribeHandle(0x0422);
+        Check(enLayout.ShortCode == "EN" && trLayout.ShortCode == "TR" && ukLayout.ShortCode == "UK"
+            && !string.IsNullOrWhiteSpace(enLayout.DisplayName)
+            && !string.IsNullOrWhiteSpace(trLayout.DisplayName)
+            && !string.IsNullOrWhiteSpace(ukLayout.DisplayName),
+            "KeyboardLayoutService must format en-US, tr-TR, and uk-UA handles cleanly.");
+
         var primaryExcluded = new HashSet<string>([PinnedPath], StringComparer.OrdinalIgnoreCase);
         var primary = RunningAppProjection.Project(windows, primaryExcluded, foreground: 10, notificationBadgesEnabled: true, Exists);
         Check(primary.Count == 1 && string.Equals(primary[0].ExecutablePath, UnpinnedPath, StringComparison.OrdinalIgnoreCase),

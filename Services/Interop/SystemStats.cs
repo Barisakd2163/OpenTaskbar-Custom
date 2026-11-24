@@ -8,7 +8,7 @@ public readonly record struct BatteryStatus(bool Present, int Percent, bool Char
 
 public readonly record struct MemorySnapshot(double UsageRatio, ulong UsedBytes, ulong TotalBytes, ulong AvailableBytes);
 
-public readonly record struct ProcessMemoryEntry(string Name, long WorkingSetBytes, int InstanceCount);
+public readonly record struct ProcessMemoryEntry(string Name, long WorkingSetBytes, int InstanceCount, string? ExecutablePath = null);
 
 /// <summary>
 /// Cheap Win32 readings for the system meters. CPU usage is the busy share between two successive samples.
@@ -80,7 +80,7 @@ public sealed class SystemStats
 
         try
         {
-            var grouped = new Dictionary<string, (string DisplayName, long WorkingSet, int Count)>(StringComparer.OrdinalIgnoreCase);
+            var grouped = new Dictionary<string, (string DisplayName, string? ExecutablePath, long WorkingSet, int Count)>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < processes.Length; i++)
             {
                 if (cancellationToken.IsCancellationRequested) return [];
@@ -95,11 +95,14 @@ public sealed class SystemStats
 
                     var workingSet = process.WorkingSet64;
                     if (workingSet <= 0) continue;
+                    string? executablePath = null;
+                    try { executablePath = process.MainModule?.FileName; }
+                    catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException) { }
 
                     if (grouped.TryGetValue(name, out var existing))
-                        grouped[name] = (existing.DisplayName, existing.WorkingSet + workingSet, existing.Count + 1);
+                        grouped[name] = (existing.DisplayName, existing.ExecutablePath ?? executablePath, existing.WorkingSet + workingSet, existing.Count + 1);
                     else
-                        grouped[name] = (name, workingSet, 1);
+                        grouped[name] = (name, executablePath, workingSet, 1);
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
                 {
@@ -112,7 +115,7 @@ public sealed class SystemStats
             return grouped.Values
                 .OrderByDescending(entry => entry.WorkingSet)
                 .Take(maxCount)
-                .Select(entry => new ProcessMemoryEntry(entry.DisplayName, entry.WorkingSet, entry.Count))
+                .Select(entry => new ProcessMemoryEntry(entry.DisplayName, entry.WorkingSet, entry.Count, entry.ExecutablePath))
                 .ToArray();
         }
         finally

@@ -32,7 +32,9 @@ public sealed class DockAutoHideController : IDisposable
     private bool _overlapDirty = true;
     private nint _lastScannedForeground;
     private long _lastOverlapScanMs;
+    private long _winKeyGraceUntilMs;
     private const long OverlapFallbackScanMs = 1000;
+    private const long WinKeyRevealGraceMs = 600;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
 
@@ -213,6 +215,19 @@ public sealed class DockAutoHideController : IDisposable
         EvaluateState();
     }
 
+    /// <summary>
+    /// Immediately reveals the dock after a standalone Windows-key press (#164) and grants a short grace window
+    /// while the Start menu finishes opening; normal auto-hide resumes once Start closes or the grace expires.
+    /// </summary>
+    public void RevealForWinKey()
+    {
+        if (_disposed || Mode == AutoHideMode.Disabled) return;
+        _winKeyGraceUntilMs = Environment.TickCount64 + WinKeyRevealGraceMs;
+        _hideTimer.Stop();
+        if (IsHidden) AnimateReveal();
+        ArmRevealedGuard();
+    }
+
     // A focusable widget popup activates our own dock window. That must not erase
     // the overlap state of the application beneath it; otherwise Smart auto-hide
     // stays revealed after dismissing the popup.
@@ -347,6 +362,7 @@ public sealed class DockAutoHideController : IDisposable
         if (Mode == AutoHideMode.Disabled) return false;
         if (IsMouseOverDock || IsMouseAtEdge) return false;
         if (IsShellMenuOpen?.Invoke() == true) return false;
+        if (Environment.TickCount64 < _winKeyGraceUntilMs) return false;
         if (_isInteractionLocked()) return false;
         if (Mode == AutoHideMode.Always) return true;
         if (Mode == AutoHideMode.Smart) return HasOverlap;
