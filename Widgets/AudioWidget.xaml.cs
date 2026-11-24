@@ -575,6 +575,12 @@ public partial class AudioWidget : DockWidget
         _monitor = null;
     }
 
+    protected override void OnDisposed()
+    {
+        _flyout.Close(restoreFocus: false);
+        ReleaseAppSessions();
+    }
+
     protected override void OnLanguageChanged()
     {
         Render();

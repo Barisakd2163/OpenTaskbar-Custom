@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "背景の透過度を設定します。",
   "DynamicIslandUseTheme": "テーマカラーを使用",
   "ThemeFieldDynamicIslandMaterial": "ダイナミックアイランドの背景",
-  "ThemeFieldDynamicIslandStroke": "ダイナミックアイランドの枠線"
+  "ThemeFieldDynamicIslandStroke": "ダイナミックアイランドの枠線",
+  "DynamicIslandAutoHide": "自動的に隠す",
+  "DynamicIslandAutoHideDescription": "ポインターが離れたら島を隠し、画面上端から再表示します。"
 }

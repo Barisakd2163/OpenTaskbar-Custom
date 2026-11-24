@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "设置背景透出的程度。",
   "DynamicIslandUseTheme": "使用主题颜色",
   "ThemeFieldDynamicIslandMaterial": "灵动岛背景",
-  "ThemeFieldDynamicIslandStroke": "灵动岛边框"
+  "ThemeFieldDynamicIslandStroke": "灵动岛边框",
+  "DynamicIslandAutoHide": "自动隐藏",
+  "DynamicIslandAutoHideDescription": "指针移开时隐藏灵动岛；从屏幕顶部边缘重新显示。"
 }

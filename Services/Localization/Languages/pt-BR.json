@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Define o quanto o fundo aparece através da ilha.",
   "DynamicIslandUseTheme": "Usar cor do tema",
   "ThemeFieldDynamicIslandMaterial": "Fundo da Ilha Dinâmica",
-  "ThemeFieldDynamicIslandStroke": "Borda da Ilha Dinâmica"
+  "ThemeFieldDynamicIslandStroke": "Borda da Ilha Dinâmica",
+  "DynamicIslandAutoHide": "Ocultar automaticamente",
+  "DynamicIslandAutoHideDescription": "Oculte a ilha quando o ponteiro sair; revele-a pela borda superior."
 }

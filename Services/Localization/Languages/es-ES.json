@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Ajusta cuánto se transparenta el fondo.",
   "DynamicIslandUseTheme": "Usar color del tema",
   "ThemeFieldDynamicIslandMaterial": "Fondo de la Isla Dinámica",
-  "ThemeFieldDynamicIslandStroke": "Borde de la Isla Dinámica"
+  "ThemeFieldDynamicIslandStroke": "Borde de la Isla Dinámica",
+  "DynamicIslandAutoHide": "Ocultar automáticamente",
+  "DynamicIslandAutoHideDescription": "Oculta la isla cuando el puntero sale; muéstrala desde el borde superior."
 }

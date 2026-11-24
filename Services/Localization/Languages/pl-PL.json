@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Określa stopień przezroczystości tła.",
   "DynamicIslandUseTheme": "Użyj koloru motywu",
   "ThemeFieldDynamicIslandMaterial": "Tło Dynamic Island",
-  "ThemeFieldDynamicIslandStroke": "Obramowanie Dynamic Island"
+  "ThemeFieldDynamicIslandStroke": "Obramowanie Dynamic Island",
+  "DynamicIslandAutoHide": "Automatyczne ukrywanie",
+  "DynamicIslandAutoHideDescription": "Ukryj wyspę, gdy wskaźnik ją opuści; pokaż ją ponownie przy górnej krawędzi."
 }

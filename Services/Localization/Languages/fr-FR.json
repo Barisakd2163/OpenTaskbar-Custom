@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Définit le niveau de transparence de l'arrière-plan.",
   "DynamicIslandUseTheme": "Utiliser la couleur du thème",
   "ThemeFieldDynamicIslandMaterial": "Arrière-plan de l'îlot dynamique",
-  "ThemeFieldDynamicIslandStroke": "Bordure de l'îlot dynamique"
+  "ThemeFieldDynamicIslandStroke": "Bordure de l'îlot dynamique",
+  "DynamicIslandAutoHide": "Masquer automatiquement",
+  "DynamicIslandAutoHideDescription": "Masquer l’île lorsque le pointeur la quitte ; la révéler depuis le bord supérieur."
 }

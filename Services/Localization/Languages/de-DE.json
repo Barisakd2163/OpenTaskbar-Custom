@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Legt fest, wie stark der Hintergrund durchscheint.",
   "DynamicIslandUseTheme": "Designfarbe verwenden",
   "ThemeFieldDynamicIslandMaterial": "Dynamic-Island-Hintergrund",
-  "ThemeFieldDynamicIslandStroke": "Dynamic-Island-Rahmen"
+  "ThemeFieldDynamicIslandStroke": "Dynamic-Island-Rahmen",
+  "DynamicIslandAutoHide": "Automatisch ausblenden",
+  "DynamicIslandAutoHideDescription": "Insel ausblenden, wenn der Zeiger den Bereich verlässt; am oberen Rand wieder einblenden."
 }

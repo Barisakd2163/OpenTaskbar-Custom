@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Визначає ступінь прозорості фону.",
   "DynamicIslandUseTheme": "Використовувати колір теми",
   "ThemeFieldDynamicIslandMaterial": "Фон Dynamic Island",
-  "ThemeFieldDynamicIslandStroke": "Межа Dynamic Island"
+  "ThemeFieldDynamicIslandStroke": "Межа Dynamic Island",
+  "DynamicIslandAutoHide": "Автоматично приховувати",
+  "DynamicIslandAutoHideDescription": "Приховувати острів, коли вказівник відходить; показувати його біля верхнього краю."
 }

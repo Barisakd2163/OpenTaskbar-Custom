@@ -1024,5 +1024,7 @@
   "DynamicIslandOpacityDescription": "Bepaalt hoeveel van de achtergrond zichtbaar blijft.",
   "DynamicIslandUseTheme": "Themakleur gebruiken",
   "ThemeFieldDynamicIslandMaterial": "Achtergrond van Dynamic Island",
-  "ThemeFieldDynamicIslandStroke": "Rand van Dynamic Island"
+  "ThemeFieldDynamicIslandStroke": "Rand van Dynamic Island",
+  "DynamicIslandAutoHide": "Automatisch verbergen",
+  "DynamicIslandAutoHideDescription": "Verberg het eiland wanneer de aanwijzer weggaat; toon het weer vanaf de bovenrand."
 }
