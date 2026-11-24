@@ -538,7 +538,7 @@ internal static class FeatureAndMemoryChecks
             Check(window.SettingsSearchResultsPanel.Children.Count > 0, "An opacity query must populate search results.");
             Check(window.SettingsSearchEmptyText.Visibility != Visibility.Visible, "An opacity query must hide the empty-search message.");
             var opacityTabs = opacityHits.Select(entry => entry.TabIndex).ToHashSet();
-            Check(window.SettingsTabs.Items.Count == 6, "Settings must keep 6 tabs while search is active.");
+            Check(window.SettingsTabs.Items.Count == 7, "Settings must keep 7 tabs while search is active.");
             for (var i = 0; i < window.SettingsTabs.Items.Count; i++)
             {
                 var tab = (TabItem)window.SettingsTabs.Items[i]!;
