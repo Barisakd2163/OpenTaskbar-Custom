@@ -1209,6 +1209,7 @@ public partial class SettingsWindow : Window
             {
                 SettingsSearchBox.Text = string.Empty;
             }
+            ClearAutoFocusedPageControl();
             UpdateWidgetPreviewRefresh();
             if (_preferences.Current.EffectiveAnimationsEnabled && SettingsTabs.Template?.FindName("PART_SelectedContentHost", SettingsTabs) is ContentPresenter host)
             {
@@ -1231,6 +1232,24 @@ public partial class SettingsWindow : Window
                 transform.BeginAnimation(TranslateTransform.YProperty, slide);
             }
         }
+    }
+
+    // Switching TabControl pages disconnects the previously focused element and causes WPF to
+    // auto-focus the first focusable button/input on the newly shown page. Clear that incidental
+    // content focus while keeping intentional TabItem keyboard navigation intact.
+    private void ClearAutoFocusedPageControl()
+    {
+        void ClearIfContentControl()
+        {
+            if (_closed) return;
+            if (Keyboard.FocusedElement is TabItem) return;
+            if (ReferenceEquals(Keyboard.FocusedElement, SettingsSearchBox)) return;
+            Keyboard.ClearFocus();
+            FocusManager.SetFocusedElement(this, null);
+        }
+
+        ClearIfContentControl();
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, ClearIfContentControl);
     }
 
     private void UpdateWidgetPreviewRefresh()
