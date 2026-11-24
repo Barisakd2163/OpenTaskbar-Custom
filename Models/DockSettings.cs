@@ -266,7 +266,8 @@ public sealed record DockSettings(
     bool MirrorMainDock = false,
     DynamicIslandVisibilityMode DynamicIslandVisibility = DynamicIslandVisibilityMode.Always,
     bool DynamicIslandHideInFullscreen = true,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? DynamicIslandWidgetOrders = null)
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? DynamicIslandWidgetOrders = null,
+    bool DynamicIslandEnabled = false)
 {
     public const string DynamicIslandAllDisplays = "*";
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>

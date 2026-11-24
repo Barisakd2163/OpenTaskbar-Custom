@@ -21,8 +21,10 @@ public partial class DynamicIslandWindow : Window, IDisposable
 {
     private const double CompactHeight = 50;
     private const double ExpandedHeight = 246;
-    private const double CompactMinimumWidth = 360;
-    private const double ExpandedMinimumWidth = 430;
+    private const double CompactSurfaceWidth = 320;
+    private const double ExpandedSurfaceWidth = 416;
+    private const double MinimumSurfaceWidth = 240;
+    private const double ShoulderWidth = 12;
     private const long WsExToolWindow = 0x00000080;
     private const long WsExNoActivate = 0x08000000;
     private const long WsExAppWindow = 0x00040000;
@@ -82,7 +84,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
         _visibilityTimer.Start();
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         UpdateControlLabels();
-        PositionWindow(CompactMinimumWidth, CompactHeight, animate: false);
+        PositionWindow(CompactSurfaceWidth, CompactHeight, animate: false);
     }
 
     public string DeviceName => _display.DeviceName;
@@ -163,24 +165,26 @@ public partial class DynamicIslandWindow : Window, IDisposable
             DetailsContent.Content = null;
             _details = null;
             DetailsPanel.Visibility = Visibility.Collapsed;
-            _isExpanded = false;
             Pages.Children.Clear();
             foreach (var id in nextPageIds)
             {
                 if (_widgetCoordinator.ActiveWidgets.TryGetValue(id, out var widget))
                 {
-                    widget.SetCompactState(false);
+                    widget.SetDynamicIslandState(true);
+                    widget.SetCompactState(true);
                     widget.SetHoverExpanded(false);
-                    Pages.Children.Add(widget);
+                    Pages.Children.Add(CreateWidgetPage(id, widget));
                 }
                 else if (_timedWidgets.TryGetValue(id, out var timedWidget))
                 {
                     var tile = new TimedWidgetTile
                     {
                         DataContext = timedWidget,
-                        Title = timedWidget.Label,
+                        Title = GetIslandLabel(id),
+                        IsDynamicIsland = true,
                         ContextMenu = CreateTimedContextMenu(id)
                     };
+                    ApplyWidgetPalette(tile, id);
                     tile.AddHandler(TimedWidgetTile.DetailsRequestedEvent,
                         new RoutedEventHandler(TimedWidget_DetailsRequested));
                     Pages.Children.Add(tile);
@@ -197,6 +201,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
                 _details = null;
                 DetailsContent.Content = null;
                 DetailsPanel.Visibility = Visibility.Collapsed;
+                _isExpanded = false;
                 Hide();
                 return;
             }
@@ -270,38 +275,194 @@ public partial class DynamicIslandWindow : Window, IDisposable
             PreviousButton.IsEnabled = false;
             NextButton.IsEnabled = false;
             PageCount.Text = string.Empty;
-            ExpandButton.Visibility = Visibility.Collapsed;
+            PageNavigation.Visibility = Visibility.Collapsed;
+            AutomationProperties.SetName(Header, UiText.Get("DynamicIslandTitle"));
             return;
         }
 
         PreviousButton.IsEnabled = _pageIds.Count > 1;
         NextButton.IsEnabled = _pageIds.Count > 1;
+        PageNavigation.Visibility = _isExpanded && _pageIds.Count > 1
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         PageCount.Text = _pageIds.Count > 1
             ? string.Create(UiText.Current.Language.Culture, $"{_currentPageIndex + 1:00} / {_pageIds.Count:00}")
             : string.Empty;
-        var expandable = HasExpandableContent(CurrentPageId());
-        ExpandButton.Visibility = expandable ? Visibility.Visible : Visibility.Collapsed;
-        ExpandGlyph.Content = Application.Current?.TryFindResource(
-            _isExpanded ? "IconChevronUp" : "IconChevronDown");
-        AutomationProperties.SetName(ExpandButton,
-            UiText.Get(_isExpanded ? "DynamicIslandCollapse" : "DynamicIslandExpand"));
+        AutomationProperties.SetName(Header, UiText.Get(_isExpanded ? "DynamicIslandCollapse" : "DynamicIslandExpand"));
+        AutomationProperties.SetHelpText(Header, GetIslandLabel(CurrentPageId() ?? string.Empty));
     }
 
     private bool HasExpandableContent(string? id) => id is not null
-        && (_timedWidgets.ContainsKey(id)
-            || id is DockWidgetService.ClockId or DockWidgetService.FocusId or DockWidgetService.SystemStatsId
-                or DockWidgetService.WeatherId or DockWidgetService.MediaId or DockWidgetService.AudioId or DockWidgetService.NetSpeedId
-                or DockWidgetService.BluetoothBatteryId
-            || id.StartsWith("AiUsage", StringComparison.OrdinalIgnoreCase));
+        && (_timedWidgets.ContainsKey(id) || _widgetCoordinator.ActiveWidgets.ContainsKey(id));
 
-    private UIElement? GetDetails(LiveDockWidget widget, string id) => id switch
+    private UIElement GetDetails(LiveDockWidget widget, string id)
     {
-        DockWidgetService.ClockId or DockWidgetService.FocusId or DockWidgetService.SystemStatsId =>
-            widget.BuildPreviewFlyoutContent(),
-        DockWidgetService.WeatherId when widget is WeatherWidget weather => weather.BuildFlyoutContent(),
-        DockWidgetService.MediaId when widget is MediaWidget media => media.BuildDynamicIslandExpandedContent(),
-        _ => widget.BuildHoverFlyoutContent()
+        var details = widget.BuildDynamicIslandExpandedContent();
+        if (details is not null) return ApplyWidgetAccent(details, id);
+
+        var label = DockWidgetService.TryGetDescriptor(id, out var descriptor)
+            ? UiText.Get(descriptor.LabelKey)
+            : id;
+        var summary = AutomationProperties.GetName(widget);
+        if (string.IsNullOrWhiteSpace(summary)) summary = UiText.Get("SystemDataUnavailable");
+        return ApplyWidgetAccent(
+            DynamicIslandStatusPanel.Create(label, summary, string.Empty, null, AccentFor(id)), id);
+    }
+
+    private Grid CreateWidgetPage(string id, LiveDockWidget widget)
+    {
+        var page = new Grid
+        {
+            Width = Math.Max(1, PageViewport.ActualWidth),
+            Height = CompactHeight,
+            Background = Brushes.Transparent,
+            ClipToBounds = true,
+            Tag = id
+        };
+        ApplyWidgetPalette(page, id);
+        var showIdentity = !id.Equals("Media", StringComparison.OrdinalIgnoreCase)
+            && !id.Equals(DockWidgetService.FocusId, StringComparison.OrdinalIgnoreCase);
+        page.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = showIdentity ? GridLength.Auto : new GridLength(0)
+        });
+        page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        if (showIdentity)
+        {
+            var accentBrush = (Brush)page.Resources["WidgetAccent"];
+            var identity = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(7, 0, 8, 0),
+                MaxWidth = 112
+            };
+            var icon = new ContentControl
+            {
+                Width = 17,
+                Height = 17,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = accentBrush,
+                Content = DockWidgetService.TryGetDescriptor(id, out var descriptor)
+                    ? Application.Current?.TryFindResource(descriptor.IconKey)
+                    : null
+            };
+            icon.SetResourceReference(StyleProperty, id.StartsWith("AiUsage", StringComparison.OrdinalIgnoreCase)
+                ? "WidgetGlyph"
+                : "WidgetIcon");
+            identity.Children.Add(icon);
+            var label = new TextBlock
+            {
+                Text = GetIslandLabel(id),
+                Margin = new Thickness(7, 0, 0, 0),
+                MaxWidth = 82,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 12.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            identity.Children.Add(label);
+            page.Children.Add(identity);
+        }
+
+        var content = new Border
+        {
+            Child = widget,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = showIdentity ? 166 : double.PositiveInfinity,
+            Margin = new Thickness(0, 0, 7, 0),
+            ClipToBounds = true
+        };
+        Grid.SetColumn(content, 1);
+        page.Children.Add(content);
+        return page;
+    }
+
+    private static UIElement ApplyWidgetAccent(UIElement content, string id)
+    {
+        var host = new Border { Child = content, Background = Brushes.Transparent };
+        ApplyWidgetPalette(host, id);
+        return host;
+    }
+
+    private static void ApplyWidgetPalette(FrameworkElement host, string id)
+    {
+        var accent = AccentFor(id);
+        var accentBrush = new SolidColorBrush(accent);
+        var accentSoft = new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B));
+        var accentStroke = new SolidColorBrush(Color.FromArgb(0x80, accent.R, accent.G, accent.B));
+        host.Resources["WidgetAccent"] = accentBrush;
+        host.Resources["WidgetAccentFill"] = accentBrush;
+        host.Resources["WidgetSelectedForeground"] = accentBrush;
+        host.Resources["WidgetSelectedFill"] = accentSoft;
+        host.Resources["WidgetSelectedStroke"] = accentStroke;
+        host.Resources["WidgetOnStroke"] = accentStroke;
+        host.Resources["WidgetBlue"] = accentBrush;
+        host.Resources["WidgetGreen"] = accentBrush;
+    }
+
+    private static Color AccentFor(string id) => id switch
+    {
+        "Weather" => Color.FromRgb(0xFF, 0xD1, 0x97),
+        "DayProgress" => Color.FromRgb(0x91, 0xDE, 0xDC),
+        "Stopwatch" => Color.FromRgb(0xB1, 0xC9, 0xFF),
+        "Countdown" => Color.FromRgb(0xFF, 0xCE, 0x96),
+        "SystemStats" => Color.FromRgb(0xA8, 0xC6, 0xFF),
+        "NetSpeed" => Color.FromRgb(0x94, 0xDF, 0xEC),
+        "Battery" => Color.FromRgb(0xA7, 0xE5, 0xBA),
+        "BluetoothBattery" => Color.FromRgb(0xAD, 0xCB, 0xFF),
+        "Storage" => Color.FromRgb(0xBB, 0xD3, 0xFA),
+        "Media" => Color.FromRgb(0xE0, 0xBD, 0xFF),
+        "Audio" => Color.FromRgb(0xC4, 0xBA, 0xFF),
+        "QuickSettings" => Color.FromRgb(0xB7, 0xD3, 0xFF),
+        "Focus" => Color.FromRgb(0xD1, 0xC2, 0xFF),
+        "AiUsageClaude" => Color.FromRgb(0xF2, 0xB8, 0x97),
+        "AiUsageCodex" => Color.FromRgb(0xB9, 0xE1, 0xCF),
+        "AiUsageAntigravity" => Color.FromRgb(0xB9, 0xD0, 0xFF),
+        "AiUsageOpenCode" => Color.FromRgb(0xEF, 0xE1, 0xB8),
+        "AiUsageCopilot" => Color.FromRgb(0xAC, 0xDA, 0xF8),
+        "AiUsageDeepSeek" => Color.FromRgb(0xA9, 0xBA, 0xFF),
+        "AiUsageOpenRouter" => Color.FromRgb(0xD3, 0xBC, 0xEF),
+        "AiUsageCursor" => Color.FromRgb(0xE1, 0xE6, 0xEF),
+        _ => Color.FromRgb(0xC2, 0xD9, 0xFF)
     };
+
+    private static string GetIslandLabel(string id)
+    {
+        if (id.StartsWith("AiUsage", StringComparison.OrdinalIgnoreCase))
+            return id["AiUsage".Length..] switch
+            {
+                "OpenCode" => "OpenCode",
+                "Copilot" => "Copilot",
+                var provider => provider
+            };
+
+        var shortLabelKey = id switch
+        {
+            "Clock" => "DynamicIslandShortClock",
+            "Weather" => "DynamicIslandShortWeather",
+            "DayProgress" => "DynamicIslandShortDay",
+            "Stopwatch" => "DynamicIslandShortStopwatch",
+            "Countdown" => "DynamicIslandShortCountdown",
+            "SystemStats" => "DynamicIslandShortSystem",
+            "NetSpeed" => "DynamicIslandShortNetwork",
+            "Battery" => "DynamicIslandShortBattery",
+            "BluetoothBattery" => "DynamicIslandShortDevices",
+            "Storage" => "DynamicIslandShortStorage",
+            "Media" => "DynamicIslandShortMedia",
+            "Audio" => "DynamicIslandShortAudio",
+            "QuickSettings" => "DynamicIslandShortQuickSettings",
+            "Focus" => "DynamicIslandShortFocus",
+            "KeyboardLayout" => "DynamicIslandShortKeyboard",
+            _ => null
+        };
+        if (shortLabelKey is not null) return UiText.Get(shortLabelKey);
+        if (!DockWidgetService.TryGetDescriptor(id, out var descriptor)) return id;
+        return UiText.Get(descriptor.LabelKey);
+    }
 
     private void SetExpanded(bool expanded, bool animate = true)
     {
@@ -346,44 +507,54 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private double WidthForCurrentPage()
     {
-        var id = CurrentPageId();
-        var widgetWidth = id is not null && _widgetCoordinator.ActiveWidgets.TryGetValue(id, out var widget)
-            ? widget.FullWidthEstimate
-            : 280;
-        var detailWidth = 0d;
-        if (_details is not null)
-        {
-            _details.Measure(new Size(640, ExpandedHeight - CompactHeight - 20));
-            detailWidth = _details.DesiredSize.Width;
-        }
-        var minimum = _isExpanded ? ExpandedMinimumWidth : CompactMinimumWidth;
-        var preferred = _isExpanded
-            ? Math.Max(Math.Max(540, widgetWidth + 176), detailWidth + 32)
-            : widgetWidth + 176;
+        var preferred = _isExpanded ? ExpandedSurfaceWidth : CompactSurfaceWidth;
         return DynamicIslandPolicy.ClampWindowWidth(
-            preferred, _display.Bounds.Width, minimum, 960, edgeInset: 16);
+            preferred, _display.Bounds.Width, MinimumSurfaceWidth, preferred, edgeInset: 28);
     }
 
     private void PositionWindow(double width, double height, bool animate)
     {
         if (!IsInitialized) return;
-        var left = _display.Bounds.Left + (_display.Bounds.Width - width) / 2;
+        var windowWidth = width + ShoulderWidth * 2;
+        var left = _display.Bounds.Left + (_display.Bounds.Width - windowWidth) / 2;
         Top = _display.Bounds.Top;
+        IslandSurface.CornerRadius = height > CompactHeight
+            ? new CornerRadius(0, 0, 22, 22)
+            : new CornerRadius(0, 0, 17, 17);
+        HeaderFocusRing.CornerRadius = IslandSurface.CornerRadius;
         if (animate && IsVisible)
         {
-            AnimateWindowValue(WidthProperty, ActualWidth, width);
+            AnimateWindowValue(WidthProperty, ActualWidth, windowWidth);
             AnimateWindowValue(LeftProperty, Left, left);
             AnimateWindowValue(HeightProperty, ActualHeight, height);
+            AnimateSurfaceWidth(width);
         }
         else
         {
             BeginAnimation(WidthProperty, null);
             BeginAnimation(LeftProperty, null);
             BeginAnimation(HeightProperty, null);
-            Width = width;
+            IslandSurface.BeginAnimation(FrameworkElement.WidthProperty, null);
+            IslandSurface.Width = width;
+            Width = windowWidth;
             Height = height;
             Left = left;
         }
+    }
+
+    private void AnimateSurfaceWidth(double width)
+    {
+        var animation = new DoubleAnimation(IslandSurface.ActualWidth, width, ResizeDuration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        animation.Completed += (_, _) =>
+        {
+            IslandSurface.Width = width;
+            IslandSurface.BeginAnimation(FrameworkElement.WidthProperty, null);
+        };
+        IslandSurface.BeginAnimation(FrameworkElement.WidthProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void AnimateWindowValue(DependencyProperty property, double current, double target)
@@ -409,6 +580,14 @@ public partial class DynamicIslandWindow : Window, IDisposable
     {
         Pages.BeginAnimation(DynamicIslandPagePanel.HorizontalOffsetProperty, null);
         Pages.HorizontalOffset = -_currentPageIndex * Math.Max(1, e.NewSize.Width);
+        foreach (var page in Pages.Children.OfType<Grid>()) page.Width = e.NewSize.Width;
+    }
+
+    private void PageViewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled || _isDragging || IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
+        SetExpanded(!_isExpanded);
+        e.Handled = true;
     }
 
     private void SetCurrentPageIndex(int index, bool animate)
@@ -429,7 +608,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
                 Pages.HorizontalOffset = targetOffset;
                 Pages.BeginAnimation(DynamicIslandPagePanel.HorizontalOffsetProperty, null);
                 if (!_resourcesDisposed)
-                    PositionWindow(WidthForCurrentPage(), CompactHeight, animate: true);
+                    PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: true);
             };
             Pages.BeginAnimation(DynamicIslandPagePanel.HorizontalOffsetProperty, animation);
         }
@@ -439,13 +618,22 @@ public partial class DynamicIslandWindow : Window, IDisposable
             Pages.HorizontalOffset = targetOffset;
         }
 
-        _details = null;
-        DetailsContent.Content = null;
-        DetailsPanel.Visibility = Visibility.Collapsed;
-        _isExpanded = false;
+        if (_isExpanded && HasExpandableContent(CurrentPageId()))
+        {
+            _details = GetCurrentDetails();
+            DetailsContent.Content = _details;
+            DetailsPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _details = null;
+            DetailsContent.Content = null;
+            DetailsPanel.Visibility = Visibility.Collapsed;
+            _isExpanded = false;
+        }
         UpdatePageControls();
         if (!animate || !_settings.EffectiveAnimationsEnabled)
-            PositionWindow(WidthForCurrentPage(), CompactHeight, animate: false);
+            PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: false);
     }
 
     private void MovePage(int delta)
@@ -458,10 +646,21 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void Previous_Click(object sender, RoutedEventArgs e) => MovePage(-1);
     private void Next_Click(object sender, RoutedEventArgs e) => MovePage(1);
-    private void Expand_Click(object sender, RoutedEventArgs e) => SetExpanded(!_isExpanded);
 
     private void Header_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e);
     private void Details_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e);
+
+    private void Header_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)
+            || !ReferenceEquals(Keyboard.FocusedElement, Header)) return;
+        SetExpanded(!_isExpanded);
+        e.Handled = true;
+    }
+
+    private void Header_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => HeaderFocusRing.Opacity = 1;
+
+    private void Header_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => HeaderFocusRing.Opacity = 0;
 
     private void BeginPointerGesture(MouseButtonEventArgs e)
     {
@@ -490,10 +689,6 @@ public partial class DynamicIslandWindow : Window, IDisposable
             _isDragging = true;
             Pages.BeginAnimation(DynamicIslandPagePanel.HorizontalOffsetProperty, null);
             Pages.HorizontalOffset = -_dragStartIndex * Math.Max(1, PageViewport.ActualWidth);
-            _details = null;
-            DetailsContent.Content = null;
-            DetailsPanel.Visibility = Visibility.Collapsed;
-            _isExpanded = false;
             Header.CaptureMouse();
         }
 

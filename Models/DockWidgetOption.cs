@@ -5,6 +5,8 @@ using OpenTaskbar.Services;
 
 namespace OpenTaskbar.Models;
 
+public sealed record DynamicIslandPlacementChoice(string Value, string Label);
+
 public sealed class DockWidgetOption(
     string id,
     string label,
@@ -16,6 +18,8 @@ public sealed class DockWidgetOption(
 {
     private bool _isInstalled = isInstalled;
     private bool _isEnabled = isEnabled;
+    private string _dynamicIslandPlacementValue = "dock";
+    private IReadOnlyList<DynamicIslandPlacementChoice> _dynamicIslandPlacementChoices = [];
     private string _label = label;
     private string _description = description;
     private bool _isSettingsExpanded;
@@ -40,6 +44,22 @@ public sealed class DockWidgetOption(
     public string Label => _label;
     public string Description => _description;
     public DockWidgetItem Preview { get; } = preview;
+
+    public IReadOnlyList<DynamicIslandPlacementChoice> DynamicIslandPlacementChoices
+    {
+        get => _dynamicIslandPlacementChoices;
+        set
+        {
+            _dynamicIslandPlacementChoices = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DynamicIslandPlacementChoices)));
+        }
+    }
+
+    public string DynamicIslandPlacementValue
+    {
+        get => _dynamicIslandPlacementValue;
+        set => Set(ref _dynamicIslandPlacementValue, value ?? "dock", nameof(DynamicIslandPlacementValue));
+    }
 
     private FrameworkElement? _livePreview;
 
@@ -214,6 +234,13 @@ public sealed class DockWidgetOption(
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void Set(ref bool field, bool value, string propertyName)
+    {
+        if (field == value) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void Set(ref string field, string value, string propertyName)
     {
         if (field == value) return;
         field = value;

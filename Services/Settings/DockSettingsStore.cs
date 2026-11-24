@@ -43,6 +43,9 @@ public sealed class DockSettingsStore
             var normalizedJson = NormalizeLegacyJson(rawJson);
             using var document = JsonDocument.Parse(normalizedJson);
             var settings = document.RootElement.Deserialize<DockSettings>(JsonOptions);
+            // Preserve the pre-toggle behavior for users who already assigned widgets to an island.
+            if (settings is not null && !document.RootElement.TryGetProperty(nameof(DockSettings.DynamicIslandEnabled), out _))
+                settings = settings with { DynamicIslandEnabled = settings.DynamicIslandPlacements?.Count > 0 };
             // Older files without a language follow the same system-language rule as a first launch.
             if (settings is not null && !document.RootElement.TryGetProperty(nameof(DockSettings.Language), out _))
                 settings = settings with { Language = _defaultLanguage };

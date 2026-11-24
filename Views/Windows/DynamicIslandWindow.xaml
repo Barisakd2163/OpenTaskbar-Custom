@@ -2,63 +2,148 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:widgets="clr-namespace:OpenTaskbar.Views.Widgets"
-        Width="420" Height="50" MinWidth="240" MaxWidth="960" MinHeight="50" MaxHeight="246"
+        Width="344" Height="50" MinWidth="264" MaxWidth="440" MinHeight="50" MaxHeight="246"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False"
         Topmost="True" AllowsTransparency="True" Background="Transparent" Focusable="False"
-        FontFamily="{DynamicResource InterfaceFont}" FontSize="{DynamicResource TextSizeBody}"
+        Foreground="#FFFAFAFA" FontFamily="Segoe UI"
+        FontSize="{DynamicResource TextSizeBody}"
         PreviewKeyDown="Window_PreviewKeyDown" PreviewMouseWheel="Window_PreviewMouseWheel"
         Closed="Window_Closed">
-    <Grid ClipToBounds="True">
-        <Border x:Name="IslandSurface" Background="{DynamicResource DockMaterial}"
-                BorderBrush="{DynamicResource DockBorderMaterial}" BorderThickness="1,0,1,1"
-                CornerRadius="0,0,20,20" ClipToBounds="True">
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFFAFAFA" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#FFB7B8C1" />
+        <SolidColorBrush x:Key="TextMuted" Color="#FF858894" />
+        <SolidColorBrush x:Key="StrokeSubtle" Color="#FF333843" />
+        <SolidColorBrush x:Key="MenuDivider" Color="#FF333843" />
+        <SolidColorBrush x:Key="SurfaceSelected" Color="#14FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceSelectedStrong" Color="#22FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceHover" Color="#14FFFFFF" />
+        <SolidColorBrush x:Key="WidgetCardHover" Color="#18FFFFFF" />
+        <SolidColorBrush x:Key="WidgetHoverMaterial" Color="#14FFFFFF" />
+        <SolidColorBrush x:Key="WidgetPressedMaterial" Color="#24FFFFFF" />
+        <SolidColorBrush x:Key="WidgetGlassCard" Color="#FF181B22" />
+        <SolidColorBrush x:Key="WidgetGlassCardStroke" Color="#00333843" />
+        <SolidColorBrush x:Key="WidgetTrack" Color="#FF333843" />
+        <SolidColorBrush x:Key="WidgetAccent" Color="#FFC2D9FF" />
+        <SolidColorBrush x:Key="WidgetAccentFill" Color="#FFC2D9FF" />
+        <SolidColorBrush x:Key="WidgetAccentText" Color="#FF101217" />
+        <SolidColorBrush x:Key="WidgetSelectedFill" Color="#33C2D9FF" />
+        <SolidColorBrush x:Key="WidgetSelectedStroke" Color="#80C2D9FF" />
+        <SolidColorBrush x:Key="WidgetSelectedForeground" Color="#FFC2D9FF" />
+        <SolidColorBrush x:Key="WidgetOnStroke" Color="#FFC2D9FF" />
+        <SolidColorBrush x:Key="WidgetBlue" Color="#FF94DFEC" />
+        <SolidColorBrush x:Key="WidgetGreen" Color="#FF91DEDC" />
+        <CornerRadius x:Key="WidgetRadius">9</CornerRadius>
+        <CornerRadius x:Key="WidgetQuickActionRadius">6</CornerRadius>
+        <Style x:Key="IslandButton" TargetType="Button">
+            <Setter Property="Background" Value="#14FFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="#FFFAFAFA" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#2EFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#40FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid ClipToBounds="False">
+        <Path Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top"
+              Fill="#FF101217" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z" IsHitTestVisible="False" />
+        <Path Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top"
+              Fill="#FF101217" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z"
+              RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False">
+            <Path.RenderTransform><ScaleTransform ScaleX="-1" /></Path.RenderTransform>
+        </Path>
+        <Border x:Name="IslandSurface" Width="320" HorizontalAlignment="Center"
+                Background="#FF101217" BorderThickness="0" CornerRadius="0,0,17,17"
+                ClipToBounds="True">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="30" ShadowDepth="7" Color="#040811" Opacity="0.64" />
+            </Border.Effect>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="50" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-
-                <Grid x:Name="Header" Grid.Row="0" Background="Transparent"
+                <Grid x:Name="Header" Grid.Row="0" Cursor="Hand" Focusable="True"
                       PreviewMouseLeftButtonDown="Header_PreviewMouseLeftButtonDown"
                       PreviewMouseMove="Header_PreviewMouseMove"
-                      PreviewMouseLeftButtonUp="Header_PreviewMouseLeftButtonUp">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="38" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="38" />
-                        <ColumnDefinition Width="56" />
-                        <ColumnDefinition Width="38" />
-                    </Grid.ColumnDefinitions>
-                    <Button x:Name="PreviousButton" Grid.Column="0" Width="32" Height="32" Margin="3,0,0,0"
-                            Style="{StaticResource WidgetButton}" Click="Previous_Click"
-                            AutomationProperties.Name="{DynamicResource DynamicIslandPrevious}" ToolTip="{DynamicResource DynamicIslandPrevious}">
-                        <ContentControl Width="15" Height="15" Content="{StaticResource IconChevronLeft}" Style="{StaticResource WidgetGlyph}" />
-                    </Button>
-                    <Border x:Name="PageViewport" Grid.Column="1" ClipToBounds="True">
+                      PreviewMouseLeftButtonUp="Header_PreviewMouseLeftButtonUp"
+                      PreviewKeyDown="Header_PreviewKeyDown"
+                      GotKeyboardFocus="Header_GotKeyboardFocus"
+                      LostKeyboardFocus="Header_LostKeyboardFocus">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#14FFFFFF" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Border x:Name="PageViewport" Margin="8,2,8,2" MouseLeftButtonUp="PageViewport_MouseLeftButtonUp"
+                            ClipToBounds="True" Background="Transparent">
                         <widgets:DynamicIslandPagePanel x:Name="Pages" />
                     </Border>
-                    <Button x:Name="NextButton" Grid.Column="2" Width="32" Height="32" Margin="0"
-                            Style="{StaticResource WidgetButton}" Click="Next_Click"
-                            AutomationProperties.Name="{DynamicResource DynamicIslandNext}" ToolTip="{DynamicResource DynamicIslandNext}">
-                        <ContentControl Width="15" Height="15" Content="{StaticResource IconChevronRight}" Style="{StaticResource WidgetGlyph}" />
-                    </Button>
-                    <TextBlock x:Name="PageCount" Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondary}" FontSize="11" Typography.NumeralAlignment="Tabular" />
-                    <Button x:Name="ExpandButton" Grid.Column="4" Width="32" Height="32" Margin="0,0,3,0"
-                            Style="{StaticResource WidgetButton}" Click="Expand_Click">
-                        <ContentControl x:Name="ExpandGlyph" Width="15" Height="15" Content="{StaticResource IconChevronDown}" Style="{StaticResource WidgetGlyph}" />
-                    </Button>
+                    <Border x:Name="HeaderFocusRing" Margin="1" BorderBrush="#FFC2D9FF"
+                            BorderThickness="1" CornerRadius="0,0,17,17" Opacity="0"
+                            IsHitTestVisible="False" />
                 </Grid>
-
-                <Border x:Name="DetailsPanel" Grid.Row="1" Padding="14,2,14,12" Visibility="Collapsed"
-                        BorderThickness="0" Background="Transparent">
-                    <ScrollViewer x:Name="DetailsScrollViewer" VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
-                                  PreviewMouseLeftButtonDown="Details_PreviewMouseLeftButtonDown"
-                                  PreviewMouseMove="Details_PreviewMouseMove"
-                                  PreviewMouseLeftButtonUp="Details_PreviewMouseLeftButtonUp">
-                        <ContentControl x:Name="DetailsContent" HorizontalContentAlignment="Stretch" />
-                    </ScrollViewer>
+                <Border x:Name="DetailsPanel" Grid.Row="1" Padding="8,0,8,8"
+                        Visibility="Collapsed" Background="Transparent">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ScrollViewer x:Name="DetailsScrollViewer" Grid.Row="0"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      CanContentScroll="False"
+                                      PreviewMouseLeftButtonDown="Details_PreviewMouseLeftButtonDown"
+                                      PreviewMouseMove="Details_PreviewMouseMove"
+                                      PreviewMouseLeftButtonUp="Details_PreviewMouseLeftButtonUp">
+                            <ContentControl x:Name="DetailsContent" HorizontalContentAlignment="Stretch"
+                                            Foreground="#FFFAFAFA" />
+                        </ScrollViewer>
+                        <StackPanel x:Name="PageNavigation" Grid.Row="1" Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0"
+                                    Visibility="Collapsed">
+                            <Button x:Name="PreviousButton" Width="26" Height="26" Style="{StaticResource IslandButton}"
+                                    Click="Previous_Click" AutomationProperties.Name="{DynamicResource DynamicIslandPrevious}"
+                                    ToolTip="{DynamicResource DynamicIslandPrevious}">
+                                <ContentControl Width="12" Height="12" Content="{StaticResource IconChevronLeft}"
+                                                Style="{StaticResource WidgetGlyph}" />
+                            </Button>
+                            <TextBlock x:Name="PageCount" MinWidth="48" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" TextAlignment="Center" Margin="5,0"
+                                       Foreground="#FFB7B8C1" FontSize="10.5"
+                                       Typography.NumeralAlignment="Tabular" />
+                            <Button x:Name="NextButton" Width="26" Height="26" Style="{StaticResource IslandButton}"
+                                    Click="Next_Click" AutomationProperties.Name="{DynamicResource DynamicIslandNext}"
+                                    ToolTip="{DynamicResource DynamicIslandNext}">
+                                <ContentControl Width="12" Height="12" Content="{StaticResource IconChevronRight}"
+                                                Style="{StaticResource WidgetGlyph}" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </Border>
             </Grid>
         </Border>

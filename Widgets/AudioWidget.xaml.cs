@@ -62,10 +62,13 @@ public partial class AudioWidget : DockWidget
 
     protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
     protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+    protected override void OnDynamicIslandChanged(bool dynamicIsland) => ApplyDensityLayout();
 
     private void ApplyDensityLayout()
     {
         var compact = IsCompact && !IsHoverExpanded;
+        ComboButton.Visibility = IsDynamicIsland ? Visibility.Collapsed : Visibility.Visible;
+        IslandPanel.Visibility = IsDynamicIsland ? Visibility.Visible : Visibility.Collapsed;
         VolumeText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         OutputIcon.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 7, 0);
         UpdateDeviceTooltip();
@@ -725,7 +728,11 @@ public partial class AudioWidget : DockWidget
         var lang = UiText.Current.Language;
         if (!hasDevice)
         {
-            if (_lastHasDevice == false && _lastLanguage == lang) return;
+            if (_lastHasDevice == false && _lastLanguage == lang)
+            {
+                UpdateIslandOutputSlider(hasDevice: false, level: 0);
+                return;
+            }
             _lastHasDevice = false;
             _lastLanguage = lang;
             _lastLevel = -1;
@@ -736,6 +743,7 @@ public partial class AudioWidget : DockWidget
             if (_flyoutSlider is not null) _flyoutSlider.IsEnabled = false;
             if (_flyoutLevelText is not null) _flyoutLevelText.Text = "—";
             if (_flyoutMuteIcon is not null) _flyoutMuteIcon.Content = FindResource("IconVolumeMute");
+            UpdateIslandOutputSlider(hasDevice: false, level: 0);
             return;
         }
 
@@ -763,6 +771,7 @@ public partial class AudioWidget : DockWidget
         SetOutputIcon(iconKey);
 
         _updating = true;
+        UpdateIslandOutputSlider(hasDevice: true, level: muted ? 0 : level);
         if (_flyoutSlider is not null)
         {
             _flyoutSlider.IsEnabled = true;
@@ -774,6 +783,14 @@ public partial class AudioWidget : DockWidget
             _flyoutMuteIcon.Content = FindResource(iconKey);
         }
         if (_flyoutMuteButton is not null) ApplyMuteButtonVisual(_flyoutMuteButton, muted);
+        _updating = false;
+    }
+
+    private void UpdateIslandOutputSlider(bool hasDevice, int level)
+    {
+        _updating = true;
+        IslandOutputSlider.IsEnabled = hasDevice;
+        IslandOutputSlider.Value = level;
         _updating = false;
     }
 
@@ -794,6 +811,13 @@ public partial class AudioWidget : DockWidget
     private void ComboButton_Click(object sender, RoutedEventArgs e)
     {
         _flyout.Toggle(ComboButton, BuildFlyoutContent, animate: true, focusable: false);
+    }
+
+    private void IslandOutputSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_updating || _monitor is null) return;
+        if (_monitor.SetVolume((float)(e.NewValue / 100.0))) Render();
+        else Report(UiText.Get("ErrorVolumeChange"));
     }
 
     private void AudioWidget_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

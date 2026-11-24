@@ -83,13 +83,14 @@ public partial class FocusWidget : DockWidget
 
     protected override void OnCompactChanged(bool compact) => ApplyDensityLayout();
     protected override void OnHoverExpandedChanged(bool expanded) => ApplyDensityLayout();
+    protected override void OnDynamicIslandChanged(bool dynamicIsland) => ApplyDensityLayout();
 
     private void ApplyDensityLayout()
     {
         var compact = IsCompact && !IsHoverExpanded;
         Card.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(10, 0, 8, 0);
         FocusIcon.Margin = compact ? new Thickness(0, 0, 5, 0) : new Thickness(0, 0, 7, 0);
-        PlayButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        PlayButton.Visibility = compact && !IsDynamicIsland ? Visibility.Collapsed : Visibility.Visible;
         RaiseContentWidthChanged();
     }
 
@@ -219,6 +220,7 @@ public partial class FocusWidget : DockWidget
     {
         if (e.OriginalSource is DependencyObject dep && IsDescendantOf(dep, PlayButton))
             return;
+        if (IsDynamicIsland) return;
 
         _flyout.Toggle(Card, BuildFocusFlyout, animate: true, focusable: false);
         e.Handled = true;

@@ -3,6 +3,12 @@ using System.IO;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 
+if (args.Contains("--dynamic-island-only", StringComparer.OrdinalIgnoreCase))
+{
+    Console.WriteLine($"{DynamicIslandChecks.Run()} Dynamic Island behavior checks passed.");
+    return;
+}
+
 // `--headless` runs only the pure logic checks: no WPF Application, no windows, no synthetic keyboard input,
 // no file dialogs and no desktop side effects. The default run keeps the full UI verification suite for CI.
 var headless = args.Contains("--headless", StringComparer.OrdinalIgnoreCase);

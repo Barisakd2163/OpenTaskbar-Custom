@@ -454,6 +454,15 @@
                             <TextBlock Text="{local:Loc DynamicIslandTitle}" Style="{StaticResource SettingsSectionHeading}" Margin="0,0,0,8" />
                             <Border Style="{StaticResource SettingsRowsGroup}" Margin="0,0,0,18"><StackPanel>
                                 <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <CheckBox x:Name="DynamicIslandEnabledToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                              AutomationProperties.Name="{local:Loc DynamicIslandEnable}" Checked="DynamicIslandEnabled_Changed"
+                                              Unchecked="DynamicIslandEnabled_Changed" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc DynamicIslandEnable}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DynamicIslandEnableDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <ComboBox x:Name="DynamicIslandVisibilityBox" DockPanel.Dock="Right" MinWidth="170" MaxWidth="260" Width="Auto" VerticalAlignment="Center"
                                               AutomationProperties.Name="{local:Loc DynamicIslandVisibility}" SelectionChanged="SegmentChoice_SelectionChanged">
                                         <ComboBoxItem Content="{local:Loc DynamicIslandVisibilityAlways}" Tag="Always" />

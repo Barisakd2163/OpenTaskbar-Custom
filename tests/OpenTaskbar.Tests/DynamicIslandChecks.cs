@@ -1,4 +1,6 @@
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
@@ -68,9 +70,23 @@ internal static class DynamicIslandChecks
         try
         {
             var store = new DockSettingsStore(path);
+            var freshSettings = store.Load();
+            Check(freshSettings.Error is null && !freshSettings.Settings.DynamicIslandEnabled,
+                "Fresh settings must keep the optional Dynamic Island disabled by default.");
+
+            var legacy = JsonNode.Parse(JsonSerializer.Serialize(new DockSettings(
+                DynamicIslandPlacements: new Dictionary<string, string> { ["Clock"] = "DISPLAY1" }),
+                DockSettingsStore.SerializerOptions))!.AsObject();
+            legacy.Remove(nameof(DockSettings.DynamicIslandEnabled));
+            File.WriteAllText(path, legacy.ToJsonString(DockSettingsStore.SerializerOptions));
+            var migrated = store.Load();
+            Check(migrated.Error is null && migrated.Settings.DynamicIslandEnabled,
+                "Existing widget-to-island assignments must preserve the user's previous opt-in during migration.");
+
             var configured = new DockSettings(
                 Widgets: ["Clock", "Media"],
                 InstalledWidgets: ["Clock", "Media"],
+                DynamicIslandEnabled: true,
                 DynamicIslandPlacements: new Dictionary<string, string>
                 {
                     ["Clock"] = DockSettings.DynamicIslandAllDisplays,
@@ -85,6 +101,7 @@ internal static class DynamicIslandChecks
             Check(store.Save(configured) is null, "Valid island settings must save.");
             var loaded = store.Load();
             Check(loaded.Error is null
+                && loaded.Settings.DynamicIslandEnabled
                 && loaded.Settings.DynamicIslandVisibility == DynamicIslandVisibilityMode.DesktopOnly
                 && loaded.Settings.DynamicIslandHideInFullscreen
                 && loaded.Settings.DynamicIslandPlacements?.GetValueOrDefault("Clock") == DockSettings.DynamicIslandAllDisplays

@@ -534,9 +534,15 @@ internal static class WidgetViewChecks
                     Check(SelectedTag("AutoHideBox") == "Disabled", "Auto-hide dropdown must reflect the default mode.");
                     Check(SelectedTag("PositionBox") == "Center", "Dock alignment dropdown must reflect the default position.");
                     Check(SelectedTag("DockSurfaceBox") == "Glass", "Surface dropdown must reflect the loaded material.");
+                    var islandEnabled = RequiredName<CheckBox>(settings, "DynamicIslandEnabledToggle");
+                    Check(islandEnabled.IsChecked == false,
+                        "The optional Dynamic Island must be disabled for a fresh settings profile.");
                     Check(SelectedTag("DynamicIslandVisibilityBox") == DynamicIslandVisibilityMode.Always.ToString()
                         && RequiredName<CheckBox>(settings, "DynamicIslandHideFullscreenToggle").IsChecked == true,
                         "Dynamic Island visibility controls must reflect the stored defaults.");
+                    islandEnabled.IsChecked = true;
+                    Check(preferences.Current.DynamicIslandEnabled,
+                        "Enabling the Dynamic Island setting must save immediately.");
                     var islandVisibility = RequiredName<ComboBox>(settings, "DynamicIslandVisibilityBox");
                     var hideIslandFullscreen = RequiredName<CheckBox>(settings, "DynamicIslandHideFullscreenToggle");
                     islandVisibility.SelectedIndex = 1;
@@ -587,6 +593,21 @@ internal static class WidgetViewChecks
                     Check(clockOption.IsSettingsExpanded, "Clicking the widget row must expand it inline.");
                     Check(RequiredName<FrameworkElement>(settings, "ClockOptions").Visibility == Visibility.Visible,
                         "An expanded clock row must show its native settings.");
+                    var islandPlacement = Descendants<ComboBox>(clockCard).Single(combo =>
+                        AutomationProperties.GetName(combo) == UiText.Get("DynamicIslandWidgetLocation"));
+                    Check(string.Equals(islandPlacement.SelectedValue as string, "dock", StringComparison.OrdinalIgnoreCase)
+                        && clockOption.DynamicIslandPlacementChoices.Any(choice => choice.Value == DockSettings.DynamicIslandAllDisplays),
+                        "Every widget settings drawer must expose dock, display, and all-display locations.");
+                    islandPlacement.SelectedValue = DockSettings.DynamicIslandAllDisplays;
+                    Check(preferences.Current.DynamicIslandPlacements?.GetValueOrDefault(clockOption.Id)
+                            == DockSettings.DynamicIslandAllDisplays,
+                        "Choosing an island display for a widget must save its exclusive location.");
+                    islandPlacement.SelectedValue = "dock";
+                    Check(preferences.Current.DynamicIslandPlacements?.ContainsKey(clockOption.Id) != true,
+                        "Moving a widget back to the dock must remove its island assignment.");
+                    islandEnabled.IsChecked = false;
+                    Check(!preferences.Current.DynamicIslandEnabled,
+                        "Disabling the optional Dynamic Island must save immediately.");
 
                     var secondsToggle = RequiredName<CheckBox>(settings, "ClockSecondsToggle");
                     secondsToggle.IsChecked = true;

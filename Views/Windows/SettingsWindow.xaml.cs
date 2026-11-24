@@ -101,7 +101,9 @@ public partial class SettingsWindow : Window
         foreach (var option in _widgetPreviewService.CreateOptions(_applied.InstalledWidgets, _applied.Widgets))
         {
             _widgetOptions.Add(option);
+            option.PropertyChanged += WidgetOption_PropertyChanged;
         }
+        LoadDynamicIslandPlacementChoices(_applied);
         AttachWidgetSettingsPanels();
         // Live widget previews are attached lazily when WidgetsTab is first selected in UpdateWidgetPreviewRefresh.
         CustomThemeEditor.ThemeSaved += CustomThemeEditor_ThemeSaved;
@@ -155,6 +157,8 @@ public partial class SettingsWindow : Window
                 .Where(o => o.NativePreview is OpenTaskbar.Widgets.DockWidget)
                 .Select(o => (OpenTaskbar.Widgets.DockWidget)o.NativePreview!))
                 preview.Dispose();
+            foreach (var option in _widgetOptions)
+                option.PropertyChanged -= WidgetOption_PropertyChanged;
             _widgetOptions.Clear();
             _widgetGroups.Clear();
             _aiRingBoxes.Clear();
@@ -478,6 +482,15 @@ public partial class SettingsWindow : Window
     {
         var enabledWidgets = _widgetOptions.Where(option => option.IsInstalled && option.IsEnabled).Select(option => option.Id).ToArray();
         var installedWidgets = _widgetOptions.Where(option => option.IsInstalled).Select(option => option.Id).ToArray();
+        var islandPlacements = new Dictionary<string, string>(
+            _preferences.Current.DynamicIslandPlacements ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        foreach (var option in _widgetOptions)
+        {
+            if (string.Equals(option.DynamicIslandPlacementValue, "dock", StringComparison.OrdinalIgnoreCase))
+                islandPlacements.Remove(option.Id);
+            else
+                islandPlacements[option.Id] = option.DynamicIslandPlacementValue;
+        }
         bool IsEnabled(string id) => enabledWidgets.Contains(id, StringComparer.OrdinalIgnoreCase);
         return _preferences.Current with
         {
@@ -514,6 +527,8 @@ public partial class SettingsWindow : Window
             SettingsBorderColor = _borderColor,
             Widgets = enabledWidgets,
             InstalledWidgets = installedWidgets,
+            DynamicIslandEnabled = DynamicIslandEnabledToggle.IsChecked == true,
+            DynamicIslandPlacements = islandPlacements.Count == 0 ? null : islandPlacements,
             DynamicIslandVisibility = Enum.TryParse<DynamicIslandVisibilityMode>(Choice(DynamicIslandVisibilityBox), out var islandVisibility)
                 ? islandVisibility : _preferences.Current.DynamicIslandVisibility,
             DynamicIslandHideInFullscreen = DynamicIslandHideFullscreenToggle.IsChecked == true,
@@ -637,6 +652,49 @@ public partial class SettingsWindow : Window
         MirrorMainDockRow.IsEnabled = allMonitors;
         SecondaryAppsRow.IsEnabled = allMonitors;
         SecondaryWidgetsRow.IsEnabled = allMonitors && MirrorMainDockToggle.IsChecked != true;
+    }
+
+    private void DynamicIslandEnabled_Changed(object sender, RoutedEventArgs e) => UpdateDynamicIslandControls();
+
+    private void UpdateDynamicIslandControls()
+    {
+        var enabled = DynamicIslandEnabledToggle.IsChecked == true;
+        DynamicIslandVisibilityBox.IsEnabled = enabled;
+        DynamicIslandHideFullscreenToggle.IsEnabled = enabled;
+    }
+
+    private void LoadDynamicIslandPlacementChoices(DockSettings settings)
+    {
+        var choices = new List<DynamicIslandPlacementChoice>
+        {
+            new("dock", UiText.Get("DynamicIslandDock")),
+            new(DockSettings.DynamicIslandAllDisplays, UiText.Get("DynamicIslandAllDisplays"))
+        };
+        var displays = DisplayService.GetDisplays();
+        choices.AddRange(displays.Select(display =>
+            new DynamicIslandPlacementChoice(display.DeviceName, display.Name)));
+        foreach (var target in (settings.DynamicIslandPlacements?.Values ?? [])
+                     .Where(value => !string.Equals(value, DockSettings.DynamicIslandAllDisplays, StringComparison.OrdinalIgnoreCase)
+                         && !displays.Any(display => string.Equals(display.DeviceName, value, StringComparison.OrdinalIgnoreCase)))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            choices.Add(new DynamicIslandPlacementChoice(
+                target, $"{target} · {UiText.Get("DynamicIslandDisplayDisconnected")}"));
+        }
+
+        foreach (var option in _widgetOptions)
+        {
+            option.DynamicIslandPlacementChoices = choices;
+            option.DynamicIslandPlacementValue = settings.DynamicIslandPlacements?.TryGetValue(option.Id, out var target) == true
+                ? target
+                : "dock";
+        }
+    }
+
+    private void WidgetOption_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DockWidgetOption.DynamicIslandPlacementValue))
+            TriggerAutoSave(immediate: true);
     }
 
     private void UpdateAutoHideControls()
@@ -1545,8 +1603,11 @@ public partial class SettingsWindow : Window
         CurrentDesktopToggle.IsChecked = settings.CurrentDesktopOnly;
         UpdatesToggle.IsChecked = settings.CheckUpdates;
         FocusModeToggle.IsChecked = settings.FocusModeEnabled;
+        DynamicIslandEnabledToggle.IsChecked = settings.DynamicIslandEnabled;
+        LoadDynamicIslandPlacementChoices(settings);
         SelectChoice(DynamicIslandVisibilityBox, settings.DynamicIslandVisibility.ToString());
         DynamicIslandHideFullscreenToggle.IsChecked = settings.DynamicIslandHideInFullscreen;
+        UpdateDynamicIslandControls();
         SelectChoice(EdgeBox, settings.Edge.ToString());
         SelectChoice(ClockFormatBox, settings.Clock24Hour ? "24" : "12");
         ClockSecondsToggle.IsChecked = settings.ClockShowSeconds;
@@ -2740,8 +2801,11 @@ public partial class SettingsWindow : Window
             AnimationsToggle.IsChecked = defaults.AnimationsEnabled;
             MagnificationToggle.IsChecked = defaults.MagnificationEnabled;
             PreviewsToggle.IsChecked = defaults.PreviewsEnabled;
+            DynamicIslandEnabledToggle.IsChecked = defaults.DynamicIslandEnabled;
             SelectChoice(DynamicIslandVisibilityBox, defaults.DynamicIslandVisibility.ToString());
             DynamicIslandHideFullscreenToggle.IsChecked = defaults.DynamicIslandHideInFullscreen;
+            LoadDynamicIslandPlacementChoices(defaults);
+            UpdateDynamicIslandControls();
             RecycleBinToggle.IsChecked = defaults.ShowRecycleBin;
             CurrentDesktopToggle.IsChecked = defaults.CurrentDesktopOnly;
             SearchButtonToggle.IsChecked = defaults.ShowSearchButton;

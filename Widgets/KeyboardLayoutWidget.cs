@@ -35,6 +35,8 @@ public sealed class KeyboardLayoutWidget : DockWidget
     public override double FullWidthEstimate => 58;
     public override double CompactWidthEstimate => 42;
 
+    public override UIElement BuildDynamicIslandExpandedContent() => BuildFlyoutContent();
+
     public KeyboardLayoutWidget()
     {
         _active = KeyboardLayoutService.GetActiveLayout();
@@ -179,7 +181,7 @@ public sealed class KeyboardLayoutWidget : DockWidget
     internal UIElement BuildFlyoutContent()
     {
         var root = new StackPanel { Width = 240 };
-        root.Children.Add(DockFlyout.Heading(UiText.Get("WidgetKeyboardLayout")));
+        root.Children.Add(DockFlyout.Header(UiText.Get("WidgetKeyboardLayout"), bottomMargin: 6));
 
         var layouts = ReadInstalledLayouts();
         if (layouts.Count == 0)

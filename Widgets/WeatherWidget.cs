@@ -273,6 +273,8 @@ public sealed class WeatherWidget : DockWidget
     }
 
     /// <summary>Builds the detailed weather click flyout with feels-like, humidity, wind, and 3-day forecast.</summary>
+    public override UIElement? BuildDynamicIslandExpandedContent() => BuildFlyoutContent();
+
     internal UIElement BuildFlyoutContent()
     {
         var root = new StackPanel { Width = 296 };
