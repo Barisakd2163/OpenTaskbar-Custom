@@ -748,8 +748,29 @@ public partial class SettingsWindow : Window
 
     private void WidgetOption_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(DockWidgetOption.DynamicIslandPlacementValue))
-            TriggerAutoSave(immediate: true);
+        if (e.PropertyName != nameof(DockWidgetOption.DynamicIslandPlacementValue) || _initializing || _closed) return;
+        if (sender is DockWidgetOption option
+            && !string.Equals(option.DynamicIslandPlacementValue, "dock", StringComparison.OrdinalIgnoreCase))
+        {
+            if (option.IsHardwareAvailable && (!option.IsInstalled || !option.IsEnabled))
+            {
+                var prev = _initializing;
+                _initializing = true;
+                option.IsInstalled = true;
+                option.IsEnabled = true;
+                _initializing = prev;
+                UpdateWidgetOptionState();
+            }
+            if (DynamicIslandEnabledToggle.IsChecked != true)
+            {
+                var prev = _initializing;
+                _initializing = true;
+                DynamicIslandEnabledToggle.IsChecked = true;
+                _initializing = prev;
+                UpdateDynamicIslandControls();
+            }
+        }
+        TriggerAutoSave(immediate: true);
     }
 
     private void UpdateAutoHideControls()

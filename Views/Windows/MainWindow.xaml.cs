@@ -146,7 +146,7 @@ public partial class MainWindow : Window
         var startup = StartupStopwatch.Start("MainWindow constructor");
         InitializeComponent();
         _dynamicIslandManager = new DynamicIslandManager(
-            ReportError, SaveDynamicIslandSettings, RemoveDockWidget, CreateDynamicIslandPlacementMenuItems);
+            ReportError, SaveDynamicIslandSettings, RemoveDockWidget, static _ => []);
         StartupStopwatch.Mark("XAML inflated");
         InitializeLiveDrag();
         // LayoutUpdated fires on every Arrange (including fisheye's per-frame slot writes). Rebuilding
@@ -223,8 +223,7 @@ public partial class MainWindow : Window
                 : WidgetCoordinator.CreateWidget(id))
         {
             OrderChanged = OnWidgetOrderChanged,
-            IsWidgetEnabled = (settings, id) => !_dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(settings, id),
-            CreateWidgetAdditionalMenuItems = CreateDynamicIslandPlacementMenuItems
+            IsWidgetEnabled = (settings, id) => !_dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(settings, id)
         };
         _widgetCoordinator.WidgetSettingsUpdated = updated =>
         {
@@ -2777,85 +2776,9 @@ public partial class MainWindow : Window
         if (error is not null) ReportError(error);
     }
 
-    private void SetDynamicIslandPlacement(string widgetId, string? deviceName)
-    {
-        var settings = _preferences.Current;
-        var placements = new Dictionary<string, string>(
-            settings.DynamicIslandPlacements ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
-        if (deviceName is null)
-        {
-            placements.Remove(widgetId);
-        }
-        else
-        {
-            var displays = DisplayService.GetDisplays();
-            var validTarget = string.Equals(deviceName, DockSettings.DynamicIslandAllDisplays, StringComparison.OrdinalIgnoreCase)
-                ? displays.Count > 0
-                : displays.Any(display => string.Equals(display.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
-            if (settings.Widgets?.Contains(widgetId, StringComparer.OrdinalIgnoreCase) != true || !validTarget)
-                return;
-            placements[widgetId] = deviceName;
-        }
-
-        SaveDynamicIslandSettings(settings with
-        {
-            DynamicIslandPlacements = placements.Count == 0 ? null : placements
-        });
-    }
-
-    private IEnumerable<Control> CreateDynamicIslandPlacementMenuItems(string widgetId)
-    {
-        var submenu = new MenuItem { Header = UiText.Get("DynamicIslandShowOn") };
-        void RefreshTargets()
-        {
-            submenu.Items.Clear();
-            var settings = _preferences.Current;
-            var current = settings.DynamicIslandPlacements?.TryGetValue(widgetId, out var deviceName) == true
-                ? deviceName
-                : null;
-            var displays = DisplayService.GetDisplays();
-            var allDisplays = new MenuItem
-            {
-                Header = UiText.Get("DynamicIslandAllDisplays"),
-                IsCheckable = true,
-                IsChecked = string.Equals(current, DockSettings.DynamicIslandAllDisplays, StringComparison.OrdinalIgnoreCase),
-                IsEnabled = displays.Count > 0
-            };
-            allDisplays.Click += (_, _) => SetDynamicIslandPlacement(widgetId, DockSettings.DynamicIslandAllDisplays);
-            submenu.Items.Add(allDisplays);
-            if (displays.Count > 0) submenu.Items.Add(new Separator());
-            foreach (var display in displays)
-            {
-                var target = new MenuItem
-                {
-                    Header = display.Name,
-                    IsCheckable = true,
-                    IsChecked = string.Equals(current, display.DeviceName, StringComparison.OrdinalIgnoreCase)
-                };
-                target.Click += (_, _) => SetDynamicIslandPlacement(widgetId, display.DeviceName);
-                submenu.Items.Add(target);
-            }
-
-            if (current is not null)
-            {
-                if (submenu.Items.Count > 0) submenu.Items.Add(new Separator());
-                var moveToTaskbar = new MenuItem { Header = UiText.Get("DynamicIslandMoveToTaskbar") };
-                moveToTaskbar.Click += (_, _) => SetDynamicIslandPlacement(widgetId, null);
-                submenu.Items.Add(moveToTaskbar);
-            }
-            submenu.IsEnabled = submenu.Items.Count > 0;
-        }
-
-        submenu.IsEnabled = true;
-        submenu.SubmenuOpened += (_, _) => RefreshTargets();
-        return [submenu];
-    }
-
     private ContextMenu CreateLegacyWidgetContextMenu(string widgetId)
     {
         var menu = new ContextMenu();
-        foreach (var item in CreateDynamicIslandPlacementMenuItems(widgetId)) menu.Items.Add(item);
-        if (menu.Items.Count > 0) menu.Items.Add(new Separator());
         var remove = new MenuItem { Header = UiText.Get("RemoveWidget") };
         if (Application.Current?.TryFindResource("IconTrash") is Geometry icon) remove.Icon = icon;
         remove.Click += (_, _) => RemoveDockWidget(widgetId);

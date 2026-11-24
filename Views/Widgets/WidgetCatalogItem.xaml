@@ -181,6 +181,7 @@
                             <TextBlock Text="{local:Loc DynamicIslandWidgetLocation}" Style="{StaticResource SettingsRowLabel}" Margin="0,0,0,6" />
                             <ComboBox ItemsSource="{Binding DynamicIslandPlacementChoices}"
                                       DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      IsEnabled="{Binding IsHardwareAvailable}"
                                       SelectedValue="{Binding DynamicIslandPlacementValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       AutomationProperties.Name="{local:Loc DynamicIslandWidgetLocation}"
                                       AutomationProperties.HelpText="{local:Loc DynamicIslandWidgetLocationDescription}" />
