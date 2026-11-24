@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -44,6 +45,9 @@ public static class ApplicationIconProvider
 
     // Resting dock icon -> its preloaded larger variant. Weak keys: entries go away with their icons.
     private static readonly ConditionalWeakTable<BitmapSource, BitmapSource> HoverVariants = new();
+
+    // Cached WindowsApps executable path -> resolved AppxManifest AUMID (or null when unavailable).
+    private static readonly ConcurrentDictionary<string, string?> PackagedAumidCache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The smallest native icon size that covers <paramref name="restPixels"/> magnified by <paramref name="scale"/>.</summary>
     public static int ComputeHoverIconPixels(int restPixels, double scale)
@@ -189,6 +193,11 @@ public static class ApplicationIconProvider
             return null;
         }
 
+        return PackagedAumidCache.GetOrAdd(fullExePath, ResolvePackagedAppUserModelIdCore);
+    }
+
+    private static string? ResolvePackagedAppUserModelIdCore(string fullExePath)
+    {
         var dir = Path.GetDirectoryName(fullExePath);
         string? packageRoot = null;
         while (!string.IsNullOrEmpty(dir))
@@ -246,6 +255,14 @@ public static class ApplicationIconProvider
     {
         if (targetSize <= 0) return RememberHoverVariant(GetForFile(path, PreferredIconPixels), size => GetForFile(path, size));
         var size = targetSize;
+        if (TryResolvePackagedAppUserModelId(path) is { } packagedAumid)
+        {
+            var packagedIcon = GetForShellItem($"shell:AppsFolder\\{packagedAumid}", size, iconOnly: true);
+            if (packagedIcon is not null)
+            {
+                return packagedIcon;
+            }
+        }
         if (string.Equals(Path.GetExtension(path), ".exe", StringComparison.OrdinalIgnoreCase))
         {
             var executableIcon = GetExecutableIcon(path, 0, size);

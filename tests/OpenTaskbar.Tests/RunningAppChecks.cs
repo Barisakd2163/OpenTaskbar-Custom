@@ -39,8 +39,21 @@ internal static class RunningAppChecks
         cache.Get(Desktop, 1);
         Check(resourceCalls == 1, "Executable resources must be extracted once per executable.");
 
-        Check(ReferenceEquals(cache.Get(Packaged, 2), settings), "A packaged executable without resources must use its AppsFolder icon.");
+        Check(ReferenceEquals(cache.Get(Packaged, 2), settings), "A packaged executable must use its AppsFolder icon.");
         Check(!cache.HasPendingLookups, "A resolved identity icon must not schedule retries.");
+
+        // Packaged WindowsApps executables (such as Electron Store apps) may embed a different raw .exe icon than
+        // their AppxManifest/AppsFolder taskbar icon; AppsFolder must win over the raw executable resource.
+        var packagedWithResource = new RunningAppIconCache(
+            _ => resource,
+            window => appIds.GetValueOrDefault(window),
+            appId => shellIcons.GetValueOrDefault(appId),
+            _ => generic,
+            new TestClock());
+        Check(ReferenceEquals(packagedWithResource.Get(Packaged, 2), settings),
+            "A packaged WindowsApps executable with an embedded resource icon must still prefer its AppsFolder icon.");
+        Check(ReferenceEquals(packagedWithResource.Get(Desktop, 1), resource),
+            "A classic non-packaged executable must still prefer its embedded resource icon.");
 
         Check(ReferenceEquals(cache.Get(FrameHost, 3), settings) && ReferenceEquals(cache.Get(FrameHost, 4), calculator),
             "Hosted Store apps must not share an icon through their common host executable.");
@@ -115,10 +128,8 @@ internal static class RunningAppChecks
         Check(loaded == 1 && !background.IsLoading && ReferenceEquals(background.Get(Desktop, 1), resource),
             "A finished load must notify the caller and then serve the icon from the cache.");
 
-        Check(background.Get(Packaged, 2) is null, "The resource lookup of a new executable runs in the background.");
-        FinishLoads();
         Check(background.Get(Packaged, 2) is null && background.IsLoading,
-            "Without executable resources the Start menu image is loaded next, still in the background.");
+            "For a packaged executable the Start menu image is loaded first in the background.");
         Check(background.IsLoadingFor(Packaged, 2) && !background.IsLoadingFor(Desktop, 1),
             "A pending lookup must only hold back the icon of its own app.");
         // The dock refreshes (and prunes the cache with Retain) whenever a load finishes; a Store app such as
