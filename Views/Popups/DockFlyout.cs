@@ -680,27 +680,51 @@ public sealed class DockFlyout
 
     private double ComputePlacementGap(Size targetSize)
     {
+        const double desiredGapDip = 8.0;
         var target = (_currentTarget ?? _popup.PlacementTarget) as FrameworkElement;
         if (target is null || !target.IsLoaded) return DockMetrics.FlyoutGap;
 
+        var source = PresentationSource.FromVisual(target);
+        var dpiX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+        var dpiY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+
         var dockFrame = FindAncestorByName(target, "DockFrame");
         if (dockFrame is null || dockFrame.ActualWidth <= 0 || dockFrame.ActualHeight <= 0)
-            return DockMetrics.FlyoutGap;
+        {
+            var scale = Edge == DockEdge.Bottom ? dpiY : dpiX;
+            return Math.Max(0, desiredGapDip * scale);
+        }
 
         try
         {
-            var origin = target.TranslatePoint(new Point(0, 0), dockFrame);
-            var (anchorInset, contentMargin) = Edge switch
+            // CustomPopupPlacementCallback operates in physical device pixels, so measure both the target and
+            // DockFrame in screen pixels and scale the desired DIP gap + popup margin by the monitor DPI.
+            var targetTopLeftPx = target.PointToScreen(new Point(0, 0));
+            var targetBottomRightPx = target.PointToScreen(new Point(target.ActualWidth, target.ActualHeight));
+            var dockTopLeftPx = dockFrame.PointToScreen(new Point(0, 0));
+            var dockBottomRightPx = dockFrame.PointToScreen(new Point(dockFrame.ActualWidth, dockFrame.ActualHeight));
+
+            var (anchorInsetPx, desiredGapPx, contentMarginPx) = Edge switch
             {
-                DockEdge.Left => (Math.Max(0, dockFrame.ActualWidth - (origin.X + targetSize.Width)), _root.Margin.Left),
-                DockEdge.Right => (Math.Max(0, origin.X), _root.Margin.Right),
-                _ => (Math.Max(0, origin.Y), _root.Margin.Bottom)
+                DockEdge.Left => (
+                    Math.Max(0, dockBottomRightPx.X - targetBottomRightPx.X),
+                    desiredGapDip * dpiX,
+                    _root.Margin.Left * dpiX),
+                DockEdge.Right => (
+                    Math.Max(0, targetTopLeftPx.X - dockTopLeftPx.X),
+                    desiredGapDip * dpiX,
+                    _root.Margin.Right * dpiX),
+                _ => (
+                    Math.Max(0, targetTopLeftPx.Y - dockTopLeftPx.Y),
+                    desiredGapDip * dpiY,
+                    _root.Margin.Bottom * dpiY)
             };
-            return anchorInset + DockMetrics.DesiredFlyoutGap - contentMargin;
+            return anchorInsetPx + desiredGapPx - contentMarginPx;
         }
         catch (InvalidOperationException)
         {
-            return DockMetrics.FlyoutGap;
+            var scale = Edge == DockEdge.Bottom ? dpiY : dpiX;
+            return DockMetrics.FlyoutGap * scale;
         }
     }
 
