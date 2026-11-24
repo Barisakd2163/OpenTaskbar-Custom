@@ -354,38 +354,9 @@ public partial class QuickSettingsWidget : DockWidget
 
     private void AddShortcuts()
     {
-        var windows11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-
         AddShortcut("QuickAvailableNetworks", "IconSearch", ShellShortcuts.OpenAvailableNetworks);
-        AddSettingsLink("QuickBluetoothSettings", "IconSettings", "ms-settings:bluetooth");
-        AddSettingsLink("QuickNightLightSettings", "IconPalette", "ms-settings:nightlight");
-        AddSettingsLink("QuickAirplaneMode", "IconAirplane", "ms-settings:network-airplanemode");
-        AddSettingsLink("QuickCellular", "IconCellular", "ms-settings:network-cellular");
-        AddSettingsLink("Hotspot", "IconHotspot", "ms-settings:network-mobilehotspot");
-        AddSettingsLink("LauncherVpn", "IconShield", "ms-settings:network-vpn");
-        AddSettingsLink("QuickBrightness", "IconSun", "ms-settings:display");
-        AddSettingsLink("QuickRotationLock", "IconRotate", "ms-settings:screenrotation");
-        AddSettingsLink("Volume", "IconVolume", "ms-settings:sound");
-        AddSettingsLink("QuickNearbySharing", "IconLink", "ms-settings:crossdevice");
-        AddSettingsLink("LauncherAccessibility", "IconAccessibility", "ms-settings:easeofaccess-display");
-        AddSettingsLink("QuickEnergySaver", "IconBattery", windows11 ? "ms-settings:powersleep" : "ms-settings:batterysaver");
-        AddSettingsLink("QuickNotificationMode", "IconBellOff", windows11 ? "ms-settings:notifications" : "ms-settings:quiethours");
-        AddShortcut("Display", "IconDesktops", ShellShortcuts.OpenProjection);
         AddShortcut("QuickCast", "IconCast", _ => ShellShortcuts.OpenCast());
-
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621))
-        {
-            AddSettingsLink("QuickLiveCaptions", "IconCaptions", "ms-settings:easeofaccess-closedcaptioning");
-            AddShortcut("QuickStudioEffects", "IconTarget", ShellShortcuts.OpenQuickSettings);
-        }
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100))
-            AddSettingsLink("QuickHearingDevices", "IconHeadphones", "ms-settings:easeofaccess-hearingaids");
-        if (windows11)
-            AddShortcut("NotificationCenter", "IconBell", ShellShortcuts.OpenNotificationCenter);
         AddShortcut("QuickOpenWindowsPanel", "IconSliders", ShellShortcuts.OpenQuickSettings);
-
-        void AddSettingsLink(string labelKey, string iconKey, string uri) =>
-            AddShortcut(labelKey, iconKey, _ => ShellShortcuts.OpenUri(uri));
     }
 
     private void AddShortcut(string labelKey, string iconKey, Func<FrameworkElement, string?> action)

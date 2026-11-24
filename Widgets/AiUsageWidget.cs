@@ -112,6 +112,7 @@ public sealed class AiUsageWidget : DockWidget
     private static readonly SolidColorBrush ClaudeBrandBrush = FreezeBrush(Color.FromRgb(0xD9, 0x77, 0x57));
     private static readonly SolidColorBrush CodexBrandBrush = FreezeBrush(Color.FromRgb(0x8D, 0x99, 0xFF));
     private static readonly SolidColorBrush DeepSeekBrandBrush = FreezeBrush(Color.FromRgb(0x4D, 0x6B, 0xFE));
+    private static readonly SolidColorBrush OpenRouterBrandBrush = FreezeBrush(Color.FromRgb(0xB7, 0x9B, 0xF8));
     private static readonly SolidColorBrush CopilotBrandBrush = FreezeBrush(Color.FromRgb(0x9F, 0x9F, 0xF2));
     private static readonly Geometry CursorLogoGeometry = FreezeGeometry(
         "F1 M11.503 .131 1.891 5.678a .84 .84 0 0 0 -.42 .726v11.188c 0 .3 .162 .575 .42 .724l9.609 5.55a 1 1 0 0 0 .998 0l9.61 -5.55a .84 .84 0 0 0 .42 -.724V6.404a .84 .84 0 0 0 -.42 -.726L12.497 .131a 1.01 1.01 0 0 0 -.996 0M2.657 6.338h18.55c .263 0 .43 .287 .297 .515L12.23 22.918c -.062 .107 -.229 .064 -.229 -.06V12.335a .59 .59 0 0 0 -.295 -.51l-9.11 -5.257c -.109 -.063 -.064 -.23 .061 -.23");
@@ -122,6 +123,9 @@ public sealed class AiUsageWidget : DockWidget
         b.Freeze();
         return b;
     }
+
+    private static SolidColorBrush TintedBrush(Color color, byte alpha) =>
+        FreezeBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
 
     private static Geometry FreezeGeometry(string pathData)
     {
@@ -161,7 +165,7 @@ public sealed class AiUsageWidget : DockWidget
             AiProviders.Copilot =>
                 CardPaddingAndBorder + LogoSize + Gap + (compact ? 46 : 52 + 96),
             AiProviders.DeepSeek or AiProviders.OpenRouter =>
-                CardPaddingAndBorder + LogoSize + Gap + (compact ? 54 : 68 + 64),
+                CardPaddingAndBorder + 29 + 8 + (compact ? 58 : 80),
             _ =>
                 CardPaddingAndBorder + LogoSize + Gap + (compact ? 0 : NameWidth + Gap) + RingSize
         };
@@ -758,19 +762,57 @@ public sealed class AiUsageWidget : DockWidget
 
             Border? miniTrack = null;
             Border? miniFill = null;
-            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { logo, label, sep, valStack } };
-            if (_provider == AiProviders.Copilot)
+            Button button;
+            if (_provider is AiProviders.DeepSeek or AiProviders.OpenRouter)
             {
+                var accent = _provider == AiProviders.DeepSeek ? DeepSeekBrandBrush.Color : OpenRouterBrandBrush.Color;
+                logo.Width = 15;
+                logo.Height = 15;
+                logo.Margin = new Thickness(0);
+                var logoSurface = new Border { Width = 29, Height = 29, Child = logo };
+                logoSurface.SetResourceReference(Border.CornerRadiusProperty, "WidgetQuickActionRadius");
+                logoSurface.Background = TintedBrush(accent, 52);
+
+                label.FontSize = 9.5;
+                label.FontWeight = FontWeights.SemiBold;
+                label.Margin = new Thickness(0);
+                label.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+                valText.FontSize = 16;
+                valText.FontWeight = FontWeights.SemiBold;
+                valText.LineHeight = 19;
+                valStack.Children.Clear();
+                valStack.Children.Add(label);
+                valStack.Children.Add(valText);
+                valStack.Margin = new Thickness(9, 0, 0, 0);
+
+                var content = new Grid { VerticalAlignment = VerticalAlignment.Center };
+                content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                content.Children.Add(logoSurface);
+                Grid.SetColumn(valStack, 1);
+                content.Children.Add(valStack);
+
+                var surface = new Border { Padding = new Thickness(8, 2, 13, 2), Child = content };
+                surface.SetResourceReference(Border.CornerRadiusProperty, "WidgetRadius");
+                surface.Background = TintedBrush(accent, 26);
+
+                button = new Button { Content = surface, Cursor = System.Windows.Input.Cursors.Arrow, Padding = new Thickness(0) };
+                button.SetResourceReference(StyleProperty, "WidgetCardButton");
+            }
+            else
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { logo, label, sep, valStack } };
                 miniTrack = new Border { Width = 31, Height = 4, CornerRadius = new CornerRadius(2), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
                 miniTrack.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
                 miniFill = new Border { Height = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Width = 0, Background = CopilotBrandBrush };
                 miniTrack.Child = miniFill;
                 row.Children.Add(miniTrack);
+
+                button = new Button { Content = row, Cursor = System.Windows.Input.Cursors.Arrow };
+                button.SetResourceReference(StyleProperty, "WidgetCardButton");
             }
 
             var simple = new SimpleInlineQuota(sep, valText, metaText, miniTrack, miniFill);
-            var button = new Button { Content = row, Cursor = System.Windows.Input.Cursors.Arrow };
-            button.SetResourceReference(StyleProperty, "WidgetCardButton");
             return new(button, logo, label, null, null, null, null, simple);
         }
 
@@ -827,9 +869,11 @@ public sealed class AiUsageWidget : DockWidget
         // 50%-alpha TextMuted so dock text opacity stays uniform across all widgets.
         var foreground = stale ? "TextSecondary" : "TextPrimary";
         const string secondary = "TextSecondary";
-        _card.Name.SetResourceReference(TextBlock.ForegroundProperty, foreground);
+        _card.Name.SetResourceReference(TextBlock.ForegroundProperty,
+            _provider is AiProviders.DeepSeek or AiProviders.OpenRouter ? secondary : foreground);
         if (!stale && _provider == AiProviders.Claude) _card.Logo.Fill = ClaudeBrandBrush;
         else if (!stale && _provider == AiProviders.DeepSeek) _card.Logo.Fill = DeepSeekBrandBrush;
+        else if (!stale && _provider == AiProviders.OpenRouter) _card.Logo.Fill = OpenRouterBrandBrush;
         else _card.Logo.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, foreground);
         _card.Button.ToolTip = toolTip;
         AutomationProperties.SetName(_card.Button, $"{UiText.Get("WidgetAiUsage")}: {toolTip}");
@@ -1052,7 +1096,9 @@ public sealed class AiUsageWidget : DockWidget
 
     private void UpdateSimpleInlineCard(SimpleInlineQuota simple, AiUsageWindow? main, string foreground, string secondary, bool compact)
     {
-        var detailVis = compact ? Visibility.Collapsed : Visibility.Visible;
+        var detailVis = compact || _provider is AiProviders.DeepSeek or AiProviders.OpenRouter
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         simple.Separator.Visibility = detailVis;
         simple.MetaText.Visibility = detailVis;
         if (simple.MiniBarTrack is not null)
