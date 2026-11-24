@@ -72,7 +72,7 @@ public sealed class DockFlyout
     private bool _restoreFocus;
 
     private readonly Popup _popup;
-    private readonly Grid _root;
+    private readonly Border _root;
     private readonly Border _frame;
     private readonly Border _innerBevel;
 
@@ -167,12 +167,15 @@ public sealed class DockFlyout
         var scale = new ScaleTransform(1, 1);
         var translate = new TranslateTransform();
         var transformGroup = new TransformGroup { Children = { scale, translate } };
-        _root = new Grid
+        // Use Border.Padding instead of Margin on the Popup root: WPF excludes Popup.Child.Margin from
+        // CustomPopupPlacementCallback's popupSize, which previously shifted every flyout downward into the dock.
+        _root = new Border
         {
-            Margin = new Thickness(10, 8, 10, DockMetrics.FlyoutContentInset),
+            Padding = new Thickness(10, 8, 10, DockMetrics.FlyoutContentInset),
+            Background = Brushes.Transparent,
             RenderTransform = transformGroup,
             RenderTransformOrigin = new Point(0.5, 0.5),
-            Children = { contentHost }
+            Child = contentHost
         };
         _popup = new Popup
         {
@@ -554,7 +557,7 @@ public sealed class DockFlyout
         _suppressNextClick = false;
         _closedTarget = null;
         var inset = DockMetrics.FlyoutContentInset;
-        _root.Margin = Edge switch
+        _root.Padding = Edge switch
         {
             DockEdge.Left => new Thickness(10, 8, 12, inset),
             DockEdge.Right => new Thickness(12, 8, 10, inset),
@@ -709,15 +712,15 @@ public sealed class DockFlyout
                 DockEdge.Left => (
                     Math.Max(0, dockBottomRightPx.X - targetBottomRightPx.X),
                     desiredGapDip * dpiX,
-                    _root.Margin.Left * dpiX),
+                    _root.Padding.Left * dpiX),
                 DockEdge.Right => (
                     Math.Max(0, targetTopLeftPx.X - dockTopLeftPx.X),
                     desiredGapDip * dpiX,
-                    _root.Margin.Right * dpiX),
+                    _root.Padding.Right * dpiX),
                 _ => (
                     Math.Max(0, targetTopLeftPx.Y - dockTopLeftPx.Y),
                     desiredGapDip * dpiY,
-                    _root.Margin.Bottom * dpiY)
+                    _root.Padding.Bottom * dpiY)
             };
             return anchorInsetPx + desiredGapPx - contentMarginPx;
         }
