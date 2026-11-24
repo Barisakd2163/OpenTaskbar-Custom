@@ -319,7 +319,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
         var preferred = _isExpanded
             ? Math.Max(Math.Max(540, widgetWidth + 176), detailWidth + 32)
             : widgetWidth + 176;
-        return Math.Clamp(preferred, minimum, 680);
+        var maximum = Math.Max(minimum, Math.Min(960, _display.Bounds.Width - 32));
+        return Math.Clamp(preferred, minimum, maximum);
     }
 
     private void PositionWindow(double width, double height, bool animate)
