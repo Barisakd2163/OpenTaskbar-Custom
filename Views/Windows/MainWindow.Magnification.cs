@@ -124,6 +124,36 @@ public partial class MainWindow
     }
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, IconTransforms> s_iconTransforms = new();
     private readonly Dictionary<Button, int> _zIndexCache = [];
+    private readonly Dictionary<Button, double> _appliedSlotSizes = [];
+
+    /// <summary>Minimum DIP change required before writing layout-affecting magnification properties (#128 Finding #5).</summary>
+    internal const double MagnificationLayoutDeltaThreshold = 0.25;
+
+    internal static bool ShouldApplyLayoutDelta(double current, double desired, double threshold = MagnificationLayoutDeltaThreshold) =>
+        !double.IsFinite(current) || Math.Abs(current - desired) >= threshold;
+
+    /// <summary>
+    /// Decides whether a button slot needs a layout write on the current frame. Mid-spring frames skip deltas
+    /// below 0.25 DIP, while zero-extra decay (returning to rest) and the final settled frame bypass the
+    /// threshold so buttons never remain stuck up to 0.24 DIP off their exact target or rest width.
+    /// </summary>
+    internal static bool ShouldApplySlotLayoutWrite(
+        double appliedOrCurrent,
+        double desired,
+        double extra,
+        bool hasOverride,
+        bool settled,
+        double threshold = MagnificationLayoutDeltaThreshold)
+    {
+        if (extra <= 0.001) return hasOverride;
+        if (settled)
+        {
+            return !hasOverride || !double.IsFinite(appliedOrCurrent) || Math.Abs(appliedOrCurrent - desired) >= 0.001;
+        }
+        return hasOverride
+            ? ShouldApplyLayoutDelta(appliedOrCurrent, desired, threshold)
+            : extra >= threshold;
+    }
     // Threshold crossings call UseHoverIcon repeatedly for the same icon; avoid walking the visual
     // tree each time by remembering the Image element found for it.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, Image> s_hoverImageCache = new();
@@ -342,7 +372,7 @@ public partial class MainWindow
             _canExpandSurface = false;
             _restSurfaceWidth = 0;
             _restScrollMaxWidth = double.PositiveInfinity;
-            var availableHeight = _dockArea.Height > 0 ? _dockArea.Height : ActualHeight;
+            var availableHeight = _dockArea.Height > 0 ? _dockArea.Height : GetDockDisplay().Height;
             var maximumSurfaceHeight = Math.Max(1.0, availableHeight - margin.Top - margin.Bottom);
             _availableExpansion = DockScrollViewer.ScrollableHeight <= 0.5 && DockSurface.ActualHeight > 0
                 ? Math.Max(0.0, maximumSurfaceHeight - DockSurface.ActualHeight)
@@ -351,7 +381,7 @@ public partial class MainWindow
             return;
         }
 
-        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : ActualWidth;
+        var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : GetDockDisplay().Width;
         var maximumSurfaceWidth = Math.Max(1.0, availableWidth - margin.Left - margin.Right);
         // Read local Width only when no magnification override is active. A locally set Width is the expanded
         // value while the fisheye runs; capturing it as "rest" shrinks the budget on the next hover and makes the
@@ -689,6 +719,7 @@ public partial class MainWindow
 
         var dtSeconds = Math.Clamp(elapsedMs, 1.0, 50.0) / 1000.0;
         var settled = true;
+        var anyScaleChanged = false;
         var maxScale = _sessionMaxScale;
         var profile = Profile;
         var availableHeadroom = DockMetrics.Headroom + profile.VerticalPadding;
@@ -723,6 +754,7 @@ public partial class MainWindow
             {
                 scale.ScaleX = next;
                 scale.ScaleY = next;
+                anyScaleChanged = true;
             }
 
             if (!translate.HasAnimatedProperties)
@@ -748,7 +780,7 @@ public partial class MainWindow
         // 2) Expand button slots (and floating dock frame) proportionally so icons, active indicator dots,
         // click hitboxes, and neighbouring widgets breathe outward smoothly with zero overlap or clipping.
         var count = _magnificationTargets.Count;
-        if (count > 0)
+        if (count > 0 && (anyScaleChanged || settled || !_magnificationLayoutActive))
         {
             var scales = count <= 64 ? stackalloc double[count] : new double[count];
             var baseSizes = count <= 64 ? stackalloc double[count] : new double[count];
@@ -768,7 +800,7 @@ public partial class MainWindow
             }
 
             var totalActualExtra = DockFisheyeLayout.ComputeSlotExtras(scales, baseSizes, _availableExpansion, extras);
-            ApplyMagnificationSlotLayout(extras, totalActualExtra, vertical);
+            ApplyMagnificationSlotLayout(extras, totalActualExtra, vertical, settled);
         }
 
         if (settled)
@@ -788,10 +820,40 @@ public partial class MainWindow
         }
     }
 
-    private void ApplyMagnificationSlotLayout(ReadOnlySpan<double> extras, double totalActualExtra, bool vertical)
+    private void ApplyMagnificationSlotLayout(ReadOnlySpan<double> extras, double totalActualExtra, bool vertical, bool settled)
     {
         if (totalActualExtra > 0.01)
         {
+            var canExpandHorizontal = !vertical && _canExpandSurface && _restSurfaceWidth > 0;
+            var surfaceDelta = canExpandHorizontal
+                ? Math.Min(_availableExpansion, DockFisheyeLayout.PeakExpansionNeed(Profile.Cell, _sessionMaxScale))
+                : 0.0;
+            var surfaceWidth = canExpandHorizontal ? _restSurfaceWidth + surfaceDelta : 0.0;
+            var maxScrollWidth = canExpandHorizontal && double.IsFinite(_restScrollMaxWidth)
+                ? _restScrollMaxWidth + surfaceDelta
+                : double.PositiveInfinity;
+
+            var anyLayoutWriteNeeded = !_magnificationLayoutActive
+                || (canExpandHorizontal && (ShouldApplyLayoutDelta(DockSurface.Width, surfaceWidth)
+                    || (double.IsFinite(maxScrollWidth) && ShouldApplyLayoutDelta(DockScrollViewer.MaxWidth, maxScrollWidth))));
+
+            if (!anyLayoutWriteNeeded)
+            {
+                for (var i = 0; i < _magnificationTargets.Count; i++)
+                {
+                    var target = _magnificationTargets[i];
+                    var slotSize = target.BaseSize + extras[i];
+                    var hasOverride = _appliedSlotSizes.TryGetValue(target.Button, out var applied);
+                    if (ShouldApplySlotLayoutWrite(applied, slotSize, extras[i], hasOverride, settled))
+                    {
+                        anyLayoutWriteNeeded = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!anyLayoutWriteNeeded) return;
+
             EnterLayoutPhase(MagnificationLayoutPhase.ApplyingOverrides, active: _magnificationLayoutActive, updating: true);
             try
             {
@@ -802,40 +864,53 @@ public partial class MainWindow
                     DockScrollViewer.SuppressOverflowIndicators = true;
                 }
                 _magnificationLayoutActive = true;
-                // Skipping sub-pixel writes avoids a full dock layout pass on most frames - the main source of judder.
+
+                // Skipping sub-pixel writes (< 0.25 DIP) and untouched unmagnified buttons avoids full-dock
+                // WPF relayouts on mid-spring frames, while zero-extra decay and the final settled frame
+                // bypass the threshold so buttons always return cleanly to exact rest/target widths (#128 Finding #5).
                 for (var i = 0; i < _magnificationTargets.Count; i++)
                 {
                     var target = _magnificationTargets[i];
                     var slotSize = target.BaseSize + extras[i];
+                    var hasOverride = _appliedSlotSizes.TryGetValue(target.Button, out var applied);
+                    if (!ShouldApplySlotLayoutWrite(applied, slotSize, extras[i], hasOverride, settled))
+                    {
+                        continue;
+                    }
+
+                    if (extras[i] <= 0.001)
+                    {
+                        _appliedSlotSizes.Remove(target.Button);
+                        target.Button.ClearValue(WidthProperty);
+                        target.Button.ClearValue(HeightProperty);
+                        continue;
+                    }
+
                     if (vertical)
                     {
-                        if (Math.Abs(target.Button.Height - slotSize) >= 0.25) target.Button.Height = slotSize;
+                        target.Button.Height = slotSize;
                     }
                     else
                     {
-                        if (Math.Abs(target.Button.Width - slotSize) >= 0.25) target.Button.Width = slotSize;
+                        target.Button.Width = slotSize;
                     }
+                    _appliedSlotSizes[target.Button] = slotSize;
                 }
 
-                if (_canExpandSurface && _restSurfaceWidth > 0)
+                if (canExpandHorizontal)
                 {
                     // Reserve the whole arch expansion once per hover instead of tracking the live sum of slot
                     // extras: a centred dock re-measures icons under the pointer on every width change, which
                     // produced 18-19 px of wobble and 58 px end snaps (#127). The constant reserve is written
-                    // once, so there is no per-frame full-dock layout/changing blur either (#128 finding 5).
-                    var surfaceDelta = Math.Min(_availableExpansion,
-                        DockFisheyeLayout.PeakExpansionNeed(Profile.Cell, _sessionMaxScale));
-                    var surfaceWidth = _restSurfaceWidth + surfaceDelta;
-                    if (Math.Abs(DockSurface.Width - surfaceWidth) >= 0.25)
+                    // once, so DockShadowLayer's BitmapCache stays warm across the entire hover (#128).
+                    if (ShouldApplyLayoutDelta(DockSurface.Width, surfaceWidth))
                     {
                         DockSurface.BeginAnimation(WidthProperty, null);
                         DockSurface.Width = surfaceWidth;
                     }
-                    if (double.IsFinite(_restScrollMaxWidth))
+                    if (double.IsFinite(maxScrollWidth) && ShouldApplyLayoutDelta(DockScrollViewer.MaxWidth, maxScrollWidth))
                     {
-                        var maxWidth = _restScrollMaxWidth + surfaceDelta;
-                        if (Math.Abs(DockScrollViewer.MaxWidth - maxWidth) >= 0.25)
-                            DockScrollViewer.MaxWidth = maxWidth;
+                        DockScrollViewer.MaxWidth = maxScrollWidth;
                     }
                 }
             }
@@ -860,6 +935,12 @@ public partial class MainWindow
         EnterLayoutPhase(MagnificationLayoutPhase.ClearingOverrides, active: true, updating: true);
         try
         {
+            foreach (var button in _appliedSlotSizes.Keys.ToList())
+            {
+                button.ClearValue(WidthProperty);
+                button.ClearValue(HeightProperty);
+            }
+            _appliedSlotSizes.Clear();
             foreach (var target in _magnificationTargets)
             {
                 target.Button.ClearValue(WidthProperty);
@@ -868,9 +949,13 @@ public partial class MainWindow
 
             if (_canExpandSurface && _restSurfaceWidth > 0)
             {
-                DockSurface.BeginAnimation(WidthProperty, null);
-                DockSurface.Width = _restSurfaceWidth;
-                if (double.IsFinite(_restScrollMaxWidth))
+                if (ShouldApplyLayoutDelta(DockSurface.Width, _restSurfaceWidth))
+                {
+                    DockSurface.BeginAnimation(WidthProperty, null);
+                    DockSurface.Width = _restSurfaceWidth;
+                }
+                if (double.IsFinite(_restScrollMaxWidth)
+                    && ShouldApplyLayoutDelta(DockScrollViewer.MaxWidth, _restScrollMaxWidth))
                 {
                     DockScrollViewer.MaxWidth = _restScrollMaxWidth;
                 }
@@ -899,6 +984,10 @@ public partial class MainWindow
 
     private void ClearMagnificationZIndexes()
     {
+        foreach (var button in _zIndexCache.Keys.ToList())
+        {
+            button.ClearValue(Panel.ZIndexProperty);
+        }
         foreach (var target in _magnificationTargets)
         {
             target.Button.ClearValue(Panel.ZIndexProperty);
@@ -915,6 +1004,7 @@ public partial class MainWindow
         _magnificationVelocity.Clear();
         FlushDeferredDockResize("magnification-stopped");
         EndScrollGestureScope("magnification-stopped");
+        ScheduleFloatingLayeredWindowSync();
     }
 
     private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)

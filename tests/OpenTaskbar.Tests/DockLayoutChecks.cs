@@ -1449,6 +1449,119 @@ internal static class DockLayoutChecks
                     ]),
                     "Unpinning one PWA must not remove a sibling PWA sharing the same proxy executable.");
             }
+
+            // Issue #128 Finding #3a: Floating dock layered host window must shrink tightly around dock + magnification
+            // headroom + shadow margin and stay centered, while preserving full-width, auto-hide, and multi-monitor bounds.
+            {
+                var blur36 = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 36, ShadowDepth = 4, Opacity = 0.45 };
+                Check(Math.Abs(MainWindow.ComputeShadowMarginPerSide(blur36) - 40.0) < 0.01,
+                    "Shadow margin per side must cover BlurRadius + ShadowDepth for visible DropShadowEffect.");
+                var hiddenShadow = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 36, ShadowDepth = 4, Opacity = 0 };
+                Check(MainWindow.ComputeShadowMarginPerSide(hiddenShadow) == 0.0
+                    && MainWindow.ComputeShadowMarginPerSide(null) == 0.0,
+                    "Transparent or null shadow effect must require zero extra layered-window shadow margin.");
+
+                var centered = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1920, dockSurfaceExtent: 600,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Center, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(centered.IsShrunk && Math.Abs(centered.Extent - 763.0) < 0.01,
+                    $"Centered floating dock must shrink 1920 DIP layered window to 763 DIP (got {centered.Extent}).");
+                Check(Math.Abs((centered.Offset + centered.Extent / 2.0) - 960.0) < 0.01,
+                    "Shrunk centered floating layered window must stay centered on the monitor.");
+
+                var leftAligned = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1920, dockSurfaceExtent: 600,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Left, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(leftAligned.IsShrunk && leftAligned.Offset == 0 && Math.Abs(leftAligned.Extent - 723.0) < 0.01,
+                    "Left-aligned floating dock must anchor at monitor Left with single-side shadow margin.");
+
+                var rightAligned = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1920, dockSurfaceExtent: 600,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Right, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(rightAligned.IsShrunk && Math.Abs((rightAligned.Offset + rightAligned.Extent) - 1920.0) < 0.01
+                    && Math.Abs(rightAligned.Extent - 723.0) < 0.01,
+                    "Right-aligned floating dock must anchor at monitor Right with single-side shadow margin.");
+
+                var secondaryMonitor = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 1920, monitorExtent: 2560, dockSurfaceExtent: 600,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Center, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(secondaryMonitor.IsShrunk
+                    && secondaryMonitor.Offset >= 1920
+                    && secondaryMonitor.Offset + secondaryMonitor.Extent <= 1920 + 2560
+                    && Math.Abs((secondaryMonitor.Offset + secondaryMonitor.Extent / 2.0) - (1920 + 1280)) < 0.01,
+                    "Secondary-monitor floating dock must remain centered within the secondary monitor bounds.");
+
+                var verticalDock = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1080, dockSurfaceExtent: 420,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Center, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(verticalDock.IsShrunk && verticalDock.Extent < 600
+                    && Math.Abs((verticalDock.Offset + verticalDock.Extent / 2.0) - 540.0) < 0.01,
+                    "Vertical centered floating dock must shrink tightly and remain vertically centered.");
+
+                var verticalTop = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1080, dockSurfaceExtent: 420,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Left, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(verticalTop.IsShrunk && verticalTop.Offset == 0 && Math.Abs(verticalTop.Extent - 543.0) < 0.01,
+                    "Vertical top-aligned (DockPosition.Left) floating dock must anchor at monitor Top.");
+
+                var verticalBottom = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1080, dockSurfaceExtent: 420,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Right, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(verticalBottom.IsShrunk && Math.Abs((verticalBottom.Offset + verticalBottom.Extent) - 1080.0) < 0.01
+                    && Math.Abs(verticalBottom.Extent - 543.0) < 0.01,
+                    "Vertical bottom-aligned (DockPosition.Right) floating dock must anchor at monitor Bottom.");
+
+                var fullWidth = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1920, dockSurfaceExtent: 600,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Center, isFullWidth: true, preserveFullEdgeForAutoHide: false);
+                Check(!fullWidth.IsShrunk && fullWidth.Offset == 0 && fullWidth.Extent == 1920,
+                    "Full-width mode must preserve the full monitor layered-window span.");
+
+                var autoHide = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1920, dockSurfaceExtent: 600,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Center, isFullWidth: false, preserveFullEdgeForAutoHide: true);
+                Check(!autoHide.IsShrunk && autoHide.Offset == 0 && autoHide.Extent == 1920,
+                    "Auto-hide mode must preserve the full monitor edge trigger span.");
+
+                var overflowed = MainWindow.ComputeFloatingLayeredWindowBounds(
+                    monitorOffset: 0, monitorExtent: 1920, dockSurfaceExtent: 1850,
+                    surfaceMarginStart: 8, surfaceMarginEnd: 8, magnificationHeadroom: 67,
+                    shadowMarginPerSide: 40, DockPosition.Center, isFullWidth: false, preserveFullEdgeForAutoHide: false);
+                Check(!overflowed.IsShrunk && overflowed.Offset == 0 && overflowed.Extent == 1920,
+                    "A floating dock whose needed span reaches the monitor width must clamp cleanly to the monitor.");
+            }
+
+            // Issue #128 Finding #5: Magnification layout writes must skip sub-0.25 DIP churn mid-spring,
+            // while still clearing overrides on zero-extra decay and snapping cleanly on the final settled frame.
+            {
+                Check(!MainWindow.ShouldApplyLayoutDelta(50.0, 50.0),
+                    "Zero delta must skip magnification layout writes.");
+                Check(!MainWindow.ShouldApplyLayoutDelta(50.0, 50.24),
+                    "Sub-0.25 DIP deltas must skip magnification layout writes.");
+                Check(MainWindow.ShouldApplyLayoutDelta(50.0, 50.25)
+                    && MainWindow.ShouldApplyLayoutDelta(50.0, 49.75),
+                    "Deltas of at least 0.25 DIP must apply magnification layout writes.");
+                Check(MainWindow.ShouldApplyLayoutDelta(double.NaN, 50.0),
+                    "Unset (NaN) layout properties must still accept their initial magnification write.");
+
+                Check(!MainWindow.ShouldApplySlotLayoutWrite(50.0, 50.0, extra: 0.0, hasOverride: false, settled: false),
+                    "Unmagnified button without override must never be written.");
+                Check(MainWindow.ShouldApplySlotLayoutWrite(50.24, 50.0, extra: 0.0, hasOverride: true, settled: false),
+                    "Previously overridden button decaying to zero extra must clear its override even when within 0.24 DIP of BaseSize.");
+                Check(!MainWindow.ShouldApplySlotLayoutWrite(58.0, 58.18, extra: 8.18, hasOverride: true, settled: false),
+                    "Mid-spring sub-0.25 DIP slot delta must be skipped.");
+                Check(MainWindow.ShouldApplySlotLayoutWrite(58.0, 58.18, extra: 8.18, hasOverride: true, settled: true),
+                    "Final settled frame must bypass the 0.25 DIP threshold and snap to the exact converged slot width.");
+            }
         }
 
         return checks;
