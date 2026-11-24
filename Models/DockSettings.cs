@@ -252,7 +252,10 @@ public sealed record DockSettings(
     bool WirelessBatteryListenOnly = false,
     // Appended at the end so older settings files and positional constructor calls keep working.
     TemperatureUnit WeatherUnit = TemperatureUnit.Celsius,
-    ClockDateFormat DateFormat = ClockDateFormat.System)
+    ClockDateFormat DateFormat = ClockDateFormat.System,
+    // Widgets assigned to a Dynamic Island are keyed by widget ID and display device name.
+    // Appended so existing settings JSON and positional constructor calls remain compatible.
+    IReadOnlyDictionary<string, string>? DynamicIslandPlacements = null)
 {
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>
     [JsonIgnore]

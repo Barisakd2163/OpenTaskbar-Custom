@@ -563,6 +563,15 @@ public partial class MainWindow
 
     // ---- Docks on other displays (#10) ----
 
+    private void ApplyDisplayConfiguration()
+    {
+        _dynamicIslandManager.RefreshDisplays();
+        _widgetCoordinator.Apply(_preferences.Current);
+        ApplyWidgets(_preferences.Current.Widgets);
+        _dynamicIslandManager.Apply(_preferences.Current, _islandWidgetItems);
+        ApplySecondaryDocks();
+    }
+
     private void ApplySecondaryDocks()
     {
         var wanted = _preferences.Current.ShowOnAllMonitors ? SecondaryDockWindow.SecondaryMonitors(_preferences.Current.TargetDisplay) : [];

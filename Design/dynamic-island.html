@@ -173,7 +173,7 @@
   .weather-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
   .weather-hero > .icon { width: 38px; height: 38px; color: var(--widget-accent); }
   .weather-hero strong, .device-hero strong, .balance strong { font-size: 1.65rem; font-weight: 580; letter-spacing: -.035em; }
-  .weather-hero small, .device-hero small, .balance small { display: block; color: var(--dim); font-size: .73rem; }
+  .weather-hero small, .device-hero small { display: block; color: var(--dim); font-size: .73rem; }
   .weather-hero .conditions { display: grid; text-align: end; gap: 4px; }
   .page .forecast { border: 0; padding: 8px 4px; margin-top: 9px; background: #ffffff07; border-radius: 9px; }
   .device-hero { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; margin-bottom: 12px; }
@@ -191,9 +191,6 @@
   .quota-grid[data-pools] { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 5px; }
   .quota-grid[data-pools] div { gap: 2px; }
   .quota-grid[data-pools] dd { font-size: .96rem; }
-  .balance-details { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px 12px; margin: 9px 0 0; }
-  .balance-details dt { font-size: .71rem; color: var(--dim); }
-  .balance-details dd { margin: 2px 0 0; font-size: .85rem; }
   .balance { display: grid; gap: 5px; background: color-mix(in srgb,var(--widget-accent) 9%,var(--panel)); padding: 9px 12px; border-radius: 8px; }
   .page[data-widget="Media"] { background: linear-gradient(140deg, #352336, #1c1a24 64%); }
   .page[data-widget="Media"] .media-art { border: 0; }
@@ -745,10 +742,13 @@
       block.className = className;
       const text = document.createElement('div');
       const primary = document.createElement('strong');
-      const secondary = document.createElement('small');
       primary.textContent = value;
-      secondary.textContent = title;
-      text.append(primary, secondary);
+      text.append(primary);
+      if (title) {
+        const secondary = document.createElement('small');
+        secondary.textContent = title;
+        text.append(secondary);
+      }
       if (iconKey) block.append(icon(iconKey));
       block.append(text);
       return block;
@@ -791,30 +791,7 @@
     } else if (widget.id.startsWith('AiUsage')) {
       const rows = page.querySelector('.rows');
       if (widget.id === 'AiUsageDeepSeek' || widget.id === 'AiUsageOpenRouter') {
-        const router = widget.id === 'AiUsageOpenRouter';
-        const balance = featured(router ? 'Kalan kredi' : 'Kullanılabilir bakiye', values[0], null, 'balance');
-        const details = document.createElement('dl');
-        details.className = 'balance-details';
-        for (const [label, value] of router
-          ? [['Toplam kredi', '20,00 USD'], ['Harcanan', '11,60 USD']]
-          : [['Para birimi', 'USD'], ['API durumu', 'Kullanılabilir']]) {
-          const item = document.createElement('div');
-          const term = document.createElement('dt');
-          const amount = document.createElement('dd');
-          term.textContent = label;
-          amount.textContent = value;
-          item.append(term, amount);
-          details.append(item);
-        }
-        if (router) {
-          const meter = document.createElement('meter');
-          meter.className = 'meter';
-          meter.max = 20;
-          meter.value = 11.6;
-          meter.setAttribute('aria-label', 'Harcanan kredi (USD)');
-          balance.append(meter);
-        }
-        rows.replaceWith(balance, details);
+        rows.replaceWith(featured('', values[0], null, 'balance'));
       } else {
         rows.className = 'quota-grid';
         if (widget.id === 'AiUsageAntigravity') rows.dataset.pools = '';
@@ -1074,9 +1051,6 @@
     let settle;
     let suppressDragClick = false;
     let syncInline = () => {};
-    let wheelTotal = 0;
-    let lastWheel = -Infinity;
-    let wheelConsumed = false;
     monitor.querySelector('h2').append(icon('IconMonitor'), document.createTextNode('Ekran ' + index));
     monitor.querySelector('.media-art').append(icon('IconMusic'));
     toggle.querySelector('.indicator').append(icon('IconChevronDown'));
@@ -1379,26 +1353,6 @@
         movePage(event.key === 'ArrowRight' ? 1 : -1);
       }
     });
-    island.addEventListener('wheel', event => {
-      if (islandPages().length < 2 || event.ctrlKey || event.target.closest('input, select')) return;
-      const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-      const page = event.target.closest('.quick-scroll, .page');
-      if (!horizontal && page && page.scrollHeight > page.clientHeight) return;
-      const delta = horizontal ? event.deltaX : event.deltaY;
-      if (!delta) return;
-      event.preventDefault();
-      if (event.timeStamp - lastWheel > 150) {
-        wheelTotal = 0;
-        wheelConsumed = false;
-      }
-      lastWheel = event.timeStamp;
-      if (wheelConsumed) return;
-      wheelTotal += delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1);
-      if (Math.abs(wheelTotal) >= 24) {
-        movePage(Math.sign(wheelTotal));
-        wheelConsumed = true;
-      }
-    }, { passive: false });
     island.addEventListener('pointerdown', event => {
       suppressDragClick = false;
       if (!event.isPrimary || event.button !== 0 || islandPages().length < 2 ||

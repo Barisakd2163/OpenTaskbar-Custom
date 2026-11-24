@@ -15,6 +15,7 @@ using System.Windows.Threading;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
 using OpenTaskbar.Views.Widgets;
+using OpenTaskbar.Views.Windows;
 using OpenTaskbar.Widgets;
 
 namespace OpenTaskbar;
@@ -37,7 +38,10 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DockApp> _pinnedApps = [];
     private readonly ObservableCollection<DockApp> _runningApps = [];
     private readonly ObservableCollection<DockWidgetItem> _widgets = [];
+    private IReadOnlyDictionary<string, DockWidgetItem> _islandWidgetItems =
+        new Dictionary<string, DockWidgetItem>(StringComparer.OrdinalIgnoreCase);
     private readonly DockWidgetService _widgetService = new(TimeProvider.System);
+    private readonly DynamicIslandManager _dynamicIslandManager;
     private readonly WidgetPanelHost _widgetPanel;
     private readonly DispatcherTimer _timedWidgetRefreshTimer;
     private readonly HashSet<string> _exitingRunningPaths = new(StringComparer.OrdinalIgnoreCase);
@@ -131,6 +135,8 @@ public partial class MainWindow : Window
     {
         var startup = StartupStopwatch.Start("MainWindow constructor");
         InitializeComponent();
+        _dynamicIslandManager = new DynamicIslandManager(
+            ReportError, SaveDynamicIslandSettings, RemoveDockWidget, CreateDynamicIslandPlacementMenuItems);
         StartupStopwatch.Mark("XAML inflated");
         InitializeLiveDrag();
         // LayoutUpdated fires on every Arrange (including fisheye's per-frame slot writes). Rebuilding
@@ -198,7 +204,9 @@ public partial class MainWindow : Window
             canExpandInline: CanExpandWidgetInline,
             onHoverLayoutChanged: _ => ResizeDockToContent())
         {
-            OrderChanged = OnWidgetOrderChanged
+            OrderChanged = OnWidgetOrderChanged,
+            IsWidgetEnabled = (settings, id) => !_dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(settings, id),
+            CreateWidgetAdditionalMenuItems = CreateDynamicIslandPlacementMenuItems
         };
         _widgetCoordinator.WidgetSettingsUpdated = updated =>
         {
@@ -446,6 +454,7 @@ public partial class MainWindow : Window
             if (!IsLoaded) return;
             var content = StartupStopwatch.Start("dock content");
             _widgetCoordinator.Apply(_preferences.Current);
+            _dynamicIslandManager.Apply(_preferences.Current, _islandWidgetItems);
             StartupStopwatch.Mark("widgets placed");
             ApplyStartIcon();
             StartupStopwatch.Mark("start icon applied");
@@ -692,7 +701,7 @@ public partial class MainWindow : Window
         // reserved or released) move the secondary docks.
         if (message == 0x007E || (message == 0x001A && wParam == 0x002F))
         {
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, ApplySecondaryDocks);
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, ApplyDisplayConfiguration);
         }
 
         if (HandleHotkeyMessage(message, wParam))
@@ -2481,6 +2490,7 @@ public partial class MainWindow : Window
         ApplyBackdropHitTesting();
         _widgetCoordinator.Apply(_preferences.Current);
         ApplyWidgets(_preferences.Current.Widgets);
+        _dynamicIslandManager.Apply(_preferences.Current, _islandWidgetItems);
         ApplyExtrasSettings();
         ApplyFeatureSettings();
         RefreshPinnedTrayStrip();
@@ -2557,7 +2567,12 @@ public partial class MainWindow : Window
         var dockItemOrder = settings.DockItemOrder?
             .Where(token => !string.Equals(token, "widget:" + id, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (widgets.Length == (settings.Widgets?.Count ?? 0) && installed.Length == (settings.InstalledWidgets?.Count ?? 0)) return;
+        var placements = new Dictionary<string, string>(
+            settings.DynamicIslandPlacements ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        placements.Remove(id);
+        if (widgets.Length == (settings.Widgets?.Count ?? 0)
+            && installed.Length == (settings.InstalledWidgets?.Count ?? 0)
+            && placements.Count == (settings.DynamicIslandPlacements?.Count ?? 0)) return;
 
         // Close the gap immediately instead of animating the dock width after a removal.
         _instantDockResize = true;
@@ -2567,6 +2582,7 @@ public partial class MainWindow : Window
             {
                 Widgets = widgets,
                 InstalledWidgets = installed,
+                DynamicIslandPlacements = placements.Count == 0 ? null : placements,
                 WidgetOrder = order,
                 DockItemOrder = dockItemOrder,
                 ShowClock = id.Equals("Clock", StringComparison.OrdinalIgnoreCase) ? false : settings.ShowClock,
@@ -2591,11 +2607,94 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SaveDynamicIslandSettings(DockSettings settings)
+    {
+        var error = _preferences.Save(settings);
+        if (error is not null) ReportError(error);
+    }
+
+    private void SetDynamicIslandPlacement(string widgetId, string? deviceName)
+    {
+        var settings = _preferences.Current;
+        var placements = new Dictionary<string, string>(
+            settings.DynamicIslandPlacements ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        if (deviceName is null)
+        {
+            placements.Remove(widgetId);
+        }
+        else
+        {
+            if (settings.Widgets?.Contains(widgetId, StringComparer.OrdinalIgnoreCase) != true
+                || !DisplayService.GetDisplays().Any(display => string.Equals(
+                    display.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase)))
+                return;
+            placements[widgetId] = deviceName;
+        }
+
+        SaveDynamicIslandSettings(settings with
+        {
+            DynamicIslandPlacements = placements.Count == 0 ? null : placements
+        });
+    }
+
+    private IEnumerable<Control> CreateDynamicIslandPlacementMenuItems(string widgetId)
+    {
+        var submenu = new MenuItem { Header = UiText.Get("DynamicIslandShowOn") };
+        void RefreshTargets()
+        {
+            submenu.Items.Clear();
+            var settings = _preferences.Current;
+            var current = settings.DynamicIslandPlacements?.TryGetValue(widgetId, out var deviceName) == true
+                ? deviceName
+                : null;
+            var displays = DisplayService.GetDisplays();
+            foreach (var display in displays)
+            {
+                var target = new MenuItem
+                {
+                    Header = display.Name,
+                    IsCheckable = true,
+                    IsChecked = string.Equals(current, display.DeviceName, StringComparison.OrdinalIgnoreCase)
+                };
+                target.Click += (_, _) => SetDynamicIslandPlacement(widgetId, display.DeviceName);
+                submenu.Items.Add(target);
+            }
+
+            if (current is not null)
+            {
+                if (submenu.Items.Count > 0) submenu.Items.Add(new Separator());
+                var moveToTaskbar = new MenuItem { Header = UiText.Get("DynamicIslandMoveToTaskbar") };
+                moveToTaskbar.Click += (_, _) => SetDynamicIslandPlacement(widgetId, null);
+                submenu.Items.Add(moveToTaskbar);
+            }
+            submenu.IsEnabled = submenu.Items.Count > 0;
+        }
+
+        submenu.IsEnabled = true;
+        submenu.SubmenuOpened += (_, _) => RefreshTargets();
+        return [submenu];
+    }
+
+    private ContextMenu CreateLegacyWidgetContextMenu(string widgetId)
+    {
+        var menu = new ContextMenu();
+        foreach (var item in CreateDynamicIslandPlacementMenuItems(widgetId)) menu.Items.Add(item);
+        if (menu.Items.Count > 0) menu.Items.Add(new Separator());
+        var remove = new MenuItem { Header = UiText.Get("RemoveWidget") };
+        if (Application.Current?.TryFindResource("IconTrash") is Geometry icon) remove.Icon = icon;
+        remove.Click += (_, _) => RemoveDockWidget(widgetId);
+        menu.Items.Add(remove);
+        menu.Opened += DockContextMenu_Opened;
+        menu.Closed += DockContextMenu_Closed;
+        return menu;
+    }
+
     private void ApplyWidgets(IReadOnlyList<string>? selected)
     {
         _widgetPanel.Close(restoreFocus: false);
-        foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
+        foreach (var timed in TimedWidgetModels()) timed.PropertyChanged -= TimedWidget_PropertyChanged;
         _widgets.Clear();
+        _islandWidgetItems = new Dictionary<string, DockWidgetItem>(StringComparer.OrdinalIgnoreCase);
         var effectiveSelected = _preferences.Current.FocusModeEnabled ? null : selected;
         var clockStripActive = effectiveSelected?.Contains(DockWidgetService.ClockId, StringComparer.OrdinalIgnoreCase) == true;
         var statsStripActive = effectiveSelected?.Contains(DockWidgetService.SystemStatsId, StringComparer.OrdinalIgnoreCase) == true;
@@ -2604,12 +2703,22 @@ public partial class MainWindow : Window
             && (!clockStripActive || id != DockWidgetService.DateId)
             && (!statsStripActive || id != DockWidgetService.BatteryId))
             .ToArray();
+        var islandItems = new Dictionary<string, DockWidgetItem>(StringComparer.OrdinalIgnoreCase);
         foreach (var widget in _widgetService.CreateWidgets(filtered))
         {
-            widget.IsCompact = _preferences.Current.GlobalWidgetDensity == WidgetDensityMode.Compact;
-            _widgets.Add(widget);
+            if (_dynamicIslandManager.IsWidgetPlacedOnConnectedDisplay(_preferences.Current, widget.Id))
+            {
+                widget.IsCompact = false;
+                islandItems.Add(widget.Id, widget);
+            }
+            else
+            {
+                widget.IsCompact = _preferences.Current.GlobalWidgetDensity == WidgetDensityMode.Compact;
+                _widgets.Add(widget);
+            }
         }
-        foreach (var timed in _widgets.OfType<ITimedDockWidget>()) timed.PropertyChanged += TimedWidget_PropertyChanged;
+        _islandWidgetItems = islandItems;
+        foreach (var timed in TimedWidgetModels()) timed.PropertyChanged += TimedWidget_PropertyChanged;
 
         var activeIds = new HashSet<string>(_widgets.Select(w => w.Id), StringComparer.OrdinalIgnoreCase);
         var removedKeys = _legacyWidgetElements.Keys.Where(k => !activeIds.Contains(k)).ToArray();
@@ -2620,9 +2729,10 @@ public partial class MainWindow : Window
 
         WidgetDivider.Visibility = Visibility.Collapsed;
         DockWidgets.Visibility = Visibility.Collapsed;
-        if (!_preferences.Current.FocusModeEnabled && (_widgets.Count > 0 || _widgetCoordinator.HasActiveWidgets))
+        if (!_preferences.Current.FocusModeEnabled
+            && (_widgets.Count > 0 || _islandWidgetItems.Count > 0 || _widgetCoordinator.HasActiveWidgets))
         {
-            DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+            DockWidgetService.Refresh(_widgets.Concat(_islandWidgetItems.Values), _preferences.Current.Language);
             if (!_widgetRefreshTimer.IsEnabled) _widgetRefreshTimer.Start();
         }
         else
@@ -2782,6 +2892,7 @@ public partial class MainWindow : Window
         {
             existing.Content = widgetItem;
             existing.DataContext = widgetItem;
+            existing.ContextMenu = CreateLegacyWidgetContextMenu(widgetId);
             return existing;
         }
 
@@ -2792,7 +2903,7 @@ public partial class MainWindow : Window
             Focusable = false,
             Tag = widgetId,
             VerticalAlignment = VerticalAlignment.Center,
-            ContextMenu = (ContextMenu)FindResource("DockContextMenu")
+            ContextMenu = CreateLegacyWidgetContextMenu(widgetId)
         };
         host.SizeChanged += (_, e) =>
         {
@@ -2976,7 +3087,7 @@ public partial class MainWindow : Window
 
     private void WidgetRefreshTimer_Tick(object? sender, EventArgs e)
     {
-        DockWidgetService.Refresh(_widgets, _preferences.Current.Language);
+        DockWidgetService.Refresh(_widgets.Concat(_islandWidgetItems.Values), _preferences.Current.Language);
         ResizeDockToContent();
         if (++_memoryTrimCounter >= 3)
         {
@@ -3017,14 +3128,18 @@ public partial class MainWindow : Window
 
     private void UpdateTimedWidgetRefresh()
     {
-        if (_widgets.OfType<ITimedDockWidget>().Any(widget => widget.IsRunning)) _timedWidgetRefreshTimer.Start();
+        if (TimedWidgetModels().Any(widget => widget.IsRunning)) _timedWidgetRefreshTimer.Start();
         else _timedWidgetRefreshTimer.Stop();
     }
 
     private void TimedWidgetRefreshTimer_Tick(object? sender, EventArgs e)
     {
-        foreach (var widget in _widgets.OfType<ITimedDockWidget>()) widget.Refresh();
+        foreach (var widget in TimedWidgetModels()) widget.Refresh();
     }
+
+    private IEnumerable<ITimedDockWidget> TimedWidgetModels() =>
+        _widgets.OfType<ITimedDockWidget>()
+            .Concat(_islandWidgetItems.Values.OfType<ITimedDockWidget>());
 
     private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
     {
@@ -3889,7 +4004,7 @@ public partial class MainWindow : Window
         _timedWidgetRefreshTimer.Tick -= TimedWidgetRefreshTimer_Tick;
         _foregroundPollTimer.Stop();
         _foregroundPollTimer.Tick -= ForegroundPollTimer_Tick;
-        foreach (var widget in _widgets.OfType<ITimedDockWidget>()) widget.PropertyChanged -= TimedWidget_PropertyChanged;
+        foreach (var widget in TimedWidgetModels()) widget.PropertyChanged -= TimedWidget_PropertyChanged;
         _thumbnailPreview.PointerEntered -= ThumbnailPreview_PointerEntered;
         _thumbnailPreview.PointerLeft -= ThumbnailPreview_PointerLeft;
         _thumbnailPreview.PreviewClicked -= ThumbnailPreview_PreviewClicked;
@@ -3900,6 +4015,7 @@ public partial class MainWindow : Window
         _searchTransitionTimer?.Stop();
         _searchTransitionTimer = null;
         _startMenu.Dispose();
+        _dynamicIslandManager.Dispose();
         _widgetCoordinator.Dispose();
         _jumpLists.Dispose();
         _wheelAudio?.Dispose();

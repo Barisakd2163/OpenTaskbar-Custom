@@ -1085,17 +1085,18 @@ public sealed class AiUsageWidget : DockWidget
 
         // DeepSeek / OpenRouter balance or credit display from real provider data.
         var labelKey = _provider == AiProviders.DeepSeek ? "AiUsageBalance" : "AiUsageCreditsLabel";
+        var hasBalance = false;
         if (_report?.Spend is { } spend)
         {
             var symbol = string.Equals(spend.Currency, "USD", StringComparison.OrdinalIgnoreCase) ? "$" : spend.Currency + " ";
             var amount = spend.Limit is { } lim ? Math.Max(0m, lim - spend.Used) : spend.Used;
             simple.ValueText.Text = $"{symbol}{amount.ToString("0.00", Culture)}";
-            simple.MetaText.Text = UiText.Get(labelKey);
+            hasBalance = true;
         }
         else if (_report?.Credits is { } credits)
         {
             simple.ValueText.Text = $"${credits.ToString("0.00", Culture)}";
-            simple.MetaText.Text = UiText.Get(labelKey);
+            hasBalance = true;
         }
         else if (main is not null)
         {
@@ -1106,6 +1107,12 @@ public sealed class AiUsageWidget : DockWidget
         {
             simple.ValueText.Text = "—";
             simple.MetaText.Text = _error == "ErrorAiUsageSignIn" ? UiText.Get("AiUsageStatusSignIn") : UiText.Get(labelKey);
+        }
+        if (hasBalance)
+        {
+            simple.MetaText.Visibility = Visibility.Collapsed;
+            simple.Separator.Visibility = Visibility.Collapsed;
+            if (simple.MiniBarTrack is not null) simple.MiniBarTrack.Visibility = Visibility.Collapsed;
         }
         simple.MetaText.SetResourceReference(TextBlock.ForegroundProperty, secondary);
     }

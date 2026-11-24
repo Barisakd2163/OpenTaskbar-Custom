@@ -439,6 +439,7 @@ public sealed class DockSettingsStore
         && settings.WirelessBatteryLowThreshold is 0 or 10 or 20 or 30
         && IsValidIgnoredWirelessDevices(settings.IgnoredWirelessDevices)
         && IsValidWirelessDeviceAliases(settings.WirelessDeviceAliases)
+        && IsValidDynamicIslandPlacements(settings.DynamicIslandPlacements)
         && (string.IsNullOrWhiteSpace(settings.ThemePack) || ThemePackTransfer.IsSafeId(settings.ThemePack.Trim()))
         && IsValidPinnedTrayIcons(settings.PinnedTrayIcons)
         && !HotkeysConflict(settings);
@@ -472,6 +473,17 @@ public sealed class DockSettingsStore
                 || pair.Key.Length > 256
                 || string.IsNullOrWhiteSpace(pair.Value)
                 || pair.Value.Length > 120));
+
+    private static bool IsValidDynamicIslandPlacements(IReadOnlyDictionary<string, string>? placements) =>
+        placements is null
+        || (placements.Count <= DockWidgetService.CatalogDescriptors.Count
+            && placements.Keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() == placements.Count
+            && placements.All(pair =>
+                !string.IsNullOrWhiteSpace(pair.Key)
+                && DockWidgetService.CatalogDescriptors.Any(widget =>
+                    string.Equals(widget.Id, pair.Key, StringComparison.OrdinalIgnoreCase))
+                && !string.IsNullOrWhiteSpace(pair.Value)
+                && pair.Value.Length <= 32));
 
     private static bool IsValidPinnedTrayIcons(IReadOnlyList<string>? pinned) =>
         pinned is null

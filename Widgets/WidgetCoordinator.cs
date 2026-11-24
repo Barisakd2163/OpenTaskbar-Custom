@@ -77,6 +77,10 @@ public sealed class WidgetCoordinator : IDisposable
     /// <summary>Lets the host wire its context-menu open/close handlers so auto-hide stays locked while the menu is up.</summary>
     public Action<ContextMenu>? ConfigureWidgetMenu { get; set; }
     public Func<string, ContextMenu>? CreateWidgetContextMenu { get; set; }
+    public Func<string, IEnumerable<Control>>? CreateWidgetAdditionalMenuItems { get; set; }
+    public Func<DockSettings, string, bool>? IsWidgetEnabled { get; set; }
+    public bool AllowWidgetReorder { get; set; } = true;
+    public bool EnableWidgetHover { get; set; } = true;
     public IReadOnlyList<string> CurrentOrder => _widgets.Select(w => w.Id).ToArray();
 
     /// <summary>When true, the host window owns widget placement so all dock item kinds share one strip.</summary>
@@ -126,8 +130,9 @@ public sealed class WidgetCoordinator : IDisposable
                 descriptor.Id,
                 descriptor.LabelKey,
                 () => CreateWidget(descriptor.Id),
-                s => IsCatalogEnabled(s, descriptor.Id)
-                    || descriptor.AliasIds?.Any(alias => IsCatalogEnabled(s, alias)) == true))
+                s => (IsCatalogEnabled(s, descriptor.Id)
+                    || descriptor.AliasIds?.Any(alias => IsCatalogEnabled(s, alias)) == true)
+                    && (IsWidgetEnabled?.Invoke(s, descriptor.Id) ?? true)))
             .ToList();
 
         if (!lazy)
@@ -174,11 +179,14 @@ public sealed class WidgetCoordinator : IDisposable
         widget.AvailabilityChanged += Widget_AvailabilityChanged;
         widget.ContentWidthChanged += Widget_AvailabilityChanged;
 
-        widget.ContextMenu = widget.BuildContextMenuItems() is { Count: > 0 } customItems
+        var customItems = widget.BuildContextMenuItems()?.ToList() ?? [];
+        if (CreateWidgetAdditionalMenuItems?.Invoke(slot.Id) is { } additionalItems)
+            customItems.AddRange(additionalItems);
+        widget.ContextMenu = customItems.Count > 0
             ? CreateWidgetMenuWithCustomItems(slot.Id, customItems)
             : CreateWidgetContextMenu?.Invoke(slot.Id) ?? CreateDefaultWidgetMenu(slot.Id);
 
-        _hoverCoordinator.Attach(widget);
+        if (EnableWidgetHover) _hoverCoordinator.Attach(widget);
         slot.Widget = widget;
         return widget;
     }
@@ -405,6 +413,7 @@ public sealed class WidgetCoordinator : IDisposable
 
     private void Widget_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (!AllowWidgetReorder) return;
         if (e.OriginalSource is DependencyObject dep && IsInteractiveControl(dep))
         {
             _draggedWidget = null;
@@ -450,7 +459,8 @@ public sealed class WidgetCoordinator : IDisposable
 
     private void Widget_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _draggedWidget is null || sender is not DockWidget widget)
+        if (!AllowWidgetReorder || e.LeftButton != MouseButtonState.Pressed
+            || _draggedWidget is null || sender is not DockWidget widget)
         {
             return;
         }
