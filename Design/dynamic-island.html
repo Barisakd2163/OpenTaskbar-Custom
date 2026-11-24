@@ -204,12 +204,33 @@
   .media-volume input { width: min(72px, 15vw); }
   .sample-player .media-transport button { display: grid; place-items: center; background: #ffffff16; color: var(--white); }
   .sample-player .media-transport [data-play] { background: var(--widget-accent); color: var(--panel); }
-  .page[data-widget="Audio"] .sample-volume { border: 0; padding: 9px 11px; }
-  .page[data-widget="Audio"] .sample-volume span { color: var(--widget-accent); font-weight: 650; font-variant-numeric: tabular-nums; }
-  .page[data-widget="Audio"] .rows { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 8px; }
-  .page[data-widget="Audio"] .rows div { display: grid; gap: 4px; align-content: start; padding: 5px; border: 0; }
-  .page[data-widget="Audio"] .rows dt { color: var(--dim); font-size: .68rem; }
-  .page[data-widget="Audio"] .rows dd { color: var(--white); text-align: start; font-weight: 550; }
+  .page[data-widget="Audio"] .sample-volume { border: 0; padding: 3px 8px; }
+  [data-open="true"] .page[data-widget="Audio"] { padding-block: 1px; }
+  .page[data-widget="Audio"] .sample-volume output { color: var(--widget-accent); font-weight: 650; }
+  .mixer-devices { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 5px; }
+  .mixer-devices label, .mixer-apps h3 { display: grid; gap: 2px; font-size: .72rem; color: var(--dim); font-weight: 550; }
+  .page .mixer-devices select { color-scheme: dark; background: #ffffff09; color: var(--white); border-color: var(--panel-line); padding: 3px 5px; font-size: .77rem; }
+  .page .mixer-devices option { background: var(--panel); }
+  .mixer-apps { margin-top: 5px; }
+  .mixer-apps h3 { margin: 0 0 2px; }
+  .mixer-apps .level-row { min-height: 19px; }
+  .level-row { display: grid; grid-template-columns: minmax(70px,1fr) minmax(45px,1.1fr) 32px; align-items: center; gap: 7px; min-height: 24px; font-size: .74rem; }
+  .level-row input { width: 100%; min-width: 0; margin: 0; accent-color: var(--widget-accent); }
+  .level-row output { text-align: end; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .page.quick-panel { display: flex; flex-direction: column; gap: 5px; overflow: hidden; padding-top: 2px; }
+  .quick-panel .quick-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .quick-panel .tiles { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; padding-right: 4px; }
+  .quick-panel .tiles button { min-height: 38px; display: flex; justify-content: start; text-align: start; gap: 5px; padding: 4px 5px; border: 0; font-size: .70rem; }
+  .quick-panel .tiles button:disabled { opacity: .48; cursor: default; }
+  .quick-panel .tiles .icon { width: 14px; height: 14px; }
+  .quick-levels { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px 12px; }
+  .quick-levels .level-row { grid-template-columns: auto minmax(25px,1fr) 30px; gap: 4px; }
+  .quick-details { padding: 2px 4px; }
+  .quick-details button { font: inherit; padding: 3px 6px; border: 0; border-radius: 5px; background: #ffffff0e; color: var(--white); cursor: pointer; }
+  .quick-details h3 { display: inline; margin-inline-start: 8px; font-size: .82rem; }
+  .quick-details p { margin: 9px 0; color: var(--dim); font-size: .76rem; }
+  .quick-details label { display: flex; gap: 6px; align-items: center; min-height: 24px; font-size: .78rem; }
+  .quick-details input { accent-color: var(--widget-accent); }
   @media (max-width: 440px) { .weather-hero { gap: 6px; } .weather-hero > .icon { width: 26px; height: 26px; } }
   .clock, .timer, .progress-page { display: grid; align-content: safe center; gap: 6px; }
   .clock small, .timer small { color: var(--widget-accent); font-weight: 600; }
@@ -255,9 +276,6 @@
   .tiles button { display: grid; place-items: center; gap: 6px; min-width: 0; min-height: 76px; padding: 6px 2px; font-size: .72rem; }
   .tiles button[aria-pressed="true"] { background: var(--widget-accent); color: var(--panel); border-color: var(--widget-accent); }
   .tiles button .icon { width: 19px; height: 19px; }
-  [data-open="true"] .tiles button { min-height: 108px; font-size: .85rem; }
-  .sample-volume { display: grid; grid-template-columns: 1fr auto; gap: 5px; align-items: center; font-size: .82rem; }
-  .sample-volume input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
   .timer [data-action="start"] { background: var(--accent); color: var(--panel); }
   .timer label { color: var(--dim); font-size: .82rem; }
   .timer input { width: 4.5em; color: var(--white); background: var(--panel); border: 1px solid #ffffff40; border-radius: 5px; padding: 3px 5px; }
@@ -353,6 +371,19 @@
 <script>
   // Geometries mirror the OpenTaskbar icon resources in Design/Icons.
   const iconPaths = {
+    IconAirplane: "M12 2c1 0 2 1 2 2v5l7 5v2l-7-3v5l2 2v2l-4-1-4 1v-2l2-2v-5l-7 3v-2l7-5V4c0-1 1-2 2-2z",
+    IconCellular: "M4 19v-3 M9 19v-6 M14 19v-9 M19 19V7",
+    IconHotspot: "M4.93 19.07a10 10 0 0 1 0-14.14 M7.76 16.24a6 6 0 0 1 0-8.49 M16.24 7.76a6 6 0 0 1 0 8.49 M19.07 4.93a10 10 0 0 1 0 14.14 M14 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0z",
+    IconShield: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+    IconSun: "M12 16a4 4 0 1 0 0-8a4 4 0 0 0 0 8z M12 2v2 M12 20v2 M4.93 4.93l1.41 1.41 M17.66 17.66l1.41 1.41 M2 12h2 M20 12h2 M6.34 17.66l-1.41 1.41 M19.07 4.93l-1.41 1.41",
+    IconRotate: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5",
+    IconLink: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71 M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
+    IconAccessibility: "M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M4 9l8 2 8-2 M12 11v5 M8 22l4-6 4 6",
+    IconBellOff: "M5 5l14 14 M7 10c0 4-2 6-2 6h11 M9 6a5 5 0 0 1 8 4c0 2 .4 3.5 1 4.5 M10 20a2 2 0 0 0 4 0",
+    IconCaptions: "M3 5h18v14H3z M7 11h3 M14 11h3 M7 15h10",
+    IconHeadphones: "M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3",
+    IconCast: "M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6 M2 12a9 9 0 0 1 8 8 M2 16a5 5 0 0 1 4 4 M2 20h.01",
+    IconMic: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M19 10v2a7 7 0 0 1-14 0v-2 M12 19v3 M8 22h8",
     IconPreviousFill: "M5 5h2.5v14H5z M19 5.2v13.6a.8.8 0 0 1-1.25.66L8.6 12.66a.8.8 0 0 1 0-1.32l9.15-6.8A.8.8 0 0 1 19 5.2z",
     IconNextFill: "M16.5 5H19v14h-2.5z M5 5.2v13.6a.8.8 0 0 0 1.25.66l9.15-6.8a.8.8 0 0 0 0-1.32L6.25 4.54A.8.8 0 0 0 5 5.2z",
     IconPlayFill: "M7 4.6v14.8a1 1 0 0 0 1.53.85l11.84-7.4a1 1 0 0 0 0-1.7L8.53 3.75A1 1 0 0 0 7 4.6z",
@@ -412,8 +443,8 @@
     ].map(([name, rows]) => ({ id: 'AiUsage' + name, name, rows })) },
     { group: 'Medya ve kontroller', items: [
       { id: 'Media', name: 'Medya kontrolü' },
-      { id: 'Audio', name: 'Ses cihazı ve düzeyi', short: 'Ses', rows: ['Çıkış cihazı', 'Giriş cihazı', 'Uygulama sesleri'] },
-      { id: 'QuickSettings', name: 'Hızlı ayarlar', controls: ['Wi-Fi', 'Bluetooth', 'Gece ışığı'] }
+      { id: 'Audio', name: 'Ses cihazı ve düzeyi', short: 'Ses' },
+      { id: 'QuickSettings', name: 'Hızlı ayarlar' }
     ] },
     { group: 'Verimlilik', items: [
       { id: 'Focus', name: 'Odak zamanlayıcısı', short: 'Odak', timer: 'down' }
@@ -469,8 +500,7 @@
     AiUsageCopilot: ['%31'],
     AiUsageDeepSeek: ['12,60 USD'],
     AiUsageOpenRouter: ['8,40 USD'],
-    AiUsageCursor: ['%52', '%33'],
-    Audio: ['Hoparlör', 'Dahili mikrofon', '2 uygulama']
+    AiUsageCursor: ['%52', '%33']
   };
   // Reset timestamps illustrate the provider windows using the prototype's local clock.
   const quotaResetHours = {
@@ -490,12 +520,152 @@
   const template = document.querySelector('#monitor');
   const screens = document.querySelector('.screens');
 
+  function levelControl(name, value, iconKey) {
+    const row = document.createElement('label');
+    row.className = 'level-row';
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.max = '100';
+    input.value = String(value);
+    input.setAttribute('aria-label', name);
+    const output = document.createElement('output');
+    output.setAttribute('aria-live', 'off');
+    const render = () => { output.value = '%' + input.value; };
+    input.addEventListener('input', render);
+    row.append(iconKey ? icon(iconKey) : name, input, output);
+    render();
+    return row;
+  }
+
+  function buildMixer(page) {
+    const master = levelControl('Çıkış ses düzeyi', 68);
+    master.classList.add('sample-volume');
+    master.querySelector('input').dataset.systemVolume = '';
+    const devices = document.createElement('div');
+    devices.className = 'mixer-devices';
+    for (const [name, options] of [
+      ['Çıkış cihazı', ['Hoparlör', 'Bluetooth kulaklık', 'HDMI ekran']],
+      ['Giriş cihazı', ['Dahili mikrofon', 'USB mikrofon', 'Bluetooth kulaklık']]
+    ]) {
+      const label = document.createElement('label');
+      const select = document.createElement('select');
+      for (const option of options) select.add(new Option(option));
+      label.append(name, select);
+      devices.append(label);
+    }
+    const apps = document.createElement('section');
+    apps.className = 'mixer-apps';
+    const title = document.createElement('h3');
+    title.textContent = 'Uygulama sesleri';
+    apps.append(title);
+    for (const [name, value] of [['Microsoft Edge', 65], ['Spotify', 48], ['Discord', 82]]) {
+      apps.append(levelControl(name, value));
+    }
+    page.append(master, devices, apps);
+  }
+
+  function buildQuickSettings(page) {
+    page.classList.add('quick-panel');
+    const scroll = document.createElement('div');
+    scroll.className = 'quick-scroll';
+    const tiles = document.createElement('div');
+    tiles.className = 'tiles';
+    const details = document.createElement('section');
+    details.className = 'quick-details';
+    details.hidden = true;
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.textContent = 'Geri';
+    const heading = document.createElement('h3');
+    const body = document.createElement('div');
+    details.append(back, heading, body);
+    const savedDetails = new Map();
+    let activeTile;
+    function openDetails(button, settings) {
+      activeTile = button;
+      heading.textContent = button.textContent;
+      if (!savedDetails.has(settings)) {
+        const fields = document.createElement('div');
+        if (typeof settings === 'string') {
+          const message = document.createElement('p');
+          message.textContent = settings;
+          fields.append(message);
+        } else {
+          for (const name of settings) {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            label.append(checkbox, name);
+            fields.append(label);
+          }
+        }
+        savedDetails.set(settings, fields);
+      }
+      body.replaceChildren(savedDetails.get(settings));
+      tiles.hidden = true;
+      details.hidden = false;
+      back.focus();
+    }
+    back.addEventListener('click', () => {
+      details.hidden = true;
+      tiles.hidden = false;
+      activeTile?.focus();
+    });
+    const settings = [
+      ['Wi-Fi', 'IconWifi', true],
+      ['Bluetooth', 'IconBluetooth', false],
+      ['Gece ışığı', 'IconMoon', false],
+      ['Uçak modu', 'IconAirplane', false],
+      ['Mobil etkin nokta', 'IconHotspot', false],
+      ['Enerji tasarrufu', 'IconBattery', false],
+      ['VPN', 'IconShield', 'VPN profili yapılandırılmadı.'],
+      ['Yayınla', 'IconCast', 'Kablosuz ekran bulunamadı.'],
+      ['Yakın paylaşım', 'IconLink', false],
+      ['Canlı altyazılar', 'IconCaptions', false],
+      ['Erişilebilirlik', 'IconAccessibility', ['Büyüteç', 'Renk filtreleri', 'Ekran okuyucusu', 'Mono ses', 'Yapışkan tuşlar']],
+      ['Hücresel', 'IconCellular', 'Hücresel modem yok.'],
+      ['Döndürme kilidi', 'IconRotate', 'Otomatik döndürme desteklenmiyor.'],
+      ['Studio Effects', 'IconSliders', 'Desteklenen kamera veya NPU yok.'],
+      ['İşitme cihazları', 'IconHeadphones', 'Eşleştirilmiş işitme cihazı yok.']
+    ];
+    const buttons = new Map();
+    for (const [name, iconKey, state] of settings) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.append(icon(iconKey), name);
+      if (typeof state === 'boolean') {
+        button.setAttribute('aria-pressed', String(state));
+        button.addEventListener('click', () => {
+          const enabled = button.getAttribute('aria-pressed') !== 'true';
+          button.setAttribute('aria-pressed', String(enabled));
+          if (name === 'Uçak modu' && enabled) {
+            for (const radio of ['Wi-Fi', 'Bluetooth', 'Mobil etkin nokta']) buttons.get(radio).setAttribute('aria-pressed', 'false');
+          }
+        });
+      } else button.addEventListener('click', () => openDetails(button, state));
+      buttons.set(name, button);
+      tiles.append(button);
+    }
+    const levels = document.createElement('div');
+    levels.className = 'quick-levels';
+    const volume = levelControl('Hızlı ayarlar ses düzeyi', 68, 'IconVolume');
+    volume.querySelector('input').dataset.systemVolume = '';
+    levels.append(levelControl('Parlaklık', 72, 'IconSun'), volume);
+    scroll.append(tiles, details);
+    page.append(scroll, levels);
+  }
+
   function buildPage(widget) {
     const page = document.createElement('section');
     page.className = 'page';
     page.dataset.widget = widget.id;
     page.setAttribute('aria-label', widget.name);
     page.hidden = true;
+    if (widget.id === 'Audio' || widget.id === 'QuickSettings') {
+      if (widget.id === 'Audio') buildMixer(page);
+      else buildQuickSettings(page);
+      return page;
+    }
     if (widget.id === 'DayProgress') {
       page.classList.add('progress-page');
       page.innerHTML = '<output></output><progress max="1" aria-label="Günün ilerlemesi"></progress><div class="day-scale" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div><span class="date"></span>';
@@ -510,21 +680,7 @@
       }
       actions.insertAdjacentHTML('beforeend', '<button type="button" data-action="start">Başlat</button><button type="button" data-action="reset">Sıfırla</button>');
     } else {
-      if (widget.controls) {
-        const tiles = document.createElement('div');
-        tiles.className = 'tiles';
-        for (const [index, label] of widget.controls.entries()) {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.setAttribute('aria-pressed', String(index === 0));
-          button.append(icon(['IconWifi', 'IconBluetooth', 'IconMoon'][index]), document.createTextNode(label));
-          button.addEventListener('click', () => {
-            button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
-          });
-          tiles.append(button);
-        }
-        page.append(tiles);
-      } else if (!['Weather', 'Battery', 'BluetoothBattery', 'Storage'].includes(widget.id)) {
+      if (!['Weather', 'Battery', 'BluetoothBattery', 'Storage'].includes(widget.id)) {
         const list = document.createElement('dl');
         list.className = widget.tiles ? 'readings' : 'rows';
         for (const [index, label] of (widget.tiles ?? widget.rows).entries()) {
@@ -547,14 +703,6 @@
           list.append(row);
         }
         page.append(list);
-      }
-      if (widget.id === 'Audio') {
-        const label = document.createElement('label');
-        label.className = 'sample-volume';
-        label.innerHTML = 'Ses düzeyi <span>%68</span><input type="range" min="0" max="100" value="68">';
-        const slider = label.querySelector('input');
-        slider.addEventListener('input', () => { label.querySelector('span').textContent = '%' + slider.value; });
-        page.prepend(label);
       }
       if (widget.id === 'Weather') {
         const forecast = document.createElement('ol');
@@ -906,6 +1054,15 @@
       }
       picker.append(options);
     }
+    const mixerVolume = pagesById.get('Audio').querySelector('[data-system-volume]');
+    const quickVolume = pagesById.get('QuickSettings').querySelector('[data-system-volume]');
+    for (const [source, target] of [[mixerVolume, quickVolume], [quickVolume, mixerVolume]]) {
+      source.addEventListener('input', () => {
+        if (target.value === source.value) return;
+        target.value = source.value;
+        target.dispatchEvent(new Event('input'));
+      });
+    }
     const day = pagesById.get('DayProgress');
     const dayMeter = day.querySelector('progress');
     const dayValue = day.querySelector('output');
@@ -1021,14 +1178,14 @@
           }
         };
       } else if (widget === 'QuickSettings') {
-        const tiles = [...page.querySelectorAll('.tiles button')];
+        const tiles = [...page.querySelectorAll('.tiles button')].slice(0, 3);
         const buttons = tiles.map((tile, index) => button(tile.textContent,
           icon(['IconWifi', 'IconBluetooth', 'IconMoon'][index]), () => { tile.click(); update(); }));
         sync = () => buttons.forEach((control, index) => {
           control.setAttribute('aria-pressed', tiles[index].getAttribute('aria-pressed'));
         });
       } else if (widget === 'Audio') {
-        const fullSlider = page.querySelector('input[type="range"]');
+        const fullSlider = mixerVolume;
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.max = fullSlider.max;
@@ -1092,7 +1249,7 @@
       const selectedPage = pagesById.get(widget);
       const enabledTiles = selectedPage?.querySelectorAll('.tiles [aria-pressed="true"]').length;
       return (timers.has(widget) ? selectedPage.querySelector('output').value : compact[widget]) ??
-        (widget === 'Audio' ? '%' + selectedPage.querySelector('input').value :
+        (widget === 'Audio' ? '%' + mixerVolume.value :
           widget === 'QuickSettings' ? enabledTiles + ' açık' : samples[widget]?.[0] ?? '');
     }
 
@@ -1216,16 +1373,16 @@
         }
         return;
       }
-      if (event.target.closest('input')) return;
+      if (event.target.closest('input, select')) return;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault();
         movePage(event.key === 'ArrowRight' ? 1 : -1);
       }
     });
     island.addEventListener('wheel', event => {
-      if (islandPages().length < 2 || event.ctrlKey || event.target.closest('input')) return;
+      if (islandPages().length < 2 || event.ctrlKey || event.target.closest('input, select')) return;
       const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-      const page = event.target.closest('.page');
+      const page = event.target.closest('.quick-scroll, .page');
       if (!horizontal && page && page.scrollHeight > page.clientHeight) return;
       const delta = horizontal ? event.deltaX : event.deltaY;
       if (!delta) return;
@@ -1245,7 +1402,7 @@
     island.addEventListener('pointerdown', event => {
       suppressDragClick = false;
       if (!event.isPrimary || event.button !== 0 || islandPages().length < 2 ||
-          event.target.closest('input, label, button:not(.toggle)')) return;
+          event.target.closest('input, select, label, button:not(.toggle)')) return;
       clearSlide();
       gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, offset: 0 };
     });
