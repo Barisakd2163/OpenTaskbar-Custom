@@ -30,6 +30,8 @@ internal static class SettingsBackdrop
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0) return false;
+        // Clear any prior legacy AccentPolicy so Windows 11 DWMWA_SYSTEMBACKDROP_TYPE takes full effect.
+        TrySetAccentPolicy(handle, AccentDisabled, gradientColor: 0);
         // Suppress the native border regardless of whether acrylic is available: on Win11 21H2 or
         // High Contrast the DWM still rounds the window, so the WPF overlay must own the only rim.
         SuppressNativeBorder(handle);

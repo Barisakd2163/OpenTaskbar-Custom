@@ -455,11 +455,11 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        // Glass mode uses DWM acrylic blur that stays consistent when inactive while WPF's
+        // Glass mode uses Windows 11 native Desktop Acrylic (DWMSBT_TRANSIENTWINDOW) while WPF's
         // SettingsGlassMaterial applies the active theme hue and the user's opacity slider.
         // Set GlassFrameThickness before enabling acrylic so WindowChrome does not overwrite the DWM frame.
         chrome.GlassFrameThickness = new Thickness(-1);
-        var glass = SettingsBackdrop.TryEnableAcrylic(this, ThemeManager.EffectiveTheme);
+        var glass = SettingsBackdrop.TryEnable(this, ThemeManager.EffectiveTheme);
         if (glass)
         {
             Background = Brushes.Transparent;
