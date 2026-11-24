@@ -138,8 +138,7 @@ internal static class SurfaceStyleChecks
             packMaterial.Freeze();
             ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal)
             {
-                ["DynamicIslandMaterial"] = packMaterial,
-                ["DynamicIslandStroke"] = new SolidColorBrush(Color.FromArgb(0x60, 0xAA, 0xBB, 0xCC))
+                ["DynamicIslandMaterial"] = packMaterial
             });
             ThemeManager.Apply(AppTheme.Dark, new DockSettings(DynamicIslandOpacity: 0.5));
             Check((app.FindResource("DynamicIslandMaterial") as SolidColorBrush)?.Color == Color.FromArgb(0x40, 0x11, 0x22, 0x33),

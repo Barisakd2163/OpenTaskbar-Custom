@@ -557,8 +557,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
     {
         var width = IslandContent.ActualWidth;
         var height = IslandContent.ActualHeight;
-        var border = IslandSurface.BorderThickness;
-        var radius = IslandSurface.CornerRadius.BottomRight - Math.Max(border.Right, border.Bottom);
+        var radius = IslandSurface.CornerRadius.BottomRight;
         radius = Math.Min(radius, Math.Min(width / 2, height));
         if (width <= 0 || height <= 0 || radius <= 0)
         {

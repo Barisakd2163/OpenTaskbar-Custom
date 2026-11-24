@@ -47,9 +47,8 @@
             <Path.RenderTransform><ScaleTransform ScaleX="-1" /></Path.RenderTransform>
         </Path>
         <Border x:Name="IslandSurface" Width="320" HorizontalAlignment="Center"
-                Background="{DynamicResource DynamicIslandMaterial}" BorderBrush="{DynamicResource DynamicIslandStrokeMaterial}"
-                BorderThickness="1,0,1,1" CornerRadius="0,0,17,17"
-                ClipToBounds="True" Effect="{DynamicResource DynamicIslandShadow}">
+                Background="{DynamicResource DynamicIslandMaterial}" BorderThickness="0"
+                CornerRadius="0,0,17,17" ClipToBounds="True">
             <Grid x:Name="IslandContent" ClipToBounds="True">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="50" />

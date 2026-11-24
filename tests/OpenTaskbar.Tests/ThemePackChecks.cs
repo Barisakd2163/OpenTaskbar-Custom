@@ -212,10 +212,8 @@ internal static class ThemePackChecks
                 var darkTokens = t.Widgets!.Manifest.Dark;
                 var lightTokens = t.Widgets.Manifest.Light;
                 Check(darkTokens?.ContainsKey("DynamicIslandMaterial") == true
-                      && darkTokens?.ContainsKey("DynamicIslandStroke") == true
-                      && lightTokens?.ContainsKey("DynamicIslandMaterial") == true
-                      && lightTokens?.ContainsKey("DynamicIslandStroke") == true,
-                    $"Bundled theme {Path.GetFileName(subDir)} must define Dynamic Island materials for both palettes.");
+                      && lightTokens?.ContainsKey("DynamicIslandMaterial") == true,
+                    $"Bundled theme {Path.GetFileName(subDir)} must define the Dynamic Island material for both palettes.");
             }
         }
 

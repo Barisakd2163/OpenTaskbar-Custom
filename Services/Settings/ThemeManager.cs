@@ -203,19 +203,6 @@ public static class ThemeManager
     private static void RebuildDynamicIsland()
     {
         Materials["DynamicIslandMaterial"] = WithScaledAlpha(GetDynamicIslandBackgroundSource(), _dynamicIslandOpacity);
-        Materials["DynamicIslandStrokeMaterial"] = WithScaledAlpha(ResolveBrush("DynamicIslandStroke"), _dynamicIslandOpacity);
-
-        if (Application.Current.TryFindResource("ShadowMenu") is DropShadowEffect sourceShadow)
-        {
-            var shadow = (DropShadowEffect)sourceShadow.Clone();
-            shadow.Opacity = Math.Clamp(shadow.Opacity * _dynamicIslandOpacity, 0, 1);
-            shadow.Freeze();
-            Materials["DynamicIslandShadow"] = shadow;
-        }
-        else
-        {
-            Materials["DynamicIslandShadow"] = new DropShadowEffect { Opacity = 0 };
-        }
     }
 
     /// <summary>Live preview of one surface from the Settings window.</summary>
