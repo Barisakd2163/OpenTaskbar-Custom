@@ -19,8 +19,13 @@
     --white: #fafafa;
     --dim: #b7b8c1;
     --accent: #c2d9ff;
-    --island-compact-height: 186px;
-    --island-open-height: 282px;
+    --island-compact-height: 50px;
+    --island-open-height: 246px;
+    --island-controls-height: 174px;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
     --motion: 220ms cubic-bezier(.23,1,.32,1);
   }
   * { box-sizing: border-box; }
@@ -60,7 +65,7 @@
   .island {
     position: relative;
     display: flex; flex-direction: column;
-    width: min(282px, 100%); height: var(--island-compact-height); margin: 0 auto; color: var(--white); background: var(--panel);
+    width: min(320px, 100%); height: var(--island-compact-height); max-height: var(--island-compact-height); margin: 0 auto; color: var(--white); background: var(--panel);
     --widget-accent: var(--accent);
     border-radius: 0 0 17px 17px;
     box-shadow: 0 16px 30px -10px #040811a6, inset 0 -1px #ffffff12;
@@ -73,25 +78,40 @@
   }
   .island::before { right: 100%; }
   .island::after { left: 100%; scale: -1 1; }
-  .island[data-open="true"] { width: min(100%, 416px); height: var(--island-open-height); border-radius: 0 0 24px 24px; }
+  .island[data-open="true"] { width: min(100%, 416px); height: var(--island-open-height); max-height: var(--island-open-height); border-radius: 0 0 22px 22px; }
   .island :focus-visible { outline-color: var(--accent); outline-offset: -3px; }
-  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 9px; flex: 0 0 40px; width: 100%; padding: 6px 12px; border: 0; color: inherit; background: transparent; text-align: left; }
+  .island-header { display: flex; align-items: center; flex: 0 0 var(--island-compact-height); min-width: 0; padding: 0 var(--space-2); gap: var(--space-1); }
+  .toggle { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; height: 38px; padding: 0 var(--space-2); border: 0; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
+  .controls-button { display: grid; place-items: center; width: 32px; height: 32px; flex: none; padding: 0; border: 1px solid transparent; border-radius: 7px; color: var(--dim); background: none; }
+  .controls-button::before { content: ""; width: 3px; height: 3px; border-radius: 50%; background: currentColor; box-shadow: 5px 0 currentColor, -5px 0 currentColor; }
+  .controls-button[aria-expanded="true"] { color: var(--white); border-color: var(--panel-line); background: #ffffff10; }
+  @media (hover: hover) { .toggle:hover, .controls-button:hover { background: #ffffff0e; } }
   .icon { flex: none; width: 15px; height: 15px; vertical-align: middle; }
-  .widget-icon { display: grid; place-items: center; flex: 0 0 24px; height: 24px; color: var(--widget-accent); background: color-mix(in srgb, var(--widget-accent) 12%, var(--panel)); border-radius: 6px; }
+  .widget-icon { display: grid; place-items: center; flex: 0 0 24px; height: 24px; color: var(--widget-accent); }
+  .widget-icon .icon { width: 17px; height: 17px; }
   .identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: .83rem; }
-  .summary { flex: none; color: var(--widget-accent); font-size: .75rem; font-variant-numeric: tabular-nums; margin-inline-start: auto; }
+  .summary { flex: 0 1 auto; min-width: 0; max-width: 58%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--widget-accent); font-size: .82rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-inline-start: auto; }
+  .island[data-widget="Clock"] .summary, .island[data-widget="Stopwatch"] .summary,
+  .island[data-widget="Countdown"] .summary, .island[data-widget="Focus"] .summary { font-size: 1rem; }
   .indicator { flex: none; color: var(--dim); transition: transform var(--motion); }
   [data-open="true"] .indicator { transform: rotate(180deg); }
   .expand { display: flex; flex: 1; min-height: 0; }
-  .content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: 0 9px 6px; }
+  [data-open="false"] .expand {
+    position: absolute; z-index: 2; inset: calc(100% + var(--space-2)) 0 auto;
+    height: var(--island-controls-height); max-height: var(--island-controls-height);
+    border: 1px solid var(--panel-line); border-radius: 12px;
+    background: var(--panel); box-shadow: 0 12px 28px #080c1859;
+  }
+  .content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: var(--space-2) var(--space-2) var(--space-1); }
   .page {
     flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain;
     scrollbar-width: thin; scrollbar-color: #686b77 transparent;
     border: 1px solid var(--panel-line); border-radius: 9px;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--widget-accent) 5%, var(--panel-raised)), var(--panel-raised) 60%); padding: 8px; overflow-wrap: anywhere;
+    background: var(--panel-raised); padding: var(--space-2); overflow-wrap: anywhere;
   }
-  [data-open="true"] .content { padding-inline: 13px; }
-  [data-open="true"] .page { padding: 14px; }
+  [data-open="true"] .content { padding: 0 var(--space-3) var(--space-2); }
+  [data-open="true"] .page { padding: var(--space-3); }
+  [data-open="true"] .controls-button { display: none; }
   .clock, .timer, .progress-page { display: grid; align-content: safe center; gap: 6px; }
   .clock small, .timer small { color: var(--widget-accent); font-weight: 600; }
   .clock time, .timer output, .progress-page output { color: var(--white); font-size: 1.85rem; line-height: 1.05; font-weight: 600; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
@@ -103,12 +123,15 @@
   .readings dt { color: var(--dim); font-size: .69rem; }
   .readings dd { margin: 3px 0 0; font-size: .88rem; font-weight: 550; font-variant-numeric: tabular-nums; }
   .page[data-widget="SystemStats"] .readings { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .page[data-widget="SystemStats"] .readings div { grid-column: span 2; }
+  .page[data-widget="SystemStats"] .readings div { grid-column: span 2; border: 0; border-bottom: 1px solid var(--panel-line); border-radius: 0; background: transparent; }
   .page[data-widget="SystemStats"] .readings div:nth-child(n+4) { grid-column: span 3; }
   .page[data-widget="NetSpeed"] .readings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   [data-open="true"] .readings div { padding: 9px; }
   [data-open="true"] .readings dd { font-size: 1.15rem; }
+  [data-open="true"] .page[data-widget="SystemStats"] .readings div { padding-block: 5px; }
   [data-open="true"] .page[data-widget="Weather"] .readings { grid-template-columns: 1.35fr 1fr; }
+  [data-open="true"] .page[data-widget="Weather"] .readings div { padding-block: 5px; }
+  [data-open="true"] .page[data-widget="Weather"] .readings div:not(:first-child) dd { font-size: .95rem; }
   [data-open="true"] .page[data-widget="Weather"] .readings div:first-child { grid-row: span 2; align-content: center; }
   [data-open="true"] .page[data-widget="Weather"] .readings div:first-child dd { font-size: clamp(1.8rem, 4vw, 2.7rem); color: var(--widget-accent); }
   .page[data-widget="Weather"] .note { margin: 0 0 6px; }
@@ -126,6 +149,7 @@
   .page[data-widget^="AiUsage"] .rows .meter { grid-column: 2; grid-row: 1; margin: 0; }
   .page[data-widget^="AiUsage"] .rows div:has(.meter) dd { grid-column: 3; }
   [data-open="true"] .rows div { padding: 9px 0; }
+  [data-open="true"] .page[data-widget="Audio"] .rows div { padding-block: 5px; }
   [data-open="true"] .meter, [data-open="true"] .meter::-webkit-meter-bar { height: 5px; }
   [data-open="false"] .readings dd { margin-top: 2px; }
   [data-open="false"] .readings .meter { margin-top: 3px; }
@@ -166,7 +190,7 @@
   input[type="file"] { width: 100%; max-width: 100%; font-size: .83rem; color: var(--dim); }
   input::file-selector-button { font: inherit; border: 0; border-radius: 7px; padding: 6px 9px; background: var(--accent); color: var(--ink); cursor: pointer; }
   audio { width: 100%; height: 36px; }
-  .pages { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; color: var(--dim); font-size: .76rem; font-variant-numeric: tabular-nums; }
+  .pages { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin-top: var(--space-1); color: var(--dim); font-size: .76rem; font-variant-numeric: tabular-nums; }
   .page-step { width: 36px; min-height: 28px; border: 0; border-radius: 6px; background: none; color: var(--dim); }
   .page-step .icon { width: 13px; height: 13px; }
   .page-step, .tiles button, .timer button { transition: background-color 140ms ease, color 140ms ease, transform 110ms ease-out; }
@@ -192,17 +216,20 @@
     <h1>Dinamik Ada</h1>
   </div>
   <div class="screens"></div>
-  <p class="hint">Boyutu değiştirmek için ada başlığına tıkla. Sayfalar arasında yatay kaydırabilir veya sağ ve sol ok tuşlarını kullanabilirsin.</p>
+  <p class="hint">Ada başlığı boyutu değiştirir. Kompakt görünümde üç nokta kontrolleri açar. Sayfalar arasında yatay kaydırabilir veya sağ ve sol ok tuşlarını kullanabilirsin.</p>
 </main>
 <template id="monitor">
   <section class="monitor">
     <div class="monitor-heading"><h2></h2><span class="tag"></span></div>
     <div class="desktop">
       <div class="island" data-open="false">
-        <button class="toggle" type="button" aria-pressed="false">
-          <span class="widget-icon" aria-hidden="true"></span><span class="identity"></span><span class="summary" aria-hidden="true"></span><span class="indicator" aria-hidden="true"></span>
-        </button>
-        <div class="expand">
+        <div class="island-header">
+          <button class="toggle" type="button" aria-pressed="false">
+            <span class="widget-icon" aria-hidden="true"></span><span class="identity"></span><span class="summary"></span><span class="indicator" aria-hidden="true"></span>
+          </button>
+          <button class="controls-button" type="button" aria-label="Widget kontrolleri" aria-expanded="false"></button>
+        </div>
+        <div class="expand" hidden>
             <div class="content">
               <section class="page clock" data-widget="Clock" aria-label="Tarih ve saat">
                 <small>Yerel saat</small><time></time><span class="date"></span>
@@ -484,6 +511,7 @@
     const monitor = template.content.firstElementChild.cloneNode(true);
     const island = monitor.querySelector('.island');
     const toggle = monitor.querySelector('.toggle');
+    const controlsButton = monitor.querySelector('.controls-button');
     const expand = monitor.querySelector('.expand');
     const nav = monitor.querySelector('nav');
     const dock = monitor.querySelector('.dock');
@@ -531,11 +559,27 @@
     }
     monitor.querySelector('.monitor-heading .tag').textContent = index === 1 ? 'Ana ekran' : 'İkinci ekran';
     expand.id = 'island-content-' + index;
+    summary.id = 'island-summary-' + index;
     toggle.setAttribute('aria-controls', expand.id);
+    toggle.setAttribute('aria-describedby', summary.id);
+    controlsButton.setAttribute('aria-controls', expand.id);
+
+    function setControls(visible, restoreFocus = false) {
+      controlsButton.setAttribute('aria-expanded', String(visible));
+      expand.hidden = !visible && island.dataset.open !== 'true';
+      if (visible && !reduceMotion.matches) {
+        expand.animate(
+          [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }],
+          { duration: 145, easing: 'ease-out' }
+        );
+      }
+      if (restoreFocus) controlsButton.focus();
+    }
 
     function setOpen(open) {
       island.dataset.open = String(open);
       toggle.setAttribute('aria-pressed', String(open));
+      setControls(false);
     }
 
     function islandPages() {
@@ -561,13 +605,16 @@
       }
       const compact = {
         Clock: localTime, DayProgress: dayPercent,
-        Media: audio.error ? 'Oynatılamadı' : audio.paused ? (audioUrl ? 'Hazır' : '3:42') : 'Çalıyor'
+        SystemStats: 'CPU %24 · RAM %58', NetSpeed: '↓ 42,8 Mb/sn', Storage: '192 GB boş',
+        BluetoothBattery: '%82', Battery: '%76 · Şarjda',
+        Media: audio.error ? 'Oynatılamadı' : audioUrl ? (audio.paused ? 'Duraklatıldı' : 'Çalıyor') : 'Gece treni'
       };
       const selectedPage = pagesById.get(selected);
       const enabledTiles = selectedPage?.querySelectorAll('.tiles [aria-pressed="true"]').length;
-      summary.textContent = currentTimer ?? compact[selected] ??
+      const value = currentTimer ?? compact[selected] ??
         (selected === 'Audio' ? '%' + selectedPage.querySelector('input').value :
           selected === 'QuickSettings' ? enabledTiles + ' açık' : samples[selected]?.[0] ?? '');
+      if (summary.textContent !== value) summary.textContent = value;
       const dockClock = dock.querySelector('[data-clock]');
       if (dockClock) dockClock.textContent = localTime;
     }
@@ -576,12 +623,17 @@
       const changed = selected !== widget;
       selected = widget;
       const definition = catalog.get(widget);
-      identity.textContent = definition?.short ?? definition?.name ?? '';
+      island.dataset.widget = widget ?? '';
+      identity.textContent = ({
+        Clock: 'Saat', SystemStats: 'Sistem', NetSpeed: 'Ağ', Media: 'Medya',
+        DayProgress: 'Gün', QuickSettings: 'Hızlı ayarlar'
+      })[widget] ?? definition?.short ?? definition?.name ?? '';
       if (definition) {
         const [key, accent] = appearances[widget] ?? ['Logo' + definition.name, '#d2c5fc'];
         widgetIcon.replaceChildren(icon(key));
         island.style.setProperty('--widget-accent', accent);
         toggle.setAttribute('aria-label', definition.name + ' geniş görünüm');
+        controlsButton.setAttribute('aria-label', definition.name + ' kontrolleri');
       }
       for (const [id, page] of pagesById) {
         if (id !== widget && page.contains(document.activeElement)) toggle.focus();
@@ -614,13 +666,28 @@
     }
 
     toggle.addEventListener('click', () => setOpen(island.dataset.open !== 'true'));
+    controlsButton.addEventListener('click', () => setControls(expand.hidden));
+    monitor.addEventListener('focusout', event => {
+      if (island.dataset.open === 'false' && event.relatedTarget && !island.contains(event.relatedTarget)) {
+        setControls(false);
+      }
+    });
+    monitor.querySelector('.desktop').addEventListener('click', event => {
+      if (!island.contains(event.target) && island.dataset.open === 'false') setControls(false);
+    });
     nav.addEventListener('click', event => {
       const button = event.target.closest('button');
       if (button) movePage(Number(button.dataset.direction));
     });
     island.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        if (island.dataset.open === 'true') {
+          setOpen(false);
+          toggle.focus();
+        } else if (!expand.hidden) setControls(false, true);
+        return;
+      }
       if (event.target.closest('input, audio')) return;
-      if (event.key === 'Escape') setOpen(false);
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault();
         movePage(event.key === 'ArrowRight' ? 1 : -1);
