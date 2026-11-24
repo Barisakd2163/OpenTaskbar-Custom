@@ -1,12 +1,23 @@
-name: CI
+name: Rust Port CI
 
 on:
   push:
-    branches: [main]
+    branches: [rust-port]
+    paths:
+      - "Rust-Port/**"
+      - ".github/workflows/rust-ci.yml"
   pull_request:
+    branches: [rust-port]
+    paths:
+      - "Rust-Port/**"
+      - ".github/workflows/rust-ci.yml"
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    working-directory: Rust-Port
 
 jobs:
   build:
@@ -18,6 +29,8 @@ jobs:
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Rust-Port
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
