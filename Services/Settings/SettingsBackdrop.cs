@@ -15,6 +15,7 @@ internal static class SettingsBackdrop
     internal const uint DwmwaSystemBackdropType = 38;
     internal const int DwmwcpRound = 2;
     internal const int DwmwaColorNone = unchecked((int)0xFFFFFFFE);
+    internal const int DwmsbtAuto = 0;
     internal const int DwmsbtNone = 1;
     internal const int DwmsbtTransientWindow = 3;
     internal const double NativeCornerRadius = 8;
@@ -65,10 +66,11 @@ internal static class SettingsBackdrop
         if (SystemParameters.HighContrast) return false;
 
         var dark = theme == AppTheme.Dark ? 1 : 0;
-        var backdrop = DwmsbtNone;
+        // On Windows 11 22H2+, DWMSBT_NONE (1) blocks legacy SetWindowCompositionAttribute acrylic;
+        // DWMSBT_AUTO (0) allows ACCENT_ENABLE_ACRYLICBLURBEHIND to composite without dropping on blur/inactive.
+        var backdrop = DwmsbtAuto;
         var corners = DwmwcpRound;
         DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
-        // Keep Win11's auto-disabling system backdrop off so it does not override the acrylic policy on blur/focus.
         DwmSetWindowAttribute(handle, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
         if (SupportsNativeRoundedCorners)
             DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));

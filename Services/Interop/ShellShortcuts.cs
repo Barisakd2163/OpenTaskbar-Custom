@@ -1145,8 +1145,19 @@ public static partial class ShellShortcuts
     public const ushort VkR = 0x52;
     public static string? OpenRunDialog() => SendWindowsShortcut(VkR);
 
-    /// <summary>Launches a Windows system tool by command (devmgmt.msc, diskmgmt.msc, ...).</summary>
-    public static string? OpenSystemTool(string command) => Start(command, "ErrorSystemToolOpen");
+    /// <summary>Launches a Windows system tool by command (devmgmt.msc, diskmgmt.msc, control.exe netconnections, ...).</summary>
+    public static string? OpenSystemTool(string command)
+    {
+        var trimmed = command.Trim();
+        var split = trimmed.IndexOf(' ');
+        if (split > 0)
+        {
+            var fileName = trimmed[..split];
+            var arguments = trimmed[(split + 1)..].Trim();
+            return Start(fileName, arguments, "ErrorSystemToolOpen");
+        }
+        return Start(trimmed, "ErrorSystemToolOpen");
+    }
 
     /// <summary>Launches a system tool with an elevation prompt (Terminal Admin).</summary>
     public static string? OpenSystemToolElevated(string command)
@@ -1165,10 +1176,16 @@ public static partial class ShellShortcuts
     }
 
     /// <summary>Power/session actions exposed by the dock context menu (mirrors the native Start menu).</summary>
-    public static string? LockWorkstation() => Start("rundll32.exe user32.dll,LockWorkStation", "ErrorSystemToolOpen");
-    public static string? SignOut() => Start("shutdown.exe /l", "ErrorSystemToolOpen");
-    public static string? RestartComputer() => Start("shutdown.exe /r /t 0", "ErrorSystemToolOpen");
-    public static string? ShutDownComputer() => Start("shutdown.exe /s /t 0", "ErrorSystemToolOpen");
+    public static string? LockWorkstation() => LockWorkStationNative() ? null : UiText.Get("ErrorSystemToolOpen");
+    public static string? SignOut() => StartSystemCommand("shutdown.exe", "/l");
+    public static string? RestartComputer() => StartSystemCommand("shutdown.exe", "/r /t 0");
+    public static string? ShutDownComputer() => StartSystemCommand("shutdown.exe", "/s /t 0");
+
+    private static string? StartSystemCommand(string executable, string arguments)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), executable);
+        return Start(path, arguments, "ErrorSystemToolOpen", useShellExecute: false, createNoWindow: true);
+    }
 
     /// <summary>
     /// Returns the localized display name of the Recycle Bin from the Shell (e.g. "Recycle Bin", "Кошик"),
@@ -1233,11 +1250,20 @@ public static partial class ShellShortcuts
         }
     }
 
-    private static string? Start(string target, string failureKey)
+    private static string? Start(string target, string failureKey) =>
+        Start(target, string.Empty, failureKey);
+
+    private static string? Start(string fileName, string arguments, string failureKey, bool useShellExecute = true, bool createNoWindow = false)
     {
         try
         {
-            using var _ = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            var info = new ProcessStartInfo(fileName)
+            {
+                Arguments = arguments,
+                UseShellExecute = useShellExecute,
+                CreateNoWindow = createNoWindow
+            };
+            using var _ = Process.Start(info);
             return null;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
@@ -1247,10 +1273,14 @@ public static partial class ShellShortcuts
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            AppLog.Warning($"Cannot open {target}: {ex.Message}");
+            AppLog.Warning($"Cannot open {fileName} {arguments}: {ex.Message}");
             return UiText.Get(failureKey);
         }
     }
+
+    [DllImport("user32.dll", EntryPoint = "LockWorkStation", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool LockWorkStationNative();
 
     private static string? SendWindowsShortcut(ushort key) => SendChord(VkLeftWindows, key);
 
