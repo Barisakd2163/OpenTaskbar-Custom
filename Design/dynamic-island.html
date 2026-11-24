@@ -21,7 +21,6 @@
     --accent: #c2d9ff;
     --island-compact-height: 50px;
     --island-open-height: 246px;
-    --island-controls-height: 174px;
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
@@ -81,49 +80,44 @@
   .island[data-open="true"] { width: min(100%, 416px); height: var(--island-open-height); max-height: var(--island-open-height); border-radius: 0 0 22px 22px; }
   .island-header, .page { cursor: grab; user-select: none; }
   .island[data-dragging="true"] :is(.island-header, .toggle, .page) { cursor: grabbing; }
-  .drag-surface { translate: var(--drag-offset, 0px) 0; }
-  .island[data-dragging="true"] .page { translate: var(--drag-offset, 0px) 0; }
-  .island[data-dragging="true"] .drag-surface { opacity: .72; }
+  .island-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; border-radius: inherit; }
+  .island-slide { display: flex; flex-direction: column; height: 100%; }
+  .island-slide.neighbor { position: absolute; inset: 0; pointer-events: none; }
   .inline-actions { display: flex; gap: 3px; flex: none; align-items: center; }
   [data-open="true"] .inline-actions { display: none; }
-  .inline-actions button { display: grid; place-items: center; height: 30px; width: 29px; border: 1px solid var(--panel-line); border-radius: 6px; background: #ffffff08; color: var(--white); padding: 0; font-size: .72rem; }
+  .inline-actions button { display: grid; place-items: center; height: 30px; width: 29px; border: 0; border-radius: 6px; background: #ffffff08; color: var(--white); padding: 0; font-size: .72rem; }
   .inline-actions button[aria-pressed="true"] { background: var(--widget-accent); border-color: var(--widget-accent); color: var(--panel); }
   .inline-actions button:disabled { opacity: .5; cursor: default; }
   .inline-actions input { width: clamp(45px, 7vw, 78px); margin: 0; accent-color: var(--widget-accent); }
   .inline-actions input[data-seek] { width: clamp(38px, 5vw, 57px); }
+  .inline-actions input[type="number"] { width: 44px; border: 0; border-radius: 5px; padding: 3px; color: var(--white); background: #ffffff0d; font-size: .72rem; }
   .inline-actions .icon { width: 14px; height: 14px; }
-  [data-open="false"][data-widget="QuickSettings"] .summary { display: none; }
-  [data-open="false"][data-widget="QuickSettings"] .identity { font-size: .73rem; }
-  [data-open="false"][data-widget="Media"] .identity { display: none; }
-  [data-open="false"][data-widget="Media"] .summary { flex: 1; max-width: none; margin: 0; text-align: start; }
+  [data-open="false"] [data-widget="QuickSettings"].island-slide .summary { display: none; }
+  [data-open="false"] [data-widget="QuickSettings"].island-slide .identity { font-size: .73rem; }
+  [data-open="false"] [data-widget="Media"].island-slide .identity { display: none; }
+  [data-open="false"] [data-widget="Media"].island-slide .summary { flex: 1; max-width: none; margin: 0; text-align: start; }
   .island :focus-visible { outline-color: var(--accent); outline-offset: -3px; }
   .island-header { display: flex; align-items: center; flex: 0 0 var(--island-compact-height); min-width: 0; padding: 0 var(--space-2); gap: var(--space-1); }
   .toggle { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; height: 38px; padding: 0 var(--space-2); border: 0; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
-  .controls-button { display: grid; place-items: center; width: 32px; height: 32px; flex: none; padding: 0; border: 1px solid transparent; border-radius: 7px; color: var(--dim); background: none; }
-  .controls-button::before { content: ""; width: 3px; height: 3px; border-radius: 50%; background: currentColor; box-shadow: 5px 0 currentColor, -5px 0 currentColor; }
-  .controls-button[aria-expanded="true"] { color: var(--white); border-color: var(--panel-line); background: #ffffff10; }
-  @media (hover: hover) { .toggle:hover, .controls-button:hover { background: #ffffff0e; } }
+  @media (hover: hover) {
+    .island:hover .island-header { background: #ffffff0b; }
+    .inline-actions button:hover { background: #ffffff1a; }
+    .inline-actions button[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--widget-accent) 85%, white); }
+  }
   .icon { flex: none; width: 15px; height: 15px; vertical-align: middle; }
   .widget-icon { display: grid; place-items: center; flex: 0 0 24px; height: 24px; color: var(--widget-accent); }
   .widget-icon .icon { width: 17px; height: 17px; }
   .identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: .83rem; }
   .summary { flex: 0 1 auto; min-width: 0; max-width: 58%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--widget-accent); font-size: .82rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-inline-start: auto; }
-  .island[data-widget="Clock"] .summary, .island[data-widget="Stopwatch"] .summary,
-  .island[data-widget="Countdown"] .summary, .island[data-widget="Focus"] .summary { font-size: 1rem; }
+  .island-slide:is([data-widget="Clock"], [data-widget="Stopwatch"], [data-widget="Countdown"], [data-widget="Focus"]) .summary { font-size: 1rem; }
   .indicator { flex: none; color: var(--dim); transition: transform var(--motion); }
   [data-open="true"] .indicator { transform: rotate(180deg); }
   .expand { display: flex; flex: 1; min-height: 0; }
-  [data-open="false"] .expand {
-    position: absolute; z-index: 2; inset: calc(100% + var(--space-2)) 0 auto;
-    height: var(--island-controls-height); max-height: var(--island-controls-height);
-    border: 1px solid var(--panel-line); border-radius: 12px;
-    background: var(--panel); box-shadow: 0 12px 28px #080c1859;
-  }
   .content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: var(--space-2) var(--space-2) var(--space-1); }
   .page {
     flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain;
     scrollbar-width: thin; scrollbar-color: #686b77 transparent;
-    border: 1px solid var(--panel-line); border-radius: 9px;
+    border-radius: 9px;
     background: var(--panel-raised); padding: var(--space-2); overflow-wrap: anywhere;
   }
   [data-open="true"] .content { padding: 0 var(--space-3) var(--space-2); }
@@ -153,33 +147,16 @@
   .forecast b { color: var(--white); font-weight: 550; }
   .forecast .icon { color: var(--widget-accent); }
   [data-open="false"] .forecast { margin-top: 4px; padding-top: 3px; }
-  [data-open="false"] .page[data-widget="Weather"] .readings div { padding-block: 4px; }
-  [data-open="true"] .page[data-widget="Weather"] .readings { grid-template-columns: 1.2fr 1fr 1fr; }
-  [data-open="true"] .page[data-widget="Weather"] .readings div:first-child { grid-row: auto; }
-  [data-open="true"] .page[data-widget="Weather"] .readings div:first-child dd { font-size: 1.4rem; }
   .sample-player { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
   .sample-player button { width: 29px; height: 29px; border: 0; border-radius: 6px; background: var(--widget-accent); color: var(--panel); font-size: .72rem; }
   .sample-player input { width: 100%; margin: 0; accent-color: var(--widget-accent); }
   .sample-player output { font-size: .72rem; color: var(--dim); font-variant-numeric: tabular-nums; }
-  .file-action { position: relative; align-self: start; padding: 4px 8px; border: 1px solid var(--panel-line); border-radius: 5px; color: var(--dim); font-size: .72rem; cursor: pointer; }
-  .file-action:hover { color: var(--white); background: #ffffff0a; }
-  .file-action:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
   .profile { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 9px; align-items: center; margin-bottom: 4px; }
   .profile .icon { box-sizing: content-box; width: 21px; height: 21px; padding: 8px; border: 1px solid var(--panel-line); border-radius: 9px; color: var(--widget-accent); background: color-mix(in srgb, var(--widget-accent) 12%, var(--panel)); }
   .profile span { display: grid; gap: 3px; min-width: 0; font-size: .75rem; color: var(--dim); }
   .profile strong { color: var(--white); font-size: .96rem; font-weight: 650; }
   .quota-profile { border-bottom: 1px solid var(--panel-line); padding-bottom: 2px; }
   .quota-profile .icon { width: 17px; height: 17px; padding: 5px; }
-  .page[data-widget^="AiUsage"] .rows div { padding-block: 4px; line-height: 1.2; }
-  .page[data-widget^="AiUsage"] .rows dd { color: var(--widget-accent); }
-  .page[data-widget^="AiUsage"] .rows .meter { height: 4px; }
-  [data-open="false"] .quota-profile { margin-bottom: 3px; padding-bottom: 4px; gap: 8px; }
-  [data-open="false"] .quota-profile .icon { padding: 5px; }
-  .page[data-widget="AiUsageCopilot"] .rows dd { font-size: 1.55rem; }
-  .capacity { display: grid; gap: 6px; padding: 8px 10px; margin-bottom: 5px; border: 1px solid var(--panel-line); border-radius: 8px; }
-  .capacity dd { font-size: 1.55rem; font-weight: 650; line-height: 1; color: var(--widget-accent); font-variant-numeric: tabular-nums; }
-  .capacity dt { font-size: .7rem; color: var(--dim); }
-  .capacity meter { margin: 0; }
   .page:is([data-widget="Battery"], [data-widget="BluetoothBattery"], [data-widget="Storage"]) .rows div { padding-block: 5px; }
   .page[data-widget="Clock"] .week { background: #c2d9ff0a; border-radius: 6px; }
   .page[data-widget="DayProgress"] progress { height: 12px; }
@@ -191,20 +168,37 @@
   .page[data-widget="Stopwatch"] { background: repeating-linear-gradient(90deg, transparent 0 15px, #b1c9ff0a 15px 16px) top / 100% 6px no-repeat, var(--panel-raised); }
   .page[data-widget="SystemStats"] { background: repeating-linear-gradient(0deg, transparent 0 17px, #a8c6ff08 17px 18px), var(--panel-raised); }
   .page[data-widget="NetSpeed"] .history-bars { background: repeating-linear-gradient(0deg, #94dfec14 0 1px, transparent 1px 8px); }
-  .page[data-widget="Weather"] .readings div:first-child { background: #ffd19712; }
   .page[data-widget="Audio"] .sample-volume { padding: 4px 7px; border: 1px solid var(--panel-line); border-radius: 8px; background: #c4baff0b; }
-  .page[data-widget="BluetoothBattery"] .capacity { border-inline-start: 2px solid var(--widget-accent); }
-  .page[data-widget="Storage"] .capacity .meter { height: 7px; }
-  .page[data-widget="Storage"] .capacity .meter::-webkit-meter-bar { height: 7px; }
-  .page[data-widget="Battery"] .capacity dd::after { content: ""; display: inline-block; width: 14px; height: 7px; margin-inline-start: 8px; border: 1px solid currentColor; border-radius: 2px; vertical-align: middle; }
-  .page[data-widget="AiUsageAntigravity"] .rows div:last-child dd { color: var(--dim); }
-  .page[data-widget="AiUsageCursor"] .rows .meter { opacity: .85; }
-  .page[data-widget="AiUsageOpenRouter"] .rows dd { letter-spacing: -.035em; }
-  [data-open="true"] .page[data-widget^="AiUsage"] .rows div { padding-block: 4px; }
-  [data-open="true"] .page[data-widget^="AiUsage"] .rows dd { color: var(--white); font-size: .98rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-  [data-open="true"] .page:is([data-widget="AiUsageDeepSeek"], [data-widget="AiUsageOpenRouter"]) .rows div { display: grid; gap: 4px; }
-  [data-open="true"] .page:is([data-widget="AiUsageDeepSeek"], [data-widget="AiUsageOpenRouter"]) .rows dd { text-align: start; font-size: 1.9rem; }
-  [data-open="true"] .controls-button { display: none; }
+  .page:is([data-widget="Weather"], [data-widget="Battery"], [data-widget="BluetoothBattery"], [data-widget="Storage"], [data-widget="Audio"], [data-widget^="AiUsage"]) { background: transparent; }
+  .weather-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+  .weather-hero > .icon { width: 38px; height: 38px; color: var(--widget-accent); }
+  .weather-hero strong, .device-hero strong, .balance strong { font-size: 1.65rem; font-weight: 580; letter-spacing: -.035em; }
+  .weather-hero small, .device-hero small, .balance small { display: block; color: var(--dim); font-size: .73rem; }
+  .weather-hero .conditions { display: grid; text-align: end; gap: 4px; }
+  .page .forecast { border: 0; padding: 8px 4px; margin-top: 9px; background: #ffffff07; border-radius: 9px; }
+  .device-hero { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .device-hero .icon { width: 26px; height: 26px; color: var(--widget-accent); }
+  .device-hero strong { color: var(--widget-accent); }
+  .usage-track { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: #ffffff15; }
+  .usage-track span { background: var(--widget-accent); }
+  .capacity-labels { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; font-size: .72rem; color: var(--dim); }
+  .quota-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,75px),1fr)); gap: 5px 12px; margin: 0; }
+  .quota-grid div { display: grid; align-content: start; gap: 5px; min-width: 0; }
+  .quota-grid dt { color: var(--dim); font-size: .72rem; }
+  .quota-grid dd { margin: 0; font-size: 1.18rem; font-weight: 580; font-variant-numeric: tabular-nums; }
+  .quota-grid .meter { height: 4px; margin: 0; }
+  .balance { display: grid; gap: 5px; background: color-mix(in srgb,var(--widget-accent) 9%,var(--panel)); padding: 9px 12px; border-radius: 8px; }
+  .page[data-widget="Media"] { background: linear-gradient(140deg, #352336, #1c1a24 64%); }
+  .page[data-widget="Media"] .media-art { border: 0; }
+  .page[data-widget="Media"] .sample-player button { border-radius: 50%; }
+  .page[data-widget="Media"] .sample-player { grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; }
+  .page[data-widget="Audio"] .sample-volume { border: 0; padding: 9px 11px; }
+  .page[data-widget="Audio"] .sample-volume span { color: var(--widget-accent); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .page[data-widget="Audio"] .rows { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 8px; }
+  .page[data-widget="Audio"] .rows div { display: grid; gap: 4px; align-content: start; padding: 5px; border: 0; }
+  .page[data-widget="Audio"] .rows dt { color: var(--dim); font-size: .68rem; }
+  .page[data-widget="Audio"] .rows dd { color: var(--white); text-align: start; font-weight: 550; }
+  @media (max-width: 440px) { .weather-hero { gap: 6px; } .weather-hero > .icon { width: 26px; height: 26px; } }
   .clock, .timer, .progress-page { display: grid; align-content: safe center; gap: 6px; }
   .clock small, .timer small { color: var(--widget-accent); font-weight: 600; }
   .clock time, .timer output, .progress-page output { color: var(--white); font-size: 1.85rem; line-height: 1.05; font-weight: 600; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
@@ -222,10 +216,6 @@
   [data-open="true"] .readings div { padding: 9px; }
   [data-open="true"] .readings dd { font-size: 1.15rem; }
   [data-open="true"] .page[data-widget="SystemStats"] .readings div { padding-block: 5px; }
-  [data-open="true"] .page[data-widget="Weather"] .readings div { padding-block: 5px; }
-  [data-open="true"] .page[data-widget="Weather"] .readings div:not(:first-child) dd { font-size: .95rem; }
-  [data-open="true"] .page[data-widget="Weather"] .readings div:first-child dd { color: var(--widget-accent); }
-  .page[data-widget="Weather"] .note { margin: 0 0 6px; }
   .rows { margin: 0; }
   .rows div { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--panel-line); font-size: .8rem; }
   .rows div:last-child { border-bottom: 0; }
@@ -236,9 +226,6 @@
   .meter::-moz-meter-bar { background: var(--widget-accent); border-radius: 9px; }
   .rows:has(.meter) div { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
   .rows .meter { grid-column: 1 / -1; }
-  .page[data-widget^="AiUsage"] .rows:has(.meter) div:has(.meter) { grid-template-columns: minmax(0,1fr) minmax(22px,.6fr) auto; align-items: center; }
-  .page[data-widget^="AiUsage"] .rows .meter { grid-column: 2; grid-row: 1; margin: 0; }
-  .page[data-widget^="AiUsage"] .rows div:has(.meter) dd { grid-column: 3; }
   [data-open="true"] .rows div { padding: 9px 0; }
   [data-open="true"] .page[data-widget="Audio"] .rows div { padding-block: 4px; }
   [data-open="true"] .meter, [data-open="true"] .meter::-webkit-meter-bar { height: 5px; }
@@ -250,9 +237,6 @@
   [data-open="false"] .page[data-widget="SystemStats"] .readings dd { font-size: .82rem; }
   [data-open="false"] .rows div { padding-block: 4px; }
   [data-open="true"] .page:has(.readings, .rows, .tiles) { align-content: safe center; }
-  [data-open="false"] .page[data-widget="Audio"] .rows { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); column-gap: 7px; margin-top: 2px; }
-  [data-open="false"] .page[data-widget="Audio"] .rows div { display: grid; align-content: start; gap: 2px; border: 0; font-size: .68rem; line-height: 1.2; }
-  [data-open="false"] .page[data-widget="Audio"] .rows dd { text-align: start; }
   .tiles, .timer-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .tiles button, .timer button { min-height: 32px; border: 1px solid #ffffff26; border-radius: 6px; background: #ffffff0a; color: var(--white); padding: 4px 9px; font-size: .82rem; }
   .tiles { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); }
@@ -267,7 +251,6 @@
   .timer input { width: 4.5em; color: var(--white); background: var(--panel); border: 1px solid #ffffff40; border-radius: 5px; padding: 3px 5px; }
   progress { width: 100%; height: 8px; accent-color: var(--accent); }
   .media { display: flex; flex-direction: column; gap: 6px; }
-  audio { flex: none; }
   .media p { margin: 0; overflow-wrap: anywhere; }
   .media-info { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 8px; }
   .media-art { display: grid; place-items: center; width: 36px; aspect-ratio: 1; border: 1px solid #dbb5f45e; border-radius: 7px; color: #f2dcff; background: radial-gradient(ellipse at 25% 85%, #9d5477, #503f82 58%, #25334f); }
@@ -276,7 +259,6 @@
   .media .track { font-weight: 600; font-size: .86rem; }
   [data-open="true"] .media .track { font-size: 1.12rem; }
   [data-open="true"] .media { justify-content: safe center; gap: 10px; }
-  audio { width: 100%; height: 36px; }
   .pages { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin-top: var(--space-1); color: var(--dim); font-size: .76rem; font-variant-numeric: tabular-nums; }
   .page-step { width: 36px; min-height: 28px; border: 0; border-radius: 6px; background: none; color: var(--dim); }
   .page-step .icon { width: 13px; height: 13px; }
@@ -303,19 +285,19 @@
     <h1>Dinamik Ada</h1>
   </div>
   <div class="screens"></div>
-  <p class="hint">Boyut değiştirmek için başlığa tıkla. Widget değiştirmek için adayı sağa veya sola sürükle. Üç nokta ek kontrolleri açar.</p>
+  <p class="hint">Boyut değiştirmek için başlığa tıkla. Komşu widget’ı görmek için adayı sağa veya sola sürükle.</p>
 </main>
 <template id="monitor">
   <section class="monitor">
     <div class="monitor-heading"><h2></h2><span class="tag"></span></div>
     <div class="desktop">
       <div class="island" data-open="false">
+        <div class="island-viewport"><div class="island-slide">
         <div class="island-header">
           <button class="toggle" type="button" aria-pressed="false">
-            <span class="widget-icon drag-surface" aria-hidden="true"></span><span class="identity drag-surface"></span><span class="summary drag-surface"></span><span class="indicator" aria-hidden="true"></span>
+            <span class="widget-icon" aria-hidden="true"></span><span class="identity"></span><span class="summary"></span><span class="indicator" aria-hidden="true"></span>
           </button>
           <div class="inline-actions" hidden></div>
-          <button class="controls-button" type="button" aria-label="Widget kontrolleri" aria-expanded="false"></button>
         </div>
         <div class="expand" hidden>
             <div class="content">
@@ -332,8 +314,6 @@
                   <input type="range" min="0" max="222" value="68" aria-label="Örnek parçada oynatma konumu">
                   <output aria-live="off">1:08</output>
                 </div>
-                <label class="file-action">Ses dosyası seç<input class="visually-hidden" type="file" accept="audio/*"></label>
-                <audio controls hidden></audio>
               </section>
               <nav class="pages" aria-label="Widget sayfaları">
                 <button class="page-step" type="button" data-direction="-1" aria-label="Önceki widget">‹</button>
@@ -342,6 +322,7 @@
               </nav>
             </div>
         </div>
+        </div></div>
         <span class="visually-hidden announcement" role="status"></span>
       </div>
       <div class="dock" aria-label="Dock widget’ları" hidden></div>
@@ -512,7 +493,7 @@
           tiles.append(button);
         }
         page.append(tiles);
-      } else {
+      } else if (!['Weather', 'Battery', 'BluetoothBattery', 'Storage'].includes(widget.id)) {
         const list = document.createElement('dl');
         list.className = widget.tiles ? 'readings' : 'rows';
         for (const [index, label] of (widget.tiles ?? widget.rows).entries()) {
@@ -523,11 +504,8 @@
           value.textContent = samples[widget.id][index];
           row.append(name, value);
           const percentage = value.textContent.match(/^%(\d+)$/);
-          const level = widget.id === 'Storage' && index === 0 ? 284 / 476 * 100 : Number(percentage?.[1]);
-          if (['Battery', 'BluetoothBattery', 'Storage'].includes(widget.id) && Number.isFinite(level)) {
-            row.classList.add('capacity');
-          }
-          if (Number.isFinite(level) && widget.id !== 'Weather') {
+          const level = Number(percentage?.[1]);
+          if (Number.isFinite(level)) {
             const meter = document.createElement('meter');
             meter.className = 'meter';
             meter.max = 100;
@@ -550,12 +528,6 @@
         text.append(name, usage);
         profile.append(icon(appearances[widget.id][0]), text);
         page.prepend(profile);
-      }
-      if (widget.status) {
-        const note = document.createElement('p');
-        note.className = 'note';
-        note.textContent = widget.status;
-        page.prepend(note);
       }
       if (widget.id === 'Audio') {
         const label = document.createElement('label');
@@ -599,6 +571,60 @@
         history.append(label, bars);
         page.append(history);
       }
+    }
+    const values = samples[widget.id];
+    function featured(title, value, iconKey, className) {
+      const block = document.createElement('div');
+      block.className = className;
+      const text = document.createElement('div');
+      const primary = document.createElement('strong');
+      const secondary = document.createElement('small');
+      primary.textContent = value;
+      secondary.textContent = title;
+      text.append(primary, secondary);
+      if (iconKey) block.append(icon(iconKey));
+      block.append(text);
+      return block;
+    }
+    if (widget.id === 'Weather') {
+      const hero = featured(widget.status, values[0], 'IconCloudSun', 'weather-hero');
+      const conditions = document.createElement('div');
+      conditions.className = 'conditions';
+      for (const label of ['Hissedilen ' + values[1], 'Nem ' + values[2]]) {
+        const line = document.createElement('small');
+        line.textContent = label;
+        conditions.append(line);
+      }
+      hero.append(conditions);
+      page.replaceChildren(hero, page.querySelector('.forecast'));
+    } else if (['Battery', 'BluetoothBattery', 'Storage'].includes(widget.id)) {
+      const isDisk = widget.id === 'Storage';
+      const isDevice = widget.id === 'BluetoothBattery';
+      const title = isDisk ? 'Kullanılabilir alan' : isDevice ? values[0] : values[1];
+      const value = values[isDisk || isDevice ? 1 : 0];
+      const hero = featured(title, value, appearances[widget.id][0], 'device-hero');
+      hero.append(hero.firstElementChild);
+      const usage = document.createElement('div');
+      usage.className = 'usage-track';
+      const level = isDisk ? 284 / 476 * 100 : Number(value.slice(1));
+      usage.setAttribute('role', 'meter');
+      usage.setAttribute('aria-label', isDisk ? 'Kullanılan alan yüzdesi' : 'Pil seviyesi');
+      usage.setAttribute('aria-valuenow', String(Math.round(level)));
+      const fill = document.createElement('span');
+      fill.style.width = level + '%';
+      usage.append(fill);
+      const labels = document.createElement('div');
+      labels.className = 'capacity-labels';
+      const start = document.createElement('span');
+      const end = document.createElement('span');
+      start.textContent = isDisk ? values[0] + ' kullanımda' : '%0';
+      end.textContent = isDisk ? values[2] + ' toplam' : '%100';
+      labels.append(start, end);
+      page.replaceChildren(hero, usage, labels);
+    } else if (widget.id.startsWith('AiUsage')) {
+      const rows = page.querySelector('.rows');
+      if (values[0].endsWith('USD')) rows.replaceWith(featured(widget.rows[0], values[0], null, 'balance'));
+      else rows.className = 'quota-grid';
     }
     return page;
   }
@@ -664,8 +690,9 @@
   function createMonitor(index, initialPage, expanded) {
     const monitor = template.content.firstElementChild.cloneNode(true);
     const island = monitor.querySelector('.island');
+    const viewport = monitor.querySelector('.island-viewport');
+    const slide = monitor.querySelector('.island-slide');
     const toggle = monitor.querySelector('.toggle');
-    const controlsButton = monitor.querySelector('.controls-button');
     const inlineActions = monitor.querySelector('.inline-actions');
     const expand = monitor.querySelector('.expand');
     const nav = monitor.querySelector('nav');
@@ -675,7 +702,6 @@
     const summary = monitor.querySelector('.summary');
     const time = monitor.querySelector('time');
     const date = monitor.querySelector('.date');
-    const audio = monitor.querySelector('audio');
     const week = monitor.querySelector('.week');
     const samplePlayer = monitor.querySelector('.sample-player');
     const sampleButton = samplePlayer.querySelector('button');
@@ -718,7 +744,6 @@
       if (sampleStartedAt !== null) sampleStartedAt = performance.now();
       updateSample();
     });
-    const track = monitor.querySelector('.track');
     const picker = monitor.querySelector('.widget-picker');
     const placement = monitor.querySelector('.position-picker');
     const positions = new Map([...catalog.keys()].map(id => [id, 'island']));
@@ -743,8 +768,9 @@
     const dayRemaining = day.querySelector('.date');
     let selected = initialPage;
     let pageAnimation;
-    let audioUrl;
     let gesture;
+    let neighbor;
+    let settle;
     let suppressDragClick = false;
     let syncInline = () => {};
     let wheelTotal = 0;
@@ -761,33 +787,20 @@
     summary.id = 'island-summary-' + index;
     toggle.setAttribute('aria-controls', expand.id);
     toggle.setAttribute('aria-describedby', summary.id);
-    controlsButton.setAttribute('aria-controls', expand.id);
-
-    function setControls(visible, restoreFocus = false) {
-      controlsButton.setAttribute('aria-expanded', String(visible));
-      expand.hidden = !visible && island.dataset.open !== 'true';
-      if (visible && !reduceMotion.matches) {
-        expand.animate(
-          [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }],
-          { duration: 145, easing: 'ease-out' }
-        );
-      }
-      if (restoreFocus) controlsButton.focus();
-    }
-
     function setOpen(open) {
+      clearSlide();
       island.dataset.open = String(open);
       toggle.setAttribute('aria-pressed', String(open));
-      setControls(false);
+      expand.hidden = !open;
     }
 
     function islandPages() {
       return [...positions.keys()].filter(widget => positions.get(widget) === 'island');
     }
 
-    function bindInline(widget) {
-      inlineActions.replaceChildren();
-      syncInline = () => {};
+    function bindInline(widget, host = inlineActions) {
+      host.replaceChildren();
+      let sync = () => {};
       const page = pagesById.get(widget);
       function button(label, graphic, action) {
         const control = document.createElement('button');
@@ -795,7 +808,7 @@
         control.setAttribute('aria-label', label);
         control.append(graphic);
         control.addEventListener('click', action);
-        inlineActions.append(control);
+        host.append(control);
         return control;
       }
       function playbackLabel(control, playing, label) {
@@ -804,16 +817,8 @@
         control.setAttribute('aria-label', label);
       }
       if (widget === 'Media') {
-        const play = button('Medya oynat', '▶', async () => {
-          if (!audioUrl) sampleButton.click();
-          else if (!audio.paused) audio.pause();
-          else {
-            try {
-              await audio.play();
-            } catch {
-              track.textContent = 'Bu ses dosyası oynatılamadı.';
-            }
-          }
+        const play = button('Medya oynat', '▶', () => {
+          sampleButton.click();
           update();
         });
         const seek = document.createElement('input');
@@ -821,38 +826,46 @@
         seek.dataset.seek = '';
         seek.setAttribute('aria-label', 'Kompakt oynatma konumu');
         seek.addEventListener('input', () => {
-          if (audioUrl) {
-            if (Number.isFinite(audio.duration)) audio.currentTime = seek.valueAsNumber;
-          } else {
-            sampleSeek.value = seek.value;
-            sampleSeek.dispatchEvent(new Event('input'));
-          }
+          sampleSeek.value = seek.value;
+          sampleSeek.dispatchEvent(new Event('input'));
           update();
         });
-        inlineActions.append(seek);
-        syncInline = () => {
-          const playing = audioUrl ? !audio.paused : sampleStartedAt !== null;
+        host.append(seek);
+        sync = () => {
+          const playing = sampleStartedAt !== null;
           playbackLabel(play, playing, playing ? 'Medya duraklat' : 'Medya oynat');
-          seek.disabled = Boolean(audioUrl && !Number.isFinite(audio.duration));
-          const duration = audioUrl ? Math.floor(audio.duration) : sampleDuration;
-          if (Number.isFinite(duration) && seek.max !== String(duration)) seek.max = String(duration);
-          const position = audioUrl ? Math.floor(audio.currentTime) : sampleSeek.valueAsNumber;
-          if (seek.valueAsNumber !== position) seek.value = String(position);
+          if (seek.value !== sampleSeek.value) seek.value = sampleSeek.value;
         };
+        seek.max = sampleSeek.max;
       } else if (catalog.get(widget)?.timer) {
         const start = page.querySelector('[data-action="start"]');
         const reset = page.querySelector('[data-action="reset"]');
         const play = button('Zamanlayıcıyı başlat', '▶', () => { start.click(); update(); });
         button('Zamanlayıcıyı sıfırla', '↺', () => { reset.click(); update(); });
-        syncInline = () => {
+        const fullDuration = page.querySelector('input[type="number"]');
+        const duration = fullDuration?.cloneNode();
+        if (duration) {
+          duration.setAttribute('aria-label', 'Zamanlayıcı süresi (dakika)');
+          duration.addEventListener('input', () => {
+            fullDuration.value = duration.value;
+            fullDuration.dispatchEvent(new Event('input'));
+            update();
+          });
+          host.append(duration);
+        }
+        sync = () => {
           playbackLabel(play, start.textContent === 'Duraklat', 'Zamanlayıcı · ' + start.textContent);
           play.disabled = start.disabled;
+          if (duration) {
+            duration.disabled = fullDuration.disabled;
+            if (duration.value !== fullDuration.value) duration.value = fullDuration.value;
+          }
         };
       } else if (widget === 'QuickSettings') {
         const tiles = [...page.querySelectorAll('.tiles button')];
         const buttons = tiles.map((tile, index) => button(tile.textContent,
           icon(['IconWifi', 'IconBluetooth', 'IconMoon'][index]), () => { tile.click(); update(); }));
-        syncInline = () => buttons.forEach((control, index) => {
+        sync = () => buttons.forEach((control, index) => {
           control.setAttribute('aria-pressed', tiles[index].getAttribute('aria-pressed'));
         });
       } else if (widget === 'Audio') {
@@ -866,10 +879,11 @@
           fullSlider.dispatchEvent(new Event('input'));
           update();
         });
-        inlineActions.append(slider);
-        syncInline = () => { if (slider.value !== fullSlider.value) slider.value = fullSlider.value; };
+        host.append(slider);
+        sync = () => { if (slider.value !== fullSlider.value) slider.value = fullSlider.value; };
       }
-      inlineActions.hidden = !inlineActions.childElementCount;
+      host.hidden = !host.childElementCount;
+      return sync;
     }
 
     function update() {
@@ -894,51 +908,56 @@
         });
         week.replaceChildren(...days);
       }
-      if (!samplePlayer.hidden) updateSample();
+      updateSample();
       const minutes = now.getHours() * 60 + now.getMinutes();
       const dayPercent = percentFormat.format(minutes / 1440);
       dayMeter.value = minutes / 1440;
       if (dayValue.value !== dayPercent) dayValue.value = dayPercent;
       const remaining = 1440 - minutes;
       dayRemaining.textContent = Math.floor(remaining / 60) + ' sa. ' + remaining % 60 + ' dk. kaldı';
-      let currentTimer;
-      for (const [id, tick] of timers) {
-        const value = tick();
-        if (id === selected) currentTimer = value;
-      }
-      const compact = {
-        Clock: localTime, DayProgress: dayPercent,
-        SystemStats: 'CPU %24 · RAM %58', NetSpeed: '↓ 42,8 Mb/sn', Storage: '192 GB boş',
-        BluetoothBattery: '%82', Battery: '%76 · Şarjda',
-        Media: audio.error ? 'Oynatılamadı' : audioUrl ? (audio.paused ? 'Duraklatıldı' : 'Çalıyor') : sampleStartedAt !== null ? sampleTime.value : 'Gece treni'
-      };
-      const selectedPage = pagesById.get(selected);
-      const enabledTiles = selectedPage?.querySelectorAll('.tiles [aria-pressed="true"]').length;
-      const value = currentTimer ?? compact[selected] ??
-        (selected === 'Audio' ? '%' + selectedPage.querySelector('input').value :
-          selected === 'QuickSettings' ? enabledTiles + ' açık' : samples[selected]?.[0] ?? '');
+      for (const tick of timers.values()) tick();
+      const value = summaryFor(selected);
       if (summary.textContent !== value) summary.textContent = value;
       syncInline();
       const dockClock = dock.querySelector('[data-clock]');
       if (dockClock) dockClock.textContent = localTime;
     }
 
-    function showPage(widget, announce = false, syncPicker = true, direction = 0) {
+    function summaryFor(widget) {
+      const compact = {
+        Clock: time.textContent, DayProgress: dayValue.value,
+        SystemStats: 'CPU %24 · RAM %58', NetSpeed: '↓ 42,8 Mb/sn', Storage: '192 GB boş',
+        BluetoothBattery: '%82', Battery: '%76 · Şarjda',
+        Media: 'Gece treni'
+      };
+      const selectedPage = pagesById.get(widget);
+      const enabledTiles = selectedPage?.querySelectorAll('.tiles [aria-pressed="true"]').length;
+      return (timers.has(widget) ? selectedPage.querySelector('output').value : compact[widget]) ??
+        (widget === 'Audio' ? '%' + selectedPage.querySelector('input').value :
+          widget === 'QuickSettings' ? enabledTiles + ' açık' : samples[widget]?.[0] ?? '');
+    }
+
+    function widgetLabel(widget) {
+      const definition = catalog.get(widget);
+      return ({
+        Clock: 'Saat', SystemStats: 'Sistem', NetSpeed: 'Ağ', Media: 'Medya', DayProgress: 'Gün'
+      })[widget] ?? definition?.short ?? definition?.name ?? '';
+    }
+
+    function showPage(widget, announce = false, syncPicker = true, direction = 0, animate = true) {
+      clearSlide();
       const changed = selected !== widget;
       selected = widget;
-      if (changed || !island.dataset.widget) bindInline(widget);
+      if (changed || !island.dataset.widget) syncInline = bindInline(widget);
       const definition = catalog.get(widget);
       island.dataset.widget = widget ?? '';
-      identity.textContent = ({
-        Clock: 'Saat', SystemStats: 'Sistem', NetSpeed: 'Ağ', Media: 'Medya',
-        DayProgress: 'Gün', QuickSettings: 'Hızlı ayarlar'
-      })[widget] ?? definition?.short ?? definition?.name ?? '';
+      slide.dataset.widget = island.dataset.widget;
+      identity.textContent = widgetLabel(widget);
       if (definition) {
         const [key, accent] = appearances[widget];
         widgetIcon.replaceChildren(icon(key));
         island.style.setProperty('--widget-accent', accent);
         toggle.setAttribute('aria-label', definition.name + ' geniş görünüm');
-        controlsButton.setAttribute('aria-label', definition.name + ' kontrolleri');
       }
       for (const [id, page] of pagesById) {
         if (id !== widget && page.contains(document.activeElement)) toggle.focus();
@@ -954,7 +973,7 @@
       if (changed) {
         pageAnimation?.cancel();
         const page = pagesById.get(widget);
-        if (page && !reduceMotion.matches) {
+        if (page && animate && !reduceMotion.matches) {
           pageAnimation = page.animate(
             [{ opacity: .35, transform: 'translateX(' + direction * 16 + 'px)' }, { opacity: 1, transform: 'translateX(0)' }],
             { duration: 220, easing: 'cubic-bezier(.23,1,.32,1)' }
@@ -977,16 +996,55 @@
       showPage(pages[(pages.indexOf(selected) + direction + pages.length) % pages.length], true, true, direction);
     }
 
-    toggle.addEventListener('click', () => setOpen(island.dataset.open !== 'true'));
-    controlsButton.addEventListener('click', () => setControls(expand.hidden));
-    monitor.addEventListener('focusout', event => {
-      if (island.dataset.open === 'false' && event.relatedTarget && !island.contains(event.relatedTarget)) {
-        setControls(false);
+    function clearSlide() {
+      const animation = settle;
+      settle = undefined;
+      animation?.cancel();
+      gesture = undefined;
+      neighbor?.remove();
+      neighbor = undefined;
+      delete island.dataset.dragging;
+      slide.style.transform = '';
+    }
+
+    function previewNeighbor(direction) {
+      const pages = islandPages();
+      const widget = pages[(pages.indexOf(selected) + direction + pages.length) % pages.length];
+      neighbor?.remove();
+      neighbor = document.createElement('div');
+      neighbor.className = 'island-slide neighbor';
+      neighbor.dataset.widget = widget;
+      neighbor.inert = true;
+      neighbor.setAttribute('aria-hidden', 'true');
+      const [key, accent] = appearances[widget];
+      neighbor.style.setProperty('--widget-accent', accent);
+      const header = slide.querySelector('.island-header').cloneNode(true);
+      for (const element of header.querySelectorAll('[id], [aria-controls], [aria-describedby]')) {
+        for (const attr of ['id', 'aria-controls', 'aria-describedby']) element.removeAttribute(attr);
       }
-    });
-    monitor.querySelector('.desktop').addEventListener('click', event => {
-      if (!island.contains(event.target) && island.dataset.open === 'false') setControls(false);
-    });
+      header.querySelector('.widget-icon').replaceChildren(icon(key));
+      header.querySelector('.identity').textContent = widgetLabel(widget);
+      header.querySelector('.summary').textContent = summaryFor(widget);
+      bindInline(widget, header.querySelector('.inline-actions'))();
+      neighbor.append(header);
+      if (island.dataset.open === 'true') {
+        const body = document.createElement('div');
+        body.className = 'expand';
+        const content = document.createElement('div');
+        content.className = 'content';
+        const page = pagesById.get(widget).cloneNode(true);
+        page.hidden = false;
+        const pagination = nav.cloneNode(true);
+        pagination.querySelector('.page-index').textContent = (pages.indexOf(widget) + 1) + ' / ' + pages.length;
+        content.append(page, pagination);
+        body.append(content);
+        neighbor.append(body);
+      }
+      viewport.append(neighbor);
+      return widget;
+    }
+
+    toggle.addEventListener('click', () => setOpen(island.dataset.open !== 'true'));
     nav.addEventListener('click', event => {
       const button = event.target.closest('button');
       if (button) movePage(Number(button.dataset.direction));
@@ -996,17 +1054,17 @@
         if (island.dataset.open === 'true') {
           setOpen(false);
           toggle.focus();
-        } else if (!expand.hidden) setControls(false, true);
+        }
         return;
       }
-      if (event.target.closest('input, audio')) return;
+      if (event.target.closest('input')) return;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault();
         movePage(event.key === 'ArrowRight' ? 1 : -1);
       }
     });
     island.addEventListener('wheel', event => {
-      if (islandPages().length < 2 || event.ctrlKey || event.target.closest('input, audio')) return;
+      if (islandPages().length < 2 || event.ctrlKey || event.target.closest('input')) return;
       const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
       const page = event.target.closest('.page');
       if (!horizontal && page && page.scrollHeight > page.clientHeight) return;
@@ -1028,8 +1086,9 @@
     island.addEventListener('pointerdown', event => {
       suppressDragClick = false;
       if (!event.isPrimary || event.button !== 0 || islandPages().length < 2 ||
-          event.target.closest('input, audio, label, button:not(.toggle)')) return;
-      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false };
+          event.target.closest('input, label, button:not(.toggle)')) return;
+      clearSlide();
+      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false, offset: 0 };
     });
     island.addEventListener('pointermove', event => {
       if (!gesture || gesture.id !== event.pointerId) return;
@@ -1040,18 +1099,43 @@
         island.setPointerCapture(event.pointerId);
         island.dataset.dragging = 'true';
       }
-      if (!reduceMotion.matches) island.style.setProperty('--drag-offset', Math.max(-18, Math.min(18, dx * .35)) + 'px');
+      const direction = dx <= 0 ? 1 : -1;
+      if (gesture.direction !== direction) {
+        gesture.direction = direction;
+        gesture.widget = previewNeighbor(direction);
+      }
+      const width = viewport.clientWidth;
+      gesture.offset = Math.max(-width, Math.min(width, dx));
+      slide.style.transform = 'translateX(' + gesture.offset + 'px)';
+      neighbor.style.transform = 'translateX(' + (gesture.offset + direction * width) + 'px)';
     });
     function finishGesture(event) {
       if (!gesture || gesture.id !== event.pointerId) return;
-      const dx = event.clientX - gesture.x;
-      const active = gesture.active;
+      const { active, direction, offset, widget } = gesture;
       gesture = undefined;
       delete island.dataset.dragging;
-      island.style.removeProperty('--drag-offset');
-      if (event.type !== 'pointerup' || !active) return;
-      suppressDragClick = true;
-      if (Math.abs(dx) >= 36) movePage(dx < 0 ? 1 : -1);
+      if (!active) return;
+      const width = viewport.clientWidth;
+      const commit = event.type === 'pointerup' && Math.abs(offset) >= Math.max(36, width * .18);
+      suppressDragClick = event.type === 'pointerup';
+      if (reduceMotion.matches) {
+        if (commit) showPage(widget, true, true, direction, false);
+        else clearSlide();
+        return;
+      }
+      const destination = commit ? -direction * width : 0;
+      const options = { duration: 180, easing: 'cubic-bezier(.23,1,.32,1)', fill: 'forwards' };
+      const animateSlide = (element, from, to) => element.animate(
+        [{ transform: 'translateX(' + from + 'px)' }, { transform: 'translateX(' + to + 'px)' }], options
+      );
+      const animation = animateSlide(slide, offset, destination);
+      animateSlide(neighbor, offset + direction * width, destination + direction * width);
+      settle = animation;
+      animation.onfinish = () => {
+        if (settle !== animation) return;
+        if (commit) showPage(widget, true, true, direction, false);
+        else clearSlide();
+      };
     }
     island.addEventListener('pointerup', finishGesture);
     island.addEventListener('pointercancel', finishGesture);
@@ -1083,24 +1167,6 @@
       showPage(next, false, false);
     });
 
-    monitor.querySelector('.media input[type="file"]').addEventListener('change', event => {
-      const file = event.target.files[0];
-      if (!file) return;
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-      audioUrl = URL.createObjectURL(file);
-      sampleStartedAt = null;
-      samplePlayer.hidden = true;
-      audio.src = audioUrl;
-      track.textContent = file.name;
-      monitor.querySelector('.media-meta').textContent = 'Yerel ses dosyası';
-      audio.hidden = false;
-      update();
-    });
-    for (const event of ['play', 'pause', 'ended']) audio.addEventListener(event, update);
-    audio.addEventListener('error', () => {
-      track.textContent = 'Bu ses dosyası oynatılamadı.';
-      update();
-    });
     setOpen(expanded);
     showPage(initialPage);
     screens.append(monitor);
