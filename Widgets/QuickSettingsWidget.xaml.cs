@@ -388,7 +388,21 @@ public partial class QuickSettingsWidget : DockWidget
     private void AddShortcuts()
     {
         AddShortcut("QuickAvailableNetworks", "IconSearch", ShellShortcuts.OpenAvailableNetworks);
+        AddShortcut("QuickBluetoothSettings", "IconBluetooth", _ => ShellShortcuts.OpenUri("ms-settings:bluetooth"));
+        AddShortcut("QuickNightLightSettings", "IconMoon", _ => ShellShortcuts.OpenUri("ms-settings:nightlight"));
+        AddShortcut("QuickAirplaneMode", "IconAirplane", _ => ShellShortcuts.OpenUri("ms-settings:network-airplanemode"));
+        AddShortcut("QuickCellular", "IconCellular", _ => ShellShortcuts.OpenUri("ms-settings:network-cellular"));
+        AddShortcut("QuickBrightness", "IconSun", _ => ShellShortcuts.OpenUri("ms-settings:display"));
+        AddShortcut("QuickRotationLock", "IconRotate", _ => ShellShortcuts.OpenUri("ms-settings:screenrotation"));
+        AddShortcut("QuickEnergySaver", "IconBattery", _ => ShellShortcuts.OpenUri("ms-settings:batterysaver"));
+        AddShortcut("QuickNearbySharing", "IconLink", _ => ShellShortcuts.OpenUri("ms-settings:crossdevice"));
+        AddShortcut("QuickLiveCaptions", "IconCaptions", _ => ShellShortcuts.OpenUri("ms-settings:easeofaccess-closedcaptioning"));
+        AddShortcut("QuickNotificationMode", "IconBellOff", _ => ShellShortcuts.OpenUri("ms-settings:quiethours"));
+        AddShortcut("QuickStudioEffects", "IconMonitor", ShellShortcuts.OpenQuickSettings);
+        AddShortcut("QuickHearingDevices", "IconHeadphones", _ => ShellShortcuts.OpenUri("ms-settings:easeofaccess-hearingaids"));
         AddShortcut("QuickCast", "IconCast", _ => ShellShortcuts.OpenCast());
+        AddShortcut("QuickMobileHotspot", "IconHotspot", _ => ShellShortcuts.OpenUri("ms-settings:network-mobilehotspot"));
+        AddShortcut("QuickAccessibility", "IconAccessibility", _ => ShellShortcuts.OpenUri("ms-settings:easeofaccess"));
         AddShortcut("QuickOpenWindowsPanel", "IconSliders", ShellShortcuts.OpenQuickSettings);
     }
 

@@ -534,6 +534,19 @@ internal static class WidgetViewChecks
                     Check(SelectedTag("AutoHideBox") == "Disabled", "Auto-hide dropdown must reflect the default mode.");
                     Check(SelectedTag("PositionBox") == "Center", "Dock alignment dropdown must reflect the default position.");
                     Check(SelectedTag("DockSurfaceBox") == "Glass", "Surface dropdown must reflect the loaded material.");
+                    Check(SelectedTag("DynamicIslandVisibilityBox") == DynamicIslandVisibilityMode.Always.ToString()
+                        && RequiredName<CheckBox>(settings, "DynamicIslandHideFullscreenToggle").IsChecked == true,
+                        "Dynamic Island visibility controls must reflect the stored defaults.");
+                    var islandVisibility = RequiredName<ComboBox>(settings, "DynamicIslandVisibilityBox");
+                    var hideIslandFullscreen = RequiredName<CheckBox>(settings, "DynamicIslandHideFullscreenToggle");
+                    islandVisibility.SelectedIndex = 1;
+                    Check(preferences.Current.DynamicIslandVisibility == DynamicIslandVisibilityMode.DesktopOnly,
+                        "Selecting desktop-only visibility must save the Dynamic Island mode.");
+                    hideIslandFullscreen.IsChecked = false;
+                    Check(!preferences.Current.DynamicIslandHideInFullscreen,
+                        "Changing the full-screen option must save immediately.");
+                    islandVisibility.SelectedIndex = 0;
+                    hideIslandFullscreen.IsChecked = true;
                     RequiredName<TabControl>(settings, "SettingsTabs").SelectedItem = RequiredName<TabItem>(settings, "WidgetsTab");
                     var list = RequiredName<ItemsControl>(settings, "WidgetOptionsList");
                     var selections = ((System.Windows.Data.ListCollectionView)list.ItemsSource).SourceCollection.Cast<DockWidgetOption>().ToArray();
@@ -687,6 +700,7 @@ internal static class WidgetViewChecks
                 DockWidgetService.MediaId => "▶ · 02:15",
                 DockWidgetService.AudioId => "100%",
                 DockWidgetService.QuickSettingsId => "Wi-Fi · BT",
+                DockWidgetService.KeyboardLayoutId => "TR",
                 DockWidgetService.SystemStatsId => "CPU · RAM",
                 DockWidgetService.FocusId => "25:00",
                 DockWidgetService.WeatherId => "21°",

@@ -105,7 +105,6 @@ public partial class ClockWidget : DockWidget
     {
         _lastRenderKey = string.Empty;
         OnTick(DateTime.Now);
-        RaiseContentWidthChanged();
     }
 
     protected override void OnDeactivated() => _calendar.Close();

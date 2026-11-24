@@ -87,10 +87,20 @@ internal static class QuickSettingsChecks
             var strip = widget.FindName("ControlsStrip") as StackPanel
                 ?? throw new InvalidOperationException("Quick Settings must expose its inline controls.");
             var shortcuts = strip.Children.OfType<Button>().ToArray();
-            Check(shortcuts.Length >= 17 && shortcuts.All(button => button.IsEnabled
+            string[] shortcutKeys =
+            [
+                "QuickAvailableNetworks", "QuickBluetoothSettings", "QuickNightLightSettings",
+                "QuickAirplaneMode", "QuickCellular", "QuickBrightness", "QuickRotationLock",
+                "QuickEnergySaver", "QuickNearbySharing", "QuickLiveCaptions", "QuickNotificationMode",
+                "QuickStudioEffects", "QuickHearingDevices", "QuickCast", "QuickMobileHotspot",
+                "QuickAccessibility", "QuickOpenWindowsPanel"
+            ];
+            var expectedNames = shortcutKeys.Select(UiText.Get).ToHashSet(StringComparer.CurrentCulture);
+            var actualNames = shortcuts.Select(AutomationProperties.GetName).ToHashSet(StringComparer.CurrentCulture);
+            Check(shortcuts.Length == shortcutKeys.Length && actualNames.SetEquals(expectedNames) && shortcuts.All(button => button.IsEnabled
                 && button.Content is ContentControl { Content: Geometry }
                 && !string.IsNullOrWhiteSpace(AutomationProperties.GetName(button))),
-                "All inline shortcuts must have a visible icon and an accessible name.");
+                "All native Quick Settings shortcuts must have a visible icon and an accessible name.");
 
             host.UpdateLayout();
             var first = strip.Children[0];

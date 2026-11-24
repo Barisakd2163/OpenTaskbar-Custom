@@ -139,10 +139,7 @@ public sealed class DockAutoHideController : IDisposable
             var fallbackDue = Environment.TickCount64 - _lastOverlapScanMs >= OverlapFallbackScanMs;
             if (_overlapDirty || foreground != _lastScannedForeground || fallbackDue)
             {
-                RefreshSmartOverlap(foreground);
-                _overlapDirty = false;
-                _lastScannedForeground = foreground;
-                _lastOverlapScanMs = Environment.TickCount64;
+                if (RefreshSmartOverlap(foreground)) RecordSmartOverlapScan(foreground);
             }
         }
         EvaluateState();
@@ -166,7 +163,8 @@ public sealed class DockAutoHideController : IDisposable
 
         if (Mode == AutoHideMode.Smart)
         {
-            RefreshSmartOverlap(GetForegroundWindow());
+            var foreground = GetForegroundWindow();
+            if (RefreshSmartOverlap(foreground)) RecordSmartOverlapScan(foreground);
         }
 
         EvaluateState();
@@ -211,8 +209,17 @@ public sealed class DockAutoHideController : IDisposable
     {
         if (Mode == AutoHideMode.Disabled) return;
         // Always mode also re-evaluates so an opening Start menu reveals the hidden dock.
-        if (Mode == AutoHideMode.Smart) RefreshSmartOverlap(foregroundHwnd);
+        if (Mode == AutoHideMode.Smart && RefreshSmartOverlap(foregroundHwnd))
+            RecordSmartOverlapScan(GetForegroundWindow());
         EvaluateState();
+    }
+
+    private void RecordSmartOverlapScan(nint foreground)
+    {
+        // Synchronous foreground scans also inspect background windows; record them so the guard does not repeat the scan.
+        _overlapDirty = false;
+        _lastScannedForeground = foreground;
+        _lastOverlapScanMs = Environment.TickCount64;
     }
 
     /// <summary>
@@ -231,13 +238,13 @@ public sealed class DockAutoHideController : IDisposable
     // A focusable widget popup activates our own dock window. That must not erase
     // the overlap state of the application beneath it; otherwise Smart auto-hide
     // stays revealed after dismissing the popup.
-    private void RefreshSmartOverlap(nint foregroundHwnd)
+    private bool RefreshSmartOverlap(nint foregroundHwnd)
     {
         if (foregroundHwnd == 0) foregroundHwnd = NativeWindowTracker.GetForegroundApplicationWindow();
-        if (foregroundHwnd == 0) return;
+        if (foregroundHwnd == 0) return false;
         var root = GetAncestor(foregroundHwnd, GaRootOwner);
         var target = root != 0 ? root : foregroundHwnd;
-        if (!IsWindow(target)) return;
+        if (!IsWindow(target)) return false;
         if (IsShellMenuWindow?.Invoke(target) == true)
         {
             // Judge the application beneath the Start menu rather than the menu itself.
@@ -267,6 +274,7 @@ public sealed class DockAutoHideController : IDisposable
         // A small focused window in front of a maximized or full-screen one must not reveal the dock: the desktop
         // is still covered behind it, so any visible application window over the dock area keeps it hidden.
         HasOverlap = (target != 0 && EvaluateWindowOverlap(target)) || AnyOtherWindowCoversDock(target);
+        return true;
     }
 
     private bool AnyOtherWindowCoversDock(nint foregroundTarget)
