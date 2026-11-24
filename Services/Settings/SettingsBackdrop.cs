@@ -18,6 +18,10 @@ internal static class SettingsBackdrop
     internal const int DwmsbtNone = 1;
     internal const int DwmsbtTransientWindow = 3;
     internal const double NativeCornerRadius = 8;
+    private const int WcaAccentPolicy = 19;
+    private const int AccentDisabled = 0;
+    private const int AccentEnableAcrylicBlurBehind = 4;
+    private const uint AccentFlagDrawAllBorders = 0x20 | 0x40 | 0x80 | 0x100;
 
     internal static bool SupportsNativeRoundedCorners => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
 
@@ -49,24 +53,33 @@ internal static class SettingsBackdrop
     }
 
     /// <summary>
-    /// Disables the acrylic blur (DWMSBT_NONE = 1) while keeping the DWM frame extended into the
-    /// client area so a transparent WPF surface reveals the desktop behind the Settings window.
+    /// Enables frosted Acrylic blur via <c>SetWindowCompositionAttribute</c> with a near-zero DWM tint so
+    /// WPF's <c>SettingsGlassMaterial</c> controls the exact theme hue and user opacity slider while keeping
+    /// the blur active even when the Settings window loses focus.
     /// </summary>
-    public static bool TryEnableTransparent(Window window, AppTheme theme)
+    public static bool TryEnableAcrylic(Window window, AppTheme theme)
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0) return false;
         SuppressNativeBorder(handle);
         if (SystemParameters.HighContrast) return false;
+
         var dark = theme == AppTheme.Dark ? 1 : 0;
         var backdrop = DwmsbtNone;
         var corners = DwmwcpRound;
         DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
+        // Keep Win11's auto-disabling system backdrop off so it does not override the acrylic policy on blur/focus.
         DwmSetWindowAttribute(handle, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
-        DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
+        if (SupportsNativeRoundedCorners)
+            DwmSetWindowAttribute(handle, DwmwaWindowCornerPreference, ref corners, sizeof(int));
+
         var margins = new Margins(-1);
-        var frameResult = DwmExtendFrameIntoClientArea(handle, ref margins);
-        if (frameResult < 0) return false;
+        if (DwmExtendFrameIntoClientArea(handle, ref margins) < 0) return false;
+
+        // 1/255 alpha keeps DWM acrylic blur active while letting WPF's SettingsGlassMaterial own color & opacity.
+        if (!TrySetAccentPolicy(handle, AccentEnableAcrylicBlurBehind, gradientColor: 0x01000000))
+            return false;
+
         if (HwndSource.FromHwnd(handle)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
         return true;
     }
@@ -76,6 +89,7 @@ internal static class SettingsBackdrop
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0) return;
+        TrySetAccentPolicy(handle, AccentDisabled, gradientColor: 0);
         var dark = theme == AppTheme.Dark ? 1 : 0;
         var backdrop = DwmsbtNone;
         DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
@@ -98,6 +112,38 @@ internal static class SettingsBackdrop
         }
     }
 
+    private static bool TrySetAccentPolicy(nint handle, int accentState, uint gradientColor)
+    {
+        var policy = new AccentPolicy
+        {
+            AccentState = accentState,
+            AccentFlags = accentState == AccentDisabled ? 0u : 2u,
+            GradientColor = gradientColor,
+            AnimationId = 0
+        };
+        var size = Marshal.SizeOf<AccentPolicy>();
+        var ptr = Marshal.AllocHGlobal(size);
+        try
+        {
+            Marshal.StructureToPtr(policy, ptr, false);
+            var data = new WindowCompositionAttributeData
+            {
+                Attribute = WcaAccentPolicy,
+                Data = ptr,
+                SizeOfData = size
+            };
+            return SetWindowCompositionAttribute(handle, ref data) != 0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return false;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(ptr);
+        }
+    }
+
     private static void SuppressNativeBorder(nint handle)
     {
         if (!SupportsNativeRoundedCorners) return;
@@ -116,8 +162,27 @@ internal static class SettingsBackdrop
         public int Bottom = value;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AccentPolicy
+    {
+        public int AccentState;
+        public uint AccentFlags;
+        public uint GradientColor;
+        public int AnimationId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowCompositionAttributeData
+    {
+        public int Attribute;
+        public nint Data;
+        public int SizeOfData;
+    }
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint window, uint attribute, ref int value, uint size);
     [DllImport("dwmapi.dll")]
     private static extern int DwmExtendFrameIntoClientArea(nint window, ref Margins margins);
+    [DllImport("user32.dll")]
+    private static extern int SetWindowCompositionAttribute(nint hwnd, ref WindowCompositionAttributeData data);
 }

@@ -444,13 +444,33 @@ public partial class SettingsWindow : Window
         var surfaceMode = ThemeManager.GetSurface(SurfaceKind.Settings).Background;
         SettingsFrame.CornerRadius = new CornerRadius(0);
         ApplySettingsBorderCornerRadius();
-        // Keep Settings on a stable opaque DWM surface with native Win11 rounded corners so the window never
-        // flashes black on open or shifts tone across active/inactive transitions and changing backgrounds.
-        SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
-        SettingsFrame.SetResourceReference(
-            System.Windows.Controls.Border.BackgroundProperty,
-            surfaceMode == SurfaceBackground.Solid ? "SettingsGlassMaterial" : "SettingsBackground");
-        chrome.GlassFrameThickness = new Thickness(0);
+        if (surfaceMode is SurfaceBackground.None or SurfaceBackground.Solid)
+        {
+            SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
+            SetResourceReference(BackgroundProperty, "SettingsBackground");
+            SettingsFrame.SetResourceReference(
+                System.Windows.Controls.Border.BackgroundProperty,
+                surfaceMode == SurfaceBackground.Solid ? "SettingsGlassMaterial" : "SettingsBackground");
+            chrome.GlassFrameThickness = new Thickness(0);
+            return;
+        }
+
+        // Glass mode uses DWM acrylic blur that stays consistent when inactive while WPF's
+        // SettingsGlassMaterial applies the active theme hue and the user's opacity slider.
+        var glass = SettingsBackdrop.TryEnableAcrylic(this, ThemeManager.EffectiveTheme);
+        if (glass)
+        {
+            Background = Brushes.Transparent;
+            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsGlassMaterial");
+            chrome.GlassFrameThickness = new Thickness(-1);
+        }
+        else
+        {
+            SettingsBackdrop.Disable(this, ThemeManager.EffectiveTheme);
+            SetResourceReference(BackgroundProperty, "SettingsBackground");
+            SettingsFrame.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsBackground");
+            chrome.GlassFrameThickness = new Thickness(0);
+        }
     }
 
     private DockSettings ReadSelection()
