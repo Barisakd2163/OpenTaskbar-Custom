@@ -495,42 +495,6 @@ public partial class MainWindow
         foreach (var button in GetExtraDockButtons()) yield return button;
     }
 
-    private bool IsPointerOverNonMagnifiedZone(DependencyObject? source)
-    {
-        var current = source;
-        while (current is not null && !ReferenceEquals(current, DockSurface))
-        {
-            if (ReferenceEquals(current, WidgetIsland)
-                || ReferenceEquals(current, PinnedTrayStrip)
-                || ReferenceEquals(current, LeftResizeThumb)
-                || ReferenceEquals(current, RightResizeThumb)
-                || ReferenceEquals(current, ScrollPrevOverlay)
-                || ReferenceEquals(current, ScrollNextOverlay))
-            {
-                return true;
-            }
-            // Hovering a native shell button must not magnify its neighbours either.
-            if (current is Button button && IsNativeShellButton(button)) return true;
-
-            if (current is FrameworkElement fe)
-            {
-                foreach (var (token, element) in _dockItemElements)
-                {
-                    if (token.StartsWith("widget:", StringComparison.OrdinalIgnoreCase) && ReferenceEquals(element, fe))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            current = current is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(current)
-                : LogicalTreeHelper.GetParent(current);
-        }
-
-        return false;
-    }
-
     private void AnimateActivationFeedback(Button button)
     {
         if (!_preferences.Current.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
@@ -951,10 +915,6 @@ public partial class MainWindow
         _magnificationVelocity.Clear();
         FlushDeferredDockResize("magnification-stopped");
         EndScrollGestureScope("magnification-stopped");
-    }
-
-    private void DockSurface_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
-    {
     }
 
     private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)

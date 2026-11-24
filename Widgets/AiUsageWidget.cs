@@ -24,12 +24,8 @@ public sealed class AiUsageWidget : DockWidget
     private DateTime? _signInStamp;
     private int _failures;
     private DateTimeOffset? _lastLoadAt;
-    // The click flyout and the compact hover flyout can coexist, so each keeps its own countdowns.
-    private readonly List<(TextBlock Block, DateTimeOffset Reset)> _countdowns = [];
     private readonly List<(TextBlock Block, DateTimeOffset Reset)> _hoverCountdowns = [];
-    private readonly ContentControl _flyoutHost = new();
     private readonly Card _card;
-    private readonly DockFlyout _flyout = new();
     private CancellationTokenSource? _loading;
     private int _renderedMinute = -1;
 
@@ -112,7 +108,6 @@ public sealed class AiUsageWidget : DockWidget
     private static bool HidesName(AiProviders provider) => provider is AiProviders.Codex or AiProviders.Claude or AiProviders.Antigravity or AiProviders.Cursor;
 
     private static readonly SolidColorBrush ClaudeBrandBrush = FreezeBrush(Color.FromRgb(0xD9, 0x77, 0x57));
-    private static readonly SolidColorBrush CodexBrandBrush = FreezeBrush(Color.FromRgb(0x8D, 0x99, 0xFF));
     private static readonly SolidColorBrush DeepSeekBrandBrush = FreezeBrush(Color.FromRgb(0x4D, 0x6B, 0xFE));
     private static readonly SolidColorBrush OpenRouterBrandBrush = FreezeBrush(Color.FromRgb(0xB7, 0x9B, 0xF8));
     private static readonly SolidColorBrush CopilotBrandBrush = FreezeBrush(Color.FromRgb(0x9F, 0x9F, 0xF2));
@@ -143,7 +138,6 @@ public sealed class AiUsageWidget : DockWidget
         _provider = provider;
         _loader = loader;
         _card = AddCard();
-        _flyout.Closed += (_, _) => _countdowns.Clear();
         Content = _card.Button;
         Render();
     }
@@ -227,7 +221,6 @@ public sealed class AiUsageWidget : DockWidget
             CursorAuthService.RefreshRequested -= CursorAuthService_RefreshRequested;
         }
         Clear();
-        _flyout.Close();
     }
 
     protected override void OnDisposed()
@@ -347,7 +340,7 @@ public sealed class AiUsageWidget : DockWidget
         if (_card.Bars is not null) UpdateDualCountdowns();
         if (_card.Antigravity is not null) UpdateAntigravityCountdowns();
         if (!IsHoverFlyoutOpen) _hoverCountdowns.Clear();
-        foreach (var (block, reset) in _countdowns.Concat(_hoverCountdowns)) block.Text = ResetText(reset);
+        foreach (var (block, reset) in _hoverCountdowns) block.Text = ResetText(reset);
     }
 
     private void UpdateDualCountdowns()
@@ -384,12 +377,7 @@ public sealed class AiUsageWidget : DockWidget
         }
     }
 
-    /// <summary>Re-renders the card and, when our click flyout is open, swaps its content in place without reopening it.</summary>
-    private void Refresh()
-    {
-        Render();
-        if (_flyout.IsOpen) _flyoutHost.Content = BuildFlyout(_countdowns);
-    }
+    private void Refresh() => Render();
 
     private static bool IsStale(AiUsageReport report) => DateTimeOffset.UtcNow - report.FetchedAt > TimeSpan.FromMinutes(10);
 
@@ -1612,7 +1600,7 @@ public sealed class AiUsageWidget : DockWidget
             if (report.ResetCredits > 0) extras.Add(UiText.Format("AiUsageResetCredits", report.ResetCredits.ToString(Culture)));
             if (extras.Count > 0) root.Children.Add(Text(string.Join(" · ", extras), 11, "TextSecondary", new Thickness(0, 0, 0, 6)));
         }
-        root.Children.Add(Divider());
+        root.Children.Add(DockFlyout.Divider(6));
         root.Children.Add(Footer());
         return root;
     }
@@ -1780,13 +1768,6 @@ public sealed class AiUsageWidget : DockWidget
         Grid.SetColumn(child, column);
         grid.Children.Add(child);
         return grid;
-    }
-
-    private static Border Divider()
-    {
-        var divider = new Border { Height = 1, Margin = new Thickness(0, 2, 0, 10) };
-        divider.SetResourceReference(Border.BackgroundProperty, "MenuDivider");
-        return divider;
     }
 
     private static TextBlock Text(string text, double size, string brush, Thickness margin = default, double? lineHeight = null)

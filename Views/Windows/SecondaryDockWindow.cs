@@ -43,7 +43,6 @@ public sealed class SecondaryDockWindow : Window
     private readonly RunningAppIconCache _icons;
     private readonly List<AppSlot> _slots = [];
     private SecondaryAppScope _scope;
-    private bool _showWidgets;
     private double _shelfHeight = DockMetrics.ShelfHeight;
     private string _lastClockText = string.Empty;
     private nint _handle;
@@ -59,7 +58,6 @@ public sealed class SecondaryDockWindow : Window
         _monitor = monitor;
         _icons = iconCache;
         _scope = scope;
-        _showWidgets = showWidgets;
         Title = UiText.Get("SecondaryDockTitle");
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -286,7 +284,6 @@ public sealed class SecondaryDockWindow : Window
     public void Configure(SecondaryAppScope scope, bool showWidgets)
     {
         _scope = scope;
-        _showWidgets = showWidgets;
         _quickSettingsButton.Visibility = showWidgets ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -467,11 +464,6 @@ public sealed class SecondaryDockWindow : Window
         public NativeRect rc;
         public nint lParam;
     }
-    private delegate bool MonitorEnumProc(nint monitor, nint hdc, nint rect, nint data);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumDisplayMonitors(nint hdc, nint clip, MonitorEnumProc callback, nint data);
     [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);

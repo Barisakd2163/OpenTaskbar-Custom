@@ -25,7 +25,6 @@ public partial class SettingsWindow : Window
     private readonly ApplicationPreferences _preferences;
     private readonly StartupRegistration _startup = new();
     private readonly ObservableCollection<DockWidgetOption> _widgetOptions = [];
-    private readonly ObservableCollection<WidgetCategoryGroup> _widgetGroups = [];
     private readonly List<ComboBox> _aiRingBoxes = [];
     private readonly Dictionary<AntigravityGroups, CheckBox> _antigravityGroupBoxes = [];
     private readonly List<Action> _aiAccountRefreshers = [];
@@ -161,7 +160,6 @@ public partial class SettingsWindow : Window
             foreach (var option in _widgetOptions)
                 option.PropertyChanged -= WidgetOption_PropertyChanged;
             _widgetOptions.Clear();
-            _widgetGroups.Clear();
             _aiRingBoxes.Clear();
             _antigravityGroupBoxes.Clear();
             _aiAccountRefreshers.Clear();
@@ -378,7 +376,6 @@ public partial class SettingsWindow : Window
                 option.RefreshInstallLabels();
             }
             RefreshWidgetPreviews();
-            foreach (var group in _widgetGroups) group.RefreshLabel();
             foreach (var refresh in _aiAccountRefreshers) refresh();
             UpdateHotkeyControls();
             UpdateCursorAuthUi();
@@ -1503,43 +1500,6 @@ public partial class SettingsWindow : Window
             if (option.NativePreview is OpenTaskbar.Widgets.DockWidget standalone && !liveWidgets.Contains(standalone))
                 standalone.Dispose();
             if (option.NativePreview is OpenTaskbar.Widgets.DockWidget) option.NativePreview = option.Preview;
-        }
-    }
-
-    /// <summary>A localized category label followed by the widgets that belong to it.</summary>
-    internal sealed class WidgetCategoryGroup : INotifyPropertyChanged
-    {
-        public WidgetCategoryGroup(DockWidgetCategory category, IReadOnlyList<DockWidgetOption> widgets)
-        {
-            Category = category;
-            Widgets = widgets;
-        }
-
-        public DockWidgetCategory Category { get; }
-        public IReadOnlyList<DockWidgetOption> Widgets { get; }
-
-        public string Label => Category switch
-        {
-            DockWidgetCategory.TimeAndWeather => UiText.Get("WidgetCategoryTime"),
-            DockWidgetCategory.SystemAndHardware => UiText.Get("WidgetCategorySystem"),
-            DockWidgetCategory.AiQuotas => UiText.Get("WidgetCategoryAi"),
-            DockWidgetCategory.MediaAndControls => UiText.Get("WidgetCategoryMedia"),
-            DockWidgetCategory.Productivity => UiText.Get("WidgetCategoryProductivity"),
-            _ => string.Empty
-        };
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        public void RefreshLabel() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
-    }
-
-    private void RebuildWidgetGroups()
-    {
-        _widgetGroups.Clear();
-        foreach (var category in Enum.GetValues<DockWidgetCategory>())
-        {
-            var widgets = _widgetOptions.Where(option => option.CategoryEnum == category).ToList();
-            if (widgets.Count > 0) _widgetGroups.Add(new WidgetCategoryGroup(category, widgets));
         }
     }
 

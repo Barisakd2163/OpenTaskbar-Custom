@@ -209,7 +209,6 @@
         <Grid x:Name="DockSurface" Grid.Row="1" HorizontalAlignment="Stretch"
               Margin="{StaticResource DockInset}" VerticalAlignment="Bottom" RenderTransformOrigin="0.5,1"
               ContextMenu="{StaticResource DockContextMenu}"
-              PreviewMouseMove="DockSurface_PreviewMouseMove"
               MouseEnter="DockSurface_MouseEnter" MouseMove="DockSurface_MouseMove" MouseLeave="DockSurface_MouseLeave"
               MouseWheel="DockSurface_MouseWheel">
             <Grid.RenderTransform>

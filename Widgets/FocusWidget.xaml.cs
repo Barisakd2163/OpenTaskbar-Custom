@@ -49,7 +49,6 @@ public partial class FocusWidget : DockWidget
 
     private Border? _flyoutContainer;
     private TextBlock? _flyoutTimeText;
-    private Border? _flyoutProgressFill;
     private ColumnDefinition? _flyoutProgressFillCol;
     private ColumnDefinition? _flyoutProgressEmptyCol;
     private TextBlock? _flyoutSessionCount;
@@ -73,7 +72,6 @@ public partial class FocusWidget : DockWidget
         {
             _flyoutContainer = null;
             _flyoutTimeText = null;
-            _flyoutProgressFill = null;
             _flyoutProgressFillCol = null;
             _flyoutProgressEmptyCol = null;
             _flyoutSessionCount = null;
@@ -277,7 +275,6 @@ public partial class FocusWidget : DockWidget
         trackGrid.Children.Add(fill);
         track.Child = trackGrid;
         root.Children.Add(track);
-        _flyoutProgressFill = fill;
         _flyoutProgressFillCol = fillCol;
         _flyoutProgressEmptyCol = emptyCol;
 

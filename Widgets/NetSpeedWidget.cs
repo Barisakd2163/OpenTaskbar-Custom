@@ -517,17 +517,6 @@ public sealed class NetSpeedWidget : DockWidget
         return _flyoutPanel;
     }
 
-    private Border CreateDivider()
-    {
-        var border = new Border
-        {
-            Height = 1,
-            Margin = new Thickness(0, 6, 0, 6)
-        };
-        border.SetResourceReference(Border.BackgroundProperty, "MenuStroke");
-        return border;
-    }
-
     private void UpdateSpeedTestView()
     {
         if (_speedTestContainer == null) return;

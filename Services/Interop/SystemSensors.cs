@@ -18,7 +18,6 @@ public sealed partial class SystemSensors : IDisposable
     private D3dKmtGpuSampler? _d3dGpu;
     private PdhCounterArray? _pdhGpuFallback;
     private GpuThermalReader? _gpuThermal;
-    private SystemMeters _configured;
     private bool _gpuInitialized;
     private bool _gpuThermalInitialized;
     private bool _disposed;
@@ -36,7 +35,6 @@ public sealed partial class SystemSensors : IDisposable
     public void Configure(SystemMeters meters)
     {
         if (_disposed) return;
-        _configured = meters;
 
         if (!meters.HasFlag(SystemMeters.Gpu))
         {

@@ -41,7 +41,6 @@ public partial class QuickSettingsWidget : DockWidget
     private readonly DockFlyout _flyout = new();
     private IReadOnlyList<Radio> _radios = [];
     private CancellationTokenSource? _activation;
-    private Button? _moreButton;
     private bool? _nightLightOn;
     private bool _loadingRadios;
     private int _radioDiscoveryAttempts;
@@ -437,7 +436,6 @@ public partial class QuickSettingsWidget : DockWidget
         more.SetBinding(ToolTipProperty, moreLabel);
         more.SetBinding(AutomationProperties.NameProperty, moreLabel);
         more.Click += (_, _) => _flyout.Toggle(more, BuildMoreFlyoutContent);
-        _moreButton = more;
         ControlsStrip.Children.Add(more);
     }
 

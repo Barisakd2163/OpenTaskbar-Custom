@@ -413,13 +413,6 @@ public sealed class ThemePropertyEditor : UserControl
         return field;
     }
 
-    private void AddTextTokenField(string key, string initial)
-    {
-        var field = AddTextField(key, initial);
-        field.Tag = key;
-        field.LostFocus += (_, _) => UpdateToken(key, JsonValue.Create(field.Text));
-    }
-
     /// <summary>Shows "Inter" for a pack URI such as pack://application:,,,/Fonts/#Inter.</summary>
     private static string FriendlyFontName(FontFamily family)
     {

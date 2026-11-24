@@ -1026,21 +1026,6 @@ public partial class SystemStatsWidget : DockWidget
         return section;
     }
 
-    private static Button CreateFooterActionButton(string label, Thickness margin)
-    {
-        var button = new Button
-        {
-            Content = label,
-            Margin = margin,
-            Padding = new Thickness(4, 0, 4, 0),
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0)
-        };
-        button.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
-        AutomationProperties.SetName(button, label);
-        return button;
-    }
-
     private static TextBlock CreateValueText()
     {
         var text = new TextBlock
