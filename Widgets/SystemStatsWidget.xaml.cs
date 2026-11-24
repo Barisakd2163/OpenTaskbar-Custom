@@ -626,15 +626,19 @@ public partial class SystemStatsWidget : DockWidget
         var processesList = new StackPanel();
         root.Children.Add(processesList);
 
-        var taskManager = new Button { Content = UiText.Get("TaskManager") };
+        var taskManagerLabel = UiText.Get("TaskManager");
+        var taskManager = new Button { Content = taskManagerLabel };
         taskManager.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
+        AutomationProperties.SetName(taskManager, taskManagerLabel);
         taskManager.Click += (_, _) =>
         {
             _flyout.Close(restoreFocus: false);
             OpenTaskManagerAction();
         };
-        var resourceMonitor = new Button { Content = UiText.Get("ResourceMonitor") };
+        var resourceMonitorLabel = UiText.Get("ResourceMonitor");
+        var resourceMonitor = new Button { Content = resourceMonitorLabel };
         resourceMonitor.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
+        AutomationProperties.SetName(resourceMonitor, resourceMonitorLabel);
         resourceMonitor.Click += (_, _) =>
         {
             _flyout.Close(restoreFocus: false);

@@ -783,8 +783,13 @@ public sealed class DockFlyout
 
     public static Border Divider(double verticalMargin = 8)
     {
-        var line = new Border { Height = 1, Margin = new Thickness(0, verticalMargin, 0, verticalMargin) };
-        line.SetResourceReference(Border.BackgroundProperty, "StrokeSubtle");
+        var line = new Border
+        {
+            Height = 1,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, verticalMargin, 0, verticalMargin)
+        };
+        line.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
         return line;
     }
 
