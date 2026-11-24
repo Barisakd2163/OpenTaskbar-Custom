@@ -79,6 +79,23 @@
   .island::before { right: 100%; }
   .island::after { left: 100%; scale: -1 1; }
   .island[data-open="true"] { width: min(100%, 416px); height: var(--island-open-height); max-height: var(--island-open-height); border-radius: 0 0 22px 22px; }
+  .island-header, .page { cursor: grab; user-select: none; }
+  .island[data-dragging="true"] :is(.island-header, .toggle, .page) { cursor: grabbing; }
+  .drag-surface { translate: var(--drag-offset, 0px) 0; }
+  .island[data-dragging="true"] .page { translate: var(--drag-offset, 0px) 0; }
+  .island[data-dragging="true"] .drag-surface { opacity: .72; }
+  .inline-actions { display: flex; gap: 3px; flex: none; align-items: center; }
+  [data-open="true"] .inline-actions { display: none; }
+  .inline-actions button { display: grid; place-items: center; height: 30px; width: 29px; border: 1px solid var(--panel-line); border-radius: 6px; background: #ffffff08; color: var(--white); padding: 0; font-size: .72rem; }
+  .inline-actions button[aria-pressed="true"] { background: var(--widget-accent); border-color: var(--widget-accent); color: var(--panel); }
+  .inline-actions button:disabled { opacity: .5; cursor: default; }
+  .inline-actions input { width: clamp(45px, 7vw, 78px); margin: 0; accent-color: var(--widget-accent); }
+  .inline-actions input[data-seek] { width: clamp(38px, 5vw, 57px); }
+  .inline-actions .icon { width: 14px; height: 14px; }
+  [data-open="false"][data-widget="QuickSettings"] .summary { display: none; }
+  [data-open="false"][data-widget="QuickSettings"] .identity { font-size: .73rem; }
+  [data-open="false"][data-widget="Media"] .identity { display: none; }
+  [data-open="false"][data-widget="Media"] .summary { flex: 1; max-width: none; margin: 0; text-align: start; }
   .island :focus-visible { outline-color: var(--accent); outline-offset: -3px; }
   .island-header { display: flex; align-items: center; flex: 0 0 var(--island-compact-height); min-width: 0; padding: 0 var(--space-2); gap: var(--space-1); }
   .toggle { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; height: 38px; padding: 0 var(--space-2); border: 0; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
@@ -147,7 +164,43 @@
   .file-action { position: relative; align-self: start; padding: 4px 8px; border: 1px solid var(--panel-line); border-radius: 5px; color: var(--dim); font-size: .72rem; cursor: pointer; }
   .file-action:hover { color: var(--white); background: #ffffff0a; }
   .file-action:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-  [data-open="true"] .page[data-widget^="AiUsage"] .rows div { padding-block: 8px; }
+  .profile { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 9px; align-items: center; margin-bottom: 4px; }
+  .profile .icon { box-sizing: content-box; width: 21px; height: 21px; padding: 8px; border: 1px solid var(--panel-line); border-radius: 9px; color: var(--widget-accent); background: color-mix(in srgb, var(--widget-accent) 12%, var(--panel)); }
+  .profile span { display: grid; gap: 3px; min-width: 0; font-size: .75rem; color: var(--dim); }
+  .profile strong { color: var(--white); font-size: .96rem; font-weight: 650; }
+  .quota-profile { border-bottom: 1px solid var(--panel-line); padding-bottom: 2px; }
+  .quota-profile .icon { width: 17px; height: 17px; padding: 5px; }
+  .page[data-widget^="AiUsage"] .rows div { padding-block: 4px; line-height: 1.2; }
+  .page[data-widget^="AiUsage"] .rows dd { color: var(--widget-accent); }
+  .page[data-widget^="AiUsage"] .rows .meter { height: 4px; }
+  [data-open="false"] .quota-profile { margin-bottom: 3px; padding-bottom: 4px; gap: 8px; }
+  [data-open="false"] .quota-profile .icon { padding: 5px; }
+  .page[data-widget="AiUsageCopilot"] .rows dd { font-size: 1.55rem; }
+  .capacity { display: grid; gap: 6px; padding: 8px 10px; margin-bottom: 5px; border: 1px solid var(--panel-line); border-radius: 8px; }
+  .capacity dd { font-size: 1.55rem; font-weight: 650; line-height: 1; color: var(--widget-accent); font-variant-numeric: tabular-nums; }
+  .capacity dt { font-size: .7rem; color: var(--dim); }
+  .capacity meter { margin: 0; }
+  .page:is([data-widget="Battery"], [data-widget="BluetoothBattery"], [data-widget="Storage"]) .rows div { padding-block: 5px; }
+  .page[data-widget="Clock"] .week { background: #c2d9ff0a; border-radius: 6px; }
+  .page[data-widget="DayProgress"] progress { height: 12px; }
+  .page[data-widget="DayProgress"] output { color: var(--widget-accent); }
+  .timer .timer-state { color: var(--widget-accent); font-size: .72rem; font-weight: 550; }
+  .page.timer { gap: 4px; }
+  .page[data-widget="Focus"] { background: radial-gradient(ellipse at 88% 0%, #6554a329, transparent 64%), var(--panel-raised); }
+  .page[data-widget="Countdown"] { background: radial-gradient(ellipse at 88% 0%, #9561272e, transparent 64%), var(--panel-raised); }
+  .page[data-widget="Stopwatch"] { background: repeating-linear-gradient(90deg, transparent 0 15px, #b1c9ff0a 15px 16px) top / 100% 6px no-repeat, var(--panel-raised); }
+  .page[data-widget="SystemStats"] { background: repeating-linear-gradient(0deg, transparent 0 17px, #a8c6ff08 17px 18px), var(--panel-raised); }
+  .page[data-widget="NetSpeed"] .history-bars { background: repeating-linear-gradient(0deg, #94dfec14 0 1px, transparent 1px 8px); }
+  .page[data-widget="Weather"] .readings div:first-child { background: #ffd19712; }
+  .page[data-widget="Audio"] .sample-volume { padding: 4px 7px; border: 1px solid var(--panel-line); border-radius: 8px; background: #c4baff0b; }
+  .page[data-widget="BluetoothBattery"] .capacity { border-inline-start: 2px solid var(--widget-accent); }
+  .page[data-widget="Storage"] .capacity .meter { height: 7px; }
+  .page[data-widget="Storage"] .capacity .meter::-webkit-meter-bar { height: 7px; }
+  .page[data-widget="Battery"] .capacity dd::after { content: ""; display: inline-block; width: 14px; height: 7px; margin-inline-start: 8px; border: 1px solid currentColor; border-radius: 2px; vertical-align: middle; }
+  .page[data-widget="AiUsageAntigravity"] .rows div:last-child dd { color: var(--dim); }
+  .page[data-widget="AiUsageCursor"] .rows .meter { opacity: .85; }
+  .page[data-widget="AiUsageOpenRouter"] .rows dd { letter-spacing: -.035em; }
+  [data-open="true"] .page[data-widget^="AiUsage"] .rows div { padding-block: 4px; }
   [data-open="true"] .page[data-widget^="AiUsage"] .rows dd { color: var(--white); font-size: .98rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   [data-open="true"] .page:is([data-widget="AiUsageDeepSeek"], [data-widget="AiUsageOpenRouter"]) .rows div { display: grid; gap: 4px; }
   [data-open="true"] .page:is([data-widget="AiUsageDeepSeek"], [data-widget="AiUsageOpenRouter"]) .rows dd { text-align: start; font-size: 1.9rem; }
@@ -187,7 +240,7 @@
   .page[data-widget^="AiUsage"] .rows .meter { grid-column: 2; grid-row: 1; margin: 0; }
   .page[data-widget^="AiUsage"] .rows div:has(.meter) dd { grid-column: 3; }
   [data-open="true"] .rows div { padding: 9px 0; }
-  [data-open="true"] .page[data-widget="Audio"] .rows div { padding-block: 5px; }
+  [data-open="true"] .page[data-widget="Audio"] .rows div { padding-block: 4px; }
   [data-open="true"] .meter, [data-open="true"] .meter::-webkit-meter-bar { height: 5px; }
   [data-open="false"] .readings dd { margin-top: 2px; }
   [data-open="false"] .readings .meter { margin-top: 3px; }
@@ -227,8 +280,8 @@
   .pages { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin-top: var(--space-1); color: var(--dim); font-size: .76rem; font-variant-numeric: tabular-nums; }
   .page-step { width: 36px; min-height: 28px; border: 0; border-radius: 6px; background: none; color: var(--dim); }
   .page-step .icon { width: 13px; height: 13px; }
-  .page-step, .tiles button, .timer button { transition: background-color 140ms ease, color 140ms ease, transform 110ms ease-out; }
-  .page-step:active, .tiles button:active, .timer button:active { transform: scale(.95); }
+  .page-step, .tiles button, .timer button, .inline-actions button { transition: background-color 140ms ease, color 140ms ease, transform 110ms ease-out; }
+  .page-step:active, .tiles button:active, .timer button:active, .inline-actions button:active { transform: scale(.95); }
   @media (hover: hover) { .tiles button:hover:not([aria-pressed="true"]) { background: #ffffff19; } }
   .page-step:hover, .timer button:hover { background-color: #ffffff1f; color: var(--white); }
   .dock { position: absolute; bottom: 9px; left: 50%; translate: -50% 0; display: flex; gap: 4px; align-items: center; max-width: calc(100% - 16px); overflow-x: auto; border: 1px solid #ffffff3b; border-radius: 8px; padding: 4px; background: #121925ec; color: var(--white); }
@@ -240,8 +293,8 @@
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   @media (max-width: 720px) { .screens { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) {
-    .island, .indicator, .page-step, .tiles button, .timer button { transition: none; }
-    .page-step:active, .tiles button:active, .timer button:active { transform: none; }
+    .island, .indicator, .page-step, .tiles button, .timer button, .inline-actions button { transition: none; }
+    .page-step:active, .tiles button:active, .timer button:active, .inline-actions button:active { transform: none; }
   }
 </style>
 <main>
@@ -250,7 +303,7 @@
     <h1>Dinamik Ada</h1>
   </div>
   <div class="screens"></div>
-  <p class="hint">Ada başlığı boyutu değiştirir. Kompakt görünümde üç nokta kontrolleri açar. Sayfalar arasında yatay kaydırabilir veya sağ ve sol ok tuşlarını kullanabilirsin.</p>
+  <p class="hint">Boyut değiştirmek için başlığa tıkla. Widget değiştirmek için adayı sağa veya sola sürükle. Üç nokta ek kontrolleri açar.</p>
 </main>
 <template id="monitor">
   <section class="monitor">
@@ -259,8 +312,9 @@
       <div class="island" data-open="false">
         <div class="island-header">
           <button class="toggle" type="button" aria-pressed="false">
-            <span class="widget-icon" aria-hidden="true"></span><span class="identity"></span><span class="summary"></span><span class="indicator" aria-hidden="true"></span>
+            <span class="widget-icon drag-surface" aria-hidden="true"></span><span class="identity drag-surface"></span><span class="summary drag-surface"></span><span class="indicator" aria-hidden="true"></span>
           </button>
+          <div class="inline-actions" hidden></div>
           <button class="controls-button" type="button" aria-label="Widget kontrolleri" aria-expanded="false"></button>
         </div>
         <div class="expand" hidden>
@@ -371,7 +425,11 @@
     NetSpeed: ['IconWifi', '#94dfec'], Battery: ['IconBattery', '#a7e5ba'],
     BluetoothBattery: ['IconBluetooth', '#adcbff'], Storage: ['IconHardDrive', '#bbd3fa'],
     Media: ['IconMusic', '#e0bdff'], Audio: ['IconVolume', '#c4baff'],
-    QuickSettings: ['IconSliders', '#b7d3ff'], Focus: ['IconTarget', '#d1c2ff']
+    QuickSettings: ['IconSliders', '#b7d3ff'], Focus: ['IconTarget', '#d1c2ff'],
+    AiUsageClaude: ['LogoClaude', '#f2b897'], AiUsageCodex: ['LogoCodex', '#b9e1cf'],
+    AiUsageAntigravity: ['LogoAntigravity', '#b9d0ff'], AiUsageOpenCode: ['LogoOpenCode', '#efe1b8'],
+    AiUsageCopilot: ['LogoCopilot', '#acdaf8'], AiUsageDeepSeek: ['LogoDeepSeek', '#a9baff'],
+    AiUsageOpenRouter: ['LogoOpenRouter', '#d3bcef'], AiUsageCursor: ['LogoCursor', '#e1e6ef']
   };
   const svgNamespace = 'http://www.w3.org/2000/svg';
   function icon(key) {
@@ -432,7 +490,7 @@
     } else if (widget.timer) {
       page.classList.add('timer');
       const minutes = widget.id === 'Focus' ? 25 : 5;
-      page.innerHTML = '<output aria-live="off"></output><div class="timer-actions"></div>';
+      page.innerHTML = '<span class="timer-state"></span><output aria-live="off"></output><div class="timer-actions"></div>';
       const actions = page.querySelector('.timer-actions');
       if (widget.timer === 'down') {
         actions.insertAdjacentHTML('beforebegin', '<progress max="1" value="0" aria-label="Geçen süre"></progress>');
@@ -466,6 +524,9 @@
           row.append(name, value);
           const percentage = value.textContent.match(/^%(\d+)$/);
           const level = widget.id === 'Storage' && index === 0 ? 284 / 476 * 100 : Number(percentage?.[1]);
+          if (['Battery', 'BluetoothBattery', 'Storage'].includes(widget.id) && Number.isFinite(level)) {
+            row.classList.add('capacity');
+          }
           if (Number.isFinite(level) && widget.id !== 'Weather') {
             const meter = document.createElement('meter');
             meter.className = 'meter';
@@ -477,6 +538,18 @@
           list.append(row);
         }
         page.append(list);
+      }
+      if (widget.id.startsWith('AiUsage')) {
+        const profile = document.createElement('div');
+        profile.className = 'profile quota-profile';
+        const text = document.createElement('span');
+        const name = document.createElement('strong');
+        name.textContent = widget.name;
+        const usage = widget.id === 'AiUsageDeepSeek' || widget.id === 'AiUsageOpenRouter' ?
+          'Hesap bakiyesi' : widget.id === 'AiUsageCopilot' ? 'Aylık kota' : 'Kullanım pencereleri';
+        text.append(name, usage);
+        profile.append(icon(appearances[widget.id][0]), text);
+        page.prepend(profile);
       }
       if (widget.status) {
         const note = document.createElement('p');
@@ -535,6 +608,7 @@
     const input = page.querySelector('input');
     const progress = page.querySelector('progress');
     const start = page.querySelector('[data-action="start"]');
+    const state = page.querySelector('.timer-state');
     const limit = () => input ? input.valueAsNumber * 60 : 0;
     let base = limit();
     let startedAt = null;
@@ -549,6 +623,9 @@
       }
       const value = [Math.floor(seconds / 60), seconds % 60].map(part => String(part).padStart(2, '0')).join(':');
       if (output.value !== value) output.value = value;
+      const label = startedAt !== null ? 'Çalışıyor' : start.textContent === 'Devam et' ? 'Duraklatıldı' :
+        direction === 'down' && seconds === 0 ? 'Süre doldu' : 'Hazır';
+      if (state.textContent !== label) state.textContent = label;
       if (progress && input.validity.valid && limit() > 0) progress.value = 1 - seconds / limit();
       return value;
     }
@@ -589,6 +666,7 @@
     const island = monitor.querySelector('.island');
     const toggle = monitor.querySelector('.toggle');
     const controlsButton = monitor.querySelector('.controls-button');
+    const inlineActions = monitor.querySelector('.inline-actions');
     const expand = monitor.querySelector('.expand');
     const nav = monitor.querySelector('nav');
     const dock = monitor.querySelector('.dock');
@@ -667,6 +745,8 @@
     let pageAnimation;
     let audioUrl;
     let gesture;
+    let suppressDragClick = false;
+    let syncInline = () => {};
     let wheelTotal = 0;
     let lastWheel = -Infinity;
     let wheelConsumed = false;
@@ -703,6 +783,93 @@
 
     function islandPages() {
       return [...positions.keys()].filter(widget => positions.get(widget) === 'island');
+    }
+
+    function bindInline(widget) {
+      inlineActions.replaceChildren();
+      syncInline = () => {};
+      const page = pagesById.get(widget);
+      function button(label, graphic, action) {
+        const control = document.createElement('button');
+        control.type = 'button';
+        control.setAttribute('aria-label', label);
+        control.append(graphic);
+        control.addEventListener('click', action);
+        inlineActions.append(control);
+        return control;
+      }
+      function playbackLabel(control, playing, label) {
+        if (control.getAttribute('aria-label') === label) return;
+        control.textContent = playing ? 'Ⅱ' : '▶';
+        control.setAttribute('aria-label', label);
+      }
+      if (widget === 'Media') {
+        const play = button('Medya oynat', '▶', async () => {
+          if (!audioUrl) sampleButton.click();
+          else if (!audio.paused) audio.pause();
+          else {
+            try {
+              await audio.play();
+            } catch {
+              track.textContent = 'Bu ses dosyası oynatılamadı.';
+            }
+          }
+          update();
+        });
+        const seek = document.createElement('input');
+        seek.type = 'range';
+        seek.dataset.seek = '';
+        seek.setAttribute('aria-label', 'Kompakt oynatma konumu');
+        seek.addEventListener('input', () => {
+          if (audioUrl) {
+            if (Number.isFinite(audio.duration)) audio.currentTime = seek.valueAsNumber;
+          } else {
+            sampleSeek.value = seek.value;
+            sampleSeek.dispatchEvent(new Event('input'));
+          }
+          update();
+        });
+        inlineActions.append(seek);
+        syncInline = () => {
+          const playing = audioUrl ? !audio.paused : sampleStartedAt !== null;
+          playbackLabel(play, playing, playing ? 'Medya duraklat' : 'Medya oynat');
+          seek.disabled = Boolean(audioUrl && !Number.isFinite(audio.duration));
+          const duration = audioUrl ? Math.floor(audio.duration) : sampleDuration;
+          if (Number.isFinite(duration) && seek.max !== String(duration)) seek.max = String(duration);
+          const position = audioUrl ? Math.floor(audio.currentTime) : sampleSeek.valueAsNumber;
+          if (seek.valueAsNumber !== position) seek.value = String(position);
+        };
+      } else if (catalog.get(widget)?.timer) {
+        const start = page.querySelector('[data-action="start"]');
+        const reset = page.querySelector('[data-action="reset"]');
+        const play = button('Zamanlayıcıyı başlat', '▶', () => { start.click(); update(); });
+        button('Zamanlayıcıyı sıfırla', '↺', () => { reset.click(); update(); });
+        syncInline = () => {
+          playbackLabel(play, start.textContent === 'Duraklat', 'Zamanlayıcı · ' + start.textContent);
+          play.disabled = start.disabled;
+        };
+      } else if (widget === 'QuickSettings') {
+        const tiles = [...page.querySelectorAll('.tiles button')];
+        const buttons = tiles.map((tile, index) => button(tile.textContent,
+          icon(['IconWifi', 'IconBluetooth', 'IconMoon'][index]), () => { tile.click(); update(); }));
+        syncInline = () => buttons.forEach((control, index) => {
+          control.setAttribute('aria-pressed', tiles[index].getAttribute('aria-pressed'));
+        });
+      } else if (widget === 'Audio') {
+        const fullSlider = page.querySelector('input[type="range"]');
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.max = fullSlider.max;
+        slider.setAttribute('aria-label', 'Kompakt ses düzeyi');
+        slider.addEventListener('input', () => {
+          fullSlider.value = slider.value;
+          fullSlider.dispatchEvent(new Event('input'));
+          update();
+        });
+        inlineActions.append(slider);
+        syncInline = () => { if (slider.value !== fullSlider.value) slider.value = fullSlider.value; };
+      }
+      inlineActions.hidden = !inlineActions.childElementCount;
     }
 
     function update() {
@@ -751,6 +918,7 @@
         (selected === 'Audio' ? '%' + selectedPage.querySelector('input').value :
           selected === 'QuickSettings' ? enabledTiles + ' açık' : samples[selected]?.[0] ?? '');
       if (summary.textContent !== value) summary.textContent = value;
+      syncInline();
       const dockClock = dock.querySelector('[data-clock]');
       if (dockClock) dockClock.textContent = localTime;
     }
@@ -758,6 +926,7 @@
     function showPage(widget, announce = false, syncPicker = true, direction = 0) {
       const changed = selected !== widget;
       selected = widget;
+      if (changed || !island.dataset.widget) bindInline(widget);
       const definition = catalog.get(widget);
       island.dataset.widget = widget ?? '';
       identity.textContent = ({
@@ -765,7 +934,7 @@
         DayProgress: 'Gün', QuickSettings: 'Hızlı ayarlar'
       })[widget] ?? definition?.short ?? definition?.name ?? '';
       if (definition) {
-        const [key, accent] = appearances[widget] ?? ['Logo' + definition.name, '#d2c5fc'];
+        const [key, accent] = appearances[widget];
         widgetIcon.replaceChildren(icon(key));
         island.style.setProperty('--widget-accent', accent);
         toggle.setAttribute('aria-label', definition.name + ' geniş görünüm');
@@ -787,9 +956,16 @@
         const page = pagesById.get(widget);
         if (page && !reduceMotion.matches) {
           pageAnimation = page.animate(
-            [{ opacity: .45, transform: 'translateX(' + direction * 6 + 'px)' }, { opacity: 1, transform: 'translateX(0)' }],
-            { duration: 155, easing: 'cubic-bezier(.23,1,.32,1)' }
+            [{ opacity: .35, transform: 'translateX(' + direction * 16 + 'px)' }, { opacity: 1, transform: 'translateX(0)' }],
+            { duration: 220, easing: 'cubic-bezier(.23,1,.32,1)' }
           );
+          for (const element of [widgetIcon, identity, summary]) {
+            element.getAnimations().forEach(animation => animation.cancel());
+            element.animate(
+              [{ opacity: .5, transform: 'translateX(' + direction * 7 + 'px)' }, { opacity: 1, transform: 'translateX(0)' }],
+              { duration: 165, easing: 'cubic-bezier(.23,1,.32,1)' }
+            );
+          }
         }
       }
       update();
@@ -850,23 +1026,41 @@
       }
     }, { passive: false });
     island.addEventListener('pointerdown', event => {
-      if (event.pointerType !== 'touch' || event.target.closest('input, audio, button:not(.toggle)')) return;
-      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      suppressDragClick = false;
+      if (!event.isPrimary || event.button !== 0 || islandPages().length < 2 ||
+          event.target.closest('input, audio, label, button:not(.toggle)')) return;
+      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, active: false };
     });
-    island.addEventListener('pointerup', event => {
+    island.addEventListener('pointermove', event => {
       if (!gesture || gesture.id !== event.pointerId) return;
-      const { x, y } = gesture;
-      gesture = undefined;
-      const dx = event.clientX - x;
-      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(event.clientY - y)) {
-        event.preventDefault();
-        movePage(dx < 0 ? 1 : -1);
-        toggle.addEventListener('click', suppressSwipeClick, { capture: true, once: true });
-        setTimeout(() => toggle.removeEventListener('click', suppressSwipeClick, true), 350);
+      const dx = event.clientX - gesture.x;
+      if (!gesture.active) {
+        if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(event.clientY - gesture.y)) return;
+        gesture.active = true;
+        island.setPointerCapture(event.pointerId);
+        island.dataset.dragging = 'true';
       }
+      if (!reduceMotion.matches) island.style.setProperty('--drag-offset', Math.max(-18, Math.min(18, dx * .35)) + 'px');
     });
-    function suppressSwipeClick(event) { event.stopImmediatePropagation(); }
-    island.addEventListener('pointercancel', () => { gesture = undefined; });
+    function finishGesture(event) {
+      if (!gesture || gesture.id !== event.pointerId) return;
+      const dx = event.clientX - gesture.x;
+      const active = gesture.active;
+      gesture = undefined;
+      delete island.dataset.dragging;
+      island.style.removeProperty('--drag-offset');
+      if (event.type !== 'pointerup' || !active) return;
+      suppressDragClick = true;
+      if (Math.abs(dx) >= 36) movePage(dx < 0 ? 1 : -1);
+    }
+    island.addEventListener('pointerup', finishGesture);
+    island.addEventListener('pointercancel', finishGesture);
+    island.addEventListener('lostpointercapture', finishGesture);
+    island.addEventListener('click', event => {
+      if (!suppressDragClick || event.detail === 0) return;
+      suppressDragClick = false;
+      event.stopImmediatePropagation();
+    }, true);
 
     picker.addEventListener('change', () => {
       placement.value = positions.get(picker.value);
