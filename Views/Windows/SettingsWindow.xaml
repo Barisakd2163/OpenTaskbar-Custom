@@ -660,12 +660,20 @@
                                         <TextBlock Text="{local:Loc DynamicIslandVisibilityDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
-                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <CheckBox x:Name="DynamicIslandHideFullscreenToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                               AutomationProperties.Name="{local:Loc DynamicIslandHideFullscreen}" />
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
                                         <TextBlock Text="{local:Loc DynamicIslandHideFullscreen}" Style="{StaticResource SettingsRowLabel}" />
                                         <TextBlock Text="{local:Loc DynamicIslandHideFullscreenDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                    <CheckBox x:Name="DynamicIslandAutoHideToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
+                                              AutomationProperties.Name="{local:Loc DynamicIslandAutoHide}" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc DynamicIslandAutoHide}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DynamicIslandAutoHideDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
                             </StackPanel></Border>

@@ -155,6 +155,8 @@
   "DynamicIslandVisibilityDescription": "Ada açık uygulamaların üzerinde kalır veya yalnızca ekranında uygulama penceresi yokken görünür.",
   "DynamicIslandHideFullscreen": "Tam ekran uygulamalarda gizle",
   "DynamicIslandHideFullscreenDescription": "Bir ekranda tam ekran uygulama kullanılırken o ekrandaki adayı gizler.",
+  "DynamicIslandAutoHide": "Otomatik gizle",
+  "DynamicIslandAutoHideDescription": "İşaretçi adadan ayrılınca gizler; ekranın üst kenarına gelince yeniden gösterir.",
   "DynamicIslandBackground": "Ada arka planı",
   "DynamicIslandBackgroundDescription": "Etkin temayı kullanın veya özel bir arka plan rengi seçin.",
   "DynamicIslandUseTheme": "Tema rengini kullan",

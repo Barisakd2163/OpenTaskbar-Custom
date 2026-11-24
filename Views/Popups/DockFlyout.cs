@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using OpenTaskbar.Models;
 using OpenTaskbar.Services;
+using OpenTaskbar.Views.Windows;
 
 namespace OpenTaskbar;
 
@@ -541,6 +542,12 @@ public sealed class DockFlyout
 
     public void Show(UIElement target, UIElement content, bool animate = true, bool focusable = false)
     {
+        if (Window.GetWindow(target) is DynamicIslandWindow)
+        {
+            if (_popup.IsOpen) Close(restoreFocus: false);
+            return;
+        }
+
         UnhookMouse();
         _isOpenState = true;
         _explicitClose = false;

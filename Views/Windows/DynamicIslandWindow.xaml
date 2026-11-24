@@ -38,7 +38,7 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <Grid ClipToBounds="False">
+    <Grid x:Name="IslandRoot" ClipToBounds="False">
         <Path Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top"
               Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z">
             <Path.Style>
@@ -119,21 +119,9 @@
                         <StackPanel x:Name="PageNavigation" Grid.Row="1" Orientation="Horizontal"
                                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0"
                                     Visibility="Collapsed">
-                            <Button x:Name="PreviousButton" Width="26" Height="26" Style="{StaticResource IslandButton}"
-                                    Click="Previous_Click" AutomationProperties.Name="{DynamicResource DynamicIslandPrevious}"
-                                    ToolTip="{DynamicResource DynamicIslandPrevious}">
-                                <ContentControl Width="12" Height="12" Content="{StaticResource IconChevronLeft}"
-                                                Style="{StaticResource WidgetGlyph}" />
-                            </Button>
                             <StackPanel x:Name="PageIndicators" Orientation="Horizontal"
                                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                                        Margin="5,0" IsHitTestVisible="False" />
-                            <Button x:Name="NextButton" Width="26" Height="26" Style="{StaticResource IslandButton}"
-                                    Click="Next_Click" AutomationProperties.Name="{DynamicResource DynamicIslandNext}"
-                                    ToolTip="{DynamicResource DynamicIslandNext}">
-                                <ContentControl Width="12" Height="12" Content="{StaticResource IconChevronRight}"
-                                                Style="{StaticResource WidgetGlyph}" />
-                            </Button>
+                                        IsHitTestVisible="False" />
                         </StackPanel>
                     </Grid>
                 </Border>

@@ -269,7 +269,8 @@ public sealed record DockSettings(
     IReadOnlyDictionary<string, IReadOnlyList<string>>? DynamicIslandWidgetOrders = null,
     bool DynamicIslandEnabled = false,
     string? DynamicIslandBackgroundColor = null,
-    double DynamicIslandOpacity = 1.0)
+    double DynamicIslandOpacity = 1.0,
+    bool DynamicIslandAutoHide = false)
 {
     public const string DynamicIslandAllDisplays = "*";
     /// <summary>Effective animation state, suppressed while focus mode is active.</summary>

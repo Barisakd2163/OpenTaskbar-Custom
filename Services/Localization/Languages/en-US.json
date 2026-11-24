@@ -158,6 +158,8 @@
   "DynamicIslandVisibilityDescription": "Choose whether the island stays above apps or appears only when no app window is open on its display.",
   "DynamicIslandHideFullscreen": "Hide in full-screen apps",
   "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it.",
+  "DynamicIslandAutoHide": "Auto-hide",
+  "DynamicIslandAutoHideDescription": "Hide the island when the pointer leaves; reveal it from the top edge.",
   "DynamicIslandBackground": "Island background",
   "DynamicIslandBackgroundDescription": "Use the active theme or choose a custom background color.",
   "DynamicIslandUseTheme": "Use theme color",

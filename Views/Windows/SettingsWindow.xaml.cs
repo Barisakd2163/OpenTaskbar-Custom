@@ -530,6 +530,7 @@ public partial class SettingsWindow : Window
             DynamicIslandVisibility = Enum.TryParse<DynamicIslandVisibilityMode>(Choice(DynamicIslandVisibilityBox), out var islandVisibility)
                 ? islandVisibility : _preferences.Current.DynamicIslandVisibility,
             DynamicIslandHideInFullscreen = DynamicIslandHideFullscreenToggle.IsChecked == true,
+            DynamicIslandAutoHide = DynamicIslandAutoHideToggle.IsChecked == true,
             DynamicIslandBackgroundColor = _dynamicIslandBackgroundColor,
             DynamicIslandOpacity = Math.Round(DynamicIslandOpacitySlider.Value) / 100,
             MagnificationEnabled = MagnificationToggle.IsChecked == true,
@@ -661,6 +662,7 @@ public partial class SettingsWindow : Window
         var enabled = DynamicIslandEnabledToggle.IsChecked == true;
         DynamicIslandVisibilityBox.IsEnabled = enabled;
         DynamicIslandHideFullscreenToggle.IsEnabled = enabled;
+        DynamicIslandAutoHideToggle.IsEnabled = enabled;
         DynamicIslandBackgroundButton.IsEnabled = enabled;
         DynamicIslandUseThemeButton.IsEnabled = enabled;
         DynamicIslandOpacitySlider.IsEnabled = enabled;
@@ -720,28 +722,17 @@ public partial class SettingsWindow : Window
 
     private void LoadDynamicIslandPlacementChoices(DockSettings settings)
     {
-        var choices = new List<DynamicIslandPlacementChoice>
-        {
+        IReadOnlyList<DynamicIslandPlacementChoice> choices =
+        [
             new("dock", UiText.Get("DynamicIslandDock")),
-            new(DockSettings.DynamicIslandAllDisplays, UiText.Get("DynamicIslandAllDisplays"))
-        };
-        var displays = DisplayService.GetDisplays();
-        choices.AddRange(displays.Select(display =>
-            new DynamicIslandPlacementChoice(display.DeviceName, display.Name)));
-        foreach (var target in (settings.DynamicIslandPlacements?.Values ?? [])
-                     .Where(value => !string.Equals(value, DockSettings.DynamicIslandAllDisplays, StringComparison.OrdinalIgnoreCase)
-                         && !displays.Any(display => string.Equals(display.DeviceName, value, StringComparison.OrdinalIgnoreCase)))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            choices.Add(new DynamicIslandPlacementChoice(
-                target, $"{target} · {UiText.Get("DynamicIslandDisplayDisconnected")}"));
-        }
+            new(DockSettings.DynamicIslandAllDisplays, UiText.Get("DynamicIslandTitle"))
+        ];
 
         foreach (var option in _widgetOptions)
         {
             option.DynamicIslandPlacementChoices = choices;
-            option.DynamicIslandPlacementValue = settings.DynamicIslandPlacements?.TryGetValue(option.Id, out var target) == true
-                ? target
+            option.DynamicIslandPlacementValue = settings.DynamicIslandPlacements?.ContainsKey(option.Id) == true
+                ? DockSettings.DynamicIslandAllDisplays
                 : "dock";
         }
     }
@@ -1646,6 +1637,7 @@ public partial class SettingsWindow : Window
         LoadDynamicIslandPlacementChoices(settings);
         SelectChoice(DynamicIslandVisibilityBox, settings.DynamicIslandVisibility.ToString());
         DynamicIslandHideFullscreenToggle.IsChecked = settings.DynamicIslandHideInFullscreen;
+        DynamicIslandAutoHideToggle.IsChecked = settings.DynamicIslandAutoHide;
         LoadDynamicIslandAppearance(settings);
         UpdateDynamicIslandControls();
         SelectChoice(EdgeBox, settings.Edge.ToString());
@@ -2849,6 +2841,7 @@ public partial class SettingsWindow : Window
             DynamicIslandEnabledToggle.IsChecked = defaults.DynamicIslandEnabled;
             SelectChoice(DynamicIslandVisibilityBox, defaults.DynamicIslandVisibility.ToString());
             DynamicIslandHideFullscreenToggle.IsChecked = defaults.DynamicIslandHideInFullscreen;
+            DynamicIslandAutoHideToggle.IsChecked = defaults.DynamicIslandAutoHide;
             LoadDynamicIslandAppearance(defaults);
             LoadDynamicIslandPlacementChoices(defaults);
             UpdateDynamicIslandControls();

@@ -30,6 +30,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private const long WsExAppWindow = 0x00040000;
     private const int WmMouseActivate = 0x0021;
     private const int MaNoActivate = 3;
+    private const double RevealStripHeight = 4;
+    private static readonly TimeSpan RevealCheckInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan SlideDuration = TimeSpan.FromMilliseconds(190);
     private static readonly TimeSpan ResizeDuration = TimeSpan.FromMilliseconds(180);
 
@@ -38,6 +40,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private readonly Action<string> _removeWidget;
     private readonly Func<string, IEnumerable<Control>> _createPlacementMenuItems;
     private readonly DispatcherTimer _visibilityTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private readonly DispatcherTimer _revealTimer = new() { Interval = RevealCheckInterval };
     private readonly HashSet<string> _placementIds = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, DockWidgetItem> _timedWidgets = new Dictionary<string, DockWidgetItem>();
     private IReadOnlyList<string> _pageIds = [];
@@ -53,6 +56,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private bool _isExpanded;
     private bool _syncingPages;
     private bool _resourcesDisposed;
+    private bool _hiddenByAutoHide;
 
     public DynamicIslandWindow(
         DisplayInfo display,
@@ -84,6 +88,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
         _widgetCoordinator.WidgetsPlaced += SyncPages;
         InputManager.Current.PreProcessInput += InputManager_PreProcessInput;
         _visibilityTimer.Tick += VisibilityTimer_Tick;
+        _revealTimer.Tick += RevealTimer_Tick;
         _visibilityTimer.Start();
         UiText.Current.PropertyChanged += UiText_PropertyChanged;
         UpdateControlLabels();
@@ -284,16 +289,12 @@ public partial class DynamicIslandWindow : Window, IDisposable
     {
         if (_pageIds.Count == 0)
         {
-            PreviousButton.IsEnabled = false;
-            NextButton.IsEnabled = false;
             PageIndicators.Children.Clear();
             PageNavigation.Visibility = Visibility.Collapsed;
             AutomationProperties.SetName(Header, UiText.Get("DynamicIslandTitle"));
             return;
         }
 
-        PreviousButton.IsEnabled = _pageIds.Count > 1;
-        NextButton.IsEnabled = _pageIds.Count > 1;
         PageNavigation.Visibility = _isExpanded && _pageIds.Count > 1
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -718,9 +719,6 @@ public partial class DynamicIslandWindow : Window, IDisposable
         SetCurrentPageIndex(targetIndex, animate: true);
     }
 
-    private void Previous_Click(object sender, RoutedEventArgs e) => MovePage(-1);
-    private void Next_Click(object sender, RoutedEventArgs e) => MovePage(1);
-
     private void Header_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e, allowButtons: false);
     private void Details_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BeginPointerGesture(e, allowButtons: true);
 
@@ -891,14 +889,23 @@ public partial class DynamicIslandWindow : Window, IDisposable
     private void UpdateControlLabels()
     {
         Title = UiText.Get("DynamicIslandTitle");
-        AutomationProperties.SetName(PreviousButton, UiText.Get("DynamicIslandPrevious"));
-        AutomationProperties.SetName(NextButton, UiText.Get("DynamicIslandNext"));
         UpdatePageControls();
     }
 
     private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => UpdateControlLabels();
 
     private void VisibilityTimer_Tick(object? sender, EventArgs e) => RefreshVisibility();
+
+    private void RevealTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_resourcesDisposed || IsVisible || !_settings.DynamicIslandAutoHide)
+        {
+            _revealTimer.Stop();
+            return;
+        }
+
+        if (IsPointerAtRevealStrip()) RefreshVisibility();
+    }
 
     private void RefreshVisibility()
     {
@@ -917,8 +924,92 @@ public partial class DynamicIslandWindow : Window, IDisposable
                 hideInFullscreen: _settings.DynamicIslandHideInFullscreen,
                 fullscreen);
 
-        if (shouldShow && !IsVisible) Show();
-        else if (!shouldShow && IsVisible) Hide();
+        if (shouldShow && _settings.DynamicIslandAutoHide)
+        {
+            if (IsVisible)
+            {
+                _revealTimer.Stop();
+                shouldShow = IsMouseOver;
+            }
+            else
+            {
+                shouldShow = IsPointerAtRevealStrip();
+                if (shouldShow) _revealTimer.Stop();
+                else
+                {
+                    _hiddenByAutoHide = true;
+                    if (!_revealTimer.IsEnabled) _revealTimer.Start();
+                }
+            }
+        }
+        else
+        {
+            _revealTimer.Stop();
+            if (!shouldShow) _hiddenByAutoHide = false;
+        }
+
+        if (shouldShow && !IsVisible)
+        {
+            if (_hiddenByAutoHide && _settings.DynamicIslandAutoHide) ShowWithRevealAnimation();
+            else Show();
+            _hiddenByAutoHide = false;
+        }
+        else if (!shouldShow && IsVisible)
+        {
+            _hiddenByAutoHide = _settings.DynamicIslandAutoHide;
+            Hide();
+        }
+    }
+
+    private void ShowWithRevealAnimation()
+    {
+        if (!_settings.EffectiveAnimationsEnabled || !SystemParameters.ClientAreaAnimation)
+        {
+            IslandRoot.RenderTransform = Transform.Identity;
+            IslandRoot.Opacity = 1;
+            Show();
+            return;
+        }
+
+        var distance = Math.Max(CompactHeight, Height);
+        var transform = new TranslateTransform(0, -distance);
+        IslandRoot.RenderTransform = transform;
+        IslandRoot.Opacity = 0;
+        Show();
+
+        var slide = new DoubleAnimation(-distance, 0, TimeSpan.FromMilliseconds(190))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        slide.Completed += (_, _) =>
+        {
+            transform.Y = 0;
+            transform.BeginAnimation(TranslateTransform.YProperty, null);
+        };
+        transform.BeginAnimation(TranslateTransform.YProperty, slide, HandoffBehavior.SnapshotAndReplace);
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(135))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        fade.Completed += (_, _) =>
+        {
+            IslandRoot.Opacity = 1;
+            IslandRoot.BeginAnimation(UIElement.OpacityProperty, null);
+        };
+        IslandRoot.BeginAnimation(UIElement.OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private bool IsPointerAtRevealStrip()
+    {
+        if (!GetCursorPos(out var cursor)) return false;
+        var scale = 96d / _display.Dpi;
+        var cursorX = cursor.X * scale;
+        var cursorY = cursor.Y * scale;
+        return cursorX >= Left && cursorX <= Left + Width
+            && cursorY >= Top && cursorY <= Top + RevealStripHeight;
     }
 
     private void Window_Closed(object? sender, EventArgs e) => ReleaseResources();
@@ -929,6 +1020,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
         _resourcesDisposed = true;
         _visibilityTimer.Stop();
         _visibilityTimer.Tick -= VisibilityTimer_Tick;
+        _revealTimer.Stop();
+        _revealTimer.Tick -= RevealTimer_Tick;
         InputManager.Current.PreProcessInput -= InputManager_PreProcessInput;
         UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         _widgetCoordinator.AvailabilityChanged -= SyncPages;
@@ -962,6 +1055,16 @@ public partial class DynamicIslandWindow : Window, IDisposable
         if (IntPtr.Size == 8) _ = SetWindowLongPtr64(window, index, value);
         else _ = SetWindowLong32(window, index, value.ToInt32());
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static extern nint GetWindowLongPtr64(nint window, int index);
