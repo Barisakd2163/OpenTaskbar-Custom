@@ -1018,5 +1018,11 @@
   "DynamicIslandVisibilityDesktopOnly": "When the desktop is visible",
   "DynamicIslandVisibilityDescription": "Choose whether the island stays above apps or appears only when no app window is open on its display.",
   "DynamicIslandHideFullscreen": "Hide in full-screen apps",
-  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it."
+  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it.",
+  "DynamicIslandBackground": "灵动岛背景",
+  "DynamicIslandBackgroundDescription": "使用当前主题或选择自定义背景颜色。",
+  "DynamicIslandOpacityDescription": "设置背景透出的程度。",
+  "DynamicIslandUseTheme": "使用主题颜色",
+  "ThemeFieldDynamicIslandMaterial": "灵动岛背景",
+  "ThemeFieldDynamicIslandStroke": "灵动岛边框"
 }

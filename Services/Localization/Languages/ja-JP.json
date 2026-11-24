@@ -1018,5 +1018,11 @@
   "DynamicIslandVisibilityDesktopOnly": "When the desktop is visible",
   "DynamicIslandVisibilityDescription": "Choose whether the island stays above apps or appears only when no app window is open on its display.",
   "DynamicIslandHideFullscreen": "Hide in full-screen apps",
-  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it."
+  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it.",
+  "DynamicIslandBackground": "アイランドの背景",
+  "DynamicIslandBackgroundDescription": "現在のテーマを使用するか、カスタム背景色を選択します。",
+  "DynamicIslandOpacityDescription": "背景の透過度を設定します。",
+  "DynamicIslandUseTheme": "テーマカラーを使用",
+  "ThemeFieldDynamicIslandMaterial": "ダイナミックアイランドの背景",
+  "ThemeFieldDynamicIslandStroke": "ダイナミックアイランドの枠線"
 }

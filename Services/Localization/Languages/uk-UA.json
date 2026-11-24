@@ -1018,5 +1018,11 @@
   "DynamicIslandVisibilityDesktopOnly": "When the desktop is visible",
   "DynamicIslandVisibilityDescription": "Choose whether the island stays above apps or appears only when no app window is open on its display.",
   "DynamicIslandHideFullscreen": "Hide in full-screen apps",
-  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it."
+  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it.",
+  "DynamicIslandBackground": "Фон острівця",
+  "DynamicIslandBackgroundDescription": "Використовуйте активну тему або виберіть власний колір фону.",
+  "DynamicIslandOpacityDescription": "Визначає ступінь прозорості фону.",
+  "DynamicIslandUseTheme": "Використовувати колір теми",
+  "ThemeFieldDynamicIslandMaterial": "Фон Dynamic Island",
+  "ThemeFieldDynamicIslandStroke": "Межа Dynamic Island"
 }

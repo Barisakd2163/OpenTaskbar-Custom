@@ -1018,5 +1018,11 @@
   "DynamicIslandVisibilityDesktopOnly": "When the desktop is visible",
   "DynamicIslandVisibilityDescription": "Choose whether the island stays above apps or appears only when no app window is open on its display.",
   "DynamicIslandHideFullscreen": "Hide in full-screen apps",
-  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it."
+  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it.",
+  "DynamicIslandBackground": "Arrière-plan de l'îlot",
+  "DynamicIslandBackgroundDescription": "Utilisez le thème actif ou choisissez une couleur d'arrière-plan personnalisée.",
+  "DynamicIslandOpacityDescription": "Définit le niveau de transparence de l'arrière-plan.",
+  "DynamicIslandUseTheme": "Utiliser la couleur du thème",
+  "ThemeFieldDynamicIslandMaterial": "Arrière-plan de l'îlot dynamique",
+  "ThemeFieldDynamicIslandStroke": "Bordure de l'îlot dynamique"
 }

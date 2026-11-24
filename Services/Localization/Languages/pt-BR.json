@@ -1018,5 +1018,11 @@
   "DynamicIslandVisibilityDesktopOnly": "When the desktop is visible",
   "DynamicIslandVisibilityDescription": "Choose whether the island stays above apps or appears only when no app window is open on its display.",
   "DynamicIslandHideFullscreen": "Hide in full-screen apps",
-  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it."
+  "DynamicIslandHideFullscreenDescription": "Hide the island on a display while a full-screen app is using it.",
+  "DynamicIslandBackground": "Fundo da ilha",
+  "DynamicIslandBackgroundDescription": "Use o tema ativo ou escolha uma cor de fundo personalizada.",
+  "DynamicIslandOpacityDescription": "Define o quanto o fundo aparece através da ilha.",
+  "DynamicIslandUseTheme": "Usar cor do tema",
+  "ThemeFieldDynamicIslandMaterial": "Fundo da Ilha Dinâmica",
+  "ThemeFieldDynamicIslandStroke": "Borda da Ilha Dinâmica"
 }
