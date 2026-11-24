@@ -168,6 +168,10 @@ public partial class DynamicIslandWindow : Window, IDisposable
             DetailsContent.Content = null;
             _details = null;
             DetailsPanel.Visibility = Visibility.Collapsed;
+            foreach (var activeWidget in _widgetCoordinator.ActiveWidgets.Values)
+            {
+                DetachFromParent(activeWidget);
+            }
             Pages.Children.Clear();
             foreach (var id in nextPageIds)
             {
@@ -316,8 +320,25 @@ public partial class DynamicIslandWindow : Window, IDisposable
             DynamicIslandStatusPanel.Create(label, summary, string.Empty, null, AccentFor(id)), id);
     }
 
+    private static void DetachFromParent(UIElement element)
+    {
+        switch (LogicalTreeHelper.GetParent(element))
+        {
+            case Decorator decorator when ReferenceEquals(decorator.Child, element):
+                decorator.Child = null;
+                break;
+            case ContentControl content when ReferenceEquals(content.Content, element):
+                content.Content = null;
+                break;
+            case Panel panel:
+                panel.Children.Remove(element);
+                break;
+        }
+    }
+
     private Grid CreateWidgetPage(string id, LiveDockWidget widget)
     {
+        DetachFromParent(widget);
         var page = new Grid
         {
             Width = Math.Max(1, PageViewport.ActualWidth),
