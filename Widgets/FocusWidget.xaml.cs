@@ -226,7 +226,7 @@ public partial class FocusWidget : DockWidget
 
     internal UIElement BuildFocusFlyout()
     {
-        var container = new Border { Width = 316 };
+        var container = new Border { Width = 296 };
         _flyoutContainer = container;
         PopulateFocusFlyout(container);
         return container;
@@ -236,55 +236,40 @@ public partial class FocusWidget : DockWidget
     {
         var root = new StackPanel();
 
-        // Header: Focus/Break label + completed session count
-        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+        // Unified header: Focus/Break title on left, completed session count on right.
         var sessionCount = new TextBlock
         {
             Text = UiText.Format("FocusSessionsCount", _state.Completed),
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
+            FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         sessionCount.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        DockPanel.SetDock(sessionCount, Dock.Right);
-        header.Children.Add(sessionCount);
-
-        var title = new TextBlock
-        {
-            Text = UiText.Get(_state.CurrentPhase == Phase.Focus ? "Focus" : "Break"),
-            FontSize = 12.5,
-            FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        title.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        header.Children.Add(title);
-        root.Children.Add(header);
         _flyoutSessionCount = sessionCount;
+        root.Children.Add(DockFlyout.Header(UiText.Get(_state.CurrentPhase == Phase.Focus ? "Focus" : "Break"), sessionCount, bottomMargin: 6));
 
-        // Prominent remaining time
+        // Restrained tabular timer readout + compact 4px progress bar.
         var timeText = new TextBlock
         {
             Text = FormatRemaining(),
-            FontSize = 48,
-            FontWeight = FontWeights.Bold,
-            Margin = new Thickness(0, 2, 0, 12),
+            FontSize = 32,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 10),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         timeText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         root.Children.Add(timeText);
         _flyoutTimeText = timeText;
 
-        // Horizontal progress track
         var pct = RemainingFraction();
-        var track = new Border { Height = 7, CornerRadius = new CornerRadius(3.5), Margin = new Thickness(0, 0, 0, 14), ClipToBounds = true };
+        var track = new Border { Height = 4, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 0, 12), ClipToBounds = true };
         track.SetResourceReference(Border.BackgroundProperty, "WidgetTrack");
         var trackGrid = new Grid();
         var fillCol = new ColumnDefinition { Width = new GridLength(pct, GridUnitType.Star) };
         var emptyCol = new ColumnDefinition { Width = new GridLength(Math.Max(0, 1 - pct), GridUnitType.Star) };
         trackGrid.ColumnDefinitions.Add(fillCol);
         trackGrid.ColumnDefinitions.Add(emptyCol);
-        var fill = new Border { CornerRadius = new CornerRadius(3.5) };
+        var fill = new Border { CornerRadius = new CornerRadius(2) };
         fill.SetResourceReference(Border.BackgroundProperty, "WidgetBlue");
         Grid.SetColumn(fill, 0);
         trackGrid.Children.Add(fill);
@@ -294,8 +279,8 @@ public partial class FocusWidget : DockWidget
         _flyoutProgressFillCol = fillCol;
         _flyoutProgressEmptyCol = emptyCol;
 
-        // 15 / 25 / 50 minute preset row
-        var presetsGrid = new UniformGrid { Columns = FocusPresets.Length, Margin = new Thickness(0, 0, 0, 10) };
+        // Compact 15 / 25 / 50 preset selector.
+        var presetsGrid = new UniformGrid { Columns = FocusPresets.Length, Margin = new Thickness(0, 0, 0, 2) };
         var currentMins = (int)Math.Round(PhaseLength.TotalMinutes);
         for (var i = 0; i < FocusPresets.Length; i++)
         {
@@ -304,7 +289,8 @@ public partial class FocusWidget : DockWidget
             var presetBtn = new Button
             {
                 Content = UiText.Format("MinutesShort", mins),
-                Margin = new Thickness(i == 0 ? 0 : 4, 0, i == FocusPresets.Length - 1 ? 0 : 4, 0)
+                Margin = new Thickness(i == 0 ? 0 : 3, 0, i == FocusPresets.Length - 1 ? 0 : 3, 0),
+                Padding = new Thickness(6, 5, 6, 5)
             };
             presetBtn.SetResourceReference(StyleProperty, isSelected ? "WidgetFlyoutPrimaryButton" : "WidgetFlyoutActionButton");
             presetBtn.Click += (_, _) =>
@@ -321,28 +307,17 @@ public partial class FocusWidget : DockWidget
         }
         root.Children.Add(presetsGrid);
 
-        // Reset + Start/Pause action row
-        var actionsGrid = new UniformGrid { Columns = 2 };
-        var resetBtn = new Button
-        {
-            Content = UiText.Get("FocusReset"),
-            Margin = new Thickness(0, 0, 4, 0)
-        };
+        // Unified footer bar with Reset + Start/Pause.
+        var resetBtn = new Button { Content = UiText.Get("FocusReset") };
         resetBtn.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
         resetBtn.Click += Reset_Click;
 
-        var toggleBtn = new Button
-        {
-            Content = UiText.Get(IsRunning ? "FocusPause" : "FocusStart"),
-            Margin = new Thickness(4, 0, 0, 0)
-        };
+        var toggleBtn = new Button { Content = UiText.Get(IsRunning ? "FocusPause" : "FocusStart") };
         toggleBtn.SetResourceReference(StyleProperty, "WidgetFlyoutPrimaryButton");
         toggleBtn.Click += Toggle_Click;
         _flyoutToggleButton = toggleBtn;
 
-        actionsGrid.Children.Add(resetBtn);
-        actionsGrid.Children.Add(toggleBtn);
-        root.Children.Add(actionsGrid);
+        root.Children.Add(DockFlyout.FooterBar(resetBtn, toggleBtn));
 
         container.Child = root;
     }

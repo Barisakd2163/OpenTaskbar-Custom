@@ -129,30 +129,17 @@ public sealed class DockFlyout
         _innerBevel = new Border
         {
             BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(15),
-            Padding = new Thickness(14),
+            CornerRadius = new CornerRadius(11),
+            Padding = new Thickness(12),
             Background = Brushes.Transparent
         };
 
-        var topSheen = new Border
-        {
-            Height = 36,
-            VerticalAlignment = VerticalAlignment.Top,
-            CornerRadius = new CornerRadius(15, 15, 0, 0),
-            IsHitTestVisible = false
-        };
-        topSheen.SetResourceReference(Border.BackgroundProperty, "MenuSheenMaterial");
-
-        var bodyGrid = new Grid();
-        bodyGrid.Children.Add(topSheen);
-        bodyGrid.Children.Add(_innerBevel);
-
         _frame = new Border
         {
-            CornerRadius = new CornerRadius(16),
+            CornerRadius = new CornerRadius(12),
             Padding = new Thickness(0),
             ClipToBounds = true,
-            Child = bodyGrid
+            Child = _innerBevel
         };
         _frame.SetResourceReference(Border.BorderThicknessProperty, "MenuStrokeThickness");
         _frame.SetResourceReference(Border.BackgroundProperty, "MenuMaterial");
@@ -161,7 +148,7 @@ public sealed class DockFlyout
         _frame.SetResourceReference(TextElement.FontFamilyProperty, "InterfaceFont");
 
         var contentHost = new Grid();
-        AttachSoftShadow(contentHost, 16);
+        AttachSoftShadow(contentHost, 12);
         contentHost.Children.Add(_frame);
 
         var scale = new ScaleTransform(1, 1);
@@ -755,14 +742,78 @@ public sealed class DockFlyout
 
     public static TextBlock Heading(string text)
     {
-        var block = new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, FontSize = 12.5, Margin = new Thickness(4, 0, 4, 8) };
+        var block = new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, FontSize = 13, Margin = new Thickness(0, 0, 0, 8) };
         block.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         return block;
     }
 
+    public static DockPanel Header(string title, UIElement? trailing = null, double bottomMargin = 10)
+    {
+        var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, bottomMargin) };
+        if (trailing is not null)
+        {
+            DockPanel.SetDock(trailing, Dock.Right);
+            row.Children.Add(trailing);
+        }
+        var label = new TextBlock
+        {
+            Text = title,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        row.Children.Add(label);
+        return row;
+    }
+
+    public static TextBlock SectionLabel(string text, Thickness? margin = null)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Margin = margin ?? new Thickness(0, 0, 0, 6)
+        };
+        block.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+        return block;
+    }
+
+    public static Border Divider(double verticalMargin = 8)
+    {
+        var line = new Border { Height = 1, Margin = new Thickness(0, verticalMargin, 0, verticalMargin) };
+        line.SetResourceReference(Border.BackgroundProperty, "StrokeSubtle");
+        return line;
+    }
+
+    public static Border FooterBar(params UIElement[] actions)
+    {
+        var grid = new UniformGrid { Columns = Math.Max(1, actions.Length) };
+        for (var i = 0; i < actions.Length; i++)
+        {
+            if (actions[i] is FrameworkElement fe)
+            {
+                fe.Margin = new Thickness(i == 0 ? 0 : 4, 0, i == actions.Length - 1 ? 0 : 4, 0);
+            }
+            grid.Children.Add(actions[i]);
+        }
+
+        var bar = new Border
+        {
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, 10, 0, 0),
+            Padding = new Thickness(0, 8, 0, 0),
+            Child = grid
+        };
+        bar.SetResourceReference(Border.BorderBrushProperty, "StrokeSubtle");
+        return bar;
+    }
+
     public static TextBlock Caption(string text)
     {
-        var block = new TextBlock { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 2, 4, 2) };
+        var block = new TextBlock { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 2) };
         block.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         return block;
     }

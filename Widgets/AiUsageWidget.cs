@@ -1573,7 +1573,7 @@ public sealed class AiUsageWidget : DockWidget
     {
         countdowns.Clear();
         var now = DateTimeOffset.UtcNow;
-        var root = new StackPanel { Width = 280 };
+        var root = new StackPanel { Width = 296 };
         root.Children.Add(SectionHeader(_provider, _report));
         if (_error is not null)
         {
@@ -1689,24 +1689,23 @@ public sealed class AiUsageWidget : DockWidget
 
     private UIElement BreakdownTiles(IReadOnlyList<AiUsageShare> rows)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
-        var heading = Text(UiText.Get("AiUsageBreakdown"), 11, "TextSecondary", new Thickness(0, 0, 0, 4));
-        heading.FontWeight = FontWeights.SemiBold;
-        panel.Children.Add(heading);
-        var grid = new UniformGrid { Columns = Math.Min(3, rows.Count), Margin = new Thickness(-2, 0, -2, 0) };
+        var panel = new StackPanel { Margin = new Thickness(0, 2, 0, 6) };
+        panel.Children.Add(DockFlyout.SectionLabel(UiText.Get("AiUsageBreakdown"), new Thickness(0, 0, 0, 4)));
         foreach (var share in rows)
         {
-            var tile = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 5, 8, 5), Margin = new Thickness(2) };
-            tile.SetResourceReference(Border.BackgroundProperty, "SurfaceSelected");
-            var value = Text(Percent(share.Used), 12.5, "TextPrimary");
+            var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
+            var value = Text(Percent(share.Used), 12, "TextPrimary");
             value.FontWeight = FontWeights.SemiBold;
             Typography.SetNumeralAlignment(value, FontNumeralAlignment.Tabular);
-            var label = Text(share.Name, 10.5, "TextSecondary");
+            DockPanel.SetDock(value, Dock.Right);
+            row.Children.Add(value);
+
+            var label = Text(share.Name, 11, "TextSecondary");
             label.TextTrimming = TextTrimming.CharacterEllipsis;
-            tile.Child = new StackPanel { Children = { label, value } };
-            grid.Children.Add(tile);
+            label.Margin = new Thickness(0, 0, 8, 0);
+            row.Children.Add(label);
+            panel.Children.Add(row);
         }
-        panel.Children.Add(grid);
         return panel;
     }
 

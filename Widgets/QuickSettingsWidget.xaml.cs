@@ -444,7 +444,7 @@ public partial class QuickSettingsWidget : DockWidget
     internal UIElement BuildMoreFlyoutContent()
     {
         var root = new StackPanel { Width = 320 };
-        root.Children.Add(DockFlyout.Heading(UiText.Get("WidgetQuickSettings")));
+        root.Children.Add(DockFlyout.Header(UiText.Get("WidgetQuickSettings"), bottomMargin: 8));
 
         var grid = new UniformGrid { Columns = 2 };
         foreach (var shortcut in FlyoutShortcuts)
@@ -481,8 +481,8 @@ public partial class QuickSettingsWidget : DockWidget
                 _flyout.Close();
                 if (s is FrameworkElement el) Report(action(el));
             }, labelText);
-            item.Padding = new Thickness(8, 7, 8, 7);
-            item.Margin = new Thickness(2);
+            item.Padding = new Thickness(8, 6, 8, 6);
+            item.Margin = new Thickness(1);
             grid.Children.Add(item);
         }
 

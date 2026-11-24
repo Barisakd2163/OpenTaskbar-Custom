@@ -587,55 +587,60 @@ public partial class SystemStatsWidget : DockWidget
         var container = new Border { Width = 296, Child = root };
 
         var uptimeText = CreateValueText();
+        uptimeText.FontSize = 11;
+        uptimeText.FontWeight = FontWeights.Normal;
         uptimeText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         uptimeText.ToolTip = UiText.Get("StatsUptime");
-        var header = CreateMetricLine(UiText.Get("WidgetSystemStats"), uptimeText);
-        header.Margin = new Thickness(0, 0, 0, 12);
-        root.Children.Add(header);
+        root.Children.Add(DockFlyout.Header(UiText.Get("WidgetSystemStats"), uptimeText));
 
         var cpuValue = CreateValueText();
-        var cpuSparkline = CreateSparkline("WidgetBlue", 22);
+        var cpuSparkline = CreateSparkline("WidgetBlue", 14);
         root.Children.Add(CreateMetricSection(UiText.Get("Cpu"), cpuValue, cpuSparkline));
 
         var ramValue = CreateValueText();
         var ramPair = CreateValueText();
+        ramPair.FontSize = 11;
+        ramPair.FontWeight = FontWeights.Normal;
         ramPair.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-        var ramSparkline = CreateSparkline("WidgetAccent", 22);
+        var ramSparkline = CreateSparkline("WidgetAccent", 14);
         root.Children.Add(CreateMetricSection(UiText.Get("Memory"), ramValue, ramSparkline, ramPair));
 
         var gpuValue = CreateValueText();
         var gpuTemp = CreateValueText();
         gpuTemp.ToolTip = UiText.Get("GpuTemperature");
-        var gpuSparkline = CreateSparkline("AccentBrush", 22);
+        var gpuSparkline = CreateSparkline("AccentBrush", 14);
         var gpuSection = CreateMetricSection(UiText.Get("Gpu"), gpuValue, gpuSparkline, gpuTemp);
         root.Children.Add(gpuSection);
 
+        root.Children.Add(DockFlyout.Divider(6));
+
         var processColumn = CreateValueText();
         processColumn.Text = UiText.Get("Memory");
+        processColumn.FontSize = 11;
+        processColumn.FontWeight = FontWeights.Normal;
         processColumn.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         var processHeader = CreateMetricLine(UiText.Get("StatsTopProcesses"), processColumn);
-        processHeader.Margin = new Thickness(0, 8, 0, 4);
+        processHeader.Margin = new Thickness(0, 0, 0, 4);
         root.Children.Add(processHeader);
 
         var processesList = new StackPanel();
         root.Children.Add(processesList);
 
-        var footer = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-        var taskManager = CreateFooterActionButton(UiText.Get("TaskManager"), new Thickness(0, 0, 8, 0));
+        var taskManager = new Button { Content = UiText.Get("TaskManager") };
+        taskManager.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
         taskManager.Click += (_, _) =>
         {
             _flyout.Close(restoreFocus: false);
             OpenTaskManagerAction();
         };
-        var resourceMonitor = CreateFooterActionButton(UiText.Get("ResourceMonitor"), new Thickness(0));
+        var resourceMonitor = new Button { Content = UiText.Get("ResourceMonitor") };
+        resourceMonitor.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
         resourceMonitor.Click += (_, _) =>
         {
             _flyout.Close(restoreFocus: false);
             OpenResourceMonitorAction();
         };
-        footer.Children.Add(taskManager);
-        footer.Children.Add(resourceMonitor);
-        root.Children.Add(footer);
+        root.Children.Add(DockFlyout.FooterBar(taskManager, resourceMonitor));
 
         var view = new TelemetryFlyoutView
         {

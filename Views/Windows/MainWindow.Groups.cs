@@ -264,8 +264,8 @@ public partial class MainWindow
 
     private UIElement BuildGroupFlyoutContent(DockAppGroup group)
     {
-        var panel = new StackPanel { MinWidth = 220, MaxWidth = 320 };
-        panel.Children.Add(DockFlyout.Heading(group.Name));
+        var panel = new StackPanel { Width = 240 };
+        panel.Children.Add(DockFlyout.Header(group.Name, bottomMargin: 6));
         if (group.ExecutablePaths.Count == 0)
         {
             panel.Children.Add(DockFlyout.Caption(UiText.Get("GroupEmptyHint")));

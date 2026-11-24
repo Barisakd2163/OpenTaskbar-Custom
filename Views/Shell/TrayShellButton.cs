@@ -235,7 +235,7 @@ public sealed class TrayShellButton : Button
     internal UIElement BuildLiveContent(IReadOnlyList<ManagedShell.WindowsTray.NotifyIcon> icons)
     {
         var root = new StackPanel { Width = 296 };
-        root.Children.Add(DockFlyout.Heading(UiText.Get("TrayApps")));
+        root.Children.Add(DockFlyout.Header(UiText.Get("TrayApps"), bottomMargin: 6));
         if (icons.Count == 0) root.Children.Add(DockFlyout.Caption(UiText.Get("TrayEmpty")));
         var pinned = PinnedKeysProvider?.Invoke();
         foreach (var icon in icons)

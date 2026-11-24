@@ -83,7 +83,7 @@ public partial class AudioWidget : DockWidget
 
     public UIElement BuildFlyoutContent()
     {
-        var container = new Border { Width = 314 };
+        var container = new Border { Width = 296 };
         _flyoutContainer = container;
         container.Unloaded += (_, _) =>
         {
@@ -109,16 +109,8 @@ public partial class AudioWidget : DockWidget
         ReleaseAppSessions();
         var root = new StackPanel();
 
-        // Top title bar
-        var title = new TextBlock
-        {
-            Text = UiText.Get("WidgetAudio"),
-            FontWeight = FontWeights.Bold,
-            FontSize = 12.5,
-            Margin = new Thickness(0, 0, 0, 10)
-        };
-        title.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
-        root.Children.Add(title);
+        // Unified top header
+        root.Children.Add(DockFlyout.Header(UiText.Get("WidgetAudio")));
 
         // 1. Output section (vertical)
         root.Children.Add(BuildOutputSection());

@@ -347,22 +347,24 @@ public sealed class NetSpeedWidget : DockWidget
 
     public override UIElement? BuildHoverFlyoutContent()
     {
-        var panel = new StackPanel { Width = 240 };
-        panel.Children.Add(DockFlyout.Heading(UiText.Get("WidgetNetSpeed")));
+        var panel = new StackPanel { Width = 296 };
+        panel.Children.Add(DockFlyout.Header(UiText.Get("WidgetNetSpeed"), bottomMargin: 4));
 
         if (!string.IsNullOrEmpty(_primaryInterfaceName))
         {
-            panel.Children.Add(DockFlyout.Caption($"{UiText.Get("NetworkAdapter")}: {_primaryInterfaceName}"));
+            panel.Children.Add(DockFlyout.Caption(_primaryInterfaceName));
         }
 
-        var speedGrid = new Grid { Margin = new Thickness(0, 8, 0, 8) };
+        panel.Children.Add(DockFlyout.Divider(6));
+
+        var speedGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
         speedGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         speedGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var downCol = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
+        var downCol = new StackPanel { Margin = new Thickness(0, 0, 6, 0) };
         downCol.Children.Add(new TextBlock
         {
-            Text = $"↓ {UiText.Get("NetworkDownload")}",
+            Text = UiText.Get("NetworkDownload"),
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("WidgetAccent")
@@ -370,24 +372,26 @@ public sealed class NetSpeedWidget : DockWidget
         _hoverDownloadText = new TextBlock
         {
             Text = FormatSpeed(_downloadBytesPerSec),
-            FontSize = 13,
-            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 2, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         downCol.Children.Add(_hoverDownloadText);
         _hoverTotalReceivedText = new TextBlock
         {
-            Text = $"{UiText.Get("NetworkTotalReceived")}:\n{FormatBytes(_sessionDownloadedBytes)}",
-            FontSize = 10,
+            Text = $"{UiText.Get("NetworkTotalReceived")}: {FormatBytes(_sessionDownloadedBytes)}",
+            FontSize = 11,
             Foreground = (Brush)FindResource("TextSecondary"),
-            Margin = new Thickness(0, 4, 0, 0)
+            Margin = new Thickness(0, 3, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         downCol.Children.Add(_hoverTotalReceivedText);
 
-        var upCol = new StackPanel { Margin = new Thickness(4, 0, 0, 0) };
+        var upCol = new StackPanel { Margin = new Thickness(6, 0, 0, 0) };
         upCol.Children.Add(new TextBlock
         {
-            Text = $"↑ {UiText.Get("NetworkUpload")}",
+            Text = UiText.Get("NetworkUpload"),
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextSecondary")
@@ -395,17 +399,19 @@ public sealed class NetSpeedWidget : DockWidget
         _hoverUploadText = new TextBlock
         {
             Text = FormatSpeed(_uploadBytesPerSec),
-            FontSize = 13,
-            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 2, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         upCol.Children.Add(_hoverUploadText);
         _hoverTotalSentText = new TextBlock
         {
-            Text = $"{UiText.Get("NetworkTotalSent")}:\n{FormatBytes(_sessionUploadedBytes)}",
-            FontSize = 10,
+            Text = $"{UiText.Get("NetworkTotalSent")}: {FormatBytes(_sessionUploadedBytes)}",
+            FontSize = 11,
             Foreground = (Brush)FindResource("TextSecondary"),
-            Margin = new Thickness(0, 4, 0, 0)
+            Margin = new Thickness(0, 3, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         upCol.Children.Add(_hoverTotalSentText);
 
@@ -420,23 +426,25 @@ public sealed class NetSpeedWidget : DockWidget
 
     internal UIElement BuildClickFlyoutContent()
     {
-        _flyoutPanel = new StackPanel { Width = 280 };
-        _flyoutPanel.Children.Add(DockFlyout.Heading(UiText.Get("WidgetNetSpeed")));
+        _flyoutPanel = new StackPanel { Width = 296 };
+        _flyoutPanel.Children.Add(DockFlyout.Header(UiText.Get("WidgetNetSpeed"), bottomMargin: 4));
 
         if (!string.IsNullOrEmpty(_primaryInterfaceName))
         {
-            _flyoutPanel.Children.Add(DockFlyout.Caption($"{UiText.Get("NetworkAdapter")}: {_primaryInterfaceName}"));
+            _flyoutPanel.Children.Add(DockFlyout.Caption(_primaryInterfaceName));
         }
 
+        _flyoutPanel.Children.Add(DockFlyout.Divider(6));
+
         // Live stats grid
-        var speedGrid = new Grid { Margin = new Thickness(0, 6, 0, 8) };
+        var speedGrid = new Grid { Margin = new Thickness(0, 2, 0, 4) };
         speedGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         speedGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var downCol = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
+        var downCol = new StackPanel { Margin = new Thickness(0, 0, 6, 0) };
         downCol.Children.Add(new TextBlock
         {
-            Text = $"↓ {UiText.Get("NetworkDownload")}",
+            Text = UiText.Get("NetworkDownload"),
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("WidgetAccent")
@@ -444,24 +452,26 @@ public sealed class NetSpeedWidget : DockWidget
         _flyoutDownloadText = new TextBlock
         {
             Text = FormatSpeed(_downloadBytesPerSec),
-            FontSize = 13,
-            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 2, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         downCol.Children.Add(_flyoutDownloadText);
         _flyoutTotalReceivedText = new TextBlock
         {
             Text = $"{UiText.Get("NetworkTotalReceived")}: {FormatBytes(_sessionDownloadedBytes)}",
-            FontSize = 9.5,
+            FontSize = 11,
             Foreground = (Brush)FindResource("TextSecondary"),
-            Margin = new Thickness(0, 2, 0, 0)
+            Margin = new Thickness(0, 3, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         downCol.Children.Add(_flyoutTotalReceivedText);
 
-        var upCol = new StackPanel { Margin = new Thickness(4, 0, 0, 0) };
+        var upCol = new StackPanel { Margin = new Thickness(6, 0, 0, 0) };
         upCol.Children.Add(new TextBlock
         {
-            Text = $"↑ {UiText.Get("NetworkUpload")}",
+            Text = UiText.Get("NetworkUpload"),
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextSecondary")
@@ -469,17 +479,19 @@ public sealed class NetSpeedWidget : DockWidget
         _flyoutUploadText = new TextBlock
         {
             Text = FormatSpeed(_uploadBytesPerSec),
-            FontSize = 13,
-            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 2, 0, 0),
             Typography = { NumeralAlignment = FontNumeralAlignment.Tabular }
         };
         upCol.Children.Add(_flyoutUploadText);
         _flyoutTotalSentText = new TextBlock
         {
             Text = $"{UiText.Get("NetworkTotalSent")}: {FormatBytes(_sessionUploadedBytes)}",
-            FontSize = 9.5,
+            FontSize = 11,
             Foreground = (Brush)FindResource("TextSecondary"),
-            Margin = new Thickness(0, 2, 0, 0)
+            Margin = new Thickness(0, 3, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         upCol.Children.Add(_flyoutTotalSentText);
 
@@ -489,25 +501,18 @@ public sealed class NetSpeedWidget : DockWidget
         speedGrid.Children.Add(upCol);
         _flyoutPanel.Children.Add(speedGrid);
 
-        // Divider
-        _flyoutPanel.Children.Add(CreateDivider());
+        _flyoutPanel.Children.Add(DockFlyout.Divider(8));
 
         // Speed Test Section Container
-        _speedTestContainer = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+        _speedTestContainer = new StackPanel { Margin = new Thickness(0, 2, 0, 2) };
         UpdateSpeedTestView();
         _flyoutPanel.Children.Add(_speedTestContainer);
 
-        // Divider
-        _flyoutPanel.Children.Add(CreateDivider());
-
-        // Settings link
-        var settingsButton = DockFlyout.FlatButton(
-            new TextBlock { Text = UiText.Get("NetworkSettings"), FontSize = 11.5, FontWeight = FontWeights.SemiBold },
-            (_, _) => OpenSettingsAction(),
-            UiText.Get("NetworkSettings")
-        );
-        settingsButton.Margin = new Thickness(0, 2, 0, 0);
-        _flyoutPanel.Children.Add(settingsButton);
+        // Unified footer bar with Settings action.
+        var settingsButton = new Button { Content = UiText.Get("NetworkSettings") };
+        settingsButton.SetResourceReference(StyleProperty, "WidgetFlyoutActionButton");
+        settingsButton.Click += (_, _) => OpenSettingsAction();
+        _flyoutPanel.Children.Add(DockFlyout.FooterBar(settingsButton));
 
         return _flyoutPanel;
     }
