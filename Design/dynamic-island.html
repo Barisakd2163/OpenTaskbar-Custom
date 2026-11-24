@@ -89,7 +89,12 @@
   .inline-actions button[aria-pressed="true"] { background: var(--widget-accent); border-color: var(--widget-accent); color: var(--panel); }
   .inline-actions button:disabled { opacity: .5; cursor: default; }
   .inline-actions input { width: clamp(45px, 7vw, 78px); margin: 0; accent-color: var(--widget-accent); }
-  .inline-actions input[data-seek] { width: clamp(38px, 5vw, 57px); }
+  [data-open="false"] [data-widget="Media"].island-slide .inline-actions { display: contents; }
+  [data-open="false"] [data-widget="Media"].island-slide .toggle { flex: 0 1 auto; max-width: 38%; }
+  .inline-actions input[data-seek] { flex: 1 1 0; width: 0; min-width: 25px; }
+  .inline-transport { display: flex; align-items: center; gap: 2px; flex: none; }
+  .inline-transport button { width: 24px; background: transparent; }
+  .inline-transport input[type="range"] { width: clamp(34px, 5vw, 47px); }
   .inline-actions input[type="number"] { width: 44px; border: 0; border-radius: 5px; padding: 3px; color: var(--white); background: #ffffff0d; font-size: .72rem; }
   .inline-actions .icon { width: 14px; height: 14px; }
   [data-open="false"] [data-widget="QuickSettings"].island-slide .summary { display: none; }
@@ -111,6 +116,7 @@
   .summary { flex: 0 1 auto; min-width: 0; max-width: 58%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--widget-accent); font-size: .82rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-inline-start: auto; }
   .island-slide:is([data-widget="Clock"], [data-widget="Stopwatch"], [data-widget="Countdown"], [data-widget="Focus"]) .summary { font-size: 1rem; }
   .indicator { flex: none; color: var(--dim); transition: transform var(--motion); }
+  [data-open="false"] .indicator { display: none; }
   [data-open="true"] .indicator { transform: rotate(180deg); }
   .expand { display: flex; flex: 1; min-height: 0; }
   .content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: var(--space-2) var(--space-2) var(--space-1); }
@@ -130,7 +136,7 @@
   .week [aria-current="date"] b { color: inherit; }
   .page.clock { grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; }
   .clock small { grid-column: 1 / -1; }
-  .clock .week { grid-column: 1 / -1; border-top: 1px solid var(--panel-line); padding-top: 4px; }
+  .clock .week { grid-column: 1 / -1; padding-top: 4px; }
   .clock .date { text-align: right; }
   @media (max-width: 480px) { [data-open="true"] .clock { grid-template-columns: minmax(0, 1fr); } [data-open="true"] .clock .date { text-align: left; } }
   .day-scale { font-size: .66rem; font-variant-numeric: tabular-nums; color: var(--dim); margin-bottom: 2px; }
@@ -141,7 +147,7 @@
   .history-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: end; gap: 3px; height: 29px; border-bottom: 1px solid var(--panel-line); }
   .history-bars span { background: color-mix(in srgb, var(--widget-accent) 36%, var(--panel-raised)); border-radius: 2px 2px 0 0; }
   .history-bars span:last-child { background: var(--widget-accent); }
-  .forecast { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 7px 0 0; padding: 6px 0 0; list-style: none; border-top: 1px solid var(--panel-line); }
+  .forecast { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 7px 0 0; padding: 6px 0 0; list-style: none; }
   .forecast li { display: grid; grid-template-columns: auto auto; align-items: center; justify-content: center; gap: 2px 3px; font-size: .7rem; color: var(--dim); font-variant-numeric: tabular-nums; }
   .forecast li time { grid-column: 1 / -1; text-align: center; }
   .forecast b { color: var(--white); font-weight: 550; }
@@ -151,12 +157,6 @@
   .sample-player button { width: 29px; height: 29px; border: 0; border-radius: 6px; background: var(--widget-accent); color: var(--panel); font-size: .72rem; }
   .sample-player input { width: 100%; margin: 0; accent-color: var(--widget-accent); }
   .sample-player output { font-size: .72rem; color: var(--dim); font-variant-numeric: tabular-nums; }
-  .profile { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 9px; align-items: center; margin-bottom: 4px; }
-  .profile .icon { box-sizing: content-box; width: 21px; height: 21px; padding: 8px; border: 1px solid var(--panel-line); border-radius: 9px; color: var(--widget-accent); background: color-mix(in srgb, var(--widget-accent) 12%, var(--panel)); }
-  .profile span { display: grid; gap: 3px; min-width: 0; font-size: .75rem; color: var(--dim); }
-  .profile strong { color: var(--white); font-size: .96rem; font-weight: 650; }
-  .quota-profile { border-bottom: 1px solid var(--panel-line); padding-bottom: 2px; }
-  .quota-profile .icon { width: 17px; height: 17px; padding: 5px; }
   .page:is([data-widget="Battery"], [data-widget="BluetoothBattery"], [data-widget="Storage"]) .rows div { padding-block: 5px; }
   .page[data-widget="Clock"] .week { background: #c2d9ff0a; border-radius: 6px; }
   .page[data-widget="DayProgress"] progress { height: 12px; }
@@ -182,16 +182,28 @@
   .usage-track { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: #ffffff15; }
   .usage-track span { background: var(--widget-accent); }
   .capacity-labels { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; font-size: .72rem; color: var(--dim); }
-  .quota-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,75px),1fr)); gap: 5px 12px; margin: 0; }
+  .quota-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,84px),1fr)); gap: 10px 12px; margin: 0; }
   .quota-grid div { display: grid; align-content: start; gap: 5px; min-width: 0; }
   .quota-grid dt { color: var(--dim); font-size: .72rem; }
   .quota-grid dd { margin: 0; font-size: 1.18rem; font-weight: 580; font-variant-numeric: tabular-nums; }
   .quota-grid .meter { height: 4px; margin: 0; }
+  .quota-reset { font-size: .69rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .quota-grid[data-pools] { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 5px; }
+  .quota-grid[data-pools] div { gap: 2px; }
+  .quota-grid[data-pools] dd { font-size: .96rem; }
+  .balance-details { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px 12px; margin: 9px 0 0; }
+  .balance-details dt { font-size: .71rem; color: var(--dim); }
+  .balance-details dd { margin: 2px 0 0; font-size: .85rem; }
   .balance { display: grid; gap: 5px; background: color-mix(in srgb,var(--widget-accent) 9%,var(--panel)); padding: 9px 12px; border-radius: 8px; }
   .page[data-widget="Media"] { background: linear-gradient(140deg, #352336, #1c1a24 64%); }
   .page[data-widget="Media"] .media-art { border: 0; }
   .page[data-widget="Media"] .sample-player button { border-radius: 50%; }
-  .page[data-widget="Media"] .sample-player { grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; }
+  .page[data-widget="Media"] .sample-player { grid-template-columns: minmax(0,1fr) auto; gap: 5px 10px; }
+  .media-transport { display: flex; align-items: center; gap: 7px; }
+  .media-volume { display: flex; align-items: center; gap: 6px; justify-self: end; font-size: .72rem; color: var(--dim); }
+  .media-volume input { width: min(72px, 15vw); }
+  .sample-player .media-transport button { display: grid; place-items: center; background: #ffffff16; color: var(--white); }
+  .sample-player .media-transport [data-play] { background: var(--widget-accent); color: var(--panel); }
   .page[data-widget="Audio"] .sample-volume { border: 0; padding: 9px 11px; }
   .page[data-widget="Audio"] .sample-volume span { color: var(--widget-accent); font-weight: 650; font-variant-numeric: tabular-nums; }
   .page[data-widget="Audio"] .rows { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 8px; }
@@ -307,12 +319,17 @@
               <section class="page media" data-widget="Media" aria-label="Medya kontrolü" hidden>
                 <div class="media-info">
                   <span class="media-art" aria-hidden="true"></span>
-                  <div><p class="track">Gece treni</p><span class="date media-meta">Örnek parça · 3:42</span></div>
+                  <div><p class="track">Gece treni</p><span class="date media-meta"></span></div>
                 </div>
                 <div class="sample-player">
-                  <button type="button" aria-label="Örnek parçayı oynat">▶</button>
-                  <input type="range" min="0" max="222" value="68" aria-label="Örnek parçada oynatma konumu">
+                  <input type="range" min="0" max="222" value="68" data-position aria-label="Oynatma konumu">
                   <output aria-live="off">1:08</output>
+                  <div class="media-transport">
+                    <button type="button" data-previous aria-label="Önceki parça"></button>
+                    <button type="button" data-play aria-label="Örnek parçayı oynat"></button>
+                    <button type="button" data-next aria-label="Sonraki parça"></button>
+                  </div>
+                  <label class="media-volume">Ses <input type="range" min="0" max="100" value="65" data-volume aria-label="Müzik ses düzeyi"></label>
                 </div>
               </section>
               <nav class="pages" aria-label="Widget sayfaları">
@@ -336,6 +353,10 @@
 <script>
   // Geometries mirror the OpenTaskbar icon resources in Design/Icons.
   const iconPaths = {
+    IconPreviousFill: "M5 5h2.5v14H5z M19 5.2v13.6a.8.8 0 0 1-1.25.66L8.6 12.66a.8.8 0 0 1 0-1.32l9.15-6.8A.8.8 0 0 1 19 5.2z",
+    IconNextFill: "M16.5 5H19v14h-2.5z M5 5.2v13.6a.8.8 0 0 0 1.25.66l9.15-6.8a.8.8 0 0 0 0-1.32L6.25 4.54A.8.8 0 0 0 5 5.2z",
+    IconPlayFill: "M7 4.6v14.8a1 1 0 0 0 1.53.85l11.84-7.4a1 1 0 0 0 0-1.7L8.53 3.75A1 1 0 0 0 7 4.6z",
+    IconPauseFill: "M6 4.5A.5.5 0 0 1 6.5 4h3a.5.5 0 0 1 .5.5v15a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5z M14 4.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v15a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5z",
     IconClock: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M12 7v5l3 2",
     IconCloudSun: "M12 2v2 M4.93 4.93l1.41 1.41 M20 12h2 M19.07 4.93l-1.41 1.41 M15.95 12.65a4 4 0 0 0-5.93-4.61 M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6z",
     IconCalendar: "M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
@@ -382,7 +403,7 @@
     { group: 'Yapay zekâ kullanımı', items: [
       ['Claude', ['Oturum', 'Haftalık']],
       ['Codex', ['Oturum', 'Haftalık']],
-      ['Antigravity', ['Oturum', 'Haftalık', 'Model kotaları']],
+      ['Antigravity', ['Gemini Pro', 'Gemini Flash', 'Claude', 'GPT-OSS']],
       ['OpenCode', ['Saatlik', 'Haftalık', 'Aylık']],
       ['Copilot', ['Aylık kullanım']],
       ['DeepSeek', ['Bakiye']],
@@ -417,7 +438,7 @@
     const svg = document.createElementNS(svgNamespace, 'svg');
     const path = document.createElementNS(svgNamespace, 'path');
     const geometry = iconPaths[key];
-    const brand = key.startsWith('Logo');
+    const brand = key.startsWith('Logo') || key.endsWith('Fill');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('class', 'icon');
     svg.setAttribute('aria-hidden', 'true');
@@ -443,7 +464,7 @@
     Storage: ['284 GB', '192 GB', '476 GB'],
     AiUsageClaude: ['%38', '%21'],
     AiUsageCodex: ['%44', '%26'],
-    AiUsageAntigravity: ['%27', '%41', '2 model'],
+    AiUsageAntigravity: ['%27', '%41', '%64', '%18'],
     AiUsageOpenCode: ['%12', '%36', '%28'],
     AiUsageCopilot: ['%31'],
     AiUsageDeepSeek: ['12,60 USD'],
@@ -451,6 +472,16 @@
     AiUsageCursor: ['%52', '%33'],
     Audio: ['Hoparlör', 'Dahili mikrofon', '2 uygulama']
   };
+  // Reset timestamps illustrate the provider windows using the prototype's local clock.
+  const quotaResetHours = {
+    AiUsageClaude: [3, 59], AiUsageCodex: [2, 77],
+    AiUsageAntigravity: [4, 2, 51, 75], AiUsageOpenCode: [1, 86, 214],
+    AiUsageCopilot: [131], AiUsageCursor: [3, 102]
+  };
+  const previewStartedAt = Date.now();
+  const resetFormat = new Intl.DateTimeFormat('tr-TR', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const percentFormat = new Intl.NumberFormat('tr-TR', { style: 'percent' });
   const timeFormat = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -516,18 +547,6 @@
           list.append(row);
         }
         page.append(list);
-      }
-      if (widget.id.startsWith('AiUsage')) {
-        const profile = document.createElement('div');
-        profile.className = 'profile quota-profile';
-        const text = document.createElement('span');
-        const name = document.createElement('strong');
-        name.textContent = widget.name;
-        const usage = widget.id === 'AiUsageDeepSeek' || widget.id === 'AiUsageOpenRouter' ?
-          'Hesap bakiyesi' : widget.id === 'AiUsageCopilot' ? 'Aylık kota' : 'Kullanım pencereleri';
-        text.append(name, usage);
-        profile.append(icon(appearances[widget.id][0]), text);
-        page.prepend(profile);
       }
       if (widget.id === 'Audio') {
         const label = document.createElement('label');
@@ -623,8 +642,46 @@
       page.replaceChildren(hero, usage, labels);
     } else if (widget.id.startsWith('AiUsage')) {
       const rows = page.querySelector('.rows');
-      if (values[0].endsWith('USD')) rows.replaceWith(featured(widget.rows[0], values[0], null, 'balance'));
-      else rows.className = 'quota-grid';
+      if (widget.id === 'AiUsageDeepSeek' || widget.id === 'AiUsageOpenRouter') {
+        const router = widget.id === 'AiUsageOpenRouter';
+        const balance = featured(router ? 'Kalan kredi' : 'Kullanılabilir bakiye', values[0], null, 'balance');
+        const details = document.createElement('dl');
+        details.className = 'balance-details';
+        for (const [label, value] of router
+          ? [['Toplam kredi', '20,00 USD'], ['Harcanan', '11,60 USD']]
+          : [['Para birimi', 'USD'], ['API durumu', 'Kullanılabilir']]) {
+          const item = document.createElement('div');
+          const term = document.createElement('dt');
+          const amount = document.createElement('dd');
+          term.textContent = label;
+          amount.textContent = value;
+          item.append(term, amount);
+          details.append(item);
+        }
+        if (router) {
+          const meter = document.createElement('meter');
+          meter.className = 'meter';
+          meter.max = 20;
+          meter.value = 11.6;
+          meter.setAttribute('aria-label', 'Harcanan kredi (USD)');
+          balance.append(meter);
+        }
+        rows.replaceWith(balance, details);
+      } else {
+        rows.className = 'quota-grid';
+        if (widget.id === 'AiUsageAntigravity') rows.dataset.pools = '';
+        for (const [index, row] of [...rows.children].entries()) {
+          const reset = new Date(previewStartedAt + quotaResetHours[widget.id][index] * 3600000);
+          const timestamp = document.createElement('time');
+          timestamp.className = 'quota-reset';
+          timestamp.dateTime = reset.toISOString();
+          const label = resetFormat.format(reset);
+          timestamp.textContent = label;
+          timestamp.setAttribute('aria-label', 'Sıfırlanma: ' + label);
+          timestamp.title = 'Sıfırlanma: ' + label;
+          row.append(timestamp);
+        }
+      }
     }
     return page;
   }
@@ -704,19 +761,75 @@
     const date = monitor.querySelector('.date');
     const week = monitor.querySelector('.week');
     const samplePlayer = monitor.querySelector('.sample-player');
-    const sampleButton = samplePlayer.querySelector('button');
-    const sampleSeek = samplePlayer.querySelector('input');
+    const sampleButton = samplePlayer.querySelector('[data-play]');
+    const sampleSeek = samplePlayer.querySelector('[data-position]');
+    const sampleVolume = samplePlayer.querySelector('[data-volume]');
     const sampleTime = samplePlayer.querySelector('output');
+    const trackTitle = monitor.querySelector('.track');
+    const tracks = [
+      { title: 'Gece treni', seconds: 222, root: 45 },
+      { title: 'Mavi saat', seconds: 196, root: 48 },
+      { title: 'Sabah hattı', seconds: 205, root: 50 }
+    ];
+    let trackIndex = 0;
     let calendarDate;
     let sampleStartedAt = null;
     let samplePosition = sampleSeek.valueAsNumber;
-    const sampleDuration = Number(sampleSeek.max);
+    let audioContext;
+    let audioGain;
+    let audioSource;
+    let loop;
+    let loopRoot;
+
+    function stopSampleSound() {
+      audioSource?.stop();
+      audioSource?.disconnect();
+      audioSource = undefined;
+    }
+
+    function startSampleSound() {
+      stopSampleSound();
+      if (!('AudioContext' in window)) return;
+      if (!audioContext) {
+        audioContext = new AudioContext();
+        audioGain = audioContext.createGain();
+        audioGain.connect(audioContext.destination);
+      }
+      const root = tracks[trackIndex].root;
+      if (loopRoot !== root) {
+        const rate = audioContext.sampleRate;
+        loop = audioContext.createBuffer(1, rate * 4, rate);
+        const data = loop.getChannelData(0);
+        const notes = [0, 7, 12, 15, 7, 10, 15, 12];
+        for (let index = 0; index < data.length; index++) {
+          const time = index / rate;
+          const beat = Math.floor(time * 2);
+          const phase = time - beat / 2;
+          const frequency = 440 * 2 ** ((root + notes[beat] - 69) / 12);
+          const envelope = Math.min(1, phase / .035) * (1 - phase * 2) ** 2;
+          data[index] = .14 * envelope * (Math.sin(2 * Math.PI * frequency * phase) + .24 * Math.sin(4 * Math.PI * frequency * phase));
+        }
+        loopRoot = root;
+      }
+      audioGain.gain.value = sampleVolume.valueAsNumber / 100;
+      audioSource = audioContext.createBufferSource();
+      audioSource.buffer = loop;
+      audioSource.loop = true;
+      audioSource.connect(audioGain);
+      audioSource.start(0, samplePosition % loop.duration);
+      audioContext.resume().catch(() => {
+        monitor.querySelector('.media-meta').textContent = 'Önizleme sesi açılamadı';
+      });
+    }
+
     function updateSample() {
+      const sampleDuration = tracks[trackIndex].seconds;
       const seconds = sampleStartedAt === null ? samplePosition :
         Math.min(sampleDuration, samplePosition + (performance.now() - sampleStartedAt) / 1000);
       if (seconds === sampleDuration) {
         samplePosition = sampleDuration;
         sampleStartedAt = null;
+        stopSampleSound();
       }
       const wholeSeconds = Math.floor(seconds);
       const time = Math.floor(wholeSeconds / 60) + ':' + String(wholeSeconds % 60).padStart(2, '0');
@@ -725,25 +838,56 @@
       const buttonLabel = sampleStartedAt === null ? 'Örnek parçayı oynat' : 'Örnek parçayı duraklat';
       if (sampleButton.getAttribute('aria-label') !== buttonLabel) {
         sampleButton.setAttribute('aria-label', buttonLabel);
-        sampleButton.textContent = sampleStartedAt === null ? '▶' : 'Ⅱ';
+        sampleButton.replaceChildren(icon(sampleStartedAt === null ? 'IconPlayFill' : 'IconPauseFill'));
       }
       return seconds;
     }
     sampleButton.addEventListener('click', () => {
       if (sampleStartedAt === null) {
-        if (samplePosition >= sampleDuration) samplePosition = 0;
+        if (samplePosition >= tracks[trackIndex].seconds) samplePosition = 0;
         sampleStartedAt = performance.now();
+        startSampleSound();
       } else {
         samplePosition = updateSample();
         sampleStartedAt = null;
+        stopSampleSound();
       }
       updateSample();
     });
     sampleSeek.addEventListener('input', () => {
       samplePosition = sampleSeek.valueAsNumber;
-      if (sampleStartedAt !== null) sampleStartedAt = performance.now();
+      if (sampleStartedAt !== null) {
+        sampleStartedAt = performance.now();
+        startSampleSound();
+      }
       updateSample();
     });
+    sampleVolume.addEventListener('input', () => {
+      if (audioGain) audioGain.gain.setTargetAtTime(sampleVolume.valueAsNumber / 100, audioContext.currentTime, .02);
+    });
+    function showTrack() {
+      const track = tracks[trackIndex];
+      trackTitle.textContent = track.title;
+      sampleSeek.max = String(track.seconds);
+      monitor.querySelector('.media-meta').textContent = Math.floor(track.seconds / 60) + ':' + String(track.seconds % 60).padStart(2, '0');
+    }
+    function skipTrack(direction) {
+      trackIndex = (trackIndex + direction + tracks.length) % tracks.length;
+      samplePosition = 0;
+      showTrack();
+      if (sampleStartedAt !== null) {
+        sampleStartedAt = performance.now();
+        startSampleSound();
+      }
+      update();
+    }
+    sampleButton.append(icon('IconPlayFill'));
+    for (const [selector, key, direction] of [['[data-previous]', 'IconPreviousFill', -1], ['[data-next]', 'IconNextFill', 1]]) {
+      const control = samplePlayer.querySelector(selector);
+      control.append(icon(key));
+      control.addEventListener('click', () => skipTrack(direction));
+    }
+    showTrack();
     const picker = monitor.querySelector('.widget-picker');
     const placement = monitor.querySelector('.position-picker');
     const positions = new Map([...catalog.keys()].map(id => [id, 'island']));
@@ -817,10 +961,6 @@
         control.setAttribute('aria-label', label);
       }
       if (widget === 'Media') {
-        const play = button('Medya oynat', '▶', () => {
-          sampleButton.click();
-          update();
-        });
         const seek = document.createElement('input');
         seek.type = 'range';
         seek.dataset.seek = '';
@@ -831,10 +971,29 @@
           update();
         });
         host.append(seek);
+        const transport = document.createElement('div');
+        transport.className = 'inline-transport';
+        const previous = button('Önceki parça', icon('IconPreviousFill'), () => skipTrack(-1));
+        const play = button('Medya oynat', icon('IconPlayFill'), () => { sampleButton.click(); update(); });
+        const next = button('Sonraki parça', icon('IconNextFill'), () => skipTrack(1));
+        const volume = sampleVolume.cloneNode();
+        volume.setAttribute('aria-label', 'Kompakt müzik ses düzeyi');
+        volume.addEventListener('input', () => {
+          sampleVolume.value = volume.value;
+          sampleVolume.dispatchEvent(new Event('input'));
+        });
+        transport.append(previous, play, next, volume);
+        host.append(transport);
         sync = () => {
           const playing = sampleStartedAt !== null;
-          playbackLabel(play, playing, playing ? 'Medya duraklat' : 'Medya oynat');
+          const label = playing ? 'Medya duraklat' : 'Medya oynat';
+          if (play.getAttribute('aria-label') !== label) {
+            play.setAttribute('aria-label', label);
+            play.replaceChildren(icon(playing ? 'IconPauseFill' : 'IconPlayFill'));
+          }
+          if (seek.max !== sampleSeek.max) seek.max = sampleSeek.max;
           if (seek.value !== sampleSeek.value) seek.value = sampleSeek.value;
+          if (volume.value !== sampleVolume.value) volume.value = sampleVolume.value;
         };
         seek.max = sampleSeek.max;
       } else if (catalog.get(widget)?.timer) {
@@ -928,7 +1087,7 @@
         Clock: time.textContent, DayProgress: dayValue.value,
         SystemStats: 'CPU %24 · RAM %58', NetSpeed: '↓ 42,8 Mb/sn', Storage: '192 GB boş',
         BluetoothBattery: '%82', Battery: '%76 · Şarjda',
-        Media: 'Gece treni'
+        Media: tracks[trackIndex].title
       };
       const selectedPage = pagesById.get(widget);
       const enabledTiles = selectedPage?.querySelectorAll('.tiles [aria-pressed="true"]').length;
