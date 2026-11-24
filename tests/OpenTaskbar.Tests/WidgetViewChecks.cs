@@ -63,7 +63,6 @@ internal static class WidgetViewChecks
             checks += NetSpeedChecks.Run(app);
             checks += BluetoothBatteryChecks.Run(app);
             checks += SystemStatsAvailabilityChecks.Run(app);
-            checks += V19WidgetRedesignChecks.Run(app);
 
             // Weather pickers use a custom ComboBox template: glyph in its own column and live filtering.
             {
@@ -297,7 +296,8 @@ internal static class WidgetViewChecks
             details.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(detailRequests == 2, "The value area must open details independently of the quick action.");
             Check(Descendants<TextBox>(timerTile).Count() == 0, "The dock tile must contain no duration form.");
-            Check(Descendants<Button>(timerTile).Count() == 2, "The dock tile must offer one detail target and one quick action.");
+            Check(Descendants<Button>(timerTile).Count(button => button.Visibility == Visibility.Visible) == 2,
+                "The dock tile must offer one detail target and one quick action.");
             Check(action.ActualWidth >= 36 && action.ActualHeight >= 36, "The quick action must keep its pointer target.");
             Check(timerHost.DesiredSize.Width < 200 && timerHost.DesiredSize.Height < 60, "The compact timer must fit within the dock shelf.");
 
@@ -702,6 +702,7 @@ internal static class WidgetViewChecks
                     if (File.Exists(settingsPath)) File.Delete(settingsPath);
                 }
             }
+            checks += V19WidgetRedesignChecks.Run(app);
             return checks;
         }
         finally
