@@ -688,6 +688,7 @@ public partial class SettingsWindow : Window
 
     private void DynamicIslandOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        if (DynamicIslandOpacityValue is null) return;
         DynamicIslandOpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(e.NewValue));
         if (_initializing) return;
         _hasUnappliedThemePreview = true;
