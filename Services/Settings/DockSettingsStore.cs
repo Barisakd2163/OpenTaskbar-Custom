@@ -420,6 +420,9 @@ public sealed class DockSettingsStore
         && Enum.IsDefined(settings.DateStyle) && Enum.IsDefined(settings.DateFormat)
         && Enum.IsDefined(settings.WeatherUnit)
         && Enum.IsDefined(settings.DynamicIslandVisibility)
+        && double.IsFinite(settings.DynamicIslandOpacity) && settings.DynamicIslandOpacity is >= 0 and <= 1
+        && (settings.DynamicIslandBackgroundColor is null
+            || ThemeManager.TryParseColor(settings.DynamicIslandBackgroundColor, out _))
         && (settings.StatsMeters & ~SystemMeters.All) == 0
         && (settings.AiUsageProviders & ~AiProviders.All) == 0
         && Enum.IsDefined(settings.AiUsageRing)

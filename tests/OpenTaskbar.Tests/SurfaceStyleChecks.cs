@@ -126,6 +126,33 @@ internal static class SurfaceStyleChecks
             ThemeManager.Apply(AppTheme.Light, new DockSettings(WidgetBackground: SurfaceBackground.Solid, WidgetOpacity: 1.0));
             Check(Alpha(app, "WidgetHoverMaterial") == 0x18 && Alpha(app, "WidgetPressedMaterial") == 0x2A,
                 "Light palette must provide distinct WidgetHoverMaterial and WidgetPressedMaterial.");
+
+            ThemeManager.Apply(AppTheme.Dark, new DockSettings(DynamicIslandOpacity: 1.0));
+            Check((app.FindResource("DynamicIslandMaterial") as SolidColorBrush)?.Color == Color.FromRgb(0x10, 0x12, 0x17),
+                "Dark palette must retain the Dynamic Island's graphite surface.");
+            ThemeManager.Apply(AppTheme.Light, new DockSettings(DynamicIslandOpacity: 0.5));
+            Check((app.FindResource("DynamicIslandMaterial") as SolidColorBrush)?.Color == Color.FromArgb(0x80, 0xF4, 0xF5, 0xF7),
+                "Light palette and opacity must update the Dynamic Island surface.");
+
+            var packMaterial = new SolidColorBrush(Color.FromArgb(0x80, 0x11, 0x22, 0x33));
+            packMaterial.Freeze();
+            ThemeManager.SetOverrides(new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["DynamicIslandMaterial"] = packMaterial,
+                ["DynamicIslandStroke"] = new SolidColorBrush(Color.FromArgb(0x60, 0xAA, 0xBB, 0xCC))
+            });
+            ThemeManager.Apply(AppTheme.Dark, new DockSettings(DynamicIslandOpacity: 0.5));
+            Check((app.FindResource("DynamicIslandMaterial") as SolidColorBrush)?.Color == Color.FromArgb(0x40, 0x11, 0x22, 0x33),
+                "Theme pack Dynamic Island material alpha must scale with its opacity setting.");
+            ThemeManager.SetDynamicIslandStyle("#60AABBCC", 0.5);
+            Check((app.FindResource("DynamicIslandMaterial") as SolidColorBrush)?.Color == Color.FromArgb(0x30, 0xAA, 0xBB, 0xCC),
+                "A custom Dynamic Island color must override its theme while preserving configured alpha.");
+            Check((ThemeManager.GetDynamicIslandBackgroundSource() as SolidColorBrush)?.Color == Color.FromArgb(0x60, 0xAA, 0xBB, 0xCC),
+                "Opening the background picker must retain the stored color alpha instead of scaling it twice.");
+            Check(DockSettingsStore.Validate(new DockSettings(DynamicIslandOpacity: 0.0, DynamicIslandBackgroundColor: "#FF123456"))
+                  && !DockSettingsStore.Validate(new DockSettings(DynamicIslandOpacity: double.NaN))
+                  && !DockSettingsStore.Validate(new DockSettings(DynamicIslandBackgroundColor: "bad-color")),
+                "Dynamic Island background and opacity settings must validate their persisted values.");
         }
         finally
         {

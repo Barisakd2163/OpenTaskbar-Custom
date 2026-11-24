@@ -209,6 +209,13 @@ internal static class ThemePackChecks
                 Check(t!.Widgets is not null, $"Theme {Path.GetFileName(subDir)} must have a valid WidgetPack.");
                 Check(t.Icons is null && t.Manifest.PreserveOriginalIcons,
                     $"Bundled theme {Path.GetFileName(subDir)} must preserve native icons.");
+                var darkTokens = t.Widgets!.Manifest.Dark;
+                var lightTokens = t.Widgets.Manifest.Light;
+                Check(darkTokens?.ContainsKey("DynamicIslandMaterial") == true
+                      && darkTokens?.ContainsKey("DynamicIslandStroke") == true
+                      && lightTokens?.ContainsKey("DynamicIslandMaterial") == true
+                      && lightTokens?.ContainsKey("DynamicIslandStroke") == true,
+                    $"Bundled theme {Path.GetFileName(subDir)} must define Dynamic Island materials for both palettes.");
             }
         }
 

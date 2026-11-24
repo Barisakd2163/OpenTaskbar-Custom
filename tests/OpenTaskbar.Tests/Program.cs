@@ -9,6 +9,39 @@ if (args.Contains("--dynamic-island-only", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+if (args.Contains("--surface-style-only", StringComparer.OrdinalIgnoreCase))
+{
+    Exception? failure = null;
+    var surfaceChecks = 0;
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            var app = new OpenTaskbar.App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+            app.InitializeComponent();
+            ThemeManager.Apply(AppTheme.Dark, new DockSettings());
+            surfaceChecks = SurfaceStyleChecks.Run();
+            app.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    if (failure is not null) throw new InvalidOperationException("Surface style checks failed.", failure);
+    Console.WriteLine($"{surfaceChecks} surface style checks passed.");
+    return;
+}
+
+if (args.Contains("--theme-pack-only", StringComparer.OrdinalIgnoreCase))
+{
+    Console.WriteLine($"{ThemePackChecks.Run()} theme pack checks passed.");
+    return;
+}
+
 // `--headless` runs only the pure logic checks: no WPF Application, no windows, no synthetic keyboard input,
 // no file dialogs and no desktop side effects. The default run keeps the full UI verification suite for CI.
 var headless = args.Contains("--headless", StringComparer.OrdinalIgnoreCase);

@@ -473,12 +473,42 @@
                                         <TextBlock Text="{local:Loc DynamicIslandVisibilityDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
-                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
                                     <CheckBox x:Name="DynamicIslandHideFullscreenToggle" DockPanel.Dock="Right" Style="{StaticResource SettingsSwitch}"
                                               AutomationProperties.Name="{local:Loc DynamicIslandHideFullscreen}" />
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
                                         <TextBlock Text="{local:Loc DynamicIslandHideFullscreen}" Style="{StaticResource SettingsRowLabel}" />
                                         <TextBlock Text="{local:Loc DynamicIslandHideFullscreenDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRow}"><DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="DynamicIslandBackgroundButton" Width="34" Height="28" Click="DynamicIslandBackgroundButton_Click"
+                                                AutomationProperties.Name="{local:Loc DynamicIslandBackground}" ToolTip="{local:Loc DynamicIslandBackground}">
+                                            <Border x:Name="DynamicIslandBackgroundSwatch" Width="22" Height="16" CornerRadius="4"
+                                                    BorderThickness="1" BorderBrush="{DynamicResource StrokeSubtle}"
+                                                    Background="{DynamicResource DynamicIslandMaterial}" />
+                                        </Button>
+                                        <Button x:Name="DynamicIslandUseThemeButton" Content="{local:Loc DynamicIslandUseTheme}" Margin="8,0,0,0"
+                                                Padding="10,0" MinHeight="28" Click="DynamicIslandUseTheme_Click"
+                                                AutomationProperties.Name="{local:Loc DynamicIslandUseTheme}" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc DynamicIslandBackground}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DynamicIslandBackgroundDescription}" Style="{StaticResource SettingsRowDescription}" />
+                                    </StackPanel>
+                                </DockPanel></Border>
+                                <Border Style="{StaticResource SettingsRowLast}"><DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" MinWidth="150" MaxWidth="230" Width="Auto" VerticalAlignment="Center">
+                                        <Slider x:Name="DynamicIslandOpacitySlider" Width="174" Minimum="0" Maximum="100" Value="100" TickFrequency="1"
+                                                IsSnapToTickEnabled="True" SmallChange="1" LargeChange="5" Style="{StaticResource SettingsOpacitySlider}"
+                                                AutomationProperties.Name="{local:Loc SurfaceOpacityLabel}" ValueChanged="DynamicIslandOpacitySlider_ValueChanged" />
+                                        <TextBlock x:Name="DynamicIslandOpacityValue" Width="42" TextAlignment="Right"
+                                                   Foreground="{DynamicResource TextSecondary}" FontSize="11.5" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="{local:Loc SurfaceOpacityLabel}" Style="{StaticResource SettingsRowLabel}" />
+                                        <TextBlock Text="{local:Loc DynamicIslandOpacityDescription}" Style="{StaticResource SettingsRowDescription}" />
                                     </StackPanel>
                                 </DockPanel></Border>
                             </StackPanel></Border>

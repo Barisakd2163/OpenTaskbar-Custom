@@ -74,6 +74,7 @@ public partial class SettingsWindow : Window
     private Button? _cursorSignOutButton;
     private bool _cursorSignInTimedOut;
     private bool _cursorAuthSubscribed;
+    private string? _dynamicIslandBackgroundColor;
 
     internal bool IsClosingOrClosed => _isClosing || _closed;
     internal int LivePreviewWidgetCount => _livePreviewWidgets.Count;
@@ -532,6 +533,8 @@ public partial class SettingsWindow : Window
             DynamicIslandVisibility = Enum.TryParse<DynamicIslandVisibilityMode>(Choice(DynamicIslandVisibilityBox), out var islandVisibility)
                 ? islandVisibility : _preferences.Current.DynamicIslandVisibility,
             DynamicIslandHideInFullscreen = DynamicIslandHideFullscreenToggle.IsChecked == true,
+            DynamicIslandBackgroundColor = _dynamicIslandBackgroundColor,
+            DynamicIslandOpacity = Math.Round(DynamicIslandOpacitySlider.Value) / 100,
             MagnificationEnabled = MagnificationToggle.IsChecked == true,
             Layout = Choice(PositionBox) == "FullWidth" ? DockLayout.FullWidth : DockLayout.Floating,
             Size = Enum.TryParse<DockSize>(Choice(SizeBox), out var size) ? size : DockSize.Compact,
@@ -661,6 +664,60 @@ public partial class SettingsWindow : Window
         var enabled = DynamicIslandEnabledToggle.IsChecked == true;
         DynamicIslandVisibilityBox.IsEnabled = enabled;
         DynamicIslandHideFullscreenToggle.IsEnabled = enabled;
+        DynamicIslandBackgroundButton.IsEnabled = enabled;
+        DynamicIslandUseThemeButton.IsEnabled = enabled;
+        DynamicIslandOpacitySlider.IsEnabled = enabled;
+    }
+
+    private void LoadDynamicIslandAppearance(DockSettings settings)
+    {
+        _dynamicIslandBackgroundColor = settings.DynamicIslandBackgroundColor;
+        DynamicIslandOpacitySlider.Value = Math.Clamp(settings.DynamicIslandOpacity * 100, 0, 100);
+        DynamicIslandOpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(DynamicIslandOpacitySlider.Value));
+        UpdateDynamicIslandBackgroundSwatch();
+    }
+
+    private void UpdateDynamicIslandBackgroundSwatch()
+    {
+        if (_dynamicIslandBackgroundColor is not null
+            && ThemeManager.TryParseColor(_dynamicIslandBackgroundColor, out var color))
+        {
+            DynamicIslandBackgroundSwatch.Background = new SolidColorBrush(color);
+            return;
+        }
+
+        DynamicIslandBackgroundSwatch.SetResourceReference(Border.BackgroundProperty, "DynamicIslandMaterial");
+    }
+
+    private void DynamicIslandOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        DynamicIslandOpacityValue.Text = UiText.Format("OpacityPercent", (int)Math.Round(e.NewValue));
+        if (_initializing) return;
+        _hasUnappliedThemePreview = true;
+        ThemeManager.SetDynamicIslandStyle(_dynamicIslandBackgroundColor, Math.Round(e.NewValue) / 100);
+        PreferenceEdited(sender, e);
+    }
+
+    private void DynamicIslandBackgroundButton_Click(object sender, RoutedEventArgs e)
+    {
+        var source = ThemeManager.GetDynamicIslandBackgroundSource();
+        var picker = new ThemeBrushPicker(source) { Owner = this };
+        if (picker.ShowDialog() != true || ThemeBrushPicker.BrushToHex(picker.Result) is not { } color) return;
+
+        _dynamicIslandBackgroundColor = color;
+        UpdateDynamicIslandBackgroundSwatch();
+        _hasUnappliedThemePreview = true;
+        ThemeManager.SetDynamicIslandStyle(_dynamicIslandBackgroundColor, DynamicIslandOpacitySlider.Value / 100);
+        PreferenceEdited(sender, e);
+    }
+
+    private void DynamicIslandUseTheme_Click(object sender, RoutedEventArgs e)
+    {
+        _dynamicIslandBackgroundColor = null;
+        UpdateDynamicIslandBackgroundSwatch();
+        _hasUnappliedThemePreview = true;
+        ThemeManager.SetDynamicIslandStyle(null, DynamicIslandOpacitySlider.Value / 100);
+        PreferenceEdited(sender, e);
     }
 
     private void LoadDynamicIslandPlacementChoices(DockSettings settings)
@@ -1607,6 +1664,7 @@ public partial class SettingsWindow : Window
         LoadDynamicIslandPlacementChoices(settings);
         SelectChoice(DynamicIslandVisibilityBox, settings.DynamicIslandVisibility.ToString());
         DynamicIslandHideFullscreenToggle.IsChecked = settings.DynamicIslandHideInFullscreen;
+        LoadDynamicIslandAppearance(settings);
         UpdateDynamicIslandControls();
         SelectChoice(EdgeBox, settings.Edge.ToString());
         SelectChoice(ClockFormatBox, settings.Clock24Hour ? "24" : "12");
@@ -2804,6 +2862,7 @@ public partial class SettingsWindow : Window
             DynamicIslandEnabledToggle.IsChecked = defaults.DynamicIslandEnabled;
             SelectChoice(DynamicIslandVisibilityBox, defaults.DynamicIslandVisibility.ToString());
             DynamicIslandHideFullscreenToggle.IsChecked = defaults.DynamicIslandHideInFullscreen;
+            LoadDynamicIslandAppearance(defaults);
             LoadDynamicIslandPlacementChoices(defaults);
             UpdateDynamicIslandControls();
             RecycleBinToggle.IsChecked = defaults.ShowRecycleBin;

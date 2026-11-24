@@ -5,54 +5,29 @@
         Width="344" Height="50" MinWidth="264" MaxWidth="440" MinHeight="50" MaxHeight="246"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False"
         Topmost="True" AllowsTransparency="True" Background="Transparent" Focusable="False"
-        Foreground="#FFFAFAFA" FontFamily="Segoe UI"
+        Foreground="{DynamicResource TextPrimary}" FontFamily="{DynamicResource InterfaceFont}"
         FontSize="{DynamicResource TextSizeBody}"
         PreviewKeyDown="Window_PreviewKeyDown" PreviewMouseWheel="Window_PreviewMouseWheel"
         Closed="Window_Closed">
     <Window.Resources>
-        <SolidColorBrush x:Key="TextPrimary" Color="#FFFAFAFA" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#FFB7B8C1" />
-        <SolidColorBrush x:Key="TextMuted" Color="#FF858894" />
-        <SolidColorBrush x:Key="StrokeSubtle" Color="#FF333843" />
-        <SolidColorBrush x:Key="MenuDivider" Color="#FF333843" />
-        <SolidColorBrush x:Key="SurfaceSelected" Color="#14FFFFFF" />
-        <SolidColorBrush x:Key="SurfaceSelectedStrong" Color="#22FFFFFF" />
-        <SolidColorBrush x:Key="SurfaceHover" Color="#14FFFFFF" />
-        <SolidColorBrush x:Key="WidgetCardHover" Color="#18FFFFFF" />
-        <SolidColorBrush x:Key="WidgetHoverMaterial" Color="#14FFFFFF" />
-        <SolidColorBrush x:Key="WidgetPressedMaterial" Color="#24FFFFFF" />
-        <SolidColorBrush x:Key="WidgetGlassCard" Color="#FF181B22" />
-        <SolidColorBrush x:Key="WidgetGlassCardStroke" Color="#00333843" />
-        <SolidColorBrush x:Key="WidgetTrack" Color="#FF333843" />
-        <SolidColorBrush x:Key="WidgetAccent" Color="#FFC2D9FF" />
-        <SolidColorBrush x:Key="WidgetAccentFill" Color="#FFC2D9FF" />
-        <SolidColorBrush x:Key="WidgetAccentText" Color="#FF101217" />
-        <SolidColorBrush x:Key="WidgetSelectedFill" Color="#33C2D9FF" />
-        <SolidColorBrush x:Key="WidgetSelectedStroke" Color="#80C2D9FF" />
-        <SolidColorBrush x:Key="WidgetSelectedForeground" Color="#FFC2D9FF" />
-        <SolidColorBrush x:Key="WidgetOnStroke" Color="#FFC2D9FF" />
-        <SolidColorBrush x:Key="WidgetBlue" Color="#FF94DFEC" />
-        <SolidColorBrush x:Key="WidgetGreen" Color="#FF91DEDC" />
-        <CornerRadius x:Key="WidgetRadius">9</CornerRadius>
-        <CornerRadius x:Key="WidgetQuickActionRadius">6</CornerRadius>
         <Style x:Key="IslandButton" TargetType="Button">
-            <Setter Property="Background" Value="#14FFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSelected}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Foreground" Value="#FFFAFAFA" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Focusable" Value="True" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="6">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource WidgetQuickActionRadius}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#2EFFFFFF" />
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfaceHover}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#40FFFFFF" />
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SurfacePressed}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.42" />
@@ -65,18 +40,16 @@
     </Window.Resources>
     <Grid ClipToBounds="False">
         <Path Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top"
-              Fill="#FF101217" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z" IsHitTestVisible="False" />
+              Fill="{DynamicResource DynamicIslandMaterial}" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z" IsHitTestVisible="False" />
         <Path Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top"
-              Fill="#FF101217" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z"
+              Fill="{DynamicResource DynamicIslandMaterial}" Data="M0,0 L12,0 L12,12 A12,12 0 0 0 0,0 Z"
               RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False">
             <Path.RenderTransform><ScaleTransform ScaleX="-1" /></Path.RenderTransform>
         </Path>
         <Border x:Name="IslandSurface" Width="320" HorizontalAlignment="Center"
-                Background="#FF101217" BorderThickness="0" CornerRadius="0,0,17,17"
-                ClipToBounds="True">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="30" ShadowDepth="7" Color="#040811" Opacity="0.64" />
-            </Border.Effect>
+                Background="{DynamicResource DynamicIslandMaterial}" BorderBrush="{DynamicResource DynamicIslandStrokeMaterial}"
+                BorderThickness="0,1,1,1" CornerRadius="0,0,17,17"
+                ClipToBounds="True" Effect="{DynamicResource DynamicIslandShadow}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="50" />
@@ -94,7 +67,7 @@
                             <Setter Property="Background" Value="Transparent" />
                             <Style.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#14FFFFFF" />
+                                    <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
                                 </Trigger>
                             </Style.Triggers>
                         </Style>
@@ -103,7 +76,7 @@
                             ClipToBounds="True" Background="Transparent">
                         <widgets:DynamicIslandPagePanel x:Name="Pages" />
                     </Border>
-                    <Border x:Name="HeaderFocusRing" Margin="1" BorderBrush="#FFC2D9FF"
+                    <Border x:Name="HeaderFocusRing" Margin="1" BorderBrush="{DynamicResource StrokeFocus}"
                             BorderThickness="1" CornerRadius="0,0,17,17" Opacity="0"
                             IsHitTestVisible="False" />
                 </Grid>
@@ -121,7 +94,7 @@
                                       PreviewMouseMove="Details_PreviewMouseMove"
                                       PreviewMouseLeftButtonUp="Details_PreviewMouseLeftButtonUp">
                             <ContentControl x:Name="DetailsContent" HorizontalContentAlignment="Stretch"
-                                            Foreground="#FFFAFAFA" />
+                                            Foreground="{DynamicResource TextPrimary}" />
                         </ScrollViewer>
                         <StackPanel x:Name="PageNavigation" Grid.Row="1" Orientation="Horizontal"
                                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0"
@@ -134,7 +107,7 @@
                             </Button>
                             <TextBlock x:Name="PageCount" MinWidth="48" HorizontalAlignment="Center"
                                        VerticalAlignment="Center" TextAlignment="Center" Margin="5,0"
-                                       Foreground="#FFB7B8C1" FontSize="10.5"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="{DynamicResource TextSizeCaption}"
                                        Typography.NumeralAlignment="Tabular" />
                             <Button x:Name="NextButton" Width="26" Height="26" Style="{StaticResource IslandButton}"
                                     Click="Next_Click" AutomationProperties.Name="{DynamicResource DynamicIslandNext}"
