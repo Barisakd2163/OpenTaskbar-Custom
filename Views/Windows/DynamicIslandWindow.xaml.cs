@@ -62,6 +62,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
     {
         InitializeComponent();
         PageViewport.SizeChanged += PageViewport_SizeChanged;
+        IslandContent.SizeChanged += IslandContent_SizeChanged;
+        Header.LostMouseCapture += Header_LostMouseCapture;
         _display = display;
         _saveSettings = saveSettings;
         _removeWidget = removeWidget;
@@ -111,7 +113,11 @@ public partial class DynamicIslandWindow : Window, IDisposable
     {
         if (_resourcesDisposed) return;
         ReleaseResources();
-        if (IsVisible) Close();
+        if (IsVisible || new WindowInteropHelper(this).Handle != 0)
+        {
+            try { Close(); }
+            catch (InvalidOperationException) { }
+        }
     }
 
     private bool IsAssignedHere(DockSettings settings, string id) =>
@@ -522,7 +528,9 @@ public partial class DynamicIslandWindow : Window, IDisposable
         IslandSurface.CornerRadius = height > CompactHeight
             ? new CornerRadius(0, 0, 22, 22)
             : new CornerRadius(0, 0, 17, 17);
-        HeaderFocusRing.CornerRadius = IslandSurface.CornerRadius;
+        var focusRadius = Math.Max(0, IslandSurface.CornerRadius.BottomRight - 2);
+        HeaderFocusRing.CornerRadius = new CornerRadius(0, 0, focusRadius, focusRadius);
+        UpdateIslandContentClip();
         if (animate && IsVisible)
         {
             AnimateWindowValue(WidthProperty, ActualWidth, windowWidth);
@@ -541,6 +549,38 @@ public partial class DynamicIslandWindow : Window, IDisposable
             Height = height;
             Left = left;
         }
+    }
+
+    private void IslandContent_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateIslandContentClip();
+
+    private void UpdateIslandContentClip()
+    {
+        var width = IslandContent.ActualWidth;
+        var height = IslandContent.ActualHeight;
+        var border = IslandSurface.BorderThickness;
+        var radius = IslandSurface.CornerRadius.BottomRight - Math.Max(border.Right, border.Bottom);
+        radius = Math.Min(radius, Math.Min(width / 2, height));
+        if (width <= 0 || height <= 0 || radius <= 0)
+        {
+            IslandContent.Clip = null;
+            return;
+        }
+
+        var clip = new StreamGeometry();
+        using (var context = clip.Open())
+        {
+            context.BeginFigure(new Point(0, 0), isFilled: true, isClosed: true);
+            context.LineTo(new Point(width, 0), isStroked: true, isSmoothJoin: false);
+            context.LineTo(new Point(width, height - radius), isStroked: true, isSmoothJoin: false);
+            context.ArcTo(new Point(width - radius, height), new Size(radius, radius), 0,
+                isLargeArc: false, SweepDirection.Clockwise, isStroked: true, isSmoothJoin: false);
+            context.LineTo(new Point(radius, height), isStroked: true, isSmoothJoin: false);
+            context.ArcTo(new Point(0, height - radius), new Size(radius, radius), 0,
+                isLargeArc: false, SweepDirection.Clockwise, isStroked: true, isSmoothJoin: false);
+            context.LineTo(new Point(0, 0), isStroked: true, isSmoothJoin: false);
+        }
+        clip.Freeze();
+        IslandContent.Clip = clip;
     }
 
     private void AnimateSurfaceWidth(double width)
@@ -704,6 +744,13 @@ public partial class DynamicIslandWindow : Window, IDisposable
 
     private void Header_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => FinishPointerGesture(e);
     private void Details_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => FinishPointerGesture(e);
+
+    private void Header_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (!_isDragging) return;
+        _isDragging = false;
+        SetCurrentPageIndex(_dragStartIndex, animate: true);
+    }
 
     private void FinishPointerGesture(MouseButtonEventArgs e)
     {

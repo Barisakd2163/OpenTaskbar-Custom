@@ -2559,11 +2559,14 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private int _weatherCityRequestVersion;
+
     private async void WeatherCountryBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing || _initializingWeather) return;
         if (WeatherCountryBox.SelectedItem is not string country) return;
-        await OnCountrySelectedAsync(country);
+        try { await OnCountrySelectedAsync(country); }
+        catch (Exception ex) { AppLog.Warning($"Weather city load failed: {ex.Message}"); }
     }
 
     private async void WeatherCountryBox_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
@@ -2571,12 +2574,14 @@ public partial class SettingsWindow : Window
         if (e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Tab)
         {
             var country = WeatherCountryBox.Text.Trim();
-            await OnCountrySelectedAsync(country);
+            try { await OnCountrySelectedAsync(country); }
+            catch (Exception ex) { AppLog.Warning($"Weather city load failed: {ex.Message}"); }
         }
     }
 
     private async Task OnCountrySelectedAsync(string country)
     {
+        var requestVersion = ++_weatherCityRequestVersion;
         if (string.IsNullOrWhiteSpace(country))
         {
             var wasInit = _initializing;
@@ -2598,7 +2603,7 @@ public partial class SettingsWindow : Window
 
         WeatherCityContainer.Visibility = Visibility.Visible;
         var cities = await CountryCityService.GetCitiesAsync(country);
-        if (_closed) return;
+        if (_closed || requestVersion != _weatherCityRequestVersion) return;
         var previousCity = WeatherCityBox.Text;
         var wasInitializing = _initializing;
         _initializing = true;

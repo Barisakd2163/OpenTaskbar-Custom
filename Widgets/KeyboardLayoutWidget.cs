@@ -202,7 +202,7 @@ public sealed class KeyboardLayoutWidget : DockWidget
                 Margin = new Thickness(0, 0, 10, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            badge.SetResourceReference(Border.BackgroundProperty, selected ? "WidgetSelectedFill" : "SurfaceElevated");
+            badge.SetResourceReference(Border.BackgroundProperty, selected ? "WidgetSelectedFill" : "SurfaceSelected");
             var code = new TextBlock
             {
                 Text = layout.ShortCode,

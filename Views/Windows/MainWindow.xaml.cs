@@ -2014,7 +2014,14 @@ public partial class MainWindow : Window
         if (_jumpListSession is { } session)
         {
             _jumpListSession = null;
-            await _jumpLists.ReleaseAsync(session);
+            try
+            {
+                await _jumpLists.ReleaseAsync(session);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warning($"Jump list release failed: {ex.Message}");
+            }
         }
     }
 
@@ -4076,6 +4083,7 @@ public partial class MainWindow : Window
         _openContextMenu = null;
         ResetMagnification(immediate: true);
         _restingIcons.Clear();
+        UnregisterHotkeys();
         _source?.RemoveHook(WindowProc);
         _source = null;
 

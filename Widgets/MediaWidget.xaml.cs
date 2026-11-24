@@ -316,7 +316,6 @@ public partial class MediaWidget : DockWidget
         _islandTotalText = null;
         _islandProgressSlider = null;
         _islandVolumeSlider = null;
-        _islandCompactVolumeSlider = null;
         _islandMuteButton = null;
         _islandPlayPauseGlyph = null;
         _islandVolumeGlyph = null;
@@ -749,7 +748,8 @@ public partial class MediaWidget : DockWidget
         {
             if (ReferenceEquals(current, VolumePopoverSurface) || ReferenceEquals(current, VolumeSlider))
                 return true;
-            current = VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+            current = (current is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(current) : null)
+                ?? LogicalTreeHelper.GetParent(current);
         }
         return false;
     }

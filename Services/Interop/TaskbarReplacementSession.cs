@@ -529,9 +529,6 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             SetPhase(SessionState.Hiding);
             Volatile.Write(ref _current, this);
-            // Observe Explorer taskbar windows before changing their visibility so a secondary tray created
-            // during startup cannot slip between the initial enumeration and event-hook installation.
-            InstallTrayShowHook();
             // Watch for Explorer showing Shell_TrayWnd / Shell_SecondaryTrayWnd after logon or shell restart.
             InstallShellShowHook();
             var state = SetTaskbarState(ReplacementState, _handle);
@@ -959,7 +956,6 @@ public sealed class TaskbarReplacementSession : IDisposable
         {
             SetPhase(SessionState.Stopping);
             UninstallShellShowHook();
-            UninstallTrayShowHook();
             _fullScreenPollTimer?.Stop();
             if (SuppressesFullScreen) SetFullScreenSuppression(false);
             StopHideRetryTimer();
@@ -1008,7 +1004,6 @@ public sealed class TaskbarReplacementSession : IDisposable
             // Stop enforcing hidden state before Shell calls can reenter our AppBar callback.
             SetPhase(SessionState.Stopping);
             UninstallShellShowHook();
-            UninstallTrayShowHook();
             _fullScreenPollTimer?.Stop();
             if (SuppressesFullScreen) SetFullScreenSuppression(false);
             StopHideRetryTimer();
@@ -2304,14 +2299,21 @@ public sealed class TaskbarReplacementSession : IDisposable
             if (error is not null) AppLog.Error(error);
             if (IsActive)
             {
-                // Stop() can leave the session active on failure. The WinEvent hook must still be released,
-                // otherwise its delegate and out-of-context hook survive for the lifetime of the process.
-                UninstallTrayShowHook();
+                // Stop() can leave the session active on failure; release hooks and timers so they do not
+                // leak for the lifetime of the process, while keeping ProcessExit registered for final recovery.
+                ReleaseHooksAndTimers();
                 return;
             }
         }
         _disposed = true;
-        UninstallTrayShowHook();
+        ReleaseHooksAndTimers();
+        _state = SessionState.Disposed;
+        Interlocked.CompareExchange(ref _current, null, this);
+        AppDomain.CurrentDomain.ProcessExit -= Process_Exit;
+    }
+
+    private void ReleaseHooksAndTimers()
+    {
         UninstallShellShowHook();
         _fullScreenPollTimer?.Stop();
         if (_fullScreenPollTimer is not null)
@@ -2331,9 +2333,6 @@ public sealed class TaskbarReplacementSession : IDisposable
             _reconcileTimer.Tick -= ReconcileTimer_Tick;
             _reconcileTimer = null;
         }
-        _state = SessionState.Disposed;
-        Interlocked.CompareExchange(ref _current, null, this);
-        AppDomain.CurrentDomain.ProcessExit -= Process_Exit;
     }
 
     private void Process_Exit(object? sender, EventArgs e)
@@ -2465,66 +2464,4 @@ public sealed class TaskbarReplacementSession : IDisposable
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
-
-    private delegate void WinEventProc(nint hWinEventHook, uint eventType, nint hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
-
-    [DllImport("user32.dll")]
-    private static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint hmodWinEventProc, WinEventProc lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
-
-    private nint _trayShowHook;
-    private WinEventProc? _trayShowHookDelegate;
-    private int _trayShowHideQueued;
-
-    private void InstallTrayShowHook()
-    {
-        if (_trayShowHook != 0) return;
-        _trayShowHookDelegate = OnTrayWindowShown;
-        _trayShowHook = SetWinEventHook(
-            EventObjectShow,
-            EventObjectShow,
-            0,
-            _trayShowHookDelegate,
-            0,
-            0,
-            WineventOutOfContext | WineventSkipOwnProcess);
-        if (_trayShowHook == 0)
-        {
-            _trayShowHookDelegate = null;
-            AppLog.Warning("Taskbar show event hook unavailable; secondary taskbar polling remains active.");
-        }
-    }
-
-    private void UninstallTrayShowHook()
-    {
-        if (_trayShowHook != 0)
-        {
-            _ = UnhookWinEvent(_trayShowHook);
-            _trayShowHook = 0;
-        }
-        _trayShowHookDelegate = null;
-    }
-
-    private void OnTrayWindowShown(nint hWinEventHook, uint eventType, nint hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime)
-    {
-        if (idObject != 0 || idChild != 0 || hwnd == 0 || !CanOperate) return;
-
-        var buffer = new char[32];
-        var length = GetClassName(hwnd, buffer, buffer.Length);
-        if (length <= 0) return;
-
-        var span = buffer.AsSpan(0, length);
-        var isSecondary = span.SequenceEqual("Shell_SecondaryTrayWnd");
-        if (!isSecondary && !span.SequenceEqual("Shell_TrayWnd")) return;
-
-        _ = GetWindowThreadProcessId(hwnd, out var pid);
-        if (pid == (uint)Environment.ProcessId) return;
-
-        if (Interlocked.Exchange(ref _trayShowHideQueued, 1) != 0) return;
-        _ = _window.Dispatcher.BeginInvoke(DispatcherPriority.Send, () =>
-        {
-            Interlocked.Exchange(ref _trayShowHideQueued, 0);
-            if (!CanOperate) return;
-            EnforceNativeTaskbarHidden();
-        });
-    }
 }

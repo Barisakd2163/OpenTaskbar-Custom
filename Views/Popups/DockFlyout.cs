@@ -204,7 +204,7 @@ public sealed class DockFlyout
         };
         _root.AddHandler(FrameworkElement.ContextMenuOpeningEvent, new ContextMenuEventHandler((_, e) =>
         {
-            _popup.StaysOpen = true;
+            if (e.Handled) return;
             ContextMenu? cm = null;
             if (e.Source is FrameworkElement fe && fe.ContextMenu is not null)
                 cm = fe.ContextMenu;
@@ -215,11 +215,13 @@ public sealed class DockFlyout
                 {
                     if (cur is FrameworkElement el && el.ContextMenu is not null)
                         cm = el.ContextMenu;
-                    cur = VisualTreeHelper.GetParent(cur) ?? LogicalTreeHelper.GetParent(cur);
+                    cur = (cur is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(cur) : null)
+                        ?? LogicalTreeHelper.GetParent(cur);
                 }
             }
             if (cm is not null)
             {
+                _popup.StaysOpen = true;
                 RoutedEventHandler? onClosed = null;
                 onClosed = (_, _) =>
                 {
@@ -309,6 +311,7 @@ public sealed class DockFlyout
 
     public void RetainForExternalContextMenu(nint appHwnd = 0)
     {
+        if (!_popup.IsOpen) return;
         _popup.StaysOpen = true;
         if (appHwnd != 0)
         {
@@ -552,7 +555,7 @@ public sealed class DockFlyout
         };
         _innerBevel.Child = content;
         _popup.StaysOpen = false;
-        _popup.PopupAnimation = animate && SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
+        _popup.PopupAnimation = PopupAnimation.None;
         CleanRegistry();
         for (var i = 0; i < FlyoutRegistry.Count; i++)
         {

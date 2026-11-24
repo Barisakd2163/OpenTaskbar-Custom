@@ -396,7 +396,8 @@ public partial class FocusWidget : DockWidget
         {
             ToggleGlyph.Content = FindResource(IsRunning ? "IconPauseFill" : "IconPlayFill");
             FocusIcon.SetResourceReference(ForegroundProperty, IsRunning ? "WidgetSelectedForeground" : "TextSecondary");
-            PlayButton.SetResourceReference(BackgroundProperty, IsRunning ? "WidgetSelectedFill" : "Transparent");
+            if (IsRunning) PlayButton.SetResourceReference(BackgroundProperty, "WidgetSelectedFill");
+            else PlayButton.ClearValue(BackgroundProperty);
             PlayButton.SetResourceReference(ForegroundProperty, IsRunning ? "WidgetSelectedForeground" : "TextPrimary");
         }
 

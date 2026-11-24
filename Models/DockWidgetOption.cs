@@ -185,6 +185,8 @@ public sealed class DockWidgetOption(
         culture.CompareInfo.IndexOf(Label, query, CompareOptions.IgnoreCase) >= 0
         || culture.CompareInfo.IndexOf(Description, query, CompareOptions.IgnoreCase) >= 0;
 
+    private AppLanguage _lastCategoryLanguage = UiText.Current.Language;
+
     public void UpdateText(string label, string description)
     {
         var changed = false;
@@ -201,8 +203,10 @@ public sealed class DockWidgetOption(
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Description)));
             changed = true;
         }
-        if (changed)
+        var currentLanguage = UiText.Current.Language;
+        if (changed || _lastCategoryLanguage != currentLanguage)
         {
+            _lastCategoryLanguage = currentLanguage;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CategoryLabel)));
         }
     }

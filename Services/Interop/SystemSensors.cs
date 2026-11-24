@@ -318,7 +318,14 @@ public sealed partial class SystemSensors : IDisposable
         {
             const uint kmtAdapterPerfData = 62;
             var enumArg = new D3dkmtEnumAdapters2();
-            if (D3DKMTEnumAdapters2(ref enumArg) != 0 || enumArg.NumAdapters == 0) return null;
+            try
+            {
+                if (D3DKMTEnumAdapters2(ref enumArg) != 0 || enumArg.NumAdapters == 0) return null;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+            {
+                return null;
+            }
 
             var infoSize = Marshal.SizeOf<D3dkmtAdapterInfo>();
             var buffer = Marshal.AllocHGlobal(infoSize * (int)enumArg.NumAdapters);

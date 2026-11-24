@@ -289,7 +289,7 @@ public partial class MainWindow
             DockPanel.SetDock(icon, Dock.Left);
             row.Children.Add(icon);
 
-            var label = new TextBlock { Text = name.Replace("_", "__"), VerticalAlignment = VerticalAlignment.Center };
+            var label = new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center };
             label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
             row.Children.Add(label);
 

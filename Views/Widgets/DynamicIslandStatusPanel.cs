@@ -8,9 +8,16 @@ internal sealed record DynamicIslandStatusRow(string Label, string Value, string
 
 internal static class DynamicIslandStatusPanel
 {
-    private static readonly Brush ForegroundBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xFA, 0xFA));
-    private static readonly Brush SecondaryBrush = new SolidColorBrush(Color.FromRgb(0xB7, 0xB8, 0xC1));
-    private static readonly Brush TrackBrush = new SolidColorBrush(Color.FromRgb(0x33, 0x38, 0x43));
+    private static readonly Brush ForegroundBrush = CreateFrozenBrush(0xFA, 0xFA, 0xFA);
+    private static readonly Brush SecondaryBrush = CreateFrozenBrush(0xB7, 0xB8, 0xC1);
+    private static readonly Brush TrackBrush = CreateFrozenBrush(0x33, 0x38, 0x43);
+
+    private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
     public static UIElement Create(string title, string value, string detail, double? progress, Color accent)
     {
