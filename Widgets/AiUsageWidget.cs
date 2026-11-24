@@ -223,16 +223,6 @@ public sealed class AiUsageWidget : DockWidget
         Clear();
     }
 
-    protected override void OnDisposed()
-    {
-        AiUsageService.CredentialsChanged -= OnCredentialsChanged;
-        if (_provider == AiProviders.Cursor)
-        {
-            CursorAuthService.SessionChanged -= CursorAuthService_SessionChanged;
-            CursorAuthService.RefreshRequested -= CursorAuthService_RefreshRequested;
-        }
-    }
-
     private void OnCredentialsChanged(AiProviders provider)
     {
         if (provider != _provider) return;

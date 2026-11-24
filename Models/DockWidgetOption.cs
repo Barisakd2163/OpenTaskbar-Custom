@@ -237,16 +237,9 @@ public sealed class DockWidgetOption(
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void Set(ref bool field, bool value, string propertyName)
+    private void Set<T>(ref T field, T value, string propertyName)
     {
-        if (field == value) return;
-        field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
-
-    private void Set(ref string field, string value, string propertyName)
-    {
-        if (field == value) return;
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }

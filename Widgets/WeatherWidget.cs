@@ -95,20 +95,16 @@ public sealed class WeatherWidget : DockWidget
 
     protected override void OnActivated()
     {
-        UiText.Current.PropertyChanged += UiText_PropertyChanged;
         _ = LoadAsync();
     }
 
     protected override void OnDeactivated()
     {
         _flyout.Close();
-        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         _loading?.Cancel();
         _loading = null;
         _loadingFor = null;
     }
-
-    private void UiText_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Render();
 
     protected override void OnSettingsChanged()
     {

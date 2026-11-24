@@ -321,11 +321,6 @@ public sealed class BatteryWidget : DockWidget
         UpdateLiquidGeometry(forceAnimationRestart: false);
     }
 
-    protected override void OnDisposed()
-    {
-        StopChargingAnimation();
-    }
-
     protected override void OnSettingsChanged()
     {
         if (IsActive) UpdateLiquidGeometry(forceAnimationRestart: true);

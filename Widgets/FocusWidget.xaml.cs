@@ -115,7 +115,6 @@ public partial class FocusWidget : DockWidget
 
     protected override void OnActivated()
     {
-        UiText.Current.PropertyChanged += UiText_PropertyChanged;
         _state.ActiveViews++;
         _state.Changed += Render;
         if (!_state.Initialized)
@@ -131,7 +130,6 @@ public partial class FocusWidget : DockWidget
     protected override void OnDeactivated()
     {
         _flyout.Close();
-        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         _state.Changed -= Render;
         if (--_state.ActiveViews == 0 && IsRunning)
         {
@@ -141,15 +139,7 @@ public partial class FocusWidget : DockWidget
         Card.BeginAnimation(OpacityProperty, null);
     }
 
-    protected override void OnDisposed()
-    {
-        _flyout.Close();
-    }
-
-    private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (IsActive) Render();
-    }
+    protected override void OnLanguageChanged() => Render();
 
     private int _lastConfiguredFocusMinutes = -1;
 

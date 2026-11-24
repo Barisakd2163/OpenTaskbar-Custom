@@ -185,25 +185,7 @@ public partial class SystemStatsWidget : DockWidget
         _lastProcessSampleTickMs = 0;
     }
 
-    protected override void OnDisposed()
-    {
-        _flyout.Closed -= Flyout_Closed;
-        _flyout.Close(restoreFocus: false);
-        CancelProcessSampling();
-        _clickFlyout = null;
-        _hoverFlyout = null;
-
-        var generation = Interlocked.Increment(ref _sensorGeneration);
-        _ = Task.Run(() =>
-        {
-            lock (_sensorGate)
-            {
-                if (generation != Volatile.Read(ref _sensorGeneration)) return;
-                _sensors?.Dispose();
-                _sensors = null;
-            }
-        });
-    }
+    protected override void OnDisposed() => _flyout.Closed -= Flyout_Closed;
 
     protected override void OnSettingsChanged()
     {

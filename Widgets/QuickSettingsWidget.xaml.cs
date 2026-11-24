@@ -172,8 +172,6 @@ public partial class QuickSettingsWidget : DockWidget
         Render();
     }
 
-    protected override void OnDisposed() => _flyout.Close();
-
     protected override void OnTick(DateTime now)
     {
         if (now.Second % 5 == 0) RefreshState();

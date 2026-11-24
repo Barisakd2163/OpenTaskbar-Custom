@@ -187,13 +187,7 @@ public sealed class BluetoothBatteryWidget : DockWidget
         CancelDeviceChangeDebounce();
     }
 
-    protected override void OnDisposed()
-    {
-        _disposed = true;
-        _activeFlyoutPanel = null;
-        DetachDeviceChangeHook();
-        CancelDeviceChangeDebounce();
-    }
+    protected override void OnDisposed() => _disposed = true;
 
     protected override void OnSettingsChanged()
     {

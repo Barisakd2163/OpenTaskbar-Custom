@@ -434,7 +434,6 @@ public partial class MediaWidget : DockWidget
     private async Task ActivateAsync()
     {
         var activationVersion = ++_activationVersion;
-        UiText.Current.PropertyChanged += UiText_PropertyChanged;
 
         try
         {
@@ -479,7 +478,6 @@ public partial class MediaWidget : DockWidget
     {
         _activationVersion++;
         CloseVolumePopover();
-        UiText.Current.PropertyChanged -= UiText_PropertyChanged;
         BindSession(null);
         if (_manager is not null)
         {
@@ -546,7 +544,7 @@ public partial class MediaWidget : DockWidget
         RenderVolume();
     }
 
-    private void UiText_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RenderVolume();
+    protected override void OnLanguageChanged() => RenderVolume();
 
     private void InvalidateAudioCache()
     {
