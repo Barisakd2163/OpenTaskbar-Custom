@@ -103,10 +103,7 @@ public partial class DynamicIslandWindow : Window, IDisposable
         _timedWidgets = timedWidgets;
         _widgetCoordinator.Apply(settings);
         SyncPages();
-        if (_pageIds.Count > 0)
-        {
-            PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: false);
-        }
+        PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: false);
         RefreshVisibility();
     }
 
@@ -202,10 +199,14 @@ public partial class DynamicIslandWindow : Window, IDisposable
                 DetailsContent.Content = null;
                 DetailsPanel.Visibility = Visibility.Collapsed;
                 _isExpanded = false;
-                Hide();
+                Header.Cursor = Cursors.Arrow;
+                UpdatePageControls();
+                PositionWindow(CompactSurfaceWidth, CompactHeight, animate: false);
+                RefreshVisibility();
                 return;
             }
 
+            Header.Cursor = Cursors.Hand;
             UpdatePageControls();
             PositionWindow(WidthForCurrentPage(), _isExpanded ? ExpandedHeight : CompactHeight, animate: false);
             RefreshVisibility();
@@ -813,8 +814,8 @@ public partial class DynamicIslandWindow : Window, IDisposable
             && SecondaryDockWindow.IsWindowOnMonitor(foreground, _display.Handle);
         var fullscreen = _settings.DynamicIslandHideInFullscreen
             && TaskbarReplacementSession.IsAnyFullScreenOnMonitor(_display.Handle);
-        var shouldShow = _pageIds.Count > 0
-            && !_settings.FocusModeEnabled
+        var shouldShow = DynamicIslandPolicy.ShouldCreateWindow(
+                _settings.DynamicIslandEnabled, _settings.FocusModeEnabled)
             && DynamicIslandPolicy.ShouldShow(
                 _settings.DynamicIslandVisibility,
                 desktopVisible: !foregroundOnDisplay,

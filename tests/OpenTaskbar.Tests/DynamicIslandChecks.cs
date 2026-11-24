@@ -21,6 +21,11 @@ internal static class DynamicIslandChecks
             new(1, "DISPLAY1", 1, "Primary", new Rect(0, 0, 1920, 1080), new Rect(0, 0, 1920, 1040), true, 96),
             new(2, "DISPLAY2", 2, "Secondary", new Rect(1920, 0, 1280, 720), new Rect(1920, 0, 1280, 680), false, 96)
         ];
+        Check(DynamicIslandPolicy.ShouldCreateWindow(true, false)
+            && !DynamicIslandPolicy.ShouldCreateWindow(false, false)
+            && !DynamicIslandPolicy.ShouldCreateWindow(true, true)
+            && DynamicIslandPolicy.WidgetsForDisplay([], null, "DISPLAY1").Count == 0,
+            "An enabled island must stay available on an empty display unless disabled or focus mode is active.");
         IReadOnlyDictionary<string, string> placements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Media"] = "DISPLAY1",

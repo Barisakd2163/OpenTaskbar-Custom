@@ -4,6 +4,9 @@ namespace OpenTaskbar.Services;
 
 public static class DynamicIslandPolicy
 {
+    public static bool ShouldCreateWindow(bool dynamicIslandEnabled, bool focusModeEnabled) =>
+        dynamicIslandEnabled && !focusModeEnabled;
+
     public static bool IsAssignedToDisplay(
         IReadOnlyDictionary<string, string>? placements,
         string widgetId,

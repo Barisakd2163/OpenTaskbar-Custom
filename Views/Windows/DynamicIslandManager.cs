@@ -45,7 +45,7 @@ public sealed class DynamicIslandManager : IDisposable
     {
         if (_disposed) return;
         RefreshDisplays();
-        if (!settings.DynamicIslandEnabled || settings.FocusModeEnabled)
+        if (!DynamicIslandPolicy.ShouldCreateWindow(settings.DynamicIslandEnabled, settings.FocusModeEnabled))
         {
             foreach (var window in _windows.Values) window.Dispose();
             _windows.Clear();
@@ -57,8 +57,6 @@ public sealed class DynamicIslandManager : IDisposable
             display => display.DeviceName,
             display => DynamicIslandPolicy.WidgetsForDisplay(selected, placements, display.DeviceName),
             StringComparer.OrdinalIgnoreCase);
-        foreach (var empty in desired.Where(pair => pair.Value.Count == 0).Select(pair => pair.Key).ToArray())
-            desired.Remove(empty);
 
         foreach (var stale in _windows.Keys.Where(deviceName => !desired.ContainsKey(deviceName)).ToArray())
         {

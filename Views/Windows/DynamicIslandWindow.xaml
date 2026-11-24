@@ -82,7 +82,7 @@
                     <RowDefinition Height="50" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <Grid x:Name="Header" Grid.Row="0" Cursor="Hand" Focusable="True"
+                <Grid x:Name="Header" Grid.Row="0" Cursor="Arrow" Focusable="True"
                       PreviewMouseLeftButtonDown="Header_PreviewMouseLeftButtonDown"
                       PreviewMouseMove="Header_PreviewMouseMove"
                       PreviewMouseLeftButtonUp="Header_PreviewMouseLeftButtonUp"

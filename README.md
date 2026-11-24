@@ -72,7 +72,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Productivity Widgets:** Focus Pomodoro timer, Stopwatch, Countdown timer, Storage drive usage, Network Speed, and Day Progress bar.
 - **System Tray Management:** Background tray apps manager with native tray context menus, window restore, and confirmed process termination.
 - **Interactive Catalog:** Built-in widget catalog grouped under inline category headings with live widget previews and expandable configuration drawers with instant auto-save.
-- **Optional Dynamic Island:** Assign each widget to the dock or a chosen display's top-attached island. Widgets move off that display's dock while assigned, and the island supports per-display paging, visibility rules, and full-screen hiding.
+- **Optional Dynamic Island:** When enabled, the top-attached island remains visible on every connected display, even before widgets are assigned. Assign each widget to the dock or a chosen display's island; assigned widgets move off that display's dock. The island supports per-display paging, visibility rules, and full-screen hiding.
 
 ### Extras and Integration
 - **Search Button:** A Start-adjacent dock button that opens the native Windows Search flyout (Win+S), with the same cell size as app icons and a Settings toggle.
