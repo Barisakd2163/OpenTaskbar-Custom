@@ -653,10 +653,11 @@ public sealed class DockFlyout
         _popup.IsOpen = false;
     }
 
-    private static CustomPopupPlacement[] Place(Size popupSize, Size targetSize, Point offset)
+    private CustomPopupPlacement[] Place(Size popupSize, Size targetSize, Point offset)
     {
-        // Gap is derived from the current dock profile, keeping the visible flyout ~5–10 px off the dock edge.
-        var gap = DockMetrics.FlyoutGap;
+        // Measure the anchor's actual distance to the outer DockFrame edge so every flyout sits
+        // exactly DesiredFlyoutGap (7 DIP) outside the visible taskbar regardless of button height or dock size.
+        var gap = ComputePlacementGap(targetSize);
         return Edge switch
         {
             DockEdge.Left =>
@@ -675,6 +676,44 @@ public sealed class DockFlyout
                 new CustomPopupPlacement(new Point((targetSize.Width - popupSize.Width) / 2, targetSize.Height + gap), PopupPrimaryAxis.Horizontal)
             ]
         };
+    }
+
+    private double ComputePlacementGap(Size targetSize)
+    {
+        var target = (_currentTarget ?? _popup.PlacementTarget) as FrameworkElement;
+        if (target is null || !target.IsLoaded) return DockMetrics.FlyoutGap;
+
+        var dockFrame = FindAncestorByName(target, "DockFrame");
+        if (dockFrame is null || dockFrame.ActualWidth <= 0 || dockFrame.ActualHeight <= 0)
+            return DockMetrics.FlyoutGap;
+
+        try
+        {
+            var origin = target.TranslatePoint(new Point(0, 0), dockFrame);
+            var (anchorInset, contentMargin) = Edge switch
+            {
+                DockEdge.Left => (Math.Max(0, dockFrame.ActualWidth - (origin.X + targetSize.Width)), _root.Margin.Left),
+                DockEdge.Right => (Math.Max(0, origin.X), _root.Margin.Right),
+                _ => (Math.Max(0, origin.Y), _root.Margin.Bottom)
+            };
+            return anchorInset + DockMetrics.DesiredFlyoutGap - contentMargin;
+        }
+        catch (InvalidOperationException)
+        {
+            return DockMetrics.FlyoutGap;
+        }
+    }
+
+    private static FrameworkElement? FindAncestorByName(DependencyObject start, string name)
+    {
+        var current = start;
+        while (current is not null)
+        {
+            if (current is FrameworkElement fe && string.Equals(fe.Name, name, StringComparison.Ordinal))
+                return fe;
+            current = VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     /// <summary>Flat, borderless button used for flyout rows and tiles.</summary>
