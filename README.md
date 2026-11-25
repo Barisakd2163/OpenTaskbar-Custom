@@ -1,4 +1,23 @@
-# OpenTaskbar
+# OpenTaskbar Custom
+
+[OpenTaskbar](https://github.com/alztrk/opentaskbar) projesinin **v0.3.4 tabanlı, MIT lisanslı** kişisel fork'u. Orijinal proje ve katkıda bulunanların telif bildirimleri korunur.
+
+## Bu fork'ta neler değişti?
+
+- **Boşluksuz, görünür dock:** “Üstte göster (alan ayırma)” modu dock'u görünür tutar; büyütülmüş pencereler arkasına kadar uzanabilir. Aynalanan ikinci ekranda da geçerlidir.
+- **Pencere geçişlerinde donma düzeltmesi:** Başka uygulamaların giriş kuyruklarına bağlanan etkinleştirme yolu kaldırıldı. Bu yol dock'u ve Brave dahil uygulamaların pencere önizlemelerini kilitleyebiliyordu.
+- **İki ekran senkronizasyonu:** Başlangıçta yüklenen sabit uygulamalar ve daha sonra gelen simgeler ikinci dock'a da aktarılır.
+- **Tutarlı hover görünümü:** Uygulama, grup ve klasör simgeleri Başlat düğmesiyle aynı temaya uyumlu, yuvarlatılmış hover arka planını ve geçiş sürelerini kullanır.
+
+### Doğrulama
+
+Bu değişiklikler için 19 hedefli otomatik gizleme/Overlay yaşam döngüsü kontrolü ve yanıt vermeyen pencere etkinleştirmesine yönelik 1 regresyon kontrolü geçti. İki ekrandaki dock, Brave'in canlı pencere önizlemesi ve hover arka planı gerçek Windows masaüstünde doğrulandı. Tam test paketi bu çalışma sırasında çalıştırılmadı.
+
+[Commit geçmişi](https://github.com/Barisakd2163/OpenTaskbar-Custom/commits/custom/overlay-dock) · [Değişiklik günlüğü](CHANGELOG.md) · [MIT lisansı](LICENSE)
+
+## Orijinal OpenTaskbar
+
+Aşağıdaki özellikler, görseller ve genel kullanım yönergeleri orijinal projeden korunmuştur; fork'a özgü değişiklikler yukarıda listelenmiştir.
 
 <div align="center">
 

@@ -1,11 +1,14 @@
 # Changelog
 
-## Unreleased
+## Custom fork - 2026-11-25
 
 - Apply the Start button's theme-aware hover surface and fade timing to application, group, and folder-stack icons.
 - Added Overlay visibility mode: keep the dock visible above applications without reserving screen space on the main or mirrored displays.
 - Removed the input-queue attachment fallback during window activation so an unresponsive application cannot freeze the dock and its window previews.
 - Synchronize mirrored dock pins and icons after asynchronous startup imports finish.
+
+## Upstream - Unreleased
+
 - Applied the active theme and theme pack tokens to the Dynamic Island, with per-user background color and opacity controls.
 
 - Read playback progress from the matching LibreWolf tab when Windows omits the timeline and the browser exposes a verifiable player position and duration. Show an unavailable-duration status when neither source has a usable timeline.
