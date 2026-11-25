@@ -58,7 +58,7 @@ OpenTaskbar is a lightweight, macOS-inspired floating dock and taskbar replaceme
 - **Multi-Monitor Docks:** Optional secondary docks for multi-monitor setups.
 
 ### Smart Auto-Hide (IntelliHide)
-- **Three Auto-Hide Modes:** Disabled (always visible), Smart (IntelliHide), and Always (hidden until edge hover).
+- **Four Dock Visibility Modes:** Disabled (always visible with reserved screen space), Overlay (always visible without reserved space, so maximized applications extend behind the dock), Smart (IntelliHide), and Always (hidden until edge hover). Overlay also applies to mirrored docks.
 - **IntelliHide Logic:** The dock stays visible on the desktop and behind non-overlapping windows. When an active window overlaps the dock region, the dock smoothly slides off-screen.
 - **Fullscreen Detection:** Automatically yields and hides when full-screen applications, borderless games, or browser videos are playing.
 

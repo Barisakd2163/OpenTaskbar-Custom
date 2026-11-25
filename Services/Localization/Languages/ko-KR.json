@@ -96,6 +96,7 @@
   "Right": "오른쪽",
   "AutoHide": "자동 숨기기",
   "AutoHideDisabled": "사용 안 함",
+  "AutoHideOverlay": "겹쳐 표시 (공간 예약 안 함)",
   "AutoHideSmart": "스마트",
   "AutoHideAlways": "항상",
   "Apply": "적용",

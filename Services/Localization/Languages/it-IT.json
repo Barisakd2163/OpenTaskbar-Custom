@@ -96,6 +96,7 @@
   "Right": "Destra",
   "AutoHide": "Nascondi automaticamente",
   "AutoHideDisabled": "Disabilitato",
+  "AutoHideOverlay": "Sovrapponi (senza spazio riservato)",
   "AutoHideSmart": "Intelligente",
   "AutoHideAlways": "Sempre",
   "Apply": "Applica",

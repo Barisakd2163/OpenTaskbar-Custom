@@ -294,6 +294,7 @@
                                     <ComboBox x:Name="AutoHideBox" views:IconGlyph.Glyph="{StaticResource IconEyeOff}" DockPanel.Dock="Right" MinWidth="150" MaxWidth="250" Width="Auto" VerticalAlignment="Center"
                                               AutomationProperties.Name="{local:Loc AutoHide}" SelectionChanged="SegmentChoice_SelectionChanged">
                                         <ComboBoxItem Content="{local:Loc AutoHideDisabled}" Tag="Disabled" />
+                                        <ComboBoxItem Content="{local:Loc AutoHideOverlay}" Tag="Overlay" />
                                         <ComboBoxItem Content="{local:Loc AutoHideSmart}" Tag="Smart" />
                                         <ComboBoxItem Content="{local:Loc AutoHideAlways}" Tag="Always" />
                                     </ComboBox>

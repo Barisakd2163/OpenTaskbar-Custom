@@ -173,6 +173,7 @@
   "Right": "Right",
   "AutoHide": "Auto-hide",
   "AutoHideDisabled": "Never",
+  "AutoHideOverlay": "Overlay (no reserved space)",
   "AutoHideSmart": "Smart",
   "AutoHideAlways": "Always",
   "Apply": "Apply",

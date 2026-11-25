@@ -170,6 +170,7 @@
   "Right": "Sağ",
   "AutoHide": "Otomatik gizleme",
   "AutoHideDisabled": "Kapalı",
+  "AutoHideOverlay": "Üstte göster (alan ayırma)",
   "AutoHideSmart": "Pencerelerle örtüştüğünde",
   "AutoHideAlways": "Fare ayrıldığında",
   "Apply": "Uygula",

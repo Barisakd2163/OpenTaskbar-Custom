@@ -96,6 +96,7 @@
   "Right": "Справа",
   "AutoHide": "Автоматически скрывать",
   "AutoHideDisabled": "Отключено",
+  "AutoHideOverlay": "Поверх окон (без резервирования места)",
   "AutoHideSmart": "Умное",
   "AutoHideAlways": "Всегда",
   "Apply": "Применить",

@@ -782,7 +782,7 @@ public partial class MainWindow : Window
 
             // Keep the screen-edge reveal strip hit-testable while auto-hide is enabled; otherwise the hidden
             // dock slides out of DockSurface and MouseEnter can never reach DockEdgeTrigger to reveal it again.
-            if (_preferences.Current.AutoHide != AutoHideMode.Disabled
+            if (_preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always
                 && DockEdgeTrigger is { Visibility: Visibility.Visible, ActualWidth: > 0, ActualHeight: > 0 })
             {
                 var triggerTopLeft = DockEdgeTrigger.PointToScreen(new Point(0, 0));
@@ -834,6 +834,15 @@ public partial class MainWindow : Window
             if (_pinnedApps.Any(existing => SamePath(existing.ExecutablePath, app.ExecutablePath))) continue;
             _pinnedApps.Add(app);
             LoadPinnedIconAsync(app);
+        }
+
+        foreach (var dock in _mirroredDocks.Values)
+        {
+            dock.SynchronizePins(_pinnedApps);
+            dock.UpdateRunningApps(dock.RunningCandidates());
+            dock.RebuildDockOrder();
+            dock.ResizeDockToContent();
+            dock._replacementSession?.RefreshPosition();
         }
 
         if (result.ErrorKey is not null)
@@ -2569,7 +2578,17 @@ public partial class MainWindow : Window
             {
                 if (task.IsCompletedSuccessfully && task.Result is { } raw)
                 {
-                    Dispatcher.BeginInvoke(new Action(() => app.Icon = ThemePacks.ApplyIcon(raw, app.ExecutablePath, app.AppUserModelId)));
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        app.Icon = ThemePacks.ApplyIcon(raw, app.ExecutablePath, app.AppUserModelId);
+                        var dockKey = app.DockKey;
+                        foreach (var dock in _mirroredDocks.Values)
+                        {
+                            var mirrored = dock._pinnedApps.FirstOrDefault(pin =>
+                                string.Equals(pin.DockKey, dockKey, StringComparison.OrdinalIgnoreCase));
+                            if (mirrored is not null) mirrored.Icon = app.Icon;
+                        }
+                    }));
                 }
                 else if (task.Exception is { } failure)
                 {

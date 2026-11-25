@@ -96,6 +96,7 @@
   "Right": "右",
   "AutoHide": "自動的に隠す",
   "AutoHideDisabled": "オフ",
+  "AutoHideOverlay": "常に手前に表示（領域を確保しない）",
   "AutoHideSmart": "ウィンドウと重なったとき",
   "AutoHideAlways": "マウスが離れたとき",
   "Apply": "適用",

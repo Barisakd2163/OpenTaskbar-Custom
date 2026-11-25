@@ -754,12 +754,6 @@ public sealed class NativeWindowTracker : IDisposable
         return true;
     }
 
-    private static bool IsForegroundRoot(nint windowHandle)
-    {
-        var active = GetForegroundWindow();
-        return active == windowHandle
-            || (active != 0 && NormalizeRootWindow(active) == NormalizeRootWindow(windowHandle));
-    }
 
     private static nint NormalizeRootWindow(nint windowHandle)
     {
@@ -784,46 +778,9 @@ public sealed class NativeWindowTracker : IDisposable
         // which would let every process steal focus during this window's input window.
         GetWindowThreadProcessId(windowHandle, out var targetPid);
         if (targetPid != 0 && targetPid <= int.MaxValue) AllowSetForegroundWindow((int)targetPid);
-        // Fast path: a dock click is the last input event, so this process may set the foreground window directly.
-        // Attaching input queues and raising the window first waits on both apps' UI threads and cost 50-250 ms per
-        // click; keep that only as the fallback for when Windows refuses the plain request.
-        if (SetForegroundWindow(windowHandle) && IsForegroundRoot(windowHandle))
-        {
-            return true;
-        }
-
-        var foreground = GetForegroundWindow();
-        var foregroundThread = foreground != 0 ? GetWindowThreadProcessId(foreground, out _) : 0;
-        var targetThread = GetWindowThreadProcessId(windowHandle, out _);
-        var currentThread = GetCurrentThreadId();
-        var attachedForeground = foregroundThread != 0 && foregroundThread != currentThread
-            && AttachThreadInput(currentThread, foregroundThread, true);
-        var attachedTarget = targetThread != 0 && targetThread != currentThread && targetThread != foregroundThread
-            && AttachThreadInput(currentThread, targetThread, true);
-        try
-        {
-            BringWindowToTop(windowHandle);
-            if (SetForegroundWindow(windowHandle))
-            {
-                return true;
-            }
-        }
-        finally
-        {
-            if (attachedTarget)
-            {
-                AttachThreadInput(currentThread, targetThread, false);
-            }
-            if (attachedForeground)
-            {
-                AttachThreadInput(currentThread, foregroundThread, false);
-            }
-        }
-
-        SwitchToThisWindow(windowHandle, true);
-        var active = GetForegroundWindow();
-        return active == windowHandle
-            || (active != 0 && NormalizeRootWindow(active) == NormalizeRootWindow(windowHandle));
+        // Never merge the dock's input queue with another application's UI thread.
+        // A hung foreground or target window can otherwise freeze both docks in BringWindowToTop.
+        return SetForegroundWindow(windowHandle);
     }
 
     public static nint GetForegroundApplicationWindow() =>
@@ -1040,20 +997,10 @@ public sealed class NativeWindowTracker : IDisposable
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool BringWindowToTop(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AllowSetForegroundWindow(int processId);
 
     [DllImport("user32.dll")]
-    private static extern void SwitchToThisWindow(nint windowHandle, [MarshalAs(UnmanagedType.Bool)] bool altTab);
-
-    [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
 
     internal static string? GetExecutablePath(nint windowHandle)
     {
@@ -1189,10 +1136,6 @@ public sealed class NativeWindowTracker : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(nint windowHandle, uint message, nint wParam, nint lParam);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AttachThreadInput(uint threadIdAttach, uint threadIdAttachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);

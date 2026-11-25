@@ -218,7 +218,8 @@ public partial class MainWindow
             ? DockFisheyeLayout.PeakExpansionNeed(Profile.Cell, DockMetrics.HoverScale)
             : 0.0;
         var shadowMarginPerSide = ComputeShadowMarginPerSide(DockShadowLayer.Effect);
-        var preserveFullEdgeForAutoHide = forceFullMonitorSpan || _preferences.Current.AutoHide != AutoHideMode.Disabled;
+        var preserveFullEdgeForAutoHide = forceFullMonitorSpan
+            || _preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always;
 
         var bounds = ComputeFloatingLayeredWindowBounds(
             monitorOffset,

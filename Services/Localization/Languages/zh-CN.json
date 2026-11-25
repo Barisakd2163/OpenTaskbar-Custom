@@ -96,6 +96,7 @@
   "Right": "居右",
   "AutoHide": "自动隐藏",
   "AutoHideDisabled": "已禁用",
+  "AutoHideOverlay": "叠加显示（不预留空间）",
   "AutoHideSmart": "智能",
   "AutoHideAlways": "始终",
   "Apply": "应用",

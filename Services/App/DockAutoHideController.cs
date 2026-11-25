@@ -36,6 +36,7 @@ public sealed class DockAutoHideController : IDisposable
     private const long WinKeyRevealGraceMs = 600;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
+    private bool CanAutoHide => Mode is AutoHideMode.Smart or AutoHideMode.Always;
 
     /// <summary>The screen edge the dock slides towards when it hides.</summary>
     public Models.DockEdge Edge { get; set; } = Models.DockEdge.Bottom;
@@ -108,13 +109,13 @@ public sealed class DockAutoHideController : IDisposable
     /// </summary>
     private void ArmRevealedGuard()
     {
-        if (_disposed || Mode == AutoHideMode.Disabled || IsHidden) return;
+        if (_disposed || !CanAutoHide || IsHidden) return;
         if (!_revealedGuardTimer.IsEnabled) _revealedGuardTimer.Start();
     }
 
     private void SyncRevealedGuardTimer()
     {
-        if (_disposed || Mode == AutoHideMode.Disabled || IsHidden)
+        if (_disposed || !CanAutoHide || IsHidden)
         {
             _revealedGuardTimer.Stop();
         }
@@ -126,7 +127,7 @@ public sealed class DockAutoHideController : IDisposable
 
     private void RevealedGuardTimer_Tick(object? sender, EventArgs e)
     {
-        if (_disposed || Mode == AutoHideMode.Disabled || IsHidden)
+        if (_disposed || !CanAutoHide || IsHidden)
         {
             _revealedGuardTimer.Stop();
             return;
@@ -150,7 +151,7 @@ public sealed class DockAutoHideController : IDisposable
     {
         if (Mode == mode) return;
         Mode = mode;
-        if (Mode == AutoHideMode.Disabled)
+        if (!CanAutoHide)
         {
             _hideTimer.Stop();
             _revealedGuardTimer.Stop();
@@ -205,7 +206,7 @@ public sealed class DockAutoHideController : IDisposable
 
     public void CheckForegroundWindow(nint foregroundHwnd)
     {
-        if (Mode == AutoHideMode.Disabled) return;
+        if (!CanAutoHide) return;
         // Always mode also re-evaluates so an opening Start menu reveals the hidden dock.
         if (Mode == AutoHideMode.Smart && RefreshSmartOverlap(foregroundHwnd))
             RecordSmartOverlapScan(GetForegroundWindow());
@@ -226,7 +227,7 @@ public sealed class DockAutoHideController : IDisposable
     /// </summary>
     public void RevealForWinKey()
     {
-        if (_disposed || Mode == AutoHideMode.Disabled) return;
+        if (_disposed || !CanAutoHide) return;
         _winKeyGraceUntilMs = Environment.TickCount64 + WinKeyRevealGraceMs;
         _hideTimer.Stop();
         if (IsHidden) AnimateReveal();
@@ -287,7 +288,7 @@ public sealed class DockAutoHideController : IDisposable
 
     public void EvaluateState()
     {
-        if (_disposed || Mode == AutoHideMode.Disabled) return;
+        if (_disposed || !CanAutoHide) return;
         if (!IsHidden) SyncPointerState();
 
         if (ShouldHide())
@@ -365,7 +366,7 @@ public sealed class DockAutoHideController : IDisposable
 
     private bool ShouldHide()
     {
-        if (Mode == AutoHideMode.Disabled) return false;
+        if (!CanAutoHide) return false;
         if (IsMouseOverDock || IsMouseAtEdge) return false;
         if (IsShellMenuOpen?.Invoke() == true) return false;
         if (Environment.TickCount64 < _winKeyGraceUntilMs) return false;

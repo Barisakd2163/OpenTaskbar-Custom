@@ -333,6 +333,23 @@ internal static class SettingsAndAutoHideChecks
             controller.SetMode(AutoHideMode.Disabled);
             check(!controller.IsHidden && Math.Abs(translate.Y) < 0.001,
                 "Disabling auto-hide must keep dock revealed at zero offset.");
+
+            controller.SetMode(AutoHideMode.Always);
+            controller.OnMouseLeaveDock();
+            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
+            check(controller.IsHidden, "Always mode must hide before testing the overlay transition.");
+            controller.SetMode(AutoHideMode.Overlay);
+            check(!controller.IsHidden && Math.Abs(translate.Y) < 0.001,
+                "Switching from a hidden dock to Overlay must immediately reveal it at zero offset.");
+            controller.OnMouseLeaveDock();
+            controller.CheckForegroundWindow(hwnd);
+            controller.EvaluateState();
+            PumpDispatcher(application.Dispatcher, waitBudgetMs);
+            check(!controller.IsHidden && Math.Abs(translate.Y) < 0.001,
+                "Overlay must remain visible after pointer departure and pending auto-hide timer ticks.");
+            controller.SetMode(AutoHideMode.Always);
+            PumpUntil(application.Dispatcher, () => controller.IsHidden, waitBudgetMs);
+            check(controller.IsHidden, "Switching from Overlay back to Always must restore auto-hide.");
         }
         finally
         {

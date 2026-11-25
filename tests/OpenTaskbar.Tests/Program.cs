@@ -87,6 +87,7 @@ checks += TraySourceChecks.RunHeadless();
 if (!headless)
 {
     checks += StaCheckRunner.Run(TraySourceChecks.RunUi);
+    checks += StaCheckRunner.Run(WindowActivationChecks.Run);
     checks += StaCheckRunner.Run(DockGestureChecks.RunUi);
 }
 Console.WriteLine($"{checks} behavior checks passed.");

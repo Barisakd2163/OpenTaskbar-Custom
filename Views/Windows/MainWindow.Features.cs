@@ -68,7 +68,8 @@ public partial class MainWindow
 
     private void OnStandaloneWinKeyPressed()
     {
-        if (!_preferences.Current.RevealDockOnWinKey || _preferences.Current.AutoHide == AutoHideMode.Disabled) return;
+        if (!_preferences.Current.RevealDockOnWinKey
+            || _preferences.Current.AutoHide is not (AutoHideMode.Smart or AutoHideMode.Always)) return;
         _autoHideController?.RevealForWinKey();
         foreach (var dock in _mirroredDocks.Values) dock._autoHideController?.RevealForWinKey();
     }
@@ -78,7 +79,7 @@ public partial class MainWindow
         if (!_featuresInitialized) return;
         RegisterHotkeys();
         _winKeyMonitor?.SetEnabled(_preferences.Current.RevealDockOnWinKey
-            && _preferences.Current.AutoHide != AutoHideMode.Disabled);
+            && _preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always);
         if (_updateTimer is not null)
         {
             if (_preferences.Current.CheckUpdates) { if (!_updateTimer.IsEnabled) _updateTimer.Start(); }

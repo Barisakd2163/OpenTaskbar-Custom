@@ -96,6 +96,7 @@
   "Right": "Rechts",
   "AutoHide": "Automatisch verbergen",
   "AutoHideDisabled": "Uitgeschakeld",
+  "AutoHideOverlay": "Overlay (geen ruimte reserveren)",
   "AutoHideSmart": "Slim (wanneer vensters overlappen)",
   "AutoHideAlways": "Altijd verbergen",
   "Apply": "Toepassen",
