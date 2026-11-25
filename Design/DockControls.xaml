@@ -51,6 +51,9 @@
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="{DynamicResource DockIndicatorRowHeight}" />
                             </Grid.RowDefinitions>
+                            <Border x:Name="HoverSurface" Grid.RowSpan="2"
+                                    Background="{DynamicResource ShellButtonHover}"
+                                    CornerRadius="{DynamicResource ControlRadius}" Opacity="0" IsHitTestVisible="False" />
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             <!-- Calm macOS-style active running indicator dot; follows Bottom / Left / Right dock edge. -->
                             <Rectangle x:Name="ActiveIndicator" Grid.RowSpan="2" Height="4" Width="4" RadiusX="2" RadiusY="2"
@@ -62,6 +65,24 @@
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverSurface" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.12" FillBehavior="HoldEnd" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverSurface" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.18" FillBehavior="HoldEnd" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Surface" Property="Opacity" Value="0.48" />
                         </Trigger>

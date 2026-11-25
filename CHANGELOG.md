@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Apply the Start button's theme-aware hover surface and fade timing to application, group, and folder-stack icons.
 - Added Overlay visibility mode: keep the dock visible above applications without reserving screen space on the main or mirrored displays.
 - Removed the input-queue attachment fallback during window activation so an unresponsive application cannot freeze the dock and its window previews.
 - Synchronize mirrored dock pins and icons after asynchronous startup imports finish.
