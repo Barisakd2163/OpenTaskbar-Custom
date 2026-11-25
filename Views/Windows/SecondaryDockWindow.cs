@@ -11,9 +11,9 @@ using OpenTaskbar.Services;
 namespace OpenTaskbar;
 
 /// <summary>
-/// A lightweight dock for a non-primary display. It uses the strip Explorer's taskbar still reserves when there is
-/// one, and reserves its own app-bar shelf when taskbar replacement released that strip. It lists the windows on
-/// its display and unregisters the shelf when it closes.
+/// A lightweight dock for a non-primary display. Disabled mode reuses Explorer's reserved strip or reserves
+/// its own app-bar shelf; overlay and auto-hide modes sit at the monitor edge without reserving work area.
+/// It lists the windows on its display and unregisters the shelf when it closes.
 /// </summary>
 public sealed class SecondaryDockWindow : Window
 {
@@ -50,6 +50,11 @@ public sealed class SecondaryDockWindow : Window
     private bool _fullScreen;
     private bool _appBarRegistered;
     private (int Left, int Right, int Height)? _reservation;
+    private AutoHideMode _autoHideMode;
+    private DockAutoHideController? _autoHideController;
+    private readonly TranslateTransform _dockTranslate = new();
+    private readonly Border _edgeTrigger = new() { Height = 2, VerticalAlignment = VerticalAlignment.Bottom, Background = Brushes.Transparent, Visibility = Visibility.Collapsed };
+    private Func<IEnumerable<nint>>? _backgroundWindowsProvider;
 
     private void ApplyVisibility() => Visibility = _stripAvailable && !_fullScreen ? Visibility.Visible : Visibility.Hidden;
 
@@ -102,7 +107,15 @@ public sealed class SecondaryDockWindow : Window
         surface.SetResourceReference(Border.BorderBrushProperty, "DockBorderMaterial");
         surface.ContextMenu = BuildContextMenu();
         _surface = surface;
-        Content = surface;
+        surface.RenderTransform = _dockTranslate;
+        var root = new Grid();
+        root.Children.Add(surface);
+        root.Children.Add(_edgeTrigger);
+        Content = root;
+        _edgeTrigger.MouseEnter += (_, _) => _autoHideController?.OnMouseEnterEdge();
+        _edgeTrigger.MouseLeave += (_, _) => _autoHideController?.OnMouseLeaveEdge();
+        surface.MouseEnter += (_, _) => _autoHideController?.OnMouseEnterDock();
+        surface.MouseLeave += (_, _) => _autoHideController?.OnMouseLeaveDock();
         UiText.Current.PropertyChanged += OnLanguageChanged;
     }
 
@@ -147,7 +160,11 @@ public sealed class SecondaryDockWindow : Window
             handled = true;
             return 3; // MA_NOACTIVATE
         });
-        RegisterAppBar();
+        _autoHideController = new DockAutoHideController(this, _handle, _dockTranslate, _surface,
+            () => _surface.ContextMenu?.IsOpen == true || DockFlyout.IsAnyOpen);
+        _autoHideController.BackgroundWindowsProvider = _backgroundWindowsProvider;
+        _autoHideController.SetMode(_autoHideMode);
+        if (_autoHideMode == AutoHideMode.Disabled) RegisterAppBar();
         PositionOnMonitor();
         if (TaskbarReplacementSession.IsAnySessionActive)
         {
@@ -158,6 +175,7 @@ public sealed class SecondaryDockWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         UiText.Current.PropertyChanged -= OnLanguageChanged;
+        _autoHideController?.Dispose();
         UnregisterAppBar();
         base.OnClosed(e);
     }
@@ -179,6 +197,16 @@ public sealed class SecondaryDockWindow : Window
         int height;
 
         var metrics = DockLayoutMetrics.Calculate(_shelfHeight, 0, 0, dpi);
+        if (_autoHideMode != AutoHideMode.Disabled)
+        {
+            UnregisterAppBar();
+            height = metrics.ShelfPixels;
+            _stripAvailable = true;
+            ApplyVisibility();
+            SetWindowPos(_handle, new nint(-1), info.Monitor.Left, info.Monitor.Bottom - height,
+                info.Monitor.Right - info.Monitor.Left, height, PositionFlags(true));
+            return;
+        }
         var additional = MissingShelfPixels(stripHeight, _reservation?.Height ?? 0, dpi, _shelfHeight);
         if (additional == 0)
         {
@@ -287,6 +315,22 @@ public sealed class SecondaryDockWindow : Window
         _quickSettingsButton.Visibility = showWidgets ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    public void ConfigureAutoHide(AutoHideMode mode, Func<IEnumerable<nint>> backgroundWindowsProvider)
+    {
+        _autoHideMode = mode;
+        _backgroundWindowsProvider = backgroundWindowsProvider;
+        _edgeTrigger.Visibility = mode is AutoHideMode.Smart or AutoHideMode.Always or AutoHideMode.Desktop
+            ? Visibility.Visible : Visibility.Collapsed;
+        if (_autoHideController is not null)
+        {
+            _autoHideController.BackgroundWindowsProvider = backgroundWindowsProvider;
+            _autoHideController.SetMode(mode);
+        }
+        if (_handle != 0 && mode == AutoHideMode.Disabled && !_appBarRegistered) RegisterAppBar();
+    }
+
+    public void RevealForWinKey() => _autoHideController?.RevealForWinKey();
+
     /// <summary>Current shelf in DIPs, derived from the active size + scale profile.</summary>
     public double ShelfHeight => _shelfHeight;
 
@@ -336,7 +380,10 @@ public sealed class SecondaryDockWindow : Window
             mine.Add((app.ExecutablePath, windows, _icons.Get(app.ExecutablePath, windows[0].Handle)));
         }
         // Captionless windows covering the display (games, video) hide this dock like the main one.
-        _fullScreen = foreground != 0 && MonitorFromWindow(foreground, 2) == _monitor && IsFullScreen(foreground);
+        _fullScreen = _autoHideMode == AutoHideMode.Disabled && foreground != 0
+            && MonitorFromWindow(foreground, 2) == _monitor && IsFullScreen(foreground);
+        _autoHideController?.InvalidateWindowOverlap();
+        _autoHideController?.CheckForegroundWindow(foreground);
         ApplyVisibility();
 
         var icons = mine.Select(entry => entry.Icon).ToList();

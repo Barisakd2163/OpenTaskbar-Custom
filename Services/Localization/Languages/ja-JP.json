@@ -98,6 +98,7 @@
   "AutoHideDisabled": "オフ",
   "AutoHideOverlay": "常に手前に表示（領域を確保しない）",
   "AutoHideSmart": "ウィンドウと重なったとき",
+  "AutoHideDesktop": "デスクトップのみ",
   "AutoHideAlways": "マウスが離れたとき",
   "Apply": "適用",
   "SettingsSaved": "設定を保存しました。",

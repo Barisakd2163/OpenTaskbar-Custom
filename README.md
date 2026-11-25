@@ -7,6 +7,7 @@
 - **Boşluksuz, görünür dock:** “Üstte göster (alan ayırma)” modu dock'u görünür tutar; büyütülmüş pencereler arkasına kadar uzanabilir. Aynalanan ikinci ekranda da geçerlidir.
 - **Pencere geçişlerinde donma düzeltmesi:** Başka uygulamaların giriş kuyruklarına bağlanan etkinleştirme yolu kaldırıldı. Bu yol dock'u ve Brave dahil uygulamaların pencere önizlemelerini kilitleyebiliyordu.
 - **İki ekran senkronizasyonu:** Başlangıçta yüklenen sabit uygulamalar ve daha sonra gelen simgeler ikinci dock'a da aktarılır.
+- **Ekrana göre masaüstü modu:** “Masaüstünde göster (uygulama varsa gizle)” her monitörü bağımsız değerlendirir. Ekranda görünür uygulama yoksa dock açık kalır; küçük veya arka plandaki bir pencere bile varsa gizlenir. Küçültme, kapatma ve ekranlar arasında taşıma sonucu yeniden değerlendirilir. Kenara gelerek barı açma korunur; altta alan ayrılmaz.
 - **Tutarlı hover görünümü:** Uygulama, grup ve klasör simgeleri Başlat düğmesiyle aynı temaya uyumlu, yuvarlatılmış hover arka planını ve geçiş sürelerini kullanır.
 - **Çökme düzeltmeleri:** Geçici olarak eksik medya oturumu verileri güvenli biçimde ele alınır; dock yönü değişirken otomatik (`NaN`) düğme boyutları kaydırma alanı sınırlarına taşınmaz.
 - **Daha az arka plan işi:** Gizli/tam ekran altında medya çizimi, ses oturumu taraması ve tarayıcı zaman çizelgesi sorguları durur; yeniden görünürken güncel veriler alınır. Çalışan sayaçlar duraklatılmaz. Rutin zorunlu GC ve çalışma seti boşaltmaları kaldırıldı; Başlat denetimi ve tanı sayaçları tüm süreçleri taramak yerine hedefli Win32 sorguları kullanır.
@@ -16,6 +17,8 @@
 Çökme ve performans yolları için `--crash-regressions` ile 92 hedefli kontrol geçti: medya null/stale veri güvenliği, gerçek dock yönü geçişleri, iki dock'ta gizlilik/tam ekrandan dönüş, gizliyken çalışan odak sayacı, yerel süreç kimliği/sayaçları ve otomatik çökme değerlendirmesi. Daha önce 19 otomatik gizleme/Overlay yaşam döngüsü kontrolü ve yanıt vermeyen pencere etkinleştirmesine yönelik 1 regresyon kontrolü de geçti. İki ekrandaki dock, Brave'in canlı pencere önizlemesi ve hover arka planı gerçek Windows masaüstünde doğrulandı. Tam test paketi bu çalışma sırasında çalıştırılmadı.
 
 İzole uçtan uca senaryoda native ve managed watchdog, gerçek alt süreç çıkışlarından sonra GUI açmadan değerlendirme üretti; Windows görev çubuğu görünür kaldı. Temiz kapanış sahte çökme kaydı üretmedi. Son gerçek WPF/GDI raporu Windows olaylarıyla eşleştirilerek değerlendirildi.
+
+Masaüstü modu kontrolleri: `dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj -c Release -- --desktop-auto-hide`
 
 Bellek yönetimi CLR ve Windows'a bırakılır. Görev Yöneticisi'nde görünen yerleşik bellek, zorla boşaltılan eski sürüme göre daha yüksek olabilir; çalışma setini küçültmek ayrılmış belleği serbest bırakmak anlamına gelmez. Bu değişiklik oyunda belirli bir FPS artışı garantisi değildir.
 

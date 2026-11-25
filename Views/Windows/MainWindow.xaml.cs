@@ -769,7 +769,7 @@ public partial class MainWindow : Window
 
             // Keep the screen-edge reveal strip hit-testable while auto-hide is enabled; otherwise the hidden
             // dock slides out of DockSurface and MouseEnter can never reach DockEdgeTrigger to reveal it again.
-            if (_preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always
+            if (_preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always or AutoHideMode.Desktop
                 && DockEdgeTrigger is { Visibility: Visibility.Visible, ActualWidth: > 0, ActualHeight: > 0 })
             {
                 var triggerTopLeft = DockEdgeTrigger.PointToScreen(new Point(0, 0));

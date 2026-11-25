@@ -36,7 +36,7 @@ public sealed class DockAutoHideController : IDisposable
     private const long WinKeyRevealGraceMs = 600;
 
     public AutoHideMode Mode { get; private set; } = AutoHideMode.Disabled;
-    private bool CanAutoHide => Mode is AutoHideMode.Smart or AutoHideMode.Always;
+    private bool CanAutoHide => Mode is AutoHideMode.Smart or AutoHideMode.Always or AutoHideMode.Desktop;
 
     /// <summary>The screen edge the dock slides towards when it hides.</summary>
     public Models.DockEdge Edge { get; set; } = Models.DockEdge.Bottom;
@@ -47,6 +47,10 @@ public sealed class DockAutoHideController : IDisposable
 
     /// <summary>Optional cursor-position override for headless/sandboxed verification tests.</summary>
     internal Func<(int X, int Y)?>? CursorPositionProvider { get; set; }
+
+    /// <summary>Test seams for monitor geometry and eligible applications' DWM visible frame bounds.</summary>
+    internal Func<(int Left, int Top, int Right, int Bottom)?>? MonitorBoundsProvider { get; set; }
+    internal Func<nint, (int Left, int Top, int Right, int Bottom)?>? VisibleApplicationBoundsProvider { get; set; }
 
     private TimeSpan MotionDuration(double milliseconds) => AnimationsEnabled && SystemParameters.ClientAreaAnimation
         ? TimeSpan.FromMilliseconds(milliseconds) : TimeSpan.Zero;
@@ -69,8 +73,8 @@ public sealed class DockAutoHideController : IDisposable
     public Func<nint>? LastApplicationWindowProvider { get; set; }
 
     /// <summary>
-    /// All top-level application windows. In Smart mode any of them covering the dock keeps it hidden, not only
-    /// the foreground one.
+    /// All top-level application windows. Smart checks their overlap with the dock; Desktop checks their
+    /// visible frames against this dock's monitor, independently of foreground and the other monitors.
     /// </summary>
     public Func<IEnumerable<nint>>? BackgroundWindowsProvider { get; set; }
 
@@ -132,38 +136,46 @@ public sealed class DockAutoHideController : IDisposable
             _revealedGuardTimer.Stop();
             return;
         }
-        if (Mode == AutoHideMode.Smart)
+        if (Mode is AutoHideMode.Smart or AutoHideMode.Desktop)
         {
-            var foreground = GetForegroundWindow();
+            var foreground = Mode == AutoHideMode.Desktop ? ForegroundProvider() : GetForegroundWindow();
             var fallbackDue = Environment.TickCount64 - _lastOverlapScanMs >= OverlapFallbackScanMs;
             if (_overlapDirty || foreground != _lastScannedForeground || fallbackDue)
             {
-                if (RefreshSmartOverlap(foreground)) RecordSmartOverlapScan(foreground);
+                if (RefreshWindowOverlap(foreground)) RecordWindowOverlapScan(foreground);
             }
         }
         EvaluateState();
     }
 
-    /// <summary>Marks the smart-overlap scan stale after a window list or position change.</summary>
-    public void InvalidateWindowOverlap() => _overlapDirty = true;
+    /// <summary>Refreshes Desktop presence even while hidden, when the revealed guard is stopped.</summary>
+    public void InvalidateWindowOverlap()
+    {
+        _overlapDirty = true;
+        if (_disposed || Mode != AutoHideMode.Desktop) return;
+        var foreground = ForegroundProvider();
+        RefreshDesktopOverlap(foreground);
+        RecordWindowOverlapScan(foreground);
+        EvaluateState();
+    }
 
     public void SetMode(AutoHideMode mode)
     {
         if (Mode == mode) return;
         Mode = mode;
+        HasOverlap = false;
         if (!CanAutoHide)
         {
             _hideTimer.Stop();
             _revealedGuardTimer.Stop();
-            HasOverlap = false;
             if (IsHidden) AnimateReveal();
             return;
         }
 
-        if (Mode == AutoHideMode.Smart)
+        if (Mode is AutoHideMode.Smart or AutoHideMode.Desktop)
         {
-            var foreground = GetForegroundWindow();
-            if (RefreshSmartOverlap(foreground)) RecordSmartOverlapScan(foreground);
+            var foreground = Mode == AutoHideMode.Desktop ? ForegroundProvider() : GetForegroundWindow();
+            if (RefreshWindowOverlap(foreground)) RecordWindowOverlapScan(foreground);
         }
 
         EvaluateState();
@@ -209,11 +221,16 @@ public sealed class DockAutoHideController : IDisposable
         if (!CanAutoHide) return;
         // Always mode also re-evaluates so an opening Start menu reveals the hidden dock.
         if (Mode == AutoHideMode.Smart && RefreshSmartOverlap(foregroundHwnd))
-            RecordSmartOverlapScan(GetForegroundWindow());
+            RecordWindowOverlapScan(GetForegroundWindow());
+        else if (Mode == AutoHideMode.Desktop && (_overlapDirty || foregroundHwnd != _lastScannedForeground))
+        {
+            RefreshDesktopOverlap(foregroundHwnd);
+            RecordWindowOverlapScan(foregroundHwnd);
+        }
         EvaluateState();
     }
 
-    private void RecordSmartOverlapScan(nint foreground)
+    private void RecordWindowOverlapScan(nint foreground)
     {
         // Synchronous foreground scans also inspect background windows; record them so the guard does not repeat the scan.
         _overlapDirty = false;
@@ -232,6 +249,80 @@ public sealed class DockAutoHideController : IDisposable
         _hideTimer.Stop();
         if (IsHidden) AnimateReveal();
         ArmRevealedGuard();
+    }
+
+    private bool RefreshWindowOverlap(nint foreground)
+    {
+        if (Mode != AutoHideMode.Desktop) return RefreshSmartOverlap(foreground);
+        RefreshDesktopOverlap(foreground);
+        return true;
+    }
+
+    private void RefreshDesktopOverlap(nint foreground)
+    {
+        HasOverlap = false;
+        if (!TryGetMonitorBounds(out var monitor)) return;
+        if (foreground != 0 && ApplicationIntersectsMonitor(foreground, monitor))
+        {
+            HasOverlap = true;
+            return;
+        }
+
+        // Never depend on a nonzero foreground or the previous foreground application: the final close,
+        // minimize, or move can leave the shell/zero in front while the hidden dock has no guard timer.
+        if (BackgroundWindowsProvider?.Invoke() is not { } windows) return;
+        foreach (var window in windows)
+        {
+            if (window != foreground && ApplicationIntersectsMonitor(window, monitor))
+            {
+                HasOverlap = true;
+                return;
+            }
+        }
+    }
+
+    private bool TryGetMonitorBounds(out Rect bounds)
+    {
+        if (MonitorBoundsProvider is not null)
+        {
+            if (MonitorBoundsProvider() is { } provided)
+            {
+                bounds = new Rect { Left = provided.Left, Top = provided.Top, Right = provided.Right, Bottom = provided.Bottom };
+                return true;
+            }
+            bounds = default;
+            return false;
+        }
+        var monitor = MonitorFromWindow(_windowHandle, MonitorDefaultToNearest);
+        var info = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (monitor != 0 && GetMonitorInfo(monitor, ref info))
+        {
+            bounds = info.rcMonitor;
+            return true;
+        }
+        bounds = default;
+        return false;
+    }
+
+    private bool ApplicationIntersectsMonitor(nint hwnd, Rect monitor)
+    {
+        Rect bounds;
+        if (VisibleApplicationBoundsProvider is not null)
+        {
+            if (VisibleApplicationBoundsProvider(hwnd) is not { } provided) return false;
+            bounds = new Rect { Left = provided.Left, Top = provided.Top, Right = provided.Right, Bottom = provided.Bottom };
+        }
+        else
+        {
+            if (!TryGetApplicationWindow(hwnd, out var target) || IsShellMenuWindow?.Invoke(target) == true) return false;
+            // GetWindowRect includes invisible resize borders on maximized windows, which can bleed onto
+            // the adjacent monitor. DWM's visible frame is authoritative, including for spanning windows.
+            if (DwmGetWindowAttribute(target, DwmwaExtendedFrameBounds, out bounds, Marshal.SizeOf<Rect>()) != 0
+                && !GetWindowRect(target, out bounds)) return false;
+        }
+        return bounds.Left < bounds.Right && bounds.Top < bounds.Bottom
+            && bounds.Left < monitor.Right && bounds.Right > monitor.Left
+            && bounds.Top < monitor.Bottom && bounds.Bottom > monitor.Top;
     }
 
     // A focusable widget popup activates our own dock window. That must not erase
@@ -372,7 +463,7 @@ public sealed class DockAutoHideController : IDisposable
         if (Environment.TickCount64 < _winKeyGraceUntilMs) return false;
         if (_isInteractionLocked()) return false;
         if (Mode == AutoHideMode.Always) return true;
-        if (Mode == AutoHideMode.Smart) return HasOverlap;
+        if (Mode is AutoHideMode.Smart or AutoHideMode.Desktop) return HasOverlap;
         return false;
     }
 
@@ -444,11 +535,12 @@ public sealed class DockAutoHideController : IDisposable
         VisibilityChanged?.Invoke(false);
     }
 
-    private bool EvaluateWindowOverlap(nint hwnd)
+    private bool TryGetApplicationWindow(nint hwnd, out nint target)
     {
+        target = 0;
         if (hwnd == 0) return false;
         var root = GetAncestor(hwnd, GaRootOwner);
-        var target = root != 0 ? root : hwnd;
+        target = root != 0 ? root : hwnd;
 
         if (target == _windowHandle || !IsWindow(target) || !IsWindowVisible(target) || IsIconic(target))
             return false;
@@ -473,6 +565,12 @@ public sealed class DockAutoHideController : IDisposable
                 return false;
             }
         }
+        return true;
+    }
+
+    private bool EvaluateWindowOverlap(nint hwnd)
+    {
+        if (!TryGetApplicationWindow(hwnd, out var target)) return false;
 
         var dockMonitor = MonitorFromWindow(_windowHandle, MonitorDefaultToNearest);
         var windowMonitor = MonitorFromWindow(target, MonitorDefaultToNearest);

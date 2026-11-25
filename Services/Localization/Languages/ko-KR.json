@@ -98,6 +98,7 @@
   "AutoHideDisabled": "사용 안 함",
   "AutoHideOverlay": "겹쳐 표시 (공간 예약 안 함)",
   "AutoHideSmart": "스마트",
+  "AutoHideDesktop": "바탕 화면에서만 표시",
   "AutoHideAlways": "항상",
   "Apply": "적용",
   "SettingsSaved": "설정이 저장되었습니다",

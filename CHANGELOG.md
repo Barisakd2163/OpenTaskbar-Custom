@@ -2,6 +2,8 @@
 
 ## Custom fork - 2026-11-25
 
+- Add per-monitor Desktop auto-hide: show the dock on an empty desktop, hide for any visible application on that monitor, and reveal again after minimize/close/move without relying on foreground focus.
+- Expose/persist Desktop mode in settings and all localizations; integrate mirrored/secondary docks, screen-edge access, keyboard reveal and non-reserving layout.
 - Suspend hidden/fullscreen media presentation, app-volume rebinding and browser timeline polling without stopping session subscriptions or semantic widget timers; refresh on reveal on mirrored docks too.
 - Remove routine forced Gen2 collections and working-set eviction from startup, hover, settings and widget timers; leave memory management to the CLR and Windows.
 - Replace system-wide process snapshots in frequent Start-menu discovery and diagnostic sampling with targeted native queries; retain bounded telemetry and add page-fault/peak-residency counters.

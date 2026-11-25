@@ -98,6 +98,7 @@
   "AutoHideDisabled": "Wyłączone",
   "AutoHideOverlay": "Nakładka (bez rezerwowania miejsca)",
   "AutoHideSmart": "Inteligentne (gdy okna zachodzą)",
+  "AutoHideDesktop": "Tylko na pulpicie",
   "AutoHideAlways": "Zawsze ukrywaj",
   "Apply": "Zastosuj",
   "SettingsSaved": "Ustawienia zostały zapisane.",

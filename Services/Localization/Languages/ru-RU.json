@@ -98,6 +98,7 @@
   "AutoHideDisabled": "Отключено",
   "AutoHideOverlay": "Поверх окон (без резервирования места)",
   "AutoHideSmart": "Умное",
+  "AutoHideDesktop": "Только на рабочем столе",
   "AutoHideAlways": "Всегда",
   "Apply": "Применить",
   "SettingsSaved": "Параметры сохранены",

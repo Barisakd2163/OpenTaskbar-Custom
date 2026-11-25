@@ -69,9 +69,10 @@ public partial class MainWindow
     private void OnStandaloneWinKeyPressed()
     {
         if (!_preferences.Current.RevealDockOnWinKey
-            || _preferences.Current.AutoHide is not (AutoHideMode.Smart or AutoHideMode.Always)) return;
+            || _preferences.Current.AutoHide is not (AutoHideMode.Smart or AutoHideMode.Always or AutoHideMode.Desktop)) return;
         _autoHideController?.RevealForWinKey();
         foreach (var dock in _mirroredDocks.Values) dock._autoHideController?.RevealForWinKey();
+        foreach (var dock in _secondaryDocks) dock.RevealForWinKey();
     }
 
     private void ApplyFeatureSettings()
@@ -79,7 +80,7 @@ public partial class MainWindow
         if (!_featuresInitialized) return;
         RegisterHotkeys();
         _winKeyMonitor?.SetEnabled(_preferences.Current.RevealDockOnWinKey
-            && _preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always);
+            && _preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always or AutoHideMode.Desktop);
         if (_updateTimer is not null)
         {
             if (_preferences.Current.CheckUpdates) { if (!_updateTimer.IsEnabled) _updateTimer.Start(); }
@@ -623,6 +624,7 @@ public partial class MainWindow
         {
             var dock = new SecondaryDockWindow(monitor, _runningAppIcons, _preferences.Current.SecondaryApps, showSecondaryWidgets);
             dock.ApplyShelfHeight(effectiveShelf, DockSurfaceHeight);
+            dock.ConfigureAutoHide(settings.AutoHide, () => (_windowTracker?.Snapshot ?? []).Select(window => window.Handle));
             dock.Show();
             _secondaryDocks.Add(dock);
         }
@@ -630,6 +632,7 @@ public partial class MainWindow
         foreach (var dock in _secondaryDocks)
         {
             dock.Configure(_preferences.Current.SecondaryApps, showSecondaryWidgets);
+            dock.ConfigureAutoHide(settings.AutoHide, () => (_windowTracker?.Snapshot ?? []).Select(window => window.Handle));
             dock.ApplyShelfHeight(effectiveShelf, DockSurfaceHeight);
             dock.PositionOnMonitor();
         }

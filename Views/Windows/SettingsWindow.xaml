@@ -297,6 +297,7 @@
                                         <ComboBoxItem Content="{local:Loc AutoHideOverlay}" Tag="Overlay" />
                                         <ComboBoxItem Content="{local:Loc AutoHideSmart}" Tag="Smart" />
                                         <ComboBoxItem Content="{local:Loc AutoHideAlways}" Tag="Always" />
+                                        <ComboBoxItem Content="{local:Loc AutoHideDesktop}" Tag="Desktop" />
                                     </ComboBox>
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
                                         <TextBlock Text="{local:Loc AutoHide}" Style="{StaticResource SettingsRowLabel}" />

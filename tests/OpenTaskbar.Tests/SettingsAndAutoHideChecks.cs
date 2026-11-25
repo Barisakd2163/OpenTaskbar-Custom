@@ -40,6 +40,19 @@ internal static class SettingsAndAutoHideChecks
         return checks;
     }
 
+    public static int RunAutoHideModes(Application application)
+    {
+        var checks = 0;
+        void Check(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException(message);
+            checks++;
+        }
+        CheckSettingsSurviveReopen(application, Check);
+        CheckAutoHideLifecycleAndPointerSync(application, Check);
+        return checks;
+    }
+
     private static void CheckForegroundLocationForceRepublish(Application application, Action<bool, string> check)
     {
         // Issue #85: Smart auto-hide relies on ForegroundWindowChanged re-firing when the SAME foreground window
@@ -130,10 +143,14 @@ internal static class SettingsAndAutoHideChecks
         try
         {
             var store = new DockSettingsStore(path, CultureInfo.GetCultureInfo("tr-TR"));
+            check((int)AutoHideMode.Disabled == 0 && (int)AutoHideMode.Smart == 1
+                && (int)AutoHideMode.Always == 2 && (int)AutoHideMode.Overlay == 3
+                && (int)AutoHideMode.Desktop == 4,
+                "Appending Desktop must preserve every persisted auto-hide mode ordinal.");
             var initial = new DockSettings(
                 Language: AppLanguage.Turkish,
                 Theme: AppTheme.Dark,
-                AutoHide: AutoHideMode.Smart,
+                AutoHide: AutoHideMode.Desktop,
                 StartPlacement: StartButtonPlacement.End,
                 Size: DockSize.Compact,
                 DockOpacity: 0.6,
@@ -155,6 +172,9 @@ internal static class SettingsAndAutoHideChecks
             sw1.Show();
             PumpDispatcher(application.Dispatcher, 120);
             check(changeCount == 0, "Opening SettingsWindow must not mutate stored preferences.");
+            check(sw1.FindName("AutoHideBox") is ComboBox autoHideBox
+                && autoHideBox.SelectedItem is ComboBoxItem { Tag: "Desktop" },
+                "Settings must expose and select the persisted Desktop auto-hide choice.");
 
             sw1.Close();
             PumpUntil(application.Dispatcher, () => sw1.IsClosingOrClosed && !sw1.IsVisible, 1200);
@@ -186,8 +206,8 @@ internal static class SettingsAndAutoHideChecks
             check(reloaded.Error is null, "Reloaded settings after SettingsWindow reopen must stay valid.");
             check(!reloaded.Settings.ThemeApplicationIcons,
                 "Disabling themed application icons must survive settings reopen.");
-            check(preferences.Current.AutoHide == AutoHideMode.Smart && reloaded.Settings.AutoHide == AutoHideMode.Smart,
-                "AutoHide preference must not reset when SettingsWindow is reopened.");
+            check(preferences.Current.AutoHide == AutoHideMode.Desktop && reloaded.Settings.AutoHide == AutoHideMode.Desktop,
+                "Desktop auto-hide must survive persistence and SettingsWindow reopening.");
             check(preferences.Current.StartPlacement == StartButtonPlacement.End && reloaded.Settings.StartPlacement == StartButtonPlacement.End,
                 "StartPlacement preference must not reset when SettingsWindow is reopened.");
             check(preferences.Current.LauncherHotkey == HotkeyChoice.CtrlSpace && reloaded.Settings.LauncherHotkey == HotkeyChoice.CtrlSpace,

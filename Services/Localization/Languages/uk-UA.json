@@ -98,6 +98,7 @@
   "AutoHideDisabled": "Вимкнено",
   "AutoHideOverlay": "Поверх вікон (без резервування місця)",
   "AutoHideSmart": "Розумне (коли вікна перекривають)",
+  "AutoHideDesktop": "Лише на робочому столі",
   "AutoHideAlways": "Завжди приховувати",
   "Apply": "Застосувати",
   "SettingsSaved": "Налаштування збережено.",

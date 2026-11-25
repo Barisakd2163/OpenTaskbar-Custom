@@ -43,6 +43,28 @@ if (args.Contains("--theme-pack-only", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+if (args.Contains("--desktop-auto-hide", StringComparer.OrdinalIgnoreCase))
+{
+    var desktopChecks = StaCheckRunner.Run(() =>
+    {
+        var app = new IsolatedCheckApp();
+        WidgetViewChecks.LoadResources(app);
+        app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+        typeof(OpenTaskbar.App).GetField("_preferences",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(app, new ApplicationPreferences(new DockSettingsStore(
+                Path.Combine(Path.GetTempPath(), "OpenTaskbar-DesktopChecks-" + Guid.NewGuid().ToString("N"), "settings.json"))));
+        try
+        {
+            ThemeManager.Apply(AppTheme.Dark, new DockSettings());
+            return DesktopAutoHideChecks.Run(app) + SettingsAndAutoHideChecks.RunAutoHideModes(app);
+        }
+        finally { app.Shutdown(); }
+    });
+    Console.WriteLine($"{desktopChecks} desktop auto-hide checks passed.");
+    return;
+}
+
 int CrashAnalysisChecks() => CrashAssessmentChecks.Run() + CrashWindowsEventChecks.Run()
     + WatchdogAssessmentChecks.Run() + ProcessResourceMonitorChecks.Run() + ShellProcessIdentityChecks.Run();
 

@@ -98,6 +98,7 @@
   "AutoHideDisabled": "已禁用",
   "AutoHideOverlay": "叠加显示（不预留空间）",
   "AutoHideSmart": "智能",
+  "AutoHideDesktop": "仅在桌面显示",
   "AutoHideAlways": "始终",
   "Apply": "应用",
   "SettingsSaved": "设置已保存",

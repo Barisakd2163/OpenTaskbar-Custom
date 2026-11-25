@@ -175,6 +175,7 @@
   "AutoHideDisabled": "Never",
   "AutoHideOverlay": "Overlay (no reserved space)",
   "AutoHideSmart": "Smart",
+  "AutoHideDesktop": "Desktop only",
   "AutoHideAlways": "Always",
   "Apply": "Apply",
   "SettingsSaved": "Settings saved.",

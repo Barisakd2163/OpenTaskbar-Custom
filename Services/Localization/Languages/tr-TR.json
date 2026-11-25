@@ -172,6 +172,7 @@
   "AutoHideDisabled": "Kapalı",
   "AutoHideOverlay": "Üstte göster (alan ayırma)",
   "AutoHideSmart": "Pencerelerle örtüştüğünde",
+  "AutoHideDesktop": "Masaüstünde göster (uygulama varsa gizle)",
   "AutoHideAlways": "Fare ayrıldığında",
   "Apply": "Uygula",
   "SettingsSaved": "Ayarlar kaydedildi.",

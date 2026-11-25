@@ -98,6 +98,7 @@
   "AutoHideDisabled": "Désactivé",
   "AutoHideOverlay": "Superposition (sans espace réservé)",
   "AutoHideSmart": "Intelligent",
+  "AutoHideDesktop": "Sur le bureau uniquement",
   "AutoHideAlways": "Toujours",
   "Apply": "Appliquer",
   "SettingsSaved": "Paramètres enregistrés",

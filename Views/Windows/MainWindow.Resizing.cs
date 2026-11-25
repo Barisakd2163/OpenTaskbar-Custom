@@ -219,7 +219,7 @@ public partial class MainWindow
             : 0.0;
         var shadowMarginPerSide = ComputeShadowMarginPerSide(DockShadowLayer.Effect);
         var preserveFullEdgeForAutoHide = forceFullMonitorSpan
-            || _preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always;
+            || _preferences.Current.AutoHide is AutoHideMode.Smart or AutoHideMode.Always or AutoHideMode.Desktop;
 
         var bounds = ComputeFloatingLayeredWindowBounds(
             monitorOffset,

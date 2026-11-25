@@ -40,7 +40,7 @@ public readonly record struct AppLanguage
     /// <summary>Embedded country flag image for this culture, or null when no flag is bundled.</summary>
     public System.Windows.Media.ImageSource? FlagImage => Services.CountryFlag.Load(this);
 }
-public enum AutoHideMode { Disabled, Smart, Always, Overlay }
+public enum AutoHideMode { Disabled, Smart, Always, Overlay, Desktop }
 public enum DockLayout { Floating, FullWidth }
 public enum DockSize { Compact, Medium, Large }
 public enum DockEdge { Bottom, Left, Right }
