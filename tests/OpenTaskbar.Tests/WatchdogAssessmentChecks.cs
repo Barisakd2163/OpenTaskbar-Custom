@@ -18,7 +18,8 @@ internal static class WatchdogAssessmentChecks
             EvidenceIsAtomicAndIndependent(root);
             UnavailableStoragePreservesEvidence(root);
             StrictProtocol();
-            return 6;
+            FatalRestoreCannotSignalCleanExit();
+            return 7;
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -130,6 +131,35 @@ internal static class WatchdogAssessmentChecks
             throw new InvalidOperationException("A relative evidence directory was accepted.");
         }
         catch (ArgumentException) { }
+    }
+
+    private static void FatalRestoreCannotSignalCleanExit()
+    {
+        // Real independent event handles reproduce Session.Stop's signal without touching the user's shell.
+        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+        var type = typeof(TaskbarRecoveryWatchdog);
+        var cleanField = type.GetField("_cleanExit", flags)!;
+        var fatalField = type.GetField("_fatalExit", flags)!;
+        var previousClean = cleanField.GetValue(null);
+        var previousFatal = fatalField.GetValue(null);
+        var name = @"Local\OpenTaskbar.FatalExitCheck." + Guid.NewGuid().ToString("N");
+        using var producer = new EventWaitHandle(false, EventResetMode.AutoReset, name);
+        using var observer = EventWaitHandle.OpenExisting(name);
+        using var heartbeat = new AutoResetEvent(false);
+        try
+        {
+            cleanField.SetValue(null, producer);
+            TaskbarRecoveryWatchdog.MarkFatalExit();
+            TaskbarRecoveryWatchdog.NotifyCleanExit(); // Same notification made by successful emergency Stop().
+            var result = TaskbarRecoveryWatchdog.ObserveParent(Environment.ProcessId, observer, heartbeat, 10, 2);
+            Require(!result.CleanExit && result.Reason == "heartbeat-timeout",
+                "Successful shell restore during a fatal failure must not dismiss the external crash analyzer.");
+        }
+        finally
+        {
+            cleanField.SetValue(null, previousClean);
+            fatalField.SetValue(null, previousFatal);
+        }
     }
 
     private static void Require(bool condition, string message)

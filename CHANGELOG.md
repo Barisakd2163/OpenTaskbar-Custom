@@ -5,6 +5,7 @@
 - Automatically assess local crash reports in a separate headless process after watchdog recovery and on the next startup; group repeated signatures and retain per-build counts, evidence, caveats and suggested diagnostics in JSON/Markdown.
 - Correlate selected Windows crash/GDI events with bounded process-resource telemetry instead of treating every OutOfMemoryException as managed RAM exhaustion.
 - Preserve abnormal-exit evidence when no managed report survives, and distinguish heartbeat timeouts from confirmed crashes. Only successful, nonfatal shutdown signals a clean watchdog exit.
+- Keep the watchdog armed when fatal-error shell recovery calls the normal session Stop path, so successful taskbar restoration cannot suppress post-crash analysis.
 - Reject stale native watchdog binaries after compiler failure, keep compiler output separate from boolean success, and support Unicode MSVC build paths.
 - Handle missing or expired media playback, control, and timeline data without crashing the dock; recover when session data returns.
 - Keep Show Desktop spacing independent of Auto-sized controls while switching dock edges, preventing NaN MaxWidth/MaxHeight failures.

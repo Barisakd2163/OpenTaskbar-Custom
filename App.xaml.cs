@@ -288,6 +288,7 @@ public partial class App : Application
     private void HandleFatalError(Exception? exception, string origin)
     {
         if (Interlocked.Exchange(ref _crashHandled, 1) != 0) return;
+        TaskbarRecoveryWatchdog.MarkFatalExit();
         // Persist the original exception before any shell recovery can fail or the rotating log closes.
         var report = CrashReport.TryWrite(exception, origin, _preferences?.Current);
         try { ProcessResourceMonitor.CaptureNow(); }

@@ -33,6 +33,8 @@ internal static class TaskbarRecoveryWatchdog
     private static EventWaitHandle? _heartbeat;
     private static Timer? _heartbeatTimer;
     private static bool _started;
+    private static int _fatalExit;
+    internal static void MarkFatalExit() => Interlocked.Exchange(ref _fatalExit, 1);
     internal static bool IsStarted => _started;
 
     internal static bool IsWatchdogInvocation(string[] args) =>
@@ -370,6 +372,9 @@ internal static class TaskbarRecoveryWatchdog
     /// <summary>Called only for a successful, intentional exit; fatal/nonzero exits must leave the watchdog armed.</summary>
     public static void NotifyCleanExit()
     {
+        // EmergencyRestore also calls Session.Stop(), which normally dismisses the watchdog.
+        // Successful shell recovery is not a clean application exit after a fatal exception.
+        if (Volatile.Read(ref _fatalExit) != 0) return;
         _heartbeatTimer?.Dispose();
         _heartbeatTimer = null;
         try
