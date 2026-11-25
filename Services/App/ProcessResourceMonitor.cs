@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -12,6 +11,8 @@ internal static class ProcessResourceMonitor
 {
     private static readonly object Gate = new();
     private static readonly string Build = CrashReport.BuildVersion;
+    private static readonly nint CurrentProcess = new(-1); // Pseudohandle: valid for this process, never closed.
+    private static readonly uint MemoryCountersSize = (uint)Marshal.SizeOf<ProcessMemoryCounters>();
     private static Session? _session;
     internal const long MaxFileBytes = 256 * 1024;
 
@@ -46,8 +47,6 @@ internal static class ProcessResourceMonitor
     internal sealed class Session : IDisposable
     {
         private readonly object _gate = new();
-        private readonly Process _process;
-        private readonly nint _handle;
         private readonly string _path;
         private readonly string _oldPath;
         private readonly long _maxBytes;
@@ -66,11 +65,9 @@ internal static class ProcessResourceMonitor
             _maxBytes = maxBytes;
             _path = Path.Combine(directory, $"resources-{Environment.ProcessId}.jsonl");
             _oldPath = Path.Combine(directory, $"resources-{Environment.ProcessId}.old.jsonl");
-            _process = Process.GetCurrentProcess();
             _json = new Utf8JsonWriter(_buffer);
             try
             {
-                _handle = _process.Handle; // Open once; reuse for every GDI/USER sample.
                 Directory.CreateDirectory(directory);
                 CaptureNow(); // Baseline before the first timer tick.
                 _timer = new Timer(_ => CaptureNow(), null, interval, interval);
@@ -79,7 +76,6 @@ internal static class ProcessResourceMonitor
             {
                 _stream?.Dispose();
                 _json.Dispose();
-                _process.Dispose();
                 throw;
             }
         }
@@ -103,20 +99,29 @@ internal static class ProcessResourceMonitor
                     WriteGuiCount("userObjects", 1, ref error);
                     WriteGuiCount("gdiPeakObjects", 2, ref error);
                     WriteGuiCount("userPeakObjects", 4, ref error);
-                    int? handles = null;
-                    long? privateBytes = null;
-                    long? workingSetBytes = null;
-                    try
+                    if (GetProcessHandleCount(CurrentProcess, out var handles))
+                        _json.WriteNumber("handles", handles);
+                    else
                     {
-                        _process.Refresh();
-                        handles = _process.HandleCount;
-                        privateBytes = _process.PrivateMemorySize64;
-                        workingSetBytes = _process.WorkingSet64;
+                        error ??= "GetProcessHandleCount:" + Marshal.GetLastPInvokeError();
+                        _json.WriteNull("handles");
                     }
-                    catch (Exception ex) { error ??= ex.GetType().Name; }
-                    WriteOptionalNumber("handles", handles);
-                    WriteOptionalNumber("privateBytes", privateBytes);
-                    WriteOptionalNumber("workingSetBytes", workingSetBytes);
+                    var memory = new ProcessMemoryCounters { Size = MemoryCountersSize };
+                    if (GetProcessMemoryInfo(CurrentProcess, ref memory, MemoryCountersSize))
+                    {
+                        _json.WriteNumber("privateBytes", (ulong)memory.PrivateUsage);
+                        _json.WriteNumber("workingSetBytes", (ulong)memory.WorkingSetSize);
+                        _json.WriteNumber("peakWorkingSetBytes", (ulong)memory.PeakWorkingSetSize);
+                        _json.WriteNumber("pageFaults", memory.PageFaultCount);
+                    }
+                    else
+                    {
+                        error ??= "K32GetProcessMemoryInfo:" + Marshal.GetLastPInvokeError();
+                        _json.WriteNull("privateBytes");
+                        _json.WriteNull("workingSetBytes");
+                        _json.WriteNull("peakWorkingSetBytes");
+                        _json.WriteNull("pageFaults");
+                    }
                     _json.WriteNumber("managedBytes", GC.GetTotalMemory(forceFullCollection: false));
                     if (error is not null) _json.WriteString("error", error);
                     _json.WriteEndObject();
@@ -140,7 +145,7 @@ internal static class ProcessResourceMonitor
 
         private void WriteGuiCount(string name, uint flag, ref string? error)
         {
-            var count = GetGuiResources(_handle, flag);
+            var count = GetGuiResources(CurrentProcess, flag);
             var nativeError = Marshal.GetLastPInvokeError();
             if (count == 0 && nativeError != 0)
             {
@@ -148,12 +153,6 @@ internal static class ProcessResourceMonitor
                 error = "GetGuiResources:" + nativeError;
             }
             else _json.WriteNumber(name, count);
-        }
-
-        private void WriteOptionalNumber(string name, long? value)
-        {
-            if (value is long number) _json.WriteNumber(name, number);
-            else _json.WriteNull(name);
         }
 
         private void OpenOrRotate(int nextBytes)
@@ -206,10 +205,34 @@ internal static class ProcessResourceMonitor
                 _timer = null;
                 CloseStream();
                 _json.Dispose();
-                _process.Dispose();
             }
         }
     }
+
+    // PROCESS_MEMORY_COUNTERS_EX: SIZE_T fields must retain pointer width on both architectures.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessMemoryCounters
+    {
+        internal uint Size;
+        internal uint PageFaultCount;
+        internal nuint PeakWorkingSetSize;
+        internal nuint WorkingSetSize;
+        internal nuint QuotaPeakPagedPoolUsage;
+        internal nuint QuotaPagedPoolUsage;
+        internal nuint QuotaPeakNonPagedPoolUsage;
+        internal nuint QuotaNonPagedPoolUsage;
+        internal nuint PagefileUsage;
+        internal nuint PeakPagefileUsage;
+        internal nuint PrivateUsage;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "K32GetProcessMemoryInfo", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessMemoryInfo(nint process, ref ProcessMemoryCounters counters, uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessHandleCount(nint process, out uint handles);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetGuiResources(nint process, uint flags);

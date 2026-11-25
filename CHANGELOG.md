@@ -2,6 +2,9 @@
 
 ## Custom fork - 2026-11-25
 
+- Suspend hidden/fullscreen media presentation, app-volume rebinding and browser timeline polling without stopping session subscriptions or semantic widget timers; refresh on reveal on mirrored docks too.
+- Remove routine forced Gen2 collections and working-set eviction from startup, hover, settings and widget timers; leave memory management to the CLR and Windows.
+- Replace system-wide process snapshots in frequent Start-menu discovery and diagnostic sampling with targeted native queries; retain bounded telemetry and add page-fault/peak-residency counters.
 - Automatically assess local crash reports in a separate headless process after watchdog recovery and on the next startup; group repeated signatures and retain per-build counts, evidence, caveats and suggested diagnostics in JSON/Markdown.
 - Correlate selected Windows crash/GDI events with bounded process-resource telemetry instead of treating every OutOfMemoryException as managed RAM exhaustion.
 - Preserve abnormal-exit evidence when no managed report survives, and distinguish heartbeat timeouts from confirmed crashes. Only successful, nonfatal shutdown signals a clean watchdog exit.

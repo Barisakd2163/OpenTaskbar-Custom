@@ -17,7 +17,8 @@ internal static class ProcessResourceMonitorChecks
             TimerStopsWithSession(root);
             PartialEvidenceIsPreserved(root);
             RotationFailureCanRecover(root);
-            return 5;
+            NativeMetricsMatchCurrentProcess(root);
+            return 6;
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -105,6 +106,34 @@ internal static class ProcessResourceMonitorChecks
         foreach (var line in ReadLines(CurrentPath(directory))) CheckRealSample(line);
     }
 
+    private static void NativeMetricsMatchCurrentProcess(string root)
+    {
+        var directory = Path.Combine(root, "native-values");
+        using var session = new ProcessResourceMonitor.Session(directory, TimeSpan.FromMinutes(1));
+        using var process = Process.GetCurrentProcess();
+        process.Refresh();
+        var handlesBefore = process.HandleCount;
+        var privateBefore = process.PrivateMemorySize64;
+        var workingSetBefore = process.WorkingSet64;
+        Require(session.CaptureNow(), "Native process counters must be persisted for comparison with independent process telemetry.");
+        process.Refresh();
+        var handlesAfter = process.HandleCount;
+        var privateAfter = process.PrivateMemorySize64;
+        var workingSetAfter = process.WorkingSet64;
+        using var document = JsonDocument.Parse(ReadLines(CurrentPath(directory))[^1]);
+        var sample = document.RootElement;
+        // Bracket the capture and allow small runtime/IO activity between observations.
+        Require(NearSnapshots(sample.GetProperty("handles").GetInt64(), handlesBefore, handlesAfter, 16),
+            "The sampled handle count must agree with this process's real handle count.");
+        Require(NearSnapshots(sample.GetProperty("privateBytes").GetInt64(), privateBefore, privateAfter, 8 * 1024 * 1024),
+            "Native private bytes must agree with the process private-memory counter, not a different native structure field.");
+        Require(NearSnapshots(sample.GetProperty("workingSetBytes").GetInt64(), workingSetBefore, workingSetAfter, 8 * 1024 * 1024),
+            "Native working-set bytes must agree with the process resident-memory counter.");
+    }
+
+    private static bool NearSnapshots(long value, long before, long after, long tolerance) =>
+        value >= Math.Min(before, after) - tolerance && value <= Math.Max(before, after) + tolerance;
+
     private static void CheckRealSample(string line)
     {
         using var document = JsonDocument.Parse(line);
@@ -114,14 +143,17 @@ internal static class ProcessResourceMonitorChecks
             && !string.IsNullOrWhiteSpace(sample.GetProperty("build").GetString()),
             "Samples must identify this process, its cached deployed build, and a UTC timestamp.");
         foreach (var name in new[] { "gdiObjects", "userObjects", "gdiPeakObjects", "userPeakObjects", "handles",
-                     "privateBytes", "workingSetBytes", "managedBytes" })
+                     "privateBytes", "workingSetBytes", "peakWorkingSetBytes", "pageFaults", "managedBytes" })
         {
             var counter = sample.GetProperty(name);
             Require(counter.ValueKind == JsonValueKind.Number && counter.GetInt64() >= 0,
                 $"A healthy Windows sample must contain a real nonnegative {name} counter.");
         }
-        Require(sample.GetProperty("handles").GetInt64() > 0 && sample.GetProperty("privateBytes").GetInt64() > 0,
+        Require(sample.GetProperty("handles").GetInt64() > 0 && sample.GetProperty("privateBytes").GetInt64() > 0
+            && sample.GetProperty("workingSetBytes").GetInt64() > 0 && sample.GetProperty("pageFaults").GetInt64() > 0,
             "Real process counters must not be substituted with zero placeholders.");
+        Require(sample.GetProperty("peakWorkingSetBytes").GetInt64() >= sample.GetProperty("workingSetBytes").GetInt64(),
+            "The native memory snapshot must include a lifetime working-set peak at least as large as its current working set.");
         Require(sample.GetProperty("gdiPeakObjects").GetInt64() >= sample.GetProperty("gdiObjects").GetInt64()
             && sample.GetProperty("userPeakObjects").GetInt64() >= sample.GetProperty("userObjects").GetInt64(),
             "Peak counters must include at least the currently observed GUI objects.");

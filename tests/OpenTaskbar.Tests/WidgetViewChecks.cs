@@ -40,6 +40,15 @@ internal static class WidgetViewChecks
         return checks;
     }
 
+    internal static void LoadResources(Application app)
+    {
+        foreach (var resource in ModularResources)
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri($"/OpenTaskbar;component/Design/{resource}.xaml", UriKind.Relative)
+            });
+    }
+
     private static int RunOnDispatcher()
     {
         var checks = 0;
@@ -47,11 +56,7 @@ internal static class WidgetViewChecks
         WeatherService.TestLoaderOverride = (_, _, _) => Task.FromResult<(WeatherReport?, string?)>((null, null));
         try
         {
-            foreach (var resource in ModularResources)
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri($"/OpenTaskbar;component/Design/{resource}.xaml", UriKind.Relative)
-                });
+            LoadResources(app);
             ThemeManager.Apply(AppTheme.Dark);
             UiText.Current.SetLanguage(AppLanguage.Turkish);
             checks += DockLayoutChecks.Run(app);

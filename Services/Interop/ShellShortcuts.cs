@@ -416,10 +416,8 @@ public static partial class ShellShortcuts
 
     private static bool IsStartMenuProcessWindow(nint hwnd)
     {
-        var pids = CollectProcessIds("StartMenuExperienceHost");
-        if (pids.Count == 0) return false;
         GetWindowThreadProcessId(hwnd, out var pid);
-        return pids.Contains(pid);
+        return IsProcessImage(pid, "StartMenuExperienceHost.exe");
     }
 
     public static List<nint> FindStartMenuWindows()
@@ -427,29 +425,22 @@ public static partial class ShellShortcuts
         var list = new List<nint>();
         try
         {
-            var pids = CollectProcessIds("StartMenuExperienceHost");
-
-            if (pids.Count > 0)
+            // This runs during ordinary overlap checks, including while the dock is hidden.
+            // Inspect only candidate window owners; Process.GetProcessesByName snapshots the entire system.
+            var identities = new Dictionary<uint, bool>();
+            EnumWindows((hwnd, _) =>
             {
-                EnumWindows((hwnd, _) =>
+                if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect)
+                    || rect.Right - rect.Left <= 100 || rect.Bottom - rect.Top <= 100) return true;
+                GetWindowThreadProcessId(hwnd, out var pid);
+                if (!identities.TryGetValue(pid, out var matches))
                 {
-                    if (!IsWindowVisible(hwnd) || IsWindowCloaked(hwnd)) return true;
-                    GetWindowThreadProcessId(hwnd, out var pid);
-                    if (pids.Contains(pid))
-                    {
-                        if (GetWindowRect(hwnd, out var rect))
-                        {
-                            var w = rect.Right - rect.Left;
-                            var h = rect.Bottom - rect.Top;
-                            if (w > 100 && h > 100)
-                            {
-                                list.Add(hwnd);
-                            }
-                        }
-                    }
-                    return true;
-                }, 0);
-            }
+                    matches = IsProcessImage(pid, "StartMenuExperienceHost.exe");
+                    identities.Add(pid, matches);
+                }
+                if (matches && !IsWindowCloaked(hwnd)) list.Add(hwnd);
+                return true;
+            }, 0);
         }
         catch (Exception ex)
         {

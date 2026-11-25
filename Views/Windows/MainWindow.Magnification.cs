@@ -1009,7 +1009,6 @@ public partial class MainWindow
 
     private void DockSurface_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        NativeMemoryMethods.CancelIdleTrim();
         _autoHideController?.OnMouseEnterDock();
     }
 
@@ -1019,7 +1018,6 @@ public partial class MainWindow
         _hasLastDockMousePoint = false;
         ResetMagnification();
         _autoHideController?.OnMouseLeaveDock();
-        NativeMemoryMethods.ScheduleIdleTrim(TimeSpan.FromSeconds(2));
     }
 
     private void DockEdgeTrigger_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => _autoHideController?.OnMouseEnterEdge();

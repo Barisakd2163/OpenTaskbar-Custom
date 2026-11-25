@@ -38,6 +38,7 @@ public partial class MediaWidget : DockWidget
 
     private readonly DispatcherTimer _volumeHoverCloseTimer;
     private int _activationVersion;
+    private int _presentationVersion;
     private int _refreshVersion;
     private int _sessionVersion;
     private int _timelineVersion;
@@ -48,6 +49,7 @@ public partial class MediaWidget : DockWidget
     private bool _hasWindowsTimeline;
     private bool _usingBrowserTimeline;
     private bool _readingBrowserTimeline;
+    private int _browserTimelineReadVersion;
     private long _lastBrowserTimelineRead;
     private bool _canSeek;
     private bool _updatingProgress;
@@ -380,6 +382,7 @@ public partial class MediaWidget : DockWidget
 
     private void UpdateIslandMetadata()
     {
+        if (!IsDockVisible) return;
         if (_islandTitleText is not null) _islandTitleText.Text = TitleText.Text;
         if (_islandArtistText is not null) _islandArtistText.Text = ArtistText.Text;
         if (_islandArtImage is not null) _islandArtImage.Source = ArtImage.Source;
@@ -392,6 +395,7 @@ public partial class MediaWidget : DockWidget
 
     private void UpdateIslandVolumeControls()
     {
+        if (!IsDockVisible) return;
         if (_islandVolumeSlider is not null)
         {
             _updatingIslandVolume = true;
@@ -443,7 +447,43 @@ public partial class MediaWidget : DockWidget
         return root;
     }
 
-    protected override void OnActivated() => _ = ActivateAsync();
+    protected override void OnActivated()
+    {
+        _presentationVersion++;
+        _ = ActivateAsync();
+    }
+
+    protected override void OnDockVisibilityChanged(bool visible)
+    {
+        _presentationVersion++;
+        _refreshVersion++;
+        _timelineVersion++;
+        CancelProgressInteraction();
+        _readingBrowserTimeline = false;
+        _browserTimelineReadVersion++;
+        if (!visible)
+        {
+            CloseVolumePopover();
+            ClearMediaVolumeSession();
+            ArtTintBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            return;
+        }
+
+        if (!IsActive) return;
+
+        _audio?.BindDefaultDevice();
+        _lastBrowserTimelineRead = 0;
+        var candidate = GetActiveSession();
+        if (candidate is null || !IsSameSession(candidate, _session))
+        {
+            BindSession(candidate);
+            return;
+        }
+
+        BindMediaVolumeSession();
+        RenderVolume();
+        _ = RefreshMediaAsync();
+    }
 
     private async Task ActivateAsync()
     {
@@ -478,7 +518,7 @@ public partial class MediaWidget : DockWidget
             if (activationVersion == _activationVersion)
             {
                 AppLog.Warning($"Media session manager unavailable: {ex.Message}");
-                HasData = false;
+                if (IsDockVisible) HasData = false;
             }
         }
         catch (Exception ex)
@@ -491,6 +531,7 @@ public partial class MediaWidget : DockWidget
     protected override void OnDeactivated()
     {
         _activationVersion++;
+        _presentationVersion++;
         CloseVolumePopover();
         BindSession(null);
         if (_manager is not null)
@@ -519,7 +560,7 @@ public partial class MediaWidget : DockWidget
 
     protected override void OnTick(DateTime now)
     {
-        if (!IsActive || _manager is null) return;
+        if (!IsActive || !IsDockVisible || _manager is null) return;
 
         var candidate = GetActiveSession();
         if (!IsSameSession(candidate, _session))
@@ -573,6 +614,7 @@ public partial class MediaWidget : DockWidget
     /// </summary>
     private void BindMediaVolumeSession()
     {
+        if (!IsDockVisible) return;
         _lastVolumeSessionRetryMs = Environment.TickCount64;
         ClearMediaVolumeSession();
         try
@@ -704,7 +746,7 @@ public partial class MediaWidget : DockWidget
 
     private void VolumeTrigger_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (IsDynamicIsland) return;
+        if (!IsDockVisible || IsDynamicIsland) return;
         BindMediaVolumeSession();
         RenderVolume();
         if (_mediaVolumeSession is null) return;
@@ -810,28 +852,42 @@ public partial class MediaWidget : DockWidget
         }
     }
 
-    private void Audio_VolumeChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+    private void Audio_VolumeChanged()
     {
-        if (!IsActive) return;
-        // Master endpoint changes do not represent the playing app's volume. Only refresh
-        // when no app session is bound yet - it may have just appeared.
-        if (_mediaVolumeSession is null)
+        if (!IsDockVisible) return;
+        var version = Volatile.Read(ref _presentationVersion);
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
+            if (!IsCurrentPresentation(version)) return;
+            // Master endpoint changes do not represent the playing app's volume. Only refresh
+            // when no app session is bound yet - it may have just appeared.
+            if (_mediaVolumeSession is null)
+            {
+                BindMediaVolumeSession();
+                RenderVolume();
+            }
+        });
+    }
+
+    private void Audio_DefaultDeviceChanged()
+    {
+        if (!IsDockVisible) return;
+        var version = Volatile.Read(ref _presentationVersion);
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (!IsCurrentPresentation(version) || _audio is null) return;
+            _audio.BindDefaultDevice();
             BindMediaVolumeSession();
             RenderVolume();
-        }
-    });
+        });
+    }
 
-    private void Audio_DefaultDeviceChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
-    {
-        if (!IsActive || _audio is null) return;
-        _audio.BindDefaultDevice();
-        BindMediaVolumeSession();
-        RenderVolume();
-    });
+    private bool IsCurrentPresentation(int version) =>
+        IsActive && IsDockVisible && version == _presentationVersion;
 
     private void RenderVolume()
     {
+        if (!IsDockVisible) return;
         var lang = UiText.Current.Language;
         var session = _mediaVolumeSession;
 
@@ -984,6 +1040,9 @@ public partial class MediaWidget : DockWidget
     private void BindSession(MediaSession? session)
     {
         Interlocked.Increment(ref _sessionVersion);
+        _refreshVersion++;
+        _readingBrowserTimeline = false;
+        _browserTimelineReadVersion++;
         if (_session is not null)
         {
             _session.MediaPropertiesChanged -= Session_MediaPropertiesChanged;
@@ -996,6 +1055,7 @@ public partial class MediaWidget : DockWidget
         _sourceDiagnosticId = GetSafeSourceId(session);
         _missingPlaybackData = null;
         ResetProgressState();
+        ClearMediaVolumeSession();
         _mediaTitle = null;
         _lastBrowserTimelineRead = 0;
         ApplyPlaybackSnapshot(default, _sessionVersion, operation: null);
@@ -1013,10 +1073,13 @@ public partial class MediaWidget : DockWidget
 
     private void Session_MediaPropertiesChanged(MediaSession sender, MediaPropertiesChangedEventArgs args)
     {
+        if (!IsDockVisible) return;
         var version = Volatile.Read(ref _sessionVersion);
+        var presentationVersion = Volatile.Read(ref _presentationVersion);
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsCurrentSessionEvent(sender, version)) _ = RefreshMediaAsync();
+            if (IsCurrentPresentation(presentationVersion) && IsCurrentSessionEvent(sender, version))
+                _ = RefreshMediaAsync();
         });
     }
 
@@ -1028,10 +1091,13 @@ public partial class MediaWidget : DockWidget
 
     private void QueuePlaybackRefresh(MediaSession? sender)
     {
+        if (!IsDockVisible) return;
         var version = Volatile.Read(ref _sessionVersion);
+        var presentationVersion = Volatile.Read(ref _presentationVersion);
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsCurrentSessionEvent(sender, version)) RefreshPlayback(sender);
+            if (IsCurrentPresentation(presentationVersion) && IsCurrentSessionEvent(sender, version))
+                RefreshPlayback(sender);
         });
     }
 
@@ -1040,7 +1106,7 @@ public partial class MediaWidget : DockWidget
 
     private void RefreshPlayback(MediaSession? session)
     {
-        if (session is null || !IsSameSession(session, _session)) return;
+        if (!IsDockVisible || session is null || !IsSameSession(session, _session)) return;
         var version = _sessionVersion;
         GlobalSystemMediaTransportControlsSessionPlaybackStatus? status = null;
         MediaPlaybackControls? playbackControls = null;
@@ -1109,7 +1175,7 @@ public partial class MediaWidget : DockWidget
         string? operation = "RefreshPlayback", int? hresult = null)
     {
         Dispatcher.VerifyAccess();
-        if (sessionVersion != _sessionVersion) return;
+        if (!IsDockVisible || sessionVersion != _sessionVersion) return;
         var missing = !snapshot.Status.HasValue ? "playback"
             : !snapshot.IsAvailable ? "closed"
             : snapshot.Controls is null ? "controls"
@@ -1216,11 +1282,14 @@ public partial class MediaWidget : DockWidget
     private async Task RefreshBrowserTimelineAsync(string sourceAppId, string title, int version,
         int sessionVersion, int timelineVersion)
     {
+        var readVersion = ++_browserTimelineReadVersion;
         _readingBrowserTimeline = true;
         try
         {
-            var sample = await Task.Run(() => LibreWolfMediaTimeline.Read(sourceAppId, title));
-            if (!IsActive || _hasWindowsTimeline || version != _refreshVersion
+            var sample = await Task.Run(() => IsDockVisible && version == Volatile.Read(ref _refreshVersion)
+                ? LibreWolfMediaTimeline.Read(sourceAppId, title)
+                : null);
+            if (!IsActive || !IsDockVisible || _hasWindowsTimeline || version != _refreshVersion
                 || sessionVersion != _sessionVersion || timelineVersion != _timelineVersion) return;
 
             _usingBrowserTimeline = sample.HasValue;
@@ -1238,12 +1307,13 @@ public partial class MediaWidget : DockWidget
         }
         finally
         {
-            _readingBrowserTimeline = false;
+            if (readVersion == _browserTimelineReadVersion) _readingBrowserTimeline = false;
         }
     }
 
     private void UpdateProgressUI()
     {
+        if (!IsDockVisible) return;
         var duration = _timeline.Duration;
         var available = duration > 0;
         var elapsed = _timeline.PositionAt(Stopwatch.GetTimestamp());
@@ -1284,6 +1354,7 @@ public partial class MediaWidget : DockWidget
 
     private async Task RefreshMediaAsync()
     {
+        if (!IsDockVisible) return;
         var version = ++_refreshVersion;
         var activationVersion = _activationVersion;
         var session = _session;
@@ -1304,7 +1375,7 @@ public partial class MediaWidget : DockWidget
         {
             RefreshPlayback(session);
             var properties = await session.TryGetMediaPropertiesAsync();
-            if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive) return;
+            if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive || !IsDockVisible) return;
             var title = properties?.Title;
             if (string.IsNullOrWhiteSpace(title))
             {
@@ -1319,12 +1390,13 @@ public partial class MediaWidget : DockWidget
             Card.ToolTip = string.IsNullOrWhiteSpace(ArtistText.Text) ? title : $"{title}\n{ArtistText.Text}";
             UpdateIslandMetadata();
             HasData = true;
+            if (!_hasWindowsTimeline) RefreshPlayback(session);
             await LoadArtAsync(properties, version, activationVersion);
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
             AppLog.Warning($"Media session refresh failed: {ex.Message}");
-            if (version == _refreshVersion && activationVersion == _activationVersion)
+            if (version == _refreshVersion && activationVersion == _activationVersion && IsActive && IsDockVisible)
             {
                 HasData = false;
                 ClearAlbumArt();
@@ -1347,7 +1419,7 @@ public partial class MediaWidget : DockWidget
         try
         {
             using var stream = await properties.Thumbnail.OpenReadAsync();
-            if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive) return;
+            if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive || !IsDockVisible) return;
 
             var (image, tint) = await Task.Run(() =>
             {
@@ -1366,7 +1438,7 @@ public partial class MediaWidget : DockWidget
                 return (bitmap, DeriveSubtleTintColor(bitmap));
             });
 
-            if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive) return;
+            if (version != _refreshVersion || activationVersion != _activationVersion || !IsActive || !IsDockVisible) return;
             ArtImage.Source = image;
             if (_islandArtImage is not null) _islandArtImage.Source = image;
             ArtPlaceholder.Visibility = Visibility.Collapsed;
@@ -1417,7 +1489,7 @@ public partial class MediaWidget : DockWidget
 
     private async Task SeekToElapsedAsync(double elapsed)
     {
-        if (_session is not { } session || !_canSeek || _seekingProgress || _timeline.Sample is not { } sample) return;
+        if (!IsDockVisible || _session is not { } session || !_canSeek || _seekingProgress || _timeline.Sample is not { } sample) return;
         var target = sample.Start + TimeSpan.FromSeconds(Math.Clamp(elapsed, 0, _timeline.Duration));
         var sessionVersion = _sessionVersion;
         var timelineVersion = _timelineVersion;
@@ -1425,7 +1497,7 @@ public partial class MediaWidget : DockWidget
         try
         {
             if (await RunAsync(s => s.TryChangePlaybackPositionAsync(target.Ticks))
-                && sessionVersion == _sessionVersion && timelineVersion == _timelineVersion
+                && IsDockVisible && sessionVersion == _sessionVersion && timelineVersion == _timelineVersion
                 && ReferenceEquals(session, _session) && _timeline.Sample == sample)
                 _timeline.ConfirmSeek(elapsed, Stopwatch.GetTimestamp());
         }

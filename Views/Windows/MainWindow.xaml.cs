@@ -86,6 +86,7 @@ public partial class MainWindow : Window
     private readonly HashSet<FrameworkElement> _displacedIcons = [];
     private DockApp? _draggedApp;
     private DockAutoHideController? _autoHideController;
+    private bool _fullScreenSuppressed;
     private double? _dockWidthOverride;
     private (DockSize Size, double Scale, int Padding, double BottomGap, double TopGap)? _appliedDockGeometry;
     private bool _resizingDock;
@@ -310,17 +311,6 @@ public partial class MainWindow : Window
             ReportError(_preferences.LoadError);
         }
 
-        var startupTrimTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
-        {
-            Interval = TimeSpan.FromSeconds(3)
-        };
-        startupTrimTimer.Tick += (_, _) =>
-        {
-            startupTrimTimer.Stop();
-            NativeMemoryMethods.TrimWorkingSet(force: true);
-        };
-        if (_mirrorOf is null) startupTrimTimer.Start();
-
         // Widget placement (~180 ms) is deferred with the rest of the dock content so the frame paints first.
         DockScrollViewer.SetExternalIndicators(ScrollPrevOverlay, ScrollNextOverlay);
         ApplySizeProfile();
@@ -382,11 +372,7 @@ public partial class MainWindow : Window
                 || _draggedApp is not null
                 || (_settingsWindow is { IsVisible: true, IsActive: true, WindowState: not WindowState.Minimized })
                 || DockFlyout.IsAnyOpen || _keyboardNavigationActive);
-        _autoHideController.VisibilityChanged += visible =>
-        {
-            foreach (var widget in _widgetCoordinator.ActiveWidgets.Values)
-                widget.SetDockVisible(visible);
-        };
+        _autoHideController.VisibilityChanged += _ => UpdateWidgetDockVisibility();
         _autoHideController.DockBoundsProvider = GetDockPhysicalBounds;
         _autoHideController.IsShellMenuOpen = _startMenu.IsStartMenuOpenNow;
         // The Start menu and the Alt+Tab switcher cover the dock but are not applications: look past them.
@@ -396,6 +382,7 @@ public partial class MainWindow : Window
         if (_mirrorOf is null) _startMenu.StartWatching();
         _autoHideController.AnimationsEnabled = _preferences.Current.EffectiveAnimationsEnabled;
         _autoHideController.SetMode(_preferences.Current.AutoHide);
+        UpdateWidgetDockVisibility();
         ApplyBackdropHitTesting();
 
         // Reserve the AppBar work area and hide the native taskbar as soon as the HWND exists (before first paint).
@@ -2539,7 +2526,6 @@ public partial class MainWindow : Window
             _mirrorOf.OpenSettings_Click(sender, e);
             return;
         }
-        NativeMemoryMethods.CancelIdleTrim();
         _widgetPanel.Close(restoreFocus: false);
         AppLog.Info($"Settings open requested: source={sender?.GetType().Name ?? "null"}, startupArg={((App)Application.Current).OpenSettingsOnStartup}, existing={(_settingsWindow is null ? "none" : _settingsWindow.IsClosingOrClosed ? "closing" : "open")}");
         if (_settingsWindow is { IsClosingOrClosed: true }) _settingsWindow = null;
@@ -2557,7 +2543,6 @@ public partial class MainWindow : Window
                     _autoHideController.CheckForegroundWindow(NativeWindowTracker.GetForegroundApplicationWindow());
                     _autoHideController.EvaluateState();
                 }
-                NativeMemoryMethods.ScheduleIdleTrim(TimeSpan.FromSeconds(5));
             };
             _settingsWindow.Show();
         }
@@ -3206,17 +3191,10 @@ public partial class MainWindow : Window
         _replacementSession?.RefreshPosition();
     }
 
-    private int _memoryTrimCounter;
-
     private void WidgetRefreshTimer_Tick(object? sender, EventArgs e)
     {
         DockWidgetService.Refresh(_widgets.Concat(_islandWidgetItems.Values), _preferences.Current.Language);
         ResizeDockToContent();
-        if (++_memoryTrimCounter >= 3)
-        {
-            _memoryTrimCounter = 0;
-            NativeMemoryMethods.TrimWorkingSet();
-        }
     }
 
     private void DockWidgets_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -3812,8 +3790,13 @@ public partial class MainWindow : Window
         _autoHideController?.EvaluateState();
     }
 
+    private void UpdateWidgetDockVisibility() =>
+        _widgetCoordinator.SetDockVisible(!_fullScreenSuppressed && _autoHideController?.IsHidden != true);
+
     private void OnFullScreenChanged(bool suppressed)
     {
+        _fullScreenSuppressed = suppressed;
+        UpdateWidgetDockVisibility();
         if (!suppressed) return;
         _widgetCoordinator.CollapseHover();
         _widgetPanel.Close(restoreFocus: false);

@@ -17,8 +17,9 @@ if (args.Contains("--surface-style-only", StringComparer.OrdinalIgnoreCase))
     {
         try
         {
-            var app = new OpenTaskbar.App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
-            app.InitializeComponent();
+            var app = new IsolatedCheckApp();
+            WidgetViewChecks.LoadResources(app);
+            app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
             ThemeManager.Apply(AppTheme.Dark, new DockSettings());
             surfaceChecks = SurfaceStyleChecks.Run();
             app.Shutdown();
@@ -43,7 +44,7 @@ if (args.Contains("--theme-pack-only", StringComparer.OrdinalIgnoreCase))
 }
 
 int CrashAnalysisChecks() => CrashAssessmentChecks.Run() + CrashWindowsEventChecks.Run()
-    + WatchdogAssessmentChecks.Run() + ProcessResourceMonitorChecks.Run();
+    + WatchdogAssessmentChecks.Run() + ProcessResourceMonitorChecks.Run() + ShellProcessIdentityChecks.Run();
 
 if (args.Contains("--crash-analysis-only", StringComparer.OrdinalIgnoreCase))
 {
@@ -55,8 +56,8 @@ if (args.Contains("--crash-regressions", StringComparer.OrdinalIgnoreCase))
 {
     var crashChecks = CrashAnalysisChecks() + StaCheckRunner.Run(() =>
     {
-        var app = new OpenTaskbar.App();
-        app.InitializeComponent();
+        var app = new IsolatedCheckApp();
+        WidgetViewChecks.LoadResources(app);
         app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
         // Never load or modify the desktop user's settings in this isolated UI regression process.
         typeof(OpenTaskbar.App).GetField("_preferences",
@@ -66,7 +67,8 @@ if (args.Contains("--crash-regressions", StringComparer.OrdinalIgnoreCase))
         try
         {
             ThemeManager.Apply(AppTheme.Dark, new DockSettings());
-            return CrashReportChecks.Run() + DockEdgeTransitionChecks.Run(app) + MediaPlaybackSafetyChecks.Run(app);
+            return CrashReportChecks.Run() + DockEdgeTransitionChecks.Run(app)
+                + MediaPlaybackSafetyChecks.Run(app) + MediaPlaybackSafetyChecks.RunDockVisibility(app);
         }
         finally
         {

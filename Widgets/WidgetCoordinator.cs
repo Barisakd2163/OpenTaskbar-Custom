@@ -62,6 +62,7 @@ public sealed class WidgetCoordinator : IDisposable
     private Point _dragStartPoint;
     private DockWidget? _draggedWidget;
     private bool _disposed;
+    private bool _dockVisible = true;
     private bool _batchingApply;
     private bool _availabilityChangePending;
 
@@ -104,6 +105,15 @@ public sealed class WidgetCoordinator : IDisposable
         remove => _hoverCoordinator.HoverActiveChanged -= value;
     }
     public void CollapseHover() => _hoverCoordinator.CollapseActive();
+
+    public void SetDockVisible(bool visible)
+    {
+        if (_dockVisible == visible) return;
+        _dockVisible = visible;
+        foreach (var slot in _widgets)
+            slot.Widget?.SetDockVisible(visible);
+    }
+
     public void SuppressHover(TimeSpan duration) => _hoverCoordinator.Suppress(duration);
 
     private static bool IsCatalogEnabled(DockSettings settings, string id) =>
@@ -157,6 +167,7 @@ public sealed class WidgetCoordinator : IDisposable
         var widget = slot.Factory();
         widget.Tag = slot.Id;
         widget.ReportError = _reportError;
+        widget.SetDockVisible(_dockVisible);
         widget.UpdateSettings = updated =>
         {
             if (WidgetSettingsUpdated is not null)
