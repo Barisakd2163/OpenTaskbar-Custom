@@ -39,6 +39,10 @@ public partial class MediaWidget : DockWidget
     private readonly DispatcherTimer _volumeHoverCloseTimer;
     private int _activationVersion;
     private int _refreshVersion;
+    private int _sessionVersion;
+    private int _timelineVersion;
+    private string _sourceDiagnosticId = "none";
+    private string? _missingPlaybackData;
     private readonly MediaTimeline _timeline = new();
     private string? _mediaTitle;
     private bool _hasWindowsTimeline;
@@ -71,6 +75,9 @@ public partial class MediaWidget : DockWidget
     private Slider? _islandCompactVolumeSlider;
     private Button? _islandMuteButton;
     private ContentControl? _islandPlayPauseGlyph;
+    private Button? _islandPreviousButton;
+    private Button? _islandPlayPauseButton;
+    private Button? _islandNextButton;
     private ContentControl? _islandVolumeGlyph;
 
     // Locally confirmed per-app volume state (AppAudioSession.Volume is a snapshot, not live).
@@ -216,11 +223,14 @@ public partial class MediaWidget : DockWidget
         top.Children.Add(metadata);
 
         var transport = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-        transport.Children.Add(CreateIslandTransportButton("IconPreviousFill", UiText.Get("MediaPrevious"), Previous_Click, 24));
+        _islandPreviousButton = CreateIslandTransportButton("IconPreviousFill", UiText.Get("MediaPrevious"), Previous_Click, 24);
+        transport.Children.Add(_islandPreviousButton);
         var playPause = CreateIslandTransportButton("IconPlayFill", UiText.Get("MediaPlayPause"), PlayPause_Click, 30);
+        _islandPlayPauseButton = playPause;
         _islandPlayPauseGlyph = (ContentControl)playPause.Content;
         transport.Children.Add(playPause);
-        transport.Children.Add(CreateIslandTransportButton("IconNextFill", UiText.Get("MediaNext"), Next_Click, 24));
+        _islandNextButton = CreateIslandTransportButton("IconNextFill", UiText.Get("MediaNext"), Next_Click, 24);
+        transport.Children.Add(_islandNextButton);
         Grid.SetColumn(transport, 2);
         top.Children.Add(transport);
 
@@ -276,6 +286,7 @@ public partial class MediaWidget : DockWidget
         surface.Unloaded += IslandDetails_Unloaded;
         UpdateIslandMetadata();
         UpdateProgressUI();
+        UpdateTransportControls();
         RenderVolume();
         return surface;
     }
@@ -318,6 +329,9 @@ public partial class MediaWidget : DockWidget
         _islandVolumeSlider = null;
         _islandMuteButton = null;
         _islandPlayPauseGlyph = null;
+        _islandPreviousButton = null;
+        _islandPlayPauseButton = null;
+        _islandNextButton = null;
         _islandVolumeGlyph = null;
         _islandDraggingProgress = false;
     }
@@ -880,7 +894,7 @@ public partial class MediaWidget : DockWidget
     private void Manager_CurrentSessionChanged(MediaSessionManager sender, CurrentSessionChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (!IsActive || _manager is null) return;
+            if (!IsActive || sender is null || !ReferenceEquals(sender, _manager)) return;
             var candidate = GetActiveSession();
             if (!IsSameSession(candidate, _session)) BindSession(candidate);
         });
@@ -888,7 +902,7 @@ public partial class MediaWidget : DockWidget
     private void Manager_SessionsChanged(MediaSessionManager sender, SessionsChangedEventArgs args) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (!IsActive || _manager is null) return;
+            if (!IsActive || sender is null || !ReferenceEquals(sender, _manager)) return;
             var candidate = GetActiveSession();
             if (!IsSameSession(candidate, _session)) BindSession(candidate);
         });
@@ -912,61 +926,64 @@ public partial class MediaWidget : DockWidget
         if (_manager is null) return null;
 
         MediaSession? current = null;
-        try { current = _manager.GetCurrentSession(); } catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
-
-        if (current is not null)
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus? currentStatus = null;
+        try
         {
-            try
-            {
-                var pb = current.GetPlaybackInfo();
-                if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
-                    return current;
-            }
-            catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
+            current = _manager.GetCurrentSession();
+            currentStatus = current?.GetPlaybackInfo()?.PlaybackStatus;
+            if (currentStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                return current;
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            AppLog.Warning($"Media session selection failed: operation=GetCurrentSession hresult=0x{ex.HResult:X8}");
         }
 
+        MediaSession? active = null;
+        MediaSession? stopped = null;
         try
         {
             var sessions = _manager.GetSessions();
-            if (sessions is { Count: > 0 })
+            if (sessions is not null)
             {
-                foreach (var s in sessions)
+                foreach (var session in sessions)
                 {
                     try
                     {
-                        var pb = s.GetPlaybackInfo();
-                        if (pb?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
-                            return s;
+                        var status = session?.GetPlaybackInfo()?.PlaybackStatus;
+                        if (!status.HasValue || status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed)
+                            continue;
+                        if (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                            return session;
+                        if (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped)
+                            stopped ??= session;
+                        else
+                            active ??= session;
                     }
-                    catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
-                }
-
-                if (current is not null) return current;
-
-                foreach (var s in sessions)
-                {
-                    try
+                    catch (Exception ex) when (ex is COMException or InvalidOperationException)
                     {
-                        var pb = s.GetPlaybackInfo();
-                        if (pb?.PlaybackStatus is not (GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed
-                            or GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped))
-                        {
-                            return s;
-                        }
+                        AppLog.Warning($"Media session selection failed: operation=GetPlaybackInfo hresult=0x{ex.HResult:X8}");
                     }
-                    catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
                 }
-
-                return sessions[0];
             }
         }
-        catch (Exception ex) { AppLog.Warning($"Media widget operation failed: {ex.Message}"); }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            AppLog.Warning($"Media session selection failed: operation=GetSessions hresult=0x{ex.HResult:X8}");
+        }
 
-        return current;
+        if (currentStatus.HasValue && currentStatus is not (
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed
+            or GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped))
+            return current;
+        return active ?? (currentStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped ? current : stopped)
+            // Keep the existing subscription through a temporary data gap, but never select a new absent source as active.
+            ?? (currentStatus is null && IsSameSession(current, _session) ? current : null);
     }
 
     private void BindSession(MediaSession? session)
     {
+        Interlocked.Increment(ref _sessionVersion);
         if (_session is not null)
         {
             _session.MediaPropertiesChanged -= Session_MediaPropertiesChanged;
@@ -976,15 +993,12 @@ public partial class MediaWidget : DockWidget
 
         _session = session;
         CloseVolumePopover();
-        _timeline.Reset();
+        _sourceDiagnosticId = GetSafeSourceId(session);
+        _missingPlaybackData = null;
+        ResetProgressState();
         _mediaTitle = null;
-        _hasWindowsTimeline = false;
-        _usingBrowserTimeline = false;
         _lastBrowserTimelineRead = 0;
-        _draggingProgress = false;
-        _seekingProgress = false;
-        _canSeek = false;
-        UpdateProgressUI();
+        ApplyPlaybackSnapshot(default, _sessionVersion, operation: null);
         if (_session is not null)
         {
             _session.MediaPropertiesChanged += Session_MediaPropertiesChanged;
@@ -997,84 +1011,217 @@ public partial class MediaWidget : DockWidget
         _ = RefreshMediaAsync();
     }
 
-    private void Session_MediaPropertiesChanged(MediaSession sender, MediaPropertiesChangedEventArgs args) =>
+    private void Session_MediaPropertiesChanged(MediaSession sender, MediaPropertiesChangedEventArgs args)
+    {
+        var version = Volatile.Read(ref _sessionVersion);
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && IsSameSession(sender, _session)) _ = RefreshMediaAsync();
+            if (IsCurrentSessionEvent(sender, version)) _ = RefreshMediaAsync();
         });
+    }
 
     private void Session_PlaybackInfoChanged(MediaSession sender, PlaybackInfoChangedEventArgs args) =>
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
-        {
-            if (IsActive && IsSameSession(sender, _session)) RefreshPlayback(sender);
-        });
+        QueuePlaybackRefresh(sender);
 
     private void Session_TimelinePropertiesChanged(MediaSession sender, TimelinePropertiesChangedEventArgs args) =>
+        QueuePlaybackRefresh(sender);
+
+    private void QueuePlaybackRefresh(MediaSession? sender)
+    {
+        var version = Volatile.Read(ref _sessionVersion);
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
-            if (IsActive && IsSameSession(sender, _session)) RefreshPlayback(sender);
+            if (IsCurrentSessionEvent(sender, version)) RefreshPlayback(sender);
         });
+    }
 
-    private void RefreshPlayback(MediaSession session)
+    private bool IsCurrentSessionEvent(MediaSession? sender, int version) =>
+        sender is not null && IsActive && version == _sessionVersion && IsSameSession(sender, _session);
+
+    private void RefreshPlayback(MediaSession? session)
     {
+        if (session is null || !IsSameSession(session, _session)) return;
+        var version = _sessionVersion;
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus? status = null;
+        MediaPlaybackControls? playbackControls = null;
+        MediaTimelineSample? timelineSample = null;
+        var hasTimelineSource = false;
+        var rate = 1d;
+        var operation = "GetPlaybackInfo";
+        int? hresult = null;
+        string? browserSourceId = null;
         try
         {
             var playback = session.GetPlaybackInfo();
-            var controls = playback.Controls;
-            var playing = playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-            if (_lastPlayGlyph != playing)
+            if (playback is not null)
             {
-                _lastPlayGlyph = playing;
-                PlayPauseGlyph.Content = FindResource(playing ? "IconPauseFill" : "IconPlayFill");
-            }
-            if (_islandPlayPauseGlyph is not null)
-                _islandPlayPauseGlyph.Content = FindResource(playing ? "IconPauseFill" : "IconPlayFill");
-            PlayPauseButton.IsEnabled = controls.IsPlayPauseToggleEnabled || controls.IsPlayEnabled || controls.IsPauseEnabled;
-            PreviousButton.IsEnabled = controls.IsPreviousEnabled;
-            NextButton.IsEnabled = controls.IsNextEnabled;
-            _canSeek = controls.IsPlaybackPositionEnabled;
-
-            var timeline = session.GetTimelineProperties();
-            var start = timeline.StartTime;
-            var end = timeline.EndTime > start ? timeline.EndTime : timeline.MaxSeekTime;
-            var reportedRate = playback.PlaybackRate.GetValueOrDefault();
-            var rate = reportedRate > 0 && double.IsFinite(reportedRate) ? reportedRate : 1;
-            _hasWindowsTimeline = end > start;
-            if (_hasWindowsTimeline)
-            {
-                _usingBrowserTimeline = false;
-                _timeline.Update(new(start, end, timeline.Position, timeline.LastUpdatedTime),
-                    playing ? rate : 0, DateTimeOffset.UtcNow, Stopwatch.GetTimestamp());
-            }
-            else
-            {
-                _canSeek = false;
-                _draggingProgress = false;
-                if (!_usingBrowserTimeline) _timeline.Reset();
-                var tick = Environment.TickCount64;
-                if (!_readingBrowserTimeline && _mediaTitle is { } mediaTitle
-                    && tick - _lastBrowserTimelineRead >= BrowserTimelineRefreshIntervalMs)
+                status = playback.PlaybackStatus;
+                if (status != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed)
                 {
-                    _lastBrowserTimelineRead = tick;
-                    _ = RefreshBrowserTimelineAsync(session.SourceAppUserModelId, mediaTitle, _refreshVersion);
+                    operation = "GetPlaybackInfo.Controls";
+                    var controls = playback.Controls;
+                    playbackControls = controls is null ? null : new MediaPlaybackControls(
+                        controls.IsPlayPauseToggleEnabled || controls.IsPlayEnabled || controls.IsPauseEnabled,
+                        controls.IsPreviousEnabled, controls.IsNextEnabled, controls.IsPlaybackPositionEnabled);
+                    rate = playback.PlaybackRate.GetValueOrDefault();
+                    operation = "GetTimelineProperties";
+                    var timeline = session.GetTimelineProperties();
+                    if (timeline is not null)
+                    {
+                        var start = timeline.StartTime;
+                        var end = timeline.EndTime > start ? timeline.EndTime : timeline.MaxSeekTime;
+                        hasTimelineSource = true;
+                        timelineSample = end > start ? new MediaTimelineSample(
+                            start, end, timeline.Position, timeline.LastUpdatedTime) : null;
+                        if (timelineSample is null && !_readingBrowserTimeline && _mediaTitle is not null
+                            && Environment.TickCount64 - _lastBrowserTimelineRead >= BrowserTimelineRefreshIntervalMs)
+                        {
+                            operation = "SourceAppUserModelId";
+                            browserSourceId = session.SourceAppUserModelId;
+                        }
+                    }
                 }
             }
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
-            AppLog.Warning($"Media playback refresh failed: {ex.Message}");
+            hresult = ex.HResult;
         }
 
+        var snapshot = new MediaPlaybackSnapshot(status, playbackControls, timelineSample, hasTimelineSource, rate);
+        ApplyPlaybackSnapshot(snapshot, version, hresult.HasValue ? operation : "RefreshPlayback", hresult);
+        if (snapshot.IsAvailable && snapshot.HasTimelineSource && snapshot.Timeline is null
+            && browserSourceId is not null)
+        {
+            var tick = Environment.TickCount64;
+            if (!_readingBrowserTimeline && _mediaTitle is { } mediaTitle
+                && tick - _lastBrowserTimelineRead >= BrowserTimelineRefreshIntervalMs)
+            {
+                _lastBrowserTimelineRead = tick;
+                _ = RefreshBrowserTimelineAsync(browserSourceId, mediaTitle,
+                    _refreshVersion, version, _timelineVersion);
+            }
+        }
+    }
+
+    // This is the UI consumer of the nullable WinRT snapshot, also exercised by deterministic UI checks.
+    internal void ApplyPlaybackSnapshot(in MediaPlaybackSnapshot snapshot, int sessionVersion,
+        string? operation = "RefreshPlayback", int? hresult = null)
+    {
+        Dispatcher.VerifyAccess();
+        if (sessionVersion != _sessionVersion) return;
+        var missing = !snapshot.Status.HasValue ? "playback"
+            : !snapshot.IsAvailable ? "closed"
+            : snapshot.Controls is null ? "controls"
+            : !snapshot.HasTimelineSource ? "timeline"
+            : snapshot.Timeline is null ? "timeline-range" : null;
+        if (operation is not null)
+            ReportMissingPlaybackData(missing, operation == "RefreshPlayback" ? missing switch
+            {
+                "playback" => "GetPlaybackInfo",
+                "closed" => "GetPlaybackInfo.PlaybackStatus",
+                "controls" => "GetPlaybackInfo.Controls",
+                _ => "GetTimelineProperties"
+            } : operation, hresult);
+        var playing = snapshot.IsAvailable
+            && snapshot.Status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        if (_lastPlayGlyph != playing)
+        {
+            _lastPlayGlyph = playing;
+            PlayPauseGlyph.Content = FindResource(playing ? "IconPauseFill" : "IconPlayFill");
+        }
+        var controls = snapshot.IsAvailable ? snapshot.Controls : null;
+        PlayPauseButton.IsEnabled = controls?.PlayPause == true;
+        PreviousButton.IsEnabled = controls?.Previous == true;
+        NextButton.IsEnabled = controls?.Next == true;
+        UpdateTransportControls();
+
+        var hadWindowsTimeline = _hasWindowsTimeline;
+        _hasWindowsTimeline = snapshot.IsAvailable && snapshot.Timeline.HasValue;
+        if (_hasWindowsTimeline != hadWindowsTimeline) _timelineVersion++;
+        _canSeek = _hasWindowsTimeline && controls?.Seek == true;
+        if (_hasWindowsTimeline && snapshot.Timeline is { } timeline)
+        {
+            _usingBrowserTimeline = false;
+            var rate = snapshot.Rate > 0 && double.IsFinite(snapshot.Rate) ? snapshot.Rate : 1;
+            _timeline.Update(timeline, playing ? rate : 0, DateTimeOffset.UtcNow, Stopwatch.GetTimestamp());
+            if (!_canSeek) CancelProgressInteraction();
+        }
+        else if (!snapshot.IsAvailable || !snapshot.HasTimelineSource)
+        {
+            ResetProgressState();
+        }
+        else
+        {
+            // A provider with no duration can still use the existing browser accessibility fallback.
+            CancelProgressInteraction();
+            if (!_usingBrowserTimeline) _timeline.Reset();
+        }
         if (!_draggingProgress && !_seekingProgress) UpdateProgressUI();
     }
 
-    private async Task RefreshBrowserTimelineAsync(string sourceAppId, string title, int version)
+    private void UpdateTransportControls()
+    {
+        if (_islandPlayPauseGlyph is not null) _islandPlayPauseGlyph.Content = PlayPauseGlyph.Content;
+        if (_islandPlayPauseButton is not null) _islandPlayPauseButton.IsEnabled = PlayPauseButton.IsEnabled;
+        if (_islandPreviousButton is not null) _islandPreviousButton.IsEnabled = PreviousButton.IsEnabled;
+        if (_islandNextButton is not null) _islandNextButton.IsEnabled = NextButton.IsEnabled;
+    }
+
+    private void CancelProgressInteraction()
+    {
+        if (_seekingProgress) _timelineVersion++;
+        _draggingProgress = false;
+        _islandDraggingProgress = false;
+        _seekingProgress = false;
+    }
+
+    private void ResetProgressState()
+    {
+        _timelineVersion++;
+        _timeline.Reset();
+        _hasWindowsTimeline = false;
+        _usingBrowserTimeline = false;
+        _canSeek = false;
+        CancelProgressInteraction();
+    }
+
+    private void ReportMissingPlaybackData(string? missing, string operation, int? hresult = null)
+    {
+        if (_missingPlaybackData == missing) return;
+        _missingPlaybackData = missing;
+        if (missing is not null && _session is not null)
+            AppLog.Warning($"Media data unavailable: source={_sourceDiagnosticId} operation={operation} missing={missing}"
+                + (hresult.HasValue ? $" hresult=0x{hresult.Value:X8}" : string.Empty));
+    }
+
+    private static string GetSafeSourceId(MediaSession? session)
+    {
+        try
+        {
+            var source = session?.SourceAppUserModelId;
+            if (string.IsNullOrEmpty(source)) return "none";
+            if (source.Length > 128) return "[redacted]";
+            foreach (var character in source)
+                if (!char.IsAsciiLetterOrDigit(character) && character is not ('.' or '_' or '-' or '!'))
+                    return "[redacted]";
+            return source;
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            return "unavailable";
+        }
+    }
+
+    private async Task RefreshBrowserTimelineAsync(string sourceAppId, string title, int version,
+        int sessionVersion, int timelineVersion)
     {
         _readingBrowserTimeline = true;
         try
         {
             var sample = await Task.Run(() => LibreWolfMediaTimeline.Read(sourceAppId, title));
-            if (!IsActive || _hasWindowsTimeline || version != _refreshVersion) return;
+            if (!IsActive || _hasWindowsTimeline || version != _refreshVersion
+                || sessionVersion != _sessionVersion || timelineVersion != _timelineVersion) return;
 
             _usingBrowserTimeline = sample.HasValue;
             if (sample is { } timeline)
@@ -1272,16 +1419,20 @@ public partial class MediaWidget : DockWidget
     {
         if (_session is not { } session || !_canSeek || _seekingProgress || _timeline.Sample is not { } sample) return;
         var target = sample.Start + TimeSpan.FromSeconds(Math.Clamp(elapsed, 0, _timeline.Duration));
+        var sessionVersion = _sessionVersion;
+        var timelineVersion = _timelineVersion;
         _seekingProgress = true;
         try
         {
             if (await RunAsync(s => s.TryChangePlaybackPositionAsync(target.Ticks))
+                && sessionVersion == _sessionVersion && timelineVersion == _timelineVersion
                 && ReferenceEquals(session, _session) && _timeline.Sample == sample)
                 _timeline.ConfirmSeek(elapsed, Stopwatch.GetTimestamp());
         }
         finally
         {
-            if (ReferenceEquals(session, _session))
+            if (sessionVersion == _sessionVersion && timelineVersion == _timelineVersion
+                && ReferenceEquals(session, _session))
             {
                 _seekingProgress = false;
                 if (!_draggingProgress) RefreshPlayback(session);

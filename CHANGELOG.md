@@ -2,6 +2,9 @@
 
 ## Custom fork - 2026-11-25
 
+- Handle missing or expired media playback, control, and timeline data without crashing the dock; recover when session data returns.
+- Keep Show Desktop spacing independent of Auto-sized controls while switching dock edges, preventing NaN MaxWidth/MaxHeight failures.
+- Add local per-crash diagnostics with build/commit identity, full exception details and safe state context, and embed portable debug symbols for source line numbers.
 - Apply the Start button's theme-aware hover surface and fade timing to application, group, and folder-stack icons.
 - Added Overlay visibility mode: keep the dock visible above applications without reserving screen space on the main or mirrored displays.
 - Removed the input-queue attachment fallback during window activation so an unresponsive application cannot freeze the dock and its window previews.

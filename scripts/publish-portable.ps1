@@ -77,7 +77,7 @@ dotnet publish $projectPath `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:PublishReadyToRun=false `
     -p:EnableCompressionInSingleFile=false `
-    -p:DebugType=None `
+    -p:DebugType=embedded `
     "-p:WatchdogBinary=$watchdogBinary" `
     -o $OutputDir
 

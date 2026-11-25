@@ -8,6 +8,12 @@ namespace OpenTaskbar;
 /// <summary>Bottom, left, or right screen edge: flips the dock's axis, insets, magnification and hide direction.</summary>
 public partial class MainWindow
 {
+    private const double ShowDesktopStripExtent = 6;
+    // Width/Height can still be Auto (NaN) while a settings change is switching axes.
+    private double ShowDesktopInset => ShowDesktopButton.Visibility == Visibility.Visible
+        ? ShowDesktopStripExtent + 1
+        : 0;
+
     private DockEdge? _appliedEdge;
     private DefinitionBase? _headroomDefinition;
 
@@ -157,8 +163,8 @@ public partial class MainWindow
         DockTrailControls.VerticalAlignment = vertical ? VerticalAlignment.Bottom : VerticalAlignment.Center;
         DockTrailControls.Margin = vertical ? new Thickness(0, 0, 0, 3) : new Thickness(0, 0, 3, 0);
 
-        ShowDesktopButton.Width = vertical ? double.NaN : 6;
-        ShowDesktopButton.Height = vertical ? 6 : double.NaN;
+        ShowDesktopButton.Width = vertical ? double.NaN : ShowDesktopStripExtent;
+        ShowDesktopButton.Height = vertical ? ShowDesktopStripExtent : double.NaN;
         ShowDesktopButton.HorizontalAlignment = vertical ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         ShowDesktopButton.VerticalAlignment = vertical ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
         ShowDesktopButton.Margin = new Thickness(0);
@@ -218,9 +224,7 @@ public partial class MainWindow
         var marginV = DockSurface.Margin.Top + DockSurface.Margin.Bottom;
         var maximumSurfaceHeight = Math.Max(1, available - marginV);
         var verticalChrome = DockFrame.Padding.Top + DockFrame.Padding.Bottom + 4;
-        var showDesktopInset = ShowDesktopButton.Visibility == Visibility.Visible
-            ? ShowDesktopButton.Height + 1
-            : 0;
+        var showDesktopInset = ShowDesktopInset;
         var shellCount = (StartButtonShown ? 1 : 0)
             + (_preferences.Current.ShowSearchButton ? 1 : 0)
             + (_preferences.Current.ShowTaskViewButton ? 1 : 0)

@@ -27,16 +27,15 @@ public static class AppLog
         lock (Gate)
         {
             if (_writer is not null) return;
-            _verbose = string.Equals(Environment.GetEnvironmentVariable("OT_VERBOSE_LOG"), "1", StringComparison.Ordinal);
             try
             {
+                _verbose = string.Equals(Environment.GetEnvironmentVariable("OT_VERBOSE_LOG"), "1", StringComparison.Ordinal);
                 Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
                 // Rotation is handled on the first Write below (the stream must be open first).
                 _writer = OpenWriter();
-                Info($"OpenTaskbar {typeof(AppLog).Assembly.GetName().Version} started.");
+                Info($"OpenTaskbar {CrashReport.BuildVersion} started. Executable={Environment.ProcessPath ?? "unknown"}; PID={Environment.ProcessId}.");
             }
-            catch (IOException) { _writer = null; }
-            catch (UnauthorizedAccessException) { _writer = null; }
+            catch (Exception) { _writer = null; } // Diagnostics must not prevent startup.
         }
     }
 
@@ -93,11 +92,10 @@ public static class AppLog
                 var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{level,-5}][T{Environment.CurrentManagedThreadId,2}] {message}";
                 _writer.WriteLine(line);
             }
-            catch (IOException)
+            catch (Exception)
             {
-                // Logging must never take down the app.
+                // Logging must never take down the app, including during crash recovery.
             }
-            catch (ObjectDisposedException) { }
         }
     }
 
@@ -130,25 +128,19 @@ public static class AppLog
 
     private static void WriteError(string messageKey, object[] arguments, Exception? exception)
     {
-        var sb = new StringBuilder();
-        sb.Append("Failure key=").Append(messageKey)
-          .Append(" | message=").Append(ResolveMessage(messageKey, arguments));
-        if (exception is not null)
+        try
         {
-            sb.AppendLine();
-            sb.Append("  exception=").Append(exception.GetType().Name).Append(": ").Append(exception.Message);
-            if (exception.InnerException is not null)
-            {
-                sb.AppendLine();
-                sb.Append("  inner=").Append(exception.InnerException.GetType().Name).Append(": ").Append(exception.InnerException.Message);
-            }
-            if (!string.IsNullOrWhiteSpace(exception.StackTrace))
-            {
-                sb.AppendLine();
-                sb.Append("  stack=").Append(exception.StackTrace);
-            }
+            var sb = new StringBuilder();
+            sb.Append("Failure key=").Append(messageKey)
+              .Append(" | message=").Append(ResolveMessage(messageKey, arguments));
+            if (exception is not null)
+                sb.AppendLine().Append(exception);
+            Error(sb.ToString());
         }
-        Error(sb.ToString());
+        catch (Exception)
+        {
+            // Even exception formatting/localization can fail; never interrupt the caller's recovery.
+        }
     }
 
     /// <summary>Opens log.txt in the default text editor for users who need to inspect recorded failures.</summary>
@@ -176,9 +168,14 @@ public static class AppLog
     {
         lock (Gate)
         {
-            _writer?.Flush();
-            _writer?.Dispose();
-            _writer = null;
+            try { _writer?.Flush(); }
+            catch (Exception) { }
+            finally
+            {
+                try { _writer?.Dispose(); }
+                catch (Exception) { }
+                _writer = null;
+            }
         }
     }
 }

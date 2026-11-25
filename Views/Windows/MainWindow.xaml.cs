@@ -3415,7 +3415,7 @@ public partial class MainWindow : Window
     {
         var visible = _preferences.Current.ShowDesktopButton;
         ShowDesktopButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        var inset = visible ? (IsVertical ? ShowDesktopButton.Height : ShowDesktopButton.Width) + 1 : 0;
+        var inset = ShowDesktopInset;
 
         DockLayoutRoot.Margin = IsVertical
             ? new Thickness(0, 0, 0, inset)
@@ -3919,9 +3919,7 @@ public partial class MainWindow : Window
         var appsContentWidth = IsFullWidth ? 0 : DockScrollViewer.MeasureContentWidth(DockContents);
         var trailWidth = DockScrollViewer.MeasureContentWidth(DockTrailControls);
         var widgetsWidth = hasIslandWidgets ? DockScrollViewer.MeasureContentWidth(WidgetIsland) : 0;
-        var showDesktopWidth = ShowDesktopButton.Visibility == Visibility.Visible
-            ? ShowDesktopButton.Width + 1
-            : 0;
+        var showDesktopWidth = ShowDesktopInset;
         var targetDisplay = GetDockDisplay();
         var availableWidth = _dockArea.Width > 0 ? _dockArea.Width : targetDisplay.Width;
         var margin = DockSurface.Margin;

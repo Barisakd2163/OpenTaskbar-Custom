@@ -42,6 +42,32 @@ if (args.Contains("--theme-pack-only", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+if (args.Contains("--crash-regressions", StringComparer.OrdinalIgnoreCase))
+{
+    var crashChecks = StaCheckRunner.Run(() =>
+    {
+        var app = new OpenTaskbar.App();
+        app.InitializeComponent();
+        app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+        // Never load or modify the desktop user's settings in this isolated UI regression process.
+        typeof(OpenTaskbar.App).GetField("_preferences",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(app, new ApplicationPreferences(new DockSettingsStore(
+                Path.Combine(Path.GetTempPath(), "OpenTaskbar-CrashChecks-" + Guid.NewGuid().ToString("N"), "settings.json"))));
+        try
+        {
+            ThemeManager.Apply(AppTheme.Dark, new DockSettings());
+            return CrashReportChecks.Run() + DockEdgeTransitionChecks.Run(app) + MediaPlaybackSafetyChecks.Run(app);
+        }
+        finally
+        {
+            app.Shutdown();
+        }
+    });
+    Console.WriteLine($"{crashChecks} crash regression checks passed.");
+    return;
+}
+
 // `--headless` runs only the pure logic checks: no WPF Application, no windows, no synthetic keyboard input,
 // no file dialogs and no desktop side effects. The default run keeps the full UI verification suite for CI.
 var headless = args.Contains("--headless", StringComparer.OrdinalIgnoreCase);
@@ -79,6 +105,7 @@ checks += ThemePackChecks.Run();
 if (!headless) checks += SurfaceStyleChecks.Run();
 checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
+checks += CrashReportChecks.Run();
 checks += SecondaryDockAndInteropChecks.Run();
 checks += ApplicationJumpListChecks.Run();
 checks += WirelessBatteryChecks.Run(headless);

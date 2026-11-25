@@ -8,10 +8,19 @@
 - **Pencere geçişlerinde donma düzeltmesi:** Başka uygulamaların giriş kuyruklarına bağlanan etkinleştirme yolu kaldırıldı. Bu yol dock'u ve Brave dahil uygulamaların pencere önizlemelerini kilitleyebiliyordu.
 - **İki ekran senkronizasyonu:** Başlangıçta yüklenen sabit uygulamalar ve daha sonra gelen simgeler ikinci dock'a da aktarılır.
 - **Tutarlı hover görünümü:** Uygulama, grup ve klasör simgeleri Başlat düğmesiyle aynı temaya uyumlu, yuvarlatılmış hover arka planını ve geçiş sürelerini kullanır.
+- **Çökme düzeltmeleri:** Geçici olarak eksik medya oturumu verileri güvenli biçimde ele alınır; dock yönü değişirken otomatik (`NaN`) düğme boyutları kaydırma alanı sınırlarına taşınmaz.
 
 ### Doğrulama
 
-Bu değişiklikler için 19 hedefli otomatik gizleme/Overlay yaşam döngüsü kontrolü ve yanıt vermeyen pencere etkinleştirmesine yönelik 1 regresyon kontrolü geçti. İki ekrandaki dock, Brave'in canlı pencere önizlemesi ve hover arka planı gerçek Windows masaüstünde doğrulandı. Tam test paketi bu çalışma sırasında çalıştırılmadı.
+Çökme düzeltmeleri için `--crash-regressions` ile 34 hedefli kontrol geçti: eksik medya verisi ve toparlanma, gerçek dock yönü geçişleri ve yerel hata raporları. Daha önce 19 otomatik gizleme/Overlay yaşam döngüsü kontrolü ve yanıt vermeyen pencere etkinleştirmesine yönelik 1 regresyon kontrolü de geçti. İki ekrandaki dock, Brave'in canlı pencere önizlemesi ve hover arka planı gerçek Windows masaüstünde doğrulandı. Tam test paketi bu çalışma sırasında çalıştırılmadı.
+
+### Çökme tanıları
+
+- Başlangıç kaydı gerçek sürümü/commit kimliğini, çalıştırılan EXE'yi ve süreç kimliğini içerir.
+- Beklenmeyen .NET/UI hataları `%LOCALAPPDATA%\OpenTaskbar\Crashes` altında ayrı yerel raporlara yazılır. Raporlar exception/inner exception ve stack trace ile çalışma ortamı ve sınırlı dock/widget bağlamını içerir.
+- Portable sürümlerde gömülü debug sembolleri tutulur; stack trace mümkün olduğunda kaynak dosyası ve satır numarasını gösterir.
+- Raporlar otomatik yüklenmez. Exception metni ve stack trace yerel yollar içerebileceği için paylaşmadan önce içeriğini gözden geçirin; ayar dosyasının tamamı, hesap bilgileri ve medya başlıkları tanı bağlamına eklenmez.
+- Bu hatalara yönelik odaklı kontroller: `dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj -c Release -- --crash-regressions`
 
 [Commit geçmişi](https://github.com/Barisakd2163/OpenTaskbar-Custom/commits/custom/overlay-dock) · [Değişiklik günlüğü](CHANGELOG.md) · [MIT lisansı](LICENSE)
 

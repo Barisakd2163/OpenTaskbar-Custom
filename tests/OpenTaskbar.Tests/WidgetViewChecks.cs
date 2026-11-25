@@ -56,6 +56,7 @@ internal static class WidgetViewChecks
             UiText.Current.SetLanguage(AppLanguage.Turkish);
             checks += DockLayoutChecks.Run(app);
             checks += ApplicationInteractionChecks.Run(app);
+            checks += MediaPlaybackSafetyChecks.Run(app);
             checks += FeatureAndMemoryChecks.Run(app);
             checks += SettingsAndAutoHideChecks.Run(app);
             checks += AdaptiveWidgetAndConfirmChecks.Run(app);

@@ -288,28 +288,50 @@ public partial class App : Application
     private void HandleFatalError(Exception? exception, string origin)
     {
         if (Interlocked.Exchange(ref _crashHandled, 1) != 0) return;
-        AppLog.Error($"Unhandled exception on {origin}: {exception}");
-        // A crash must not leave the shell flyouts anchored to a dock that is about to disappear.
-        ShellShortcuts.RestoreShellFlyoutPositions();
-        var hasSession = TaskbarReplacementSession.HasActiveSession;
-        if (!hasSession && !TaskbarReplacementSession.HasPendingRecovery)
+        // Persist the original exception before any shell recovery can fail or the rotating log closes.
+        CrashReport.TryWrite(exception, origin, _preferences?.Current);
+        try
+        {
+            // A crash must not leave shell flyouts anchored to a dock that is about to disappear.
+            try { ShellShortcuts.RestoreShellFlyoutPositions(); }
+            catch (Exception recoveryError)
+            {
+                AppLog.ReportError("Emergency shell flyout restore failed", recoveryError);
+            }
+
+            string? error = null;
+            try
+            {
+                if (TaskbarReplacementSession.HasActiveSession)
+                    // Stop() mutates WPF session state; a terminating worker must use native-only recovery.
+                    error = Dispatcher.CheckAccess()
+                        ? TaskbarReplacementSession.EmergencyRestore()
+                        : RestoreCoordinator.Restore("background-crash");
+            }
+            catch (Exception recoveryError)
+            {
+                AppLog.ReportError("Emergency taskbar restore failed", recoveryError);
+                error = recoveryError.GetType().Name;
+            }
+
+            // The journal remains authoritative even if the in-process restore threw.
+            if (error is not null || TaskbarReplacementSession.HasPendingRecovery)
+            {
+                var forced = RestoreCoordinator.Restore("emergency-fallback");
+                if (forced is null) error = null;
+                else error ??= forced;
+            }
+
+            if (error is not null) AppLog.Error($"Emergency taskbar restore failed: {error}");
+            else AppLog.Info("Windows taskbar recovery completed after an unhandled exception.");
+        }
+        catch (Exception recoveryError)
+        {
+            AppLog.ReportError("Fatal error recovery failed; original exception is in the crash report", recoveryError);
+        }
+        finally
         {
             AppLog.Shutdown();
-            return;
         }
-
-        var error = hasSession ? TaskbarReplacementSession.EmergencyRestore() : null;
-        // EmergencyRestore reports "in progress" when another thread is already stopping. The journal is the
-        // authoritative signal, so fall back to the journal-based path whenever one is still left behind.
-        if (error is not null || TaskbarReplacementSession.HasPendingRecovery)
-        {
-            var forced = RestoreCoordinator.Restore("emergency-fallback");
-            if (forced is null) error = null;
-            else error ??= forced;
-        }
-
-        if (error is not null) AppLog.Error($"Emergency taskbar restore failed: {error}");
-        else AppLog.Info("Windows taskbar restored after an unhandled exception.");
-        AppLog.Shutdown();
     }
 }
