@@ -2,6 +2,10 @@
 
 ## Custom fork - 2026-11-25
 
+- Automatically assess local crash reports in a separate headless process after watchdog recovery and on the next startup; group repeated signatures and retain per-build counts, evidence, caveats and suggested diagnostics in JSON/Markdown.
+- Correlate selected Windows crash/GDI events with bounded process-resource telemetry instead of treating every OutOfMemoryException as managed RAM exhaustion.
+- Preserve abnormal-exit evidence when no managed report survives, and distinguish heartbeat timeouts from confirmed crashes. Only successful, nonfatal shutdown signals a clean watchdog exit.
+- Reject stale native watchdog binaries after compiler failure, keep compiler output separate from boolean success, and support Unicode MSVC build paths.
 - Handle missing or expired media playback, control, and timeline data without crashing the dock; recover when session data returns.
 - Keep Show Desktop spacing independent of Auto-sized controls while switching dock edges, preventing NaN MaxWidth/MaxHeight failures.
 - Add local per-crash diagnostics with build/commit identity, full exception details and safe state context, and embed portable debug symbols for source line numbers.

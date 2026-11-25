@@ -42,9 +42,18 @@ if (args.Contains("--theme-pack-only", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+int CrashAnalysisChecks() => CrashAssessmentChecks.Run() + CrashWindowsEventChecks.Run()
+    + WatchdogAssessmentChecks.Run() + ProcessResourceMonitorChecks.Run();
+
+if (args.Contains("--crash-analysis-only", StringComparer.OrdinalIgnoreCase))
+{
+    Console.WriteLine($"{CrashAnalysisChecks()} crash analysis checks passed.");
+    return;
+}
+
 if (args.Contains("--crash-regressions", StringComparer.OrdinalIgnoreCase))
 {
-    var crashChecks = StaCheckRunner.Run(() =>
+    var crashChecks = CrashAnalysisChecks() + StaCheckRunner.Run(() =>
     {
         var app = new OpenTaskbar.App();
         app.InitializeComponent();
@@ -106,6 +115,7 @@ if (!headless) checks += SurfaceStyleChecks.Run();
 checks += ThemeTransferChecks.Run();
 checks += TaskbarRecoveryChecks.Run();
 checks += CrashReportChecks.Run();
+checks += CrashAnalysisChecks();
 checks += SecondaryDockAndInteropChecks.Run();
 checks += ApplicationJumpListChecks.Run();
 checks += WirelessBatteryChecks.Run(headless);

@@ -1,4 +1,4 @@
-# Compiles the lightweight native Win32 watchdog helper (24 KB, ~1 MB RAM)
+# Compiles the native Win32 recovery/assessment helper without accepting stale compiler output.
 param (
     [ValidateSet('x64', 'x86')]
     [string]$Architecture = 'x64',
@@ -13,6 +13,7 @@ if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 }
 $outputExe = Join-Path $OutputDir "OpenTaskbarWatchdog.exe"
+$temporaryExe = Join-Path $OutputDir ("OpenTaskbarWatchdog.{0}.exe" -f [Guid]::NewGuid().ToString('N'))
 
 if (-not $Force -and (Test-Path -LiteralPath $outputExe) -and (Get-Item $outputExe).LastWriteTimeUtc -ge (Get-Item $source).LastWriteTimeUtc) {
     Write-Host "Native watchdog binary ($Architecture) is up to date; skipping rebuild." -ForegroundColor DarkGray
@@ -47,11 +48,11 @@ function Get-PeMachine {
 }
 
 function Test-CompiledBinary {
-    if (-not (Test-Path -LiteralPath $outputExe -PathType Leaf)) { return $false }
-    $machine = Get-PeMachine -Path $outputExe
+    if (-not (Test-Path -LiteralPath $temporaryExe -PathType Leaf)) { return $false }
+    $machine = Get-PeMachine -Path $temporaryExe
     if ($machine -eq $expectedMachine) { return $true }
     Write-Host ("Compiler produced machine 0x{0:X4}, expected 0x{1:X4}; discarding." -f $machine, $expectedMachine) -ForegroundColor Yellow
-    Remove-Item -LiteralPath $outputExe -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
     return $false
 }
 
@@ -59,15 +60,19 @@ function Invoke-Compiler {
     param ([string]$Label, [scriptblock]$Compile, [switch]$Quiet)
     try {
         Write-Host "Compiling native watchdog ($Architecture) using $Label..." -ForegroundColor Cyan
+        # Capture native output instead of returning it alongside the bool: a nonempty array containing
+        # compiler errors and $false is truthy in PowerShell and used to accept a stale helper.
+        $compilerOutput = . $Compile 2>&1
+        $compilerExit = $LASTEXITCODE
         if ($Quiet) {
-            $compilerOutput = & $Compile 2>&1
-            if ($LASTEXITCODE -ne 0) {
+            if ($compilerExit -ne 0) {
                 $compilerOutput | Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
             }
         } else {
-            & $Compile
+            $compilerOutput | ForEach-Object { Write-Host $_ }
         }
-        if ($LASTEXITCODE -eq 0 -and (Test-CompiledBinary)) {
+        if ($compilerExit -eq 0 -and (Test-CompiledBinary)) {
+            Move-Item -LiteralPath $temporaryExe -Destination $outputExe -Force
             Write-Host "Successfully compiled $outputExe ($((Get-Item $outputExe).Length) bytes)" -ForegroundColor Green
             return $true
         }
@@ -75,6 +80,7 @@ function Invoke-Compiler {
         Write-Host "$Label failed: $_" -ForegroundColor Yellow
     } finally {
         Remove-Item -LiteralPath $objectFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
     }
     return $false
 }
@@ -90,8 +96,8 @@ if ($gccCmd) {
 if ($gcc) {
     $gccArch = if ($Architecture -eq 'x86') { '-m32' } else { '' }
     $built = Invoke-Compiler -Label "GCC $gcc" -Quiet -Compile {
-        if ($gccArch) { & $gcc -O2 -s $gccArch -mwindows $source -o $outputExe -luser32 -lshell32 }
-        else { & $gcc -O2 -s -mwindows $source -o $outputExe -luser32 -lshell32 }
+        if ($gccArch) { & $gcc -O2 -s $gccArch -mwindows $source -o $temporaryExe -luser32 -lshell32 }
+        else { & $gcc -O2 -s -mwindows $source -o $temporaryExe -luser32 -lshell32 }
     }
     if ($built) { exit 0 }
 }
@@ -106,12 +112,14 @@ if (Test-Path $vswhere) {
         $platformArg = $Architecture
         $batch = @"
 @echo off
+chcp 65001 >nul
 call "$vcvarsall" $platformArg
 if errorlevel 1 exit /b 1
-cl.exe /nologo /O2 /W4 /Brepro /Fo:"$objectFile" /Fe:"$outputExe" "$source" user32.lib shell32.lib /link /subsystem:windows
+chcp 65001 >nul
+cl.exe /nologo /O2 /W4 /Brepro /Fo:"$objectFile" /Fe:"$temporaryExe" "$source" user32.lib shell32.lib /link /subsystem:windows
 exit /b %errorlevel%
 "@
-        $batch | Set-Content -Path $cmdFile -Encoding ASCII
+        [IO.File]::WriteAllText($cmdFile, $batch, [Text.UTF8Encoding]::new($false))
         try {
             $built = Invoke-Compiler -Label "MSVC ($platformArg)" -Compile { & cmd.exe /d /c "`"$cmdFile`"" }
             if ($built) { exit 0 }
@@ -125,7 +133,7 @@ exit /b %errorlevel%
 $clCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($clCmd) {
     $built = Invoke-Compiler -Label "MSVC cl.exe on PATH" -Compile {
-        & $clCmd.Source /nologo /O2 /W4 /Brepro /Fo:"$objectFile" /Fe:"$outputExe" $source user32.lib shell32.lib /link /subsystem:windows
+        & $clCmd.Source /nologo /O2 /W4 /Brepro /Fo:"$objectFile" /Fe:"$temporaryExe" $source user32.lib shell32.lib /link /subsystem:windows
     }
     if ($built) { exit 0 }
 }

@@ -9,6 +9,9 @@ namespace OpenTaskbar.Services;
 /// <summary>Local, best-effort crash evidence, independent of the rotating application log.</summary>
 public static class CrashReport
 {
+    internal static string DefaultDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTaskbar", "Crashes");
+
     internal static string BuildVersion => typeof(AppLog).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
         ?? typeof(AppLog).Assembly.GetName().Version?.ToString() ?? "unknown";
@@ -53,8 +56,7 @@ public static class CrashReport
                 report.AppendLine($"Settings context unavailable: {contextError.GetType().Name}");
             }
 
-            directory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenTaskbar", "Crashes");
+            directory ??= DefaultDirectory;
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory,
                 $"crash-{now:yyyyMMdd-HHmmss-fffffff}-{Environment.ProcessId}-{Guid.NewGuid():N}.txt");

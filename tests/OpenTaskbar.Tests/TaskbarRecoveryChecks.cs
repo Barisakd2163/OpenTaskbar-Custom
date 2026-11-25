@@ -53,9 +53,10 @@ internal static class TaskbarRecoveryChecks
         }
         Check(!TaskbarRecoveryWatchdog.TryParseArguments([], out _, out _), "An empty argument list must be ignored.");
 
-        // Watchdog with non-existent parent must trigger safe recovery and exit without throwing.
-        TaskbarRecoveryWatchdog.Run(["--watchdog=99999999:deadparent"]);
-        checks++;
+        // Missing-parent observation must not touch the user's taskbar or manufacture a confirmed crash.
+        var unavailable = TaskbarRecoveryWatchdog.ObserveParent(int.MaxValue, null, null);
+        Check(unavailable.Reason == "parent-unavailable" && unavailable.ExitCode is null,
+            "An inaccessible or already-gone parent must remain explicitly unconfirmed.");
 
         // Win-based hotkeys are retired: a modifier lost during a lock transition can trigger them without Win.
         Check(MainWindow.DescribeHotkey(HotkeyChoice.WinAltD) is null, "MOD_WIN hotkeys must never be registered.");

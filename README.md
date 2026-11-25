@@ -12,15 +12,22 @@
 
 ### Doğrulama
 
-Çökme düzeltmeleri için `--crash-regressions` ile 34 hedefli kontrol geçti: eksik medya verisi ve toparlanma, gerçek dock yönü geçişleri ve yerel hata raporları. Daha önce 19 otomatik gizleme/Overlay yaşam döngüsü kontrolü ve yanıt vermeyen pencere etkinleştirmesine yönelik 1 regresyon kontrolü de geçti. İki ekrandaki dock, Brave'in canlı pencere önizlemesi ve hover arka planı gerçek Windows masaüstünde doğrulandı. Tam test paketi bu çalışma sırasında çalıştırılmadı.
+Çökme ve otomatik değerlendirme yolları için `--crash-regressions` ile 68 hedefli kontrol geçti: eksik medya verisi ve toparlanma, gerçek dock yönü geçişleri, hata imzası/tekrar gruplama, Windows olaylarının doğru sürece bağlanması, kaynak kaydı ve watchdog yaşam döngüsü. Daha önce 19 otomatik gizleme/Overlay yaşam döngüsü kontrolü ve yanıt vermeyen pencere etkinleştirmesine yönelik 1 regresyon kontrolü de geçti. İki ekrandaki dock, Brave'in canlı pencere önizlemesi ve hover arka planı gerçek Windows masaüstünde doğrulandı. Tam test paketi bu çalışma sırasında çalıştırılmadı.
+
+İzole uçtan uca senaryoda native ve managed watchdog, gerçek alt süreç çıkışlarından sonra GUI açmadan değerlendirme üretti; Windows görev çubuğu görünür kaldı. Temiz kapanış sahte çökme kaydı üretmedi. Son gerçek WPF/GDI raporu Windows olaylarıyla eşleştirilerek değerlendirildi.
 
 ### Çökme tanıları
 
 - Başlangıç kaydı gerçek sürümü/commit kimliğini, çalıştırılan EXE'yi ve süreç kimliğini içerir.
 - Beklenmeyen .NET/UI hataları `%LOCALAPPDATA%\OpenTaskbar\Crashes` altında ayrı yerel raporlara yazılır. Raporlar exception/inner exception ve stack trace ile çalışma ortamı ve sınırlı dock/widget bağlamını içerir.
+- Watchdog beklenmeyen kapanıştan sonra önce Windows görev çubuğunu geri getirir, sonra ayrı bir süreçte `--analyze-crashes` çalıştırır. Analiz WPF uygulamasını başlatmaz; dock'u otomatik yeniden başlatmaz. Sonraki normal açılış da bekleyen raporları değerlendirir.
+- Sonuçlar `Crashes\Analysis\latest.md` ve `latest.json` dosyalarındadır: hata imzası, tekrar/sürüm sayıları, kanıtlar, güven düzeyi ve bilinmeyenler. GDI uyarısı ile RAM yetersizliği birbirine karıştırılmaz; watchdog zaman aşımı tek başına kanıtlanmış çökme sayılmaz.
+- Beş saniyede bir sınırlı boyutlu GDI/USER nesnesi, süreç handle ve bellek sayaçları tutulur. İlgili Windows Application olaylarından yalnız seçili alanlar alınır; erişilemeyen veya eksik kanıt raporda belirtilir.
 - Portable sürümlerde gömülü debug sembolleri tutulur; stack trace mümkün olduğunda kaynak dosyası ve satır numarasını gösterir.
 - Raporlar otomatik yüklenmez. Exception metni ve stack trace yerel yollar içerebileceği için paylaşmadan önce içeriğini gözden geçirin; ayar dosyasının tamamı, hesap bilgileri ve medya başlıkları tanı bağlamına eklenmez.
 - Bu hatalara yönelik odaklı kontroller: `dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj -c Release -- --crash-regressions`
+- Elle yeniden değerlendirme: `OpenTaskbar.exe --analyze-crashes`. Başka bir rapor klasörü için `--crash-directory="C:\Raporlar"` eklenebilir.
+- Otomatik değerlendirme kontrolleri: `dotnet run --project tests/OpenTaskbar.Tests/OpenTaskbar.Tests.csproj -c Release -- --crash-analysis-only`
 
 [Commit geçmişi](https://github.com/Barisakd2163/OpenTaskbar-Custom/commits/custom/overlay-dock) · [Değişiklik günlüğü](CHANGELOG.md) · [MIT lisansı](LICENSE)
 

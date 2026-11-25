@@ -31,13 +31,6 @@ public partial class App : Application
         // Idempotent: Program.Main already initialized it for the watchdog/--restore paths.
         AppLog.Initialize();
 
-        if (TaskbarRecoveryWatchdog.IsWatchdogInvocation(e.Args))
-        {
-            TaskbarRecoveryWatchdog.Run(e.Args);
-            Environment.Exit(0);
-            return;
-        }
-
         if (e.Args.Contains("--restore", StringComparer.OrdinalIgnoreCase))
         {
             var restoreError = RestoreCoordinator.Restore("cli-restore");
@@ -78,6 +71,8 @@ public partial class App : Application
             return;
         }
         _ownsSingletonMutex = true;
+        ProcessResourceMonitor.Start();
+        CrashAssessmentRunner.SchedulePending();
         _taskbarPinMonitor = new WindowsTaskbarPinMonitor();
         new StartupRegistration().SyncOnStartup(IsDev, IsInspection);
 
@@ -216,7 +211,7 @@ public partial class App : Application
             return;
         }
 
-        TaskbarRecoveryWatchdog.NotifyCleanExit();
+        ProcessResourceMonitor.Stop();
         SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
         Preferences.Changed -= Preferences_Changed;
         if (_paletteListener is not null)
@@ -246,6 +241,11 @@ public partial class App : Application
                 e.ApplicationExitCode = 1;
             }
         }
+
+        // Fatal Shutdown(1) used to look clean to the watchdog, preventing post-exit analysis.
+        // Signal success only after shell recovery has completed without an error.
+        if (e.ApplicationExitCode == 0 && Volatile.Read(ref _crashHandled) == 0)
+            TaskbarRecoveryWatchdog.NotifyCleanExit();
 
         _devReload?.Dispose();
         _devReload = null;
@@ -289,7 +289,15 @@ public partial class App : Application
     {
         if (Interlocked.Exchange(ref _crashHandled, 1) != 0) return;
         // Persist the original exception before any shell recovery can fail or the rotating log closes.
-        CrashReport.TryWrite(exception, origin, _preferences?.Current);
+        var report = CrashReport.TryWrite(exception, origin, _preferences?.Current);
+        try { ProcessResourceMonitor.CaptureNow(); }
+        catch (Exception diagnosticsError)
+        {
+            AppLog.Warning($"Crash-time resource capture unavailable ({diagnosticsError.GetType().Name}).");
+        }
+        // Startup can fail before taskbar replacement arms the watchdog.
+        if (report is not null && !TaskbarRecoveryWatchdog.IsStarted)
+            CrashAssessmentRunner.SchedulePending();
         try
         {
             // A crash must not leave shell flyouts anchored to a dock that is about to disappear.
